@@ -14,3 +14,14 @@ next.user-config.*
 node_modules
 .next/
 .DS_Store
+.vercel
+
+# Build cache
+*.tsbuildinfo
+
+# Supabase CLI temp
+supabase/.temp/
+
+# Datos privados (PII de clientes)
+*.csv
+!public/**/*.csv

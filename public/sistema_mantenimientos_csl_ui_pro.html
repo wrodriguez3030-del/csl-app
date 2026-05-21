@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cibao Spa Laser - Sistema de Mantenimientos</title>
+  <style>
+    :root{
+      --navy:#071d35;
+      --navy-2:#0b2c4d;
+      --cyan:#16c6d4;
+      --cyan-2:#0ba7b8;
+      --pink:#f59abc;
+      --bg:#f4f8fb;
+      --panel:#ffffff;
+      --line:#dbe7ef;
+      --text:#142234;
+      --muted:#607184;
+      --danger:#dc3545;
+      --warning:#f59f00;
+      --success:#18a058;
+      --shadow:0 14px 38px rgba(7,29,53,.10);
+      --radius:14px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,Montserrat,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--text)}
+    button,input,select,textarea{font:inherit}
+    button{cursor:pointer}
+    .app{min-height:100vh;display:flex}
+    .sidebar{position:fixed;inset:0 auto 0 0;width:282px;background:linear-gradient(180deg,var(--navy),#06172b);color:white;z-index:30;display:flex;flex-direction:column;box-shadow:18px 0 45px rgba(7,29,53,.16)}
+    .brand{display:flex;align-items:center;gap:12px;padding:18px;border-bottom:1px solid rgba(255,255,255,.12)}
+    .logo{width:48px;height:48px;display:grid;place-items:center;border-radius:15px;background:white;overflow:hidden;box-shadow:0 10px 25px rgba(0,0,0,.20);flex:0 0 auto}
+    .logo img{width:100%;height:100%;object-fit:contain;padding:4px}
+    .brand h1{font-size:15px;margin:0;letter-spacing:.2px}
+    .brand p{margin:3px 0 0;color:#a9c0d5;font-size:12px}
+    .nav{padding:14px 12px;overflow:auto;flex:1}
+    .nav-section{margin:16px 0 7px;padding:0 10px;color:#89a5bf;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+    .nav button{width:100%;display:flex;align-items:center;gap:10px;border:0;background:transparent;color:#dceaf6;border-radius:10px;padding:10px 11px;text-align:left;font-weight:700;font-size:14px;transition:.16s}
+    .nav button:hover{background:rgba(255,255,255,.08);color:white}
+    .nav button.active{background:linear-gradient(90deg,rgba(22,198,212,.24),rgba(22,198,212,.08));color:white;box-shadow:inset 3px 0 0 var(--cyan)}
+    .nav .ico{width:20px;text-align:center;color:var(--cyan)}
+    .badge-new{margin-left:auto;background:var(--pink);color:#611c36;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:900;letter-spacing:.08em}
+    .sidebar-foot{padding:14px 18px;border-top:1px solid rgba(255,255,255,.12);font-size:11px;color:#9db4c9}
+    .main{margin-left:282px;width:calc(100% - 282px);min-height:100vh}
+    .topbar{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.88);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:16px;padding:14px 22px}
+    .menu-btn{display:none}
+    .title-wrap{flex:1;min-width:0}
+    .title-wrap h2{margin:0;font-size:22px;color:var(--navy)}
+    .title-wrap p{margin:3px 0 0;color:var(--muted);font-size:13px}
+    .header-logo{display:flex;align-items:center;gap:8px;color:var(--navy);font-weight:900;font-size:13px}
+    .header-logo img{width:56px;height:34px;border-radius:8px;background:white;object-fit:contain;border:1px solid var(--line);padding:2px}
+    .content{padding:22px;max-width:1480px;margin:0 auto}
+    .grid{display:grid;gap:16px}
+    .grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+    .card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line)}
+    .card-head h3{margin:0;color:var(--navy);font-size:16px}
+    .card-body{padding:18px}
+    .kpi{padding:18px;position:relative;overflow:hidden}
+    .kpi:after{content:"";position:absolute;right:-25px;top:-25px;width:90px;height:90px;background:rgba(22,198,212,.13);border-radius:999px}
+    .kpi .label{color:var(--muted);font-size:13px;font-weight:700}
+    .kpi .value{font-size:30px;font-weight:900;color:var(--navy);margin-top:7px}
+    .kpi .sub{font-size:12px;color:var(--muted);margin-top:4px}
+    .btn{border:1px solid var(--line);background:white;color:var(--navy);border-radius:10px;padding:9px 12px;font-weight:800;font-size:13px;display:inline-flex;align-items:center;justify-content:center;gap:7px;transition:.16s}
+    .btn:hover{border-color:var(--cyan);color:var(--cyan-2)}
+    .btn.primary{background:linear-gradient(135deg,var(--navy),var(--navy-2));border-color:var(--navy);color:white}
+    .btn.primary:hover{filter:brightness(1.05);color:white}
+    .btn.accent{background:var(--cyan);border-color:var(--cyan);color:#042233}
+    .btn.danger{background:#fff0f2;border-color:#ffd4dc;color:var(--danger)}
+    .btn.ghost{background:transparent}
+    .btn.sm{padding:6px 8px;font-size:12px;border-radius:8px}
+    .btn.icon{width:33px;height:33px;padding:0}
+    .toolbar{display:flex;align-items:end;gap:10px;flex-wrap:wrap}
+    .field{display:flex;flex-direction:column;gap:6px}
+    label{font-size:12px;font-weight:800;color:#37506a}
+    input,select,textarea{width:100%;border:1px solid #cedbe6;background:white;border-radius:10px;padding:10px 11px;color:var(--text);outline:none}
+    textarea{min-height:88px;resize:vertical}
+    input:focus,select:focus,textarea:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(22,198,212,.15)}
+    .table-wrap{overflow:auto;border-radius:0 0 var(--radius) var(--radius)}
+    table{width:100%;border-collapse:collapse;min-width:760px}
+    th{background:#eef6fa;color:#35516c;text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.04em;padding:12px;border-bottom:1px solid var(--line);white-space:nowrap}
+    td{padding:12px;border-bottom:1px solid #edf3f7;vertical-align:top;font-size:14px}
+    tr:hover td{background:#fbfdfe}
+    .actions{display:flex;justify-content:flex-end;gap:5px;white-space:nowrap}
+    .pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:900;border:1px solid transparent}
+    .pill.ok{background:#e8f7ef;color:#0c7b42}
+    .pill.off{background:#f0f3f6;color:#607184}
+    .pill.warn{background:#fff7df;color:#9b6500}
+    .pill.bad{background:#ffecef;color:#ba2232}
+    .pill.info{background:#e7fbfd;color:#087d8b}
+    .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+    .tabs button{border:1px solid var(--line);background:white;border-radius:999px;padding:9px 13px;font-weight:900;color:#3c556f}
+    .tabs button.active{background:var(--navy);border-color:var(--navy);color:white}
+    .pulse-shell{display:grid;grid-template-columns:230px minmax(0,1fr);gap:16px}
+    .pulse-menu{background:var(--navy);border-radius:var(--radius);padding:10px;align-self:start;position:sticky;top:88px}
+    .pulse-menu button{width:100%;text-align:left;border:0;background:transparent;color:#d6e7f4;border-radius:10px;padding:11px 12px;font-weight:800}
+    .pulse-menu button.active,.pulse-menu button:hover{background:rgba(22,198,212,.18);color:white}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(7,29,53,.45);display:none;align-items:center;justify-content:center;z-index:80;padding:18px}
+    .modal-backdrop.show{display:flex}
+    .modal{background:white;border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,.25);width:min(820px,100%);max-height:92vh;overflow:auto}
+    .modal-head{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--line)}
+    .modal-head h3{margin:0;color:var(--navy)}
+    .modal-body{padding:18px}
+    .modal-foot{padding:14px 18px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px}
+    .toast{position:fixed;right:18px;bottom:18px;z-index:100;display:grid;gap:8px}
+    .toast div{background:var(--navy);color:white;padding:12px 14px;border-radius:12px;box-shadow:var(--shadow);font-weight:800;max-width:360px}
+    .toast .error{background:#9f1d2e}
+    .toast .success{background:#0c7b42}
+    .empty{padding:38px;text-align:center;color:var(--muted)}
+    .split{display:grid;grid-template-columns:1.1fr .9fr;gap:16px}
+    .section-title{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:900;margin:10px 0}
+    .piece-row{display:flex;align-items:start;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#fbfdfe;margin-top:8px}
+    .mobile-overlay{display:none}
+    @media(max-width:1050px){
+      .grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .grid-3{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .split,.pulse-shell{grid-template-columns:1fr}
+      .pulse-menu{position:static}
+    }
+    @media(max-width:760px){
+      .sidebar{transform:translateX(-100%);transition:.22s}
+      body.sidebar-open .sidebar{transform:translateX(0)}
+      .mobile-overlay{display:block;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:25;opacity:0;pointer-events:none}
+      body.sidebar-open .mobile-overlay{opacity:1;pointer-events:auto}
+      .main{margin-left:0;width:100%}
+      .menu-btn{display:inline-flex}
+      .header-logo{display:none}
+      .content{padding:14px}
+      .topbar{padding:12px 14px}
+      .grid-2,.grid-3,.grid-4{grid-template-columns:1fr}
+      .title-wrap h2{font-size:18px}
+      .toolbar .field{width:100%}
+      .toolbar .btn{width:100%}
+      table{min-width:680px}
+    }
+  </style>
+</head>
+<body>
+  <div class="mobile-overlay" onclick="document.body.classList.remove('sidebar-open')"></div>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo" aria-label="Logo Cibao Spa Laser">
+          <img src="/cibao-spa-laser-logo.jpeg" alt="Cibao Spa Laser">
+        </div>
+        <div>
+          <h1>Cibao Spa Laser</h1>
+          <p>Mantenimientos CSL</p>
+        </div>
+      </div>
+      <nav class="nav" id="sideNav"></nav>
+      <div class="sidebar-foot">v Pro Pulse · Google Apps Script</div>
+    </aside>
+    <section class="main">
+      <header class="topbar">
+        <button class="btn icon menu-btn" onclick="document.body.classList.add('sidebar-open')" title="Abrir menu">☰</button>
+        <div class="title-wrap">
+          <h2 id="pageTitle">Dashboard</h2>
+          <p id="pageDesc">Resumen operativo y técnico</p>
+        </div>
+        <div class="header-logo"><img src="/cibao-spa-laser-logo.jpeg" alt="Cibao Spa Laser"><span>Cibao Spa Laser</span></div>
+        <button class="btn" id="refreshBtn" onclick="loadAllData()">↻ Actualizar</button>
+      </header>
+      <main class="content" id="content"></main>
+    </section>
+  </div>
+  <div class="modal-backdrop" id="modalRoot"></div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const CURRENT_VERSION = "CSL_UI_PRO_PULSE_2026_05_08";
+    const $ = (id) => document.getElementById(id);
+    const today = () => new Date().toISOString().slice(0, 10);
+    const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
+    const num = (v) => Number(String(v ?? 0).replace(/[^\d.-]/g, "")) || 0;
+    const fmtNum = (v) => num(v).toLocaleString("en-US");
+    const fmtMoney = (v) => num(v).toLocaleString("en-US", { minimumFractionDigits: 0 });
+    const fmtDate = (value) => {
+      const raw = String(value || "").trim();
+      if (!raw) return "-";
+      const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+      const local = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+      if (local) return `${local[1].padStart(2,"0")}/${local[2].padStart(2,"0")}/${local[3]}`;
+      const d = new Date(raw);
+      return Number.isNaN(d.getTime()) ? raw : d.toLocaleDateString("es-DO", { day:"2-digit", month:"2-digit", year:"numeric" });
+    };
+    const isoDate = (value) => {
+      const raw = String(value || "").trim();
+      const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+      const local = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+      if (local) return `${local[3]}-${local[2].padStart(2,"0")}-${local[1].padStart(2,"0")}`;
+      return raw || today();
+    };
+    const parseJson = (txt, fallback=[]) => { try { const v = JSON.parse(txt || ""); return Array.isArray(v) ? v : fallback; } catch { return fallback; } };
+    const idFor = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
+
+    const NAV = [
+      { section:"INICIO", items:[{ id:"dashboard", label:"Dashboard", icon:"▣" }] },
+      { section:"GESTIÓN", items:[{ id:"sucursales", label:"Sucursales", icon:"⌂" }, { id:"equipos", label:"Equipos", icon:"⚙" }, { id:"tecnicos", label:"Técnicos", icon:"U" }] },
+      { section:"MANTENIMIENTO", items:[{ id:"nuevo-reporte", label:"Nuevo reporte", icon:"＋" }, { id:"reportes", label:"Lista de reportes", icon:"☷" }, { id:"historial", label:"Historial por equipo", icon:"◎" }] },
+      { section:"LÁSER", items:[{ id:"pulse", label:"PulseControl CSL", icon:"P", new:true }] },
+      { section:"CATÁLOGO TÉCNICO", items:[{ id:"catalogo", label:"Errores y piezas", icon:"◇" }] },
+      { section:"SISTEMA", items:[{ id:"config", label:"Configuración", icon:"⚙" }] },
+    ];
+    const TITLES = {
+      dashboard:["Dashboard","Resumen operativo, alertas y tendencias de mantenimiento"],
+      sucursales:["Sucursales","Gestión de sedes activas e inactivas"],
+      equipos:["Equipos","Inventario técnico, pulsos e historial por equipo"],
+      tecnicos:["Técnicos","Personal técnico disponible para reportes"],
+      "nuevo-reporte":["Nuevo reporte","Registro de mantenimiento, piezas intervenidas y cierre técnico"],
+      reportes:["Lista de reportes","Consulta, edición, filtros e impresión de reportes"],
+      historial:["Historial por equipo","Resumen histórico de mantenimientos y fallos"],
+      pulse:["PulseControl CSL","Control interno de pulsos GentleYAG"],
+      catalogo:["Errores y piezas","Catálogo técnico de fallas, piezas y criticidad"],
+      config:["Configuración","Conexión con Google Apps Script y diagnóstico"],
+    };
+
+    const defaultState = () => ({
+      active:"dashboard",
+      pulseTab:"dashboard",
+      apiUrl: localStorage.getItem("csl_api_url") || "",
+      connected:false,
+      formReport: null,
+      pieceDrafts: [],
+      db: {
+        sucursales: [
+          { Codigo:"RV", Nombre:"Rafael Vidal", Ciudad:"Santiago", Direccion:"Av. Rafael Vidal, Santiago", Estado:"Activa", Notas:"", Correo:"" },
+          { Codigo:"LJ", Nombre:"Los Jardines", Ciudad:"Santiago", Direccion:"Los Jardines Metropolitanos", Estado:"Activa", Notas:"", Correo:"" },
+          { Codigo:"VO", Nombre:"Villa Olga", Ciudad:"Santiago", Direccion:"Villa Olga", Estado:"Activa", Notas:"", Correo:"" },
+          { Codigo:"LV", Nombre:"La Vega", Ciudad:"La Vega", Direccion:"La Vega", Estado:"Activa", Notas:"", Correo:"" },
+        ],
+        equipos: [],
+        tecnicos: [],
+        reportes: [],
+        piezas: [
+          { Pieza:"Lámparas", Categoria:"Consumibles principales", Prioridad:"Alta", Tipo:"Consumible técnico", Funcion:"Fuente de disparo del sistema láser", FallasComunes:"Error 14.0, baja energía", Activa:"Si" },
+          { Pieza:"Fibra óptica", Categoria:"Óptica", Prioridad:"Alta", Tipo:"No consumible crítico", Funcion:"Transmisión de energía", FallasComunes:"Error 15.1, pérdida de potencia", Activa:"Si" },
+          { Pieza:"Filtro de agua", Categoria:"Hidráulico", Prioridad:"Media-Alta", Tipo:"Consumible", Funcion:"Filtrado del circuito de enfriamiento", FallasComunes:"Bajo flujo, temperatura alta", Activa:"Si" },
+          { Pieza:"Handpiece", Categoria:"Aplicadores", Prioridad:"Alta", Tipo:"No consumible crítico", Funcion:"Aplicación del tratamiento", FallasComunes:"No detectado, slider defectuoso", Activa:"Si" },
+          { Pieza:"Pedal", Categoria:"Control", Prioridad:"Media", Tipo:"No consumible", Funcion:"Activación del disparo", FallasComunes:"Error footswitch", Activa:"Si" },
+        ],
+        pulseEquipos: gentleYagEquipos(),
+        pulseOperadoras: defaultOperadoras(),
+        pulseLecturas: [],
+        pulseServicios: [],
+        pulseMantenimientos: []
+      }
+    });
+    let state = defaultState();
+
+    function gentleYagEquipos(){
+      return [
+        ["4","Rafael Vidal","Cabina 5","Rosa"],["6","Rafael Vidal","Cabina 4","Madelin"],["7","Rafael Vidal","Cabina 1","Diana"],["8","Rafael Vidal","Cabina 2","Emely"],
+        ["9","Los Jardines","Cabina 4","YAMILKA"],["10","Los Jardines","Cabina 1","Katherine"],["11","Los Jardines","Cabina 3","NAYELI"],["13","Los Jardines","Cabina 2","Lilian"],
+        ["17","Villa Olga","Cabina 1","Yessica"],["19","Villa Olga","Cabina 2","Eidylee"],["LV-01","La Vega","Cabina 1","Equipo La Vega"]
+      ].map(([EquipoID,Sucursal,Cabina,Notas]) => ({ EquipoID, Nombre:`GentleYAG ${EquipoID}`, Sucursal, Cabina, Modelo:"Candela GentleYAG", Serie:"", Estado:"Activo", PulsosReferencia:0, Notas }));
+    }
+    function defaultOperadoras(){
+      return [
+        ["Rosa","Rafael Vidal"],["Madelin","Rafael Vidal"],["Diana","Rafael Vidal"],["Emely","Rafael Vidal"],["YAMILKA","Los Jardines"],
+        ["Katherine","Los Jardines"],["NAYELI","Los Jardines"],["Lilian","Los Jardines"],["Yessica","Villa Olga"],["Eidylee","Villa Olga"]
+      ].map(([Nombre,Sucursal]) => ({ OperadoraID:Nombre, Nombre, Sucursal, Estado:"Activa", Notas:"", FechaRegistro:today() }));
+    }
+
+    function toast(message, type="info"){
+      const box = document.createElement("div");
+      box.className = type;
+      box.textContent = message;
+      $("toast").appendChild(box);
+      setTimeout(() => box.remove(), 3600);
+    }
+
+    function renderNav(){
+      $("sideNav").innerHTML = NAV.map(group => `
+        <div class="nav-section">${group.section}</div>
+        ${group.items.map(item => `
+          <button class="${state.active === item.id ? "active" : ""}" onclick="go('${item.id}')">
+            <span class="ico">${item.icon}</span><span>${item.label}</span>${item.new ? '<span class="badge-new">NEW</span>' : ''}
+          </button>
+        `).join("")}
+      `).join("");
+    }
+
+    function go(id){
+      state.active = id;
+      document.body.classList.remove("sidebar-open");
+      render();
+    }
+
+    function render(){
+      renderNav();
+      const title = TITLES[state.active] || TITLES.dashboard;
+      $("pageTitle").textContent = title[0];
+      $("pageDesc").textContent = title[1];
+      $("refreshBtn").style.display = state.active === "pulse" ? "none" : "";
+      const views = {
+        dashboard: renderDashboard,
+        sucursales: () => renderCrud("sucursales"),
+        equipos: () => renderCrud("equipos"),
+        tecnicos: () => renderCrud("tecnicos"),
+        "nuevo-reporte": renderNuevoReporte,
+        reportes: renderReportes,
+        historial: renderHistorial,
+        catalogo: renderCatalogo,
+        pulse: renderPulse,
+        config: renderConfig
+      };
+      $("content").innerHTML = (views[state.active] || renderDashboard)();
+      if (state.active === "reportes") setTimeout(renderReportTable, 0);
+    }
+
+    function apiUrl(){
+      return String(state.apiUrl || localStorage.getItem("csl_api_url") || "").trim();
+    }
+
+    function isGoogleScript(url){
+      return /script\.google\.com|\/macros\/s\//i.test(url);
+    }
+
+    function api(action, payload={}){
+      const url = apiUrl();
+      if (!url) return Promise.reject(new Error("Configura la URL del Apps Script primero."));
+      const params = { action, ...payload };
+      if (isGoogleScript(url)) return jsonp(url, params);
+      return fetch(url, {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body:JSON.stringify(params)
+      }).then(async r => {
+        const txt = await r.text();
+        try { return JSON.parse(txt); } catch { throw new Error("La respuesta no es JSON válido: " + txt.slice(0, 160)); }
+      });
+    }
+
+    function jsonp(url, params){
+      return new Promise((resolve, reject) => {
+        const cb = "csl_cb_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+        const qs = new URLSearchParams();
+        Object.entries(params).forEach(([k,v]) => {
+          if (v === undefined || v === null) return;
+          qs.set(k, typeof v === "object" ? JSON.stringify(v) : String(v));
+        });
+        qs.set("callback", cb);
+        const script = document.createElement("script");
+        const timer = setTimeout(() => cleanup(new Error("Timeout conectando con Apps Script")), 25000);
+        window[cb] = (data) => cleanup(null, data);
+        function cleanup(err, data){
+          clearTimeout(timer);
+          delete window[cb];
+          script.remove();
+          err ? reject(err) : resolve(data);
+        }
+        script.onerror = () => cleanup(new Error("No se pudo conectar. Verifica la URL y permisos del Apps Script."));
+        script.src = url + (url.includes("?") ? "&" : "?") + qs.toString();
+        document.body.appendChild(script);
+      });
+    }
+
+    async function loadAllData(){
+      try{
+        const res = await api("getAllData");
+        if (!res || res.ok === false) throw new Error(res?.error || "Error del servidor");
+        mergeData(res.data || res);
+        state.connected = true;
+        toast("Datos actualizados correctamente", "success");
+        render();
+      }catch(err){
+        state.connected = false;
+        toast(err.message || String(err), "error");
+      }
+    }
+
+    async function testConnection(){
+      try{
+        const res = await api("health");
+        if (!res || res.ok === false) throw new Error(res?.error || "Respuesta inválida");
+        state.connected = true;
+        toast(`Conexión OK · ${res.version || "Apps Script"}`, "success");
+        render();
+      }catch(err){
+        state.connected = false;
+        toast(err.message || String(err), "error");
+        render();
+      }
+    }
+
+    async function setupBackend(){
+      try{
+        const res = await api("setupInicial");
+        if (!res || res.ok === false) throw new Error(res?.error || "No se pudo inicializar");
+        toast("Hojas inicializadas y datos base verificados", "success");
+        await loadAllData();
+      }catch(err){ toast(err.message || String(err), "error"); }
+    }
+
+    function mergeData(data){
+      const d = data || {};
+      state.db.sucursales = d.sucursales || state.db.sucursales;
+      state.db.equipos = d.equipos || state.db.equipos;
+      state.db.tecnicos = d.tecnicos || state.db.tecnicos;
+      state.db.reportes = d.reportes || state.db.reportes;
+      state.db.piezas = d.piezas || state.db.piezas;
+      const p = d.pulseControl || d;
+      state.db.pulseEquipos = d.pulseEquipos || p.equipos || state.db.pulseEquipos;
+      state.db.pulseOperadoras = d.pulseOperadoras || p.operadoras || state.db.pulseOperadoras;
+      state.db.pulseLecturas = d.pulseLecturas || p.lecturas || p.lecturasSemanales || state.db.pulseLecturas;
+      state.db.pulseServicios = d.pulseServicios || p.servicios || p.sesionesCliente || state.db.pulseServicios;
+      state.db.pulseMantenimientos = d.pulseMantenimientos || p.mantenimientos || state.db.pulseMantenimientos;
+    }
+
+    function fieldValue(id){ return $(id)?.value ?? ""; }
+    function readForm(formId){
+      const root = $(formId);
+      const out = {};
+      root.querySelectorAll("[name]").forEach(el => out[el.name] = el.type === "number" ? num(el.value) : el.value);
+      return out;
+    }
+
+    function renderDashboard(){
+      const month = new Date().toISOString().slice(0,7);
+      const reportsMonth = state.db.reportes.filter(r => String(r.Fecha || "").slice(0,7) === month);
+      const correctivos = state.db.reportes.filter(r => String(r.Tipo || "").toLowerCase().includes("correct")).length;
+      const preventivos = state.db.reportes.filter(r => String(r.Tipo || "").toLowerCase().includes("prevent")).length;
+      const equiposActivos = state.db.equipos.filter(e => (e.Estado || "Activo") === "Activo").length;
+      const topEquipos = topBy(state.db.reportes, "EquipoID", 6);
+      const topPiezas = topPieces(6);
+      const alertas = state.db.equipos.filter(e => num(e.P_Cabeza) > num(e.Max_Cabeza || 6000000) * .8);
+      return `
+        <div class="grid grid-4">
+          ${kpi("Equipos activos", equiposActivos, "de " + state.db.equipos.length + " registrados")}
+          ${kpi("Reportes del mes", reportsMonth.length, "mantenimientos en curso")}
+          ${kpi("Correctivos", correctivos, "incidencias técnicas")}
+          ${kpi("Preventivos", preventivos, "rutinas programadas")}
+        </div>
+        <div class="grid grid-2" style="margin-top:16px">
+          ${tableCard("Equipos con más mantenimientos", ["Equipo","Reportes","Último"], topEquipos.map(x => [x.key, fmtNum(x.count), fmtDate(lastReportDate(x.key))]))}
+          ${tableCard("Piezas más usadas", ["Pieza","Usos","Reemplazos"], topPiezas.map(x => [x.pieza, fmtNum(x.usos), fmtNum(x.reemplazos)]))}
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="card-head"><h3>Alertas críticas</h3><span class="pill ${alertas.length ? "bad" : "ok"}">${alertas.length} alertas</span></div>
+          <div class="card-body">${alertas.length ? alertas.map(e => `<div class="piece-row"><b>Equipo ${esc(e.EquipoID)}</b><span>${fmtNum(e.P_Cabeza)} / ${fmtNum(e.Max_Cabeza || 6000000)} pulsos</span></div>`).join("") : '<div class="empty">Sin alertas críticas por pulsos.</div>'}</div>
+        </div>
+      `;
+    }
+
+    function kpi(label,value,sub){ return `<div class="card kpi"><div class="label">${label}</div><div class="value">${fmtNum(value)}</div><div class="sub">${sub || ""}</div></div>`; }
+    function tableCard(title, headers, rows){
+      return `<div class="card"><div class="card-head"><h3>${title}</h3></div><div class="table-wrap"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.length ? rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join("")}</tr>`).join("") : `<tr><td colspan="${headers.length}" class="empty">Sin datos disponibles</td></tr>`}</tbody></table></div></div>`;
+    }
+    function topBy(rows, key, limit){
+      const map = {};
+      rows.forEach(r => { const k = r[key] || "Sin dato"; map[k] = (map[k] || 0) + 1; });
+      return Object.entries(map).map(([key,count]) => ({key,count})).sort((a,b)=>b.count-a.count).slice(0,limit);
+    }
+    function lastReportDate(equipoId){
+      return state.db.reportes.filter(r => String(r.EquipoID) === String(equipoId)).sort((a,b)=>String(b.Fecha).localeCompare(String(a.Fecha)))[0]?.Fecha || "";
+    }
+    function topPieces(limit){
+      const map = {};
+      state.db.reportes.forEach(r => parseJson(r.PiezasJSON).forEach(p => {
+        const key = p.pieza || p.Pieza || "Sin pieza";
+        map[key] ||= { pieza:key, usos:0, reemplazos:0 };
+        map[key].usos++;
+        if (String(p.reemplazo || p.Reemplazo).toLowerCase().startsWith("s")) map[key].reemplazos++;
+      }));
+      return Object.values(map).sort((a,b)=>b.usos-a.usos).slice(0,limit);
+    }
+
+    const CRUD = {
+      sucursales: {
+        title:"Sucursales", arr:"sucursales", key:"Codigo", save:"saveSucursal", del:"deleteSucursal", estado:"setSucursalEstado",
+        fields:[["Codigo","Código","text"],["Nombre","Nombre","text"],["Ciudad","Ciudad","text"],["Direccion","Dirección","text"],["Correo","Correo","email"],["Notas","Notas","text"],["Estado","Estado","select:Activa|Inactiva"]],
+        cols:["Codigo","Nombre","Ciudad","Direccion","Correo","Estado"],
+        normalize:r => ({...r, Estado:r.Estado || "Activa"})
+      },
+      equipos: {
+        title:"Equipos", arr:"equipos", key:"EquipoID", save:"saveEquipo", del:"deleteEquipo", estado:"setEquipoEstado",
+        fields:[["EquipoID","ID equipo","text"],["Sucursal","Sucursal","sucursal"],["Empresa","Empresa","text"],["Domicilio","Domicilio","text"],["Modelo","Modelo","text"],["Serie","Serie","text"],["Numero","Número","text"],["P_Cabeza","Pulsos cabeza","number"],["P_Totales","Pulsos totales","number"],["Max_Cabeza","Máx. cabeza","number"],["Estado","Estado","select:Activo|Inactivo"],["Observaciones","Observaciones","text"]],
+        cols:["EquipoID","Sucursal","Modelo","Serie","P_Cabeza","P_Totales","Estado"],
+        normalize:r => ({...r, Empresa:r.Empresa || "CIBAO SPA LASER, CSL, S.R.L.", Max_Cabeza:num(r.Max_Cabeza || 6000000), Estado:r.Estado || "Activo"})
+      },
+      tecnicos: {
+        title:"Técnicos", arr:"tecnicos", key:"Codigo", save:"saveTecnico", del:"deleteTecnico", estado:"setTecnicoEstado",
+        fields:[["Codigo","Código","text"],["Nombre","Nombre","text"],["Telefono","Teléfono","text"],["Correo","Correo","email"],["Estado","Estado","select:Activo|Inactivo"],["Notas","Notas","text"],["FechaRegistro","Fecha de registro","date"]],
+        cols:["Codigo","Nombre","Telefono","Correo","Estado","FechaRegistro"],
+        normalize:r => ({...r, Estado:r.Estado || "Activo", FechaRegistro:r.FechaRegistro || today()})
+      }
+    };
+
+    function renderCrud(type){
+      const cfg = CRUD[type];
+      const rows = state.db[cfg.arr] || [];
+      return `
+        <div class="card">
+          <div class="card-head"><h3>${cfg.title}</h3><button class="btn primary" onclick="openCrud('${type}')">＋ Agregar</button></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>${cfg.cols.map(c=>`<th>${labelFor(c)}</th>`).join("")}<th style="text-align:right">Acciones</th></tr></thead>
+              <tbody>${rows.length ? rows.map((r,i)=>crudRow(type,r,i)).join("") : `<tr><td colspan="${cfg.cols.length+1}" class="empty">Sin registros.</td></tr>`}</tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+    function crudRow(type,r,i){
+      const cfg = CRUD[type];
+      return `<tr>
+        ${cfg.cols.map(c => `<td>${formatCell(c, r[c])}</td>`).join("")}
+        <td><div class="actions">
+          ${type === "equipos" ? `<button class="btn sm" onclick="goHist('${esc(r.EquipoID)}')">Historial</button>` : ""}
+          <button class="btn icon" title="Editar" onclick="openCrud('${type}',${i})">✎</button>
+          <button class="btn icon" title="Activar/desactivar" onclick="toggleCrud('${type}',${i})">⏻</button>
+          <button class="btn icon danger" title="Eliminar" onclick="deleteCrud('${type}',${i})">×</button>
+        </div></td></tr>`;
+    }
+    function labelFor(c){
+      return ({EquipoID:"Equipo",P_Cabeza:"Pulsos cabeza",P_Totales:"Pulsos totales",Max_Cabeza:"Máx. cabeza",FechaRegistro:"Fecha registro",FallasComunes:"Fallas comunes",AreaTrabajada:"Área",DisparosReportados:"Disparos",LecturaInicial:"Inicial",LecturaFinal:"Final",DiferenciaReal:"Diferencia"}[c] || c);
+    }
+    function formatCell(c,v){
+      if (/Fecha/.test(c)) return fmtDate(v);
+      if (/P_|Pulsos|Disparos|Costo|Lectura|Diferencia|Duracion/.test(c)) return fmtNum(v);
+      if (c === "Estado" || c === "EstadoEquipo" || c === "Prioridad") return statusPill(v);
+      return esc(v || "-");
+    }
+    function statusPill(v){
+      const s = String(v || "-");
+      const cls = /Activo|Activa|Operativo|OK|Completado/i.test(s) ? "ok" : /Inactivo|Inactiva/i.test(s) ? "off" : /Alta|Critico|Fuera/i.test(s) ? "bad" : "warn";
+      return `<span class="pill ${cls}">${esc(s)}</span>`;
+    }
+    function openCrud(type,index){
+      const cfg = CRUD[type];
+      const row = index === undefined ? cfg.normalize({}) : (state.db[cfg.arr][index] || {});
+      openModal(`${index === undefined ? "Nuevo" : "Editar"} ${cfg.title}`, `
+        <form id="crudForm" class="grid grid-2">
+          ${cfg.fields.map(f => fieldHtml(f[0], f[1], f[2], row[f[0]])).join("")}
+        </form>`, `
+        <button class="btn" onclick="closeModal()">Cancelar</button>
+        <button class="btn primary" onclick="saveCrud('${type}',${index === undefined ? -1 : index})">Guardar</button>`);
+    }
+    function fieldHtml(name,label,type,value=""){
+      if (type === "textarea") return `<div class="field" style="grid-column:1/-1"><label>${label}</label><textarea name="${name}">${esc(value)}</textarea></div>`;
+      if (type === "sucursal") return `<div class="field"><label>${label}</label><select name="${name}">${state.db.sucursales.map(s=>`<option ${s.Nombre===value?"selected":""}>${esc(s.Nombre)}</option>`).join("")}</select></div>`;
+      if (type.startsWith("select:")) return `<div class="field"><label>${label}</label><select name="${name}">${type.slice(7).split("|").map(o=>`<option value="${esc(o)}" ${String(value||"")===o?"selected":""}>${esc(o)}</option>`).join("")}</select></div>`;
+      return `<div class="field"><label>${label}</label><input name="${name}" type="${type}" value="${esc(value)}"></div>`;
+    }
+    async function saveCrud(type,index){
+      const cfg = CRUD[type];
+      const record = cfg.normalize(readForm("crudForm"));
+      if (!record[cfg.key]) return toast(`Falta ${cfg.key}`, "error");
+      if (index >= 0) record._rowNum = state.db[cfg.arr][index]._rowNum;
+      if (index >= 0) state.db[cfg.arr][index] = record; else state.db[cfg.arr].push(record);
+      closeModal(); render(); toast("Registro guardado", "success");
+      try { await api(cfg.save, { payload: JSON.stringify(record) }); } catch(err){ toast("Guardado local. Backend pendiente: " + err.message, "error"); }
+    }
+    async function toggleCrud(type,index){
+      const cfg = CRUD[type], row = state.db[cfg.arr][index];
+      row.Estado = /Inact/i.test(row.Estado) ? (type==="sucursales" ? "Activa" : "Activo") : (type==="sucursales" ? "Inactiva" : "Inactivo");
+      render();
+      try { await api(cfg.estado, { id: row[cfg.key], codigo: row.Codigo, equipoId: row.EquipoID, estado: row.Estado, rowNum: row._rowNum }); } catch(err){ toast(err.message, "error"); }
+    }
+    async function deleteCrud(type,index){
+      const cfg = CRUD[type], row = state.db[cfg.arr][index];
+      if (!confirm(`Eliminar ${row[cfg.key]}?`)) return;
+      state.db[cfg.arr].splice(index,1); render(); toast("Registro eliminado", "success");
+      try { await api(cfg.del, { id: row[cfg.key], codigo: row.Codigo, equipoId: row.EquipoID, rowNum: row._rowNum }); } catch(err){ toast("Eliminado local. Backend pendiente: " + err.message, "error"); }
+    }
+
+    function renderNuevoReporte(){
+      const r = state.formReport || { ID:"", Fecha:today(), Tipo:"Preventivo", EstadoEquipo:"Operativo", Prioridad:"Baja", Ciudad:"Santiago", Empresa:"CIBAO SPA LASER, CSL, S.R.L." };
+      return `
+        <div class="grid" style="gap:16px">
+          <div class="card"><div class="card-head"><h3>Datos generales</h3></div><div class="card-body">
+            <form id="reportForm" class="grid grid-4">
+              ${fieldHtml("Fecha","Fecha","date",r.Fecha)}
+              <div class="field"><label>Sucursal</label><select name="Sucursal" onchange="reportSucursalChanged(this.value)">${optionList(state.db.sucursales.map(s=>s.Nombre), r.Sucursal)}</select></div>
+              <div class="field"><label>Equipo</label><select name="EquipoID" onchange="reportEquipoChanged(this.value)"><option value="">Seleccionar</option>${optionList(state.db.equipos.filter(e=>!r.Sucursal || e.Sucursal===r.Sucursal).map(e=>e.EquipoID), r.EquipoID)}</select></div>
+              <div class="field"><label>Técnico</label><select name="Atendio">${optionList(state.db.tecnicos.filter(t=>t.Estado!=="Inactivo").map(t=>t.Nombre), r.Atendio)}</select></div>
+              ${["Empresa","Cliente","Domicilio","Ciudad","Modelo","Serie","Numero"].map(k=>fieldHtml(k,labelFor(k),"text",r[k])).join("")}
+              ${fieldHtml("Tipo","Tipo de servicio","select:Preventivo|Correctivo|Garantía|Pago por servicio",r.Tipo)}
+              ${fieldHtml("EstadoEquipo","Estado equipo","select:Operativo|Observación|Fuera de servicio",r.EstadoEquipo)}
+              ${fieldHtml("Prioridad","Prioridad","select:Baja|Media|Alta",r.Prioridad)}
+              ${fieldHtml("P_Cabeza","Pulsos cabeza","number",r.P_Cabeza || 0)}
+              ${fieldHtml("P_Totales","Pulsos totales","number",r.P_Totales || 0)}
+            </form>
+          </div></div>
+          <div class="card"><div class="card-head"><h3>Mantenimiento y observaciones</h3></div><div class="card-body grid grid-2">
+            ${["Problema","Correccion","Checklist","Observaciones"].map(k=>fieldHtml(k,labelFor(k), "textarea", r[k])).join("")}
+          </div></div>
+          <div class="card"><div class="card-head"><h3>Piezas intervenidas</h3><button class="btn accent" onclick="openPieceReport()">＋ Agregar pieza</button></div><div class="card-body" id="piecesReportBox">${renderReportPieces()}</div></div>
+          <div class="card"><div class="card-head"><h3>Firma / cierre</h3></div><div class="card-body grid grid-2">
+            ${fieldHtml("FirmaCliente","Firma cliente (texto o URL)","text",r.FirmaCliente || "")}
+            ${fieldHtml("FirmaTecnico","Firma técnico (texto o URL)","text",r.FirmaTecnico || "")}
+          </div></div>
+          <div class="card"><div class="card-body toolbar"><button class="btn primary" onclick="saveReporte()">Guardar reporte</button><button class="btn" onclick="clearReporte()">Nuevo reporte</button></div></div>
+        </div>`;
+    }
+    function optionList(options,value){ return options.map(o=>`<option value="${esc(o)}" ${String(o)===String(value||"")?"selected":""}>${esc(o)}</option>`).join(""); }
+    function reportSucursalChanged(sucursal){
+      const form = $("reportForm"); if (!form) return;
+      const equipoSelect = form.elements.EquipoID;
+      const options = state.db.equipos.filter(e=>e.Sucursal===sucursal);
+      equipoSelect.innerHTML = '<option value="">Seleccionar</option>' + options.map(e=>`<option value="${esc(e.EquipoID)}">${esc(e.EquipoID)}</option>`).join("");
+      const s = state.db.sucursales.find(x=>x.Nombre===sucursal);
+      form.elements.Ciudad.value = s?.Ciudad || "Santiago";
+      form.elements.Domicilio.value = s?.Direccion || "";
+    }
+    function reportEquipoChanged(id){
+      const e = state.db.equipos.find(x=>String(x.EquipoID)===String(id));
+      const f = $("reportForm"); if (!e || !f) return;
+      ["Sucursal","Empresa","Domicilio","Modelo","Serie","Numero","P_Cabeza","P_Totales"].forEach(k => { if (f.elements[k]) f.elements[k].value = e[k] || ""; });
+    }
+    function renderReportPieces(){
+      return state.pieceDrafts.length ? state.pieceDrafts.map((p,i)=>`<div class="piece-row"><div><b>${esc(p.pieza)}</b><div>${esc(p.categoria)} · ${esc(p.accion)} · ${esc(p.estado)} · Reemplazo: ${esc(p.reemplazo)}</div>${p.costo ? `<small>RD$ ${fmtMoney(p.costo)} · ${fmtNum(p.pulsos)} pulsos</small>` : ""}</div><div class="actions"><button class="btn icon" onclick="openPieceReport(${i})">✎</button><button class="btn icon danger" onclick="removePieceReport(${i})">×</button></div></div>`).join("") : '<div class="empty">No hay piezas agregadas al reporte.</div>';
+    }
+    function openPieceReport(index){
+      const p = index === undefined ? { pieza:"", categoria:"", accion:"Inspección", estado:"Buena", desgaste:0, reemplazo:"No", costo:0, pulsos:0, observaciones:"" } : state.pieceDrafts[index];
+      openModal(index === undefined ? "Agregar pieza" : "Editar pieza", `
+        <form id="pieceForm" class="grid grid-2">
+          <div class="field"><label>Pieza</label><select name="pieza" onchange="pieceCategory(this.value)"><option value="">Seleccionar</option>${optionList(state.db.piezas.filter(x=>x.Activa!=="No").map(x=>x.Pieza), p.pieza)}</select></div>
+          ${fieldHtml("categoria","Categoría","text",p.categoria)}
+          ${fieldHtml("accion","Acción","select:Inspección|Limpieza|Ajuste|Reparación|Reemplazo|Calibración",p.accion)}
+          ${fieldHtml("estado","Estado","select:Buena|Desgaste leve|Desgaste medio|Desgaste alto|Crítica",p.estado)}
+          ${fieldHtml("desgaste","% desgaste","number",p.desgaste)}
+          ${fieldHtml("reemplazo","Se reemplazó","select:No|Si",p.reemplazo)}
+          ${fieldHtml("costo","Costo RD$","number",p.costo)}
+          ${fieldHtml("pulsos","Pulsos al cambio","number",p.pulsos)}
+          ${fieldHtml("observaciones","Observaciones","textarea",p.observaciones)}
+        </form>`, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" onclick="savePieceReport(${index === undefined ? -1 : index})">Guardar</button>`);
+    }
+    function pieceCategory(name){ const p = state.db.piezas.find(x=>x.Pieza===name); if ($("pieceForm")?.elements.categoria) $("pieceForm").elements.categoria.value = p?.Categoria || ""; }
+    function savePieceReport(index){
+      const p = readForm("pieceForm");
+      if (!p.pieza) return toast("Selecciona una pieza", "error");
+      if (index >= 0) state.pieceDrafts[index] = p; else state.pieceDrafts.push(p);
+      closeModal(); $("piecesReportBox").innerHTML = renderReportPieces();
+    }
+    function removePieceReport(i){ state.pieceDrafts.splice(i,1); $("piecesReportBox").innerHTML = renderReportPieces(); }
+    async function saveReporte(){
+      const r = {};
+      document.querySelectorAll("#content [name]").forEach(el => {
+        r[el.name] = el.type === "number" ? num(el.value) : el.value;
+      });
+      if (!r.EquipoID) return toast("Selecciona un equipo", "error");
+      if (!r.Atendio) return toast("Selecciona un técnico", "error");
+      const existingIndex = state.db.reportes.findIndex(x => x.ID && x.ID === state.formReport?.ID);
+      const record = { ...r, ID: state.formReport?.ID || idFor("RPT"), PiezasJSON: JSON.stringify(state.pieceDrafts), PartesTexto: state.pieceDrafts.map(p=>p.pieza).join(", ") };
+      if (existingIndex >= 0) state.db.reportes[existingIndex] = record; else state.db.reportes.push(record);
+      state.formReport = null; state.pieceDrafts = []; go("reportes"); toast("Reporte guardado", "success");
+      try { await api("saveReporte", { payload: JSON.stringify(record) }); } catch(err){ toast("Guardado local. Backend pendiente: " + err.message, "error"); }
+    }
+    function clearReporte(){ state.formReport = null; state.pieceDrafts = []; render(); }
+
+    function renderReportes(){
+      const sucursales = [...new Set(state.db.reportes.map(r=>r.Sucursal).filter(Boolean))];
+      return `
+        <div class="card"><div class="card-head"><h3>Filtros</h3><button class="btn" onclick="exportReportesCsv()">Exportar CSV</button></div><div class="card-body toolbar">
+          <div class="field"><label>Buscar</label><input id="reportSearch" oninput="renderReportTable()" placeholder="Equipo, técnico, problema"></div>
+          <div class="field"><label>Sucursal</label><select id="reportSucursal" onchange="renderReportTable()"><option value="">Todas</option>${optionList(sucursales,"")}</select></div>
+          <div class="field"><label>Tipo</label><select id="reportTipo" onchange="renderReportTable()"><option value="">Todos</option>${optionList(["Preventivo","Correctivo","Garantía","Pago por servicio"],"")}</select></div>
+        </div></div>
+        <div class="card" style="margin-top:16px"><div class="card-head"><h3>Lista de reportes</h3><span id="reportCount" class="pill info"></span></div><div class="table-wrap" id="reportTable"></div></div>`;
+    }
+    function filteredReportes(){
+      const q = $("reportSearch")?.value.toLowerCase().trim() || "";
+      const suc = $("reportSucursal")?.value || "";
+      const tipo = $("reportTipo")?.value || "";
+      return state.db.reportes.filter(r => (!q || [r.ID,r.EquipoID,r.Sucursal,r.Atendio,r.Problema,r.Correccion].join(" ").toLowerCase().includes(q)) && (!suc || r.Sucursal===suc) && (!tipo || r.Tipo===tipo)).sort((a,b)=>String(b.Fecha).localeCompare(String(a.Fecha)));
+    }
+    function renderReportTable(){
+      const rows = filteredReportes();
+      if ($("reportCount")) $("reportCount").textContent = `${rows.length} registros`;
+      if (!$("reportTable")) return;
+      $("reportTable").innerHTML = `<table><thead><tr><th>Fecha</th><th>Equipo</th><th>Sucursal</th><th>Tipo</th><th>Técnico</th><th>Estado</th><th>Piezas</th><th style="text-align:right">Acciones</th></tr></thead><tbody>${rows.length ? rows.map(r=>`<tr><td>${fmtDate(r.Fecha)}</td><td><b>${esc(r.EquipoID)}</b></td><td>${esc(r.Sucursal)}</td><td>${statusPill(r.Tipo)}</td><td>${esc(r.Atendio||"-")}</td><td>${statusPill(r.EstadoEquipo)}</td><td>${esc((parseJson(r.PiezasJSON)[0]?.pieza) || r.PartesTexto || "-")}</td><td><div class="actions"><button class="btn icon" onclick="viewReporte('${esc(r.ID)}')">☉</button><button class="btn icon" onclick="printReporte('${esc(r.ID)}')">⎙</button><button class="btn icon" onclick="editReporte('${esc(r.ID)}')">✎</button><button class="btn icon danger" onclick="deleteReporte('${esc(r.ID)}')">×</button></div></td></tr>`).join("") : '<tr><td colspan="8" class="empty">Sin reportes.</td></tr>'}</tbody></table>`;
+    }
+    function viewReporte(id){
+      const r = state.db.reportes.find(x=>x.ID===id); if (!r) return;
+      openModal(`Reporte ${esc(id)}`, `<div class="grid grid-2">${Object.entries(r).filter(([k])=>!["PiezasJSON","Fotos"].includes(k)).map(([k,v])=>`<div><b>${labelFor(k)}:</b><br>${formatCell(k,v)}</div>`).join("")}</div><div class="section-title">Piezas</div>${renderPiecesReadonly(r)}`, `<button class="btn" onclick="closeModal()">Cerrar</button><button class="btn primary" onclick="printReporte('${esc(id)}')">Imprimir</button>`);
+    }
+    function renderPiecesReadonly(r){ const p = parseJson(r.PiezasJSON); return p.length ? p.map(x=>`<div class="piece-row"><b>${esc(x.pieza)}</b><span>${esc(x.accion)} · ${esc(x.estado)}</span></div>`).join("") : '<div class="empty">Sin piezas.</div>'; }
+    function editReporte(id){ const r = state.db.reportes.find(x=>x.ID===id); if (!r) return; state.formReport = {...r}; state.pieceDrafts = parseJson(r.PiezasJSON); go("nuevo-reporte"); }
+    async function deleteReporte(id){ if (!confirm("Eliminar reporte " + id + "?")) return; const idx = state.db.reportes.findIndex(r=>r.ID===id); const row = state.db.reportes[idx]; if (idx>=0) state.db.reportes.splice(idx,1); renderReportTable(); toast("Reporte eliminado","success"); try{ await api("deleteReporte",{ reportId:id, rowNum:row?._rowNum }); }catch(err){ toast(err.message,"error"); } }
+    function printReporte(id){
+      const r = state.db.reportes.find(x=>x.ID===id); if (!r) return;
+      const w = window.open("", "_blank");
+      w.document.write(`<html><head><title>Reporte ${esc(id)}</title><style>body{font-family:Arial;padding:28px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #888;padding:6px;font-size:12px}.h{text-align:right;font-size:20px;font-weight:bold}.label{background:#eee;font-weight:bold}</style></head><body><div class="h">REPORTE DE SERVICIO</div><table><tr><td class="label">Empresa</td><td colspan="3">${esc(r.Empresa||"CIBAO SPA LASER")}</td><td class="label">Fecha</td><td>${fmtDate(r.Fecha)}</td></tr><tr><td class="label">Equipo</td><td>${esc(r.EquipoID)}</td><td class="label">Modelo</td><td>${esc(r.Modelo)}</td><td class="label">Serie</td><td>${esc(r.Serie)}</td></tr><tr><td class="label">Sucursal</td><td>${esc(r.Sucursal)}</td><td class="label">Tipo</td><td>${esc(r.Tipo)}</td><td class="label">Técnico</td><td>${esc(r.Atendio)}</td></tr><tr><td class="label">Problema</td><td colspan="5">${esc(r.Problema)}</td></tr><tr><td class="label">Corrección</td><td colspan="5">${esc(r.Correccion)}</td></tr><tr><td class="label">Observaciones</td><td colspan="5">${esc(r.Observaciones)}</td></tr><tr><td class="label">Pulsos totales</td><td>${fmtNum(r.P_Totales)}</td><td class="label">Pulsos cabeza</td><td>${fmtNum(r.P_Cabeza)}</td><td class="label">Piezas</td><td>${esc(r.PartesTexto||"")}</td></tr></table><br><br><table><tr><td style="height:70px;text-align:center">Firma cliente</td><td style="height:70px;text-align:center">Firma técnico</td></tr></table></body></html>`);
+      w.document.close(); w.print();
+    }
+    function exportReportesCsv(){
+      const rows = filteredReportes();
+      const headers = ["ID","Fecha","EquipoID","Sucursal","Tipo","Atendio","EstadoEquipo","Prioridad","Problema","Correccion","Observaciones"];
+      downloadCsv("reportes_csl.csv", [headers, ...rows.map(r=>headers.map(h=>r[h]||""))]);
+    }
+    function downloadCsv(filename, rows){
+      const csv = rows.map(r=>r.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\n");
+      const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})); a.download = filename; a.click(); URL.revokeObjectURL(a.href);
+    }
+
+    function goHist(id){ state.histEquipo = id; go("historial"); }
+    function renderHistorial(){
+      const id = state.histEquipo || "";
+      const eq = state.db.equipos.find(e=>String(e.EquipoID)===String(id));
+      const reports = id ? state.db.reportes.filter(r=>String(r.EquipoID)===String(id)).sort((a,b)=>String(b.Fecha).localeCompare(String(a.Fecha))) : [];
+      const fallos = topBy(reports.map(r=>({key:r.Problema||"Sin detalle"})), "key", 5);
+      return `<div class="card"><div class="card-head"><h3>Seleccionar equipo</h3></div><div class="card-body toolbar"><div class="field"><label>Equipo</label><select onchange="state.histEquipo=this.value;render()"><option value="">Seleccionar</option>${optionList(state.db.equipos.map(e=>e.EquipoID), id)}</select></div></div></div>${id ? `<div class="grid grid-3" style="margin-top:16px">${kpi("Reportes históricos",reports.length,"Equipo "+id)}${kpi("Piezas intervenidas",reports.reduce((s,r)=>s+parseJson(r.PiezasJSON).length,0),"Total registrado")}${kpi("Último mantenimiento",reports[0]?fmtDate(reports[0].Fecha):"-",eq?.Sucursal||"")}</div><div class="grid grid-2" style="margin-top:16px">${tableCard("Reportes del equipo",["Fecha","Tipo","Técnico"],reports.map(r=>[fmtDate(r.Fecha),esc(r.Tipo),esc(r.Atendio)]))}${tableCard("Frecuencia de fallos",["Problema","Veces"],fallos.map(f=>[esc(f.key),fmtNum(f.count)]))}</div>` : '<div class="empty">Selecciona un equipo para consultar su historial.</div>'}`;
+    }
+
+    const ERRORS = [
+      ["3.1","Shutter abierto - falla en obturador","Obturador dañado o bloqueado","Verificar shutter, conector y señal de control","Alta"],
+      ["6.4","Falla de temperatura del cabezal","Sensor o flujo fuera de rango","Verificar flujo de agua, radiador y sensor","Alta"],
+      ["7.1","Flujo de agua bajo","Filtro obstruido, bomba débil o manguera doblada","Limpiar filtros, revisar bomba y mangueras","Alta"],
+      ["8.1","Falla del sistema DCD","Gas vacío, válvula o compresor","Verificar criógeno, válvula y compresor","Alta"],
+      ["10.1","Handpiece no detectado","Conector flojo o slider dañado","Revisar conexión y slider","Alta"],
+      ["12.1","Falla HVPS alto voltaje","Fuente o capacitores","Revisar HVPS y conexiones","Alta"],
+      ["14.0","Falla de lámpara","Lámpara agotada o quemada","Reemplazar lámparas y realizar break-in","Alta"],
+      ["15.1","Falla de fibra óptica","Fibra rota o conector sucio","Limpiar conector o reemplazar fibra","Alta"]
+    ];
+    function renderCatalogo(){
+      return `<div class="tabs"><button class="active" onclick="catalogTab('piezas',this)">Catálogo de piezas</button><button onclick="catalogTab('errores',this)">Códigos de error</button></div><div id="catalogBox">${renderPiezas()}</div>`;
+    }
+    function catalogTab(tab,btn){ document.querySelectorAll(".tabs button").forEach(b=>b.classList.remove("active")); btn.classList.add("active"); $("catalogBox").innerHTML = tab==="piezas" ? renderPiezas() : renderErrores(); }
+    function renderPiezas(){
+      const rows = state.db.piezas;
+      return `<div class="card"><div class="card-head"><h3>Piezas</h3><button class="btn primary" onclick="openPieza()">＋ Nueva pieza</button></div><div class="table-wrap"><table><thead><tr><th>Pieza</th><th>Categoría</th><th>Prioridad</th><th>Tipo</th><th>Fallas</th><th style="text-align:right">Acciones</th></tr></thead><tbody>${rows.map((p,i)=>`<tr><td><b>${esc(p.Pieza)}</b></td><td>${esc(p.Categoria)}</td><td>${statusPill(p.Prioridad)}</td><td>${esc(p.Tipo)}</td><td>${esc(p.FallasComunes||"-")}</td><td><div class="actions"><button class="btn icon" onclick="openPieza(${i})">✎</button><button class="btn icon danger" onclick="deletePieza(${i})">×</button></div></td></tr>`).join("")}</tbody></table></div></div>`;
+    }
+    function openPieza(index){
+      const p = index === undefined ? {Pieza:"",Categoria:"",Prioridad:"Media",Tipo:"Consumible",Funcion:"",FallasComunes:"",Activa:"Si"} : state.db.piezas[index];
+      openModal(index===undefined?"Nueva pieza":"Editar pieza", `<form id="piezaForm" class="grid grid-2">${fieldHtml("Pieza","Pieza","text",p.Pieza)}${fieldHtml("Categoria","Categoría","text",p.Categoria)}${fieldHtml("Prioridad","Prioridad","select:Alta|Media-Alta|Media|Baja",p.Prioridad)}${fieldHtml("Tipo","Tipo","select:Consumible|Consumible técnico|Consumible operativo|No consumible|No consumible crítico",p.Tipo)}${fieldHtml("Funcion","Función","textarea",p.Funcion)}${fieldHtml("FallasComunes","Fallas comunes","textarea",p.FallasComunes)}${fieldHtml("Activa","Activa","select:Si|No",p.Activa)}</form>`, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" onclick="savePieza(${index===undefined?-1:index})">Guardar</button>`);
+    }
+    async function savePieza(index){ const p = readForm("piezaForm"); if(!p.Pieza)return toast("Falta nombre de pieza","error"); if(index>=0)p._rowNum=state.db.piezas[index]._rowNum; index>=0?state.db.piezas[index]=p:state.db.piezas.push(p); closeModal(); render(); toast("Pieza guardada","success"); try{await api("savePieza",{payload:JSON.stringify(p)})}catch(e){toast(e.message,"error")} }
+    async function deletePieza(index){ const p=state.db.piezas[index]; if(!confirm("Eliminar pieza "+p.Pieza+"?"))return; state.db.piezas.splice(index,1); render(); try{await api("deletePieza",{pieza:p.Pieza,rowNum:p._rowNum})}catch(e){toast(e.message,"error")} }
+    function renderErrores(){ return tableCard("Errores GentleYAG",["Código","Descripción","Causa","Solución","Prioridad"],ERRORS.map(e=>[`<b>${e[0]}</b>`,esc(e[1]),esc(e[2]),esc(e[3]),statusPill(e[4])])); }
+
+    const PULSE_TABS = [
+      ["dashboard","Dashboard"],["equipos","Equipos"],["operadoras","Operadoras"],["lecturas","Lecturas semanales"],["servicios","Registro de servicios"],["auditoria","Auditoría/IA"],["mantenimientos","Mantenimiento"]
+    ];
+    function renderPulse(){
+      return `<div class="pulse-shell"><div class="pulse-menu">${PULSE_TABS.map(([id,label])=>`<button class="${state.pulseTab===id?"active":""}" onclick="state.pulseTab='${id}';render()">${label}</button>`).join("")}</div><div>${renderPulseContent()}</div></div>`;
+    }
+    function renderPulseContent(){
+      const map = { dashboard:renderPulseDashboard, equipos:()=>renderPulseCrud("equipos"), operadoras:()=>renderPulseCrud("operadoras"), lecturas:()=>renderPulseCrud("lecturas"), servicios:()=>renderPulseCrud("servicios"), mantenimientos:()=>renderPulseCrud("mantenimientos"), auditoria:renderPulseAuditoria };
+      return (map[state.pulseTab] || renderPulseDashboard)();
+    }
+    function renderPulseDashboard(){
+      const totalReal = state.db.pulseLecturas.reduce((s,l)=>s+num(l.DiferenciaReal),0);
+      const totalRep = state.db.pulseServicios.reduce((s,l)=>s+num(l.DisparosReportados),0);
+      const crit = pulseAuditorias().filter(a=>a.Alerta==="Critico").length;
+      return `<div class="grid grid-4">${kpi("GentleYAG",state.db.pulseEquipos.length,"equipos controlados")}${kpi("Pulsos reales",totalReal,"lecturas semanales")}${kpi("Pulsos reportados",totalRep,"servicios")}${kpi("Alertas críticas",crit,"auditoría")}</div><div style="margin-top:16px">${renderPulseAuditoria()}</div>`;
+    }
+    const PULSE = {
+      equipos:{title:"Equipos PulseControl",arr:"pulseEquipos",key:"EquipoID",save:"savePulseEquipo",del:"deletePulseEquipo",fields:[["EquipoID","Equipo","text"],["Nombre","Nombre","text"],["Sucursal","Sucursal","sucursal"],["Cabina","Cabina","text"],["Modelo","Modelo","text"],["Serie","Serie","text"],["Estado","Estado","select:Activo|Inactivo"],["PulsosReferencia","Pulsos referencia","number"],["Notas","Notas","text"]],cols:["EquipoID","Nombre","Sucursal","Cabina","Modelo","Estado","PulsosReferencia"]},
+      operadoras:{title:"Operadoras",arr:"pulseOperadoras",key:"OperadoraID",save:"savePulseOperadora",del:"deletePulseOperadora",fields:[["OperadoraID","ID","text"],["Nombre","Nombre","text"],["Sucursal","Sucursal","sucursal"],["Estado","Estado","select:Activa|Inactiva"],["Notas","Notas","text"],["FechaRegistro","Fecha registro","date"]],cols:["OperadoraID","Nombre","Sucursal","Estado","FechaRegistro"]},
+      lecturas:{title:"Lecturas semanales",arr:"pulseLecturas",key:"LecturaID",save:"savePulseLectura",del:"deletePulseLectura",fields:[["LecturaID","ID","text"],["FechaSemana","Semana","date"],["EquipoID","Equipo","pulseEquipo"],["Sucursal","Sucursal","sucursal"],["Cabina","Cabina","text"],["OperadoraID","Operadora","operadora"],["LecturaInicial","Lectura inicial","number"],["LecturaFinal","Lectura final","number"],["Observaciones","Observaciones","text"]],cols:["FechaSemana","EquipoID","Sucursal","Cabina","OperadoraID","LecturaInicial","LecturaFinal","DiferenciaReal"]},
+      servicios:{title:"Registro de servicios",arr:"pulseServicios",key:"ServicioID",save:"savePulseServicio",del:"deletePulseServicio",fields:[["ServicioID","ID","text"],["Fecha","Fecha","date"],["Sucursal","Sucursal","sucursal"],["Cabina","Cabina","text"],["OperadoraID","Operadora","operadora"],["Cliente","Cliente","text"],["AreaTrabajada","Área trabajada","text"],["DisparosReportados","Disparos reportados","number"],["Duracion","Duración min","number"],["EquipoID","Equipo","pulseEquipo"],["Observaciones","Observaciones","text"]],cols:["Fecha","EquipoID","Sucursal","Cabina","OperadoraID","Cliente","AreaTrabajada","DisparosReportados"]},
+      mantenimientos:{title:"Mantenimiento PulseControl",arr:"pulseMantenimientos",key:"MantenimientoID",save:"savePulseMantenimiento",del:"deletePulseMantenimiento",fields:[["MantenimientoID","ID","text"],["Fecha","Fecha","date"],["EquipoID","Equipo","pulseEquipo"],["Sucursal","Sucursal","sucursal"],["Tipo","Tipo","select:Preventivo|Correctivo|Calibración|Limpieza"],["Descripcion","Descripción","textarea"],["Tecnico","Técnico","tecnico"],["Estado","Estado","select:Programado|Completado|Pendiente"],["Costo","Costo RD$","number"],["Observaciones","Observaciones","textarea"]],cols:["Fecha","EquipoID","Sucursal","Tipo","Tecnico","Estado","Costo"]}
+    };
+    function renderPulseCrud(kind){
+      const cfg = PULSE[kind], rows = state.db[cfg.arr];
+      return `<div class="card"><div class="card-head"><h3>${cfg.title}</h3><button class="btn primary" onclick="openPulseCrud('${kind}')">＋ Agregar</button></div><div class="table-wrap"><table><thead><tr>${cfg.cols.map(c=>`<th>${labelFor(c)}</th>`).join("")}<th style="text-align:right">Acciones</th></tr></thead><tbody>${rows.length?rows.map((r,i)=>`<tr>${cfg.cols.map(c=>`<td>${formatCell(c,r[c])}</td>`).join("")}<td><div class="actions"><button class="btn icon" onclick="openPulseCrud('${kind}',${i})">✎</button><button class="btn icon danger" onclick="deletePulseCrud('${kind}',${i})">×</button></div></td></tr>`).join(""):`<tr><td colspan="${cfg.cols.length+1}" class="empty">Sin registros.</td></tr>`}</tbody></table></div></div>`;
+    }
+    function pulseField(name,label,type,value){
+      if(type==="pulseEquipo") return `<div class="field"><label>${label}</label><select name="${name}">${optionList(state.db.pulseEquipos.map(e=>e.EquipoID),value)}</select></div>`;
+      if(type==="operadora") return `<div class="field"><label>${label}</label><select name="${name}">${optionList(state.db.pulseOperadoras.map(o=>o.OperadoraID),value)}</select></div>`;
+      if(type==="tecnico") return `<div class="field"><label>${label}</label><select name="${name}"><option value="">Seleccionar</option>${optionList(state.db.tecnicos.map(t=>t.Nombre),value)}</select></div>`;
+      return fieldHtml(name,label,type,value);
+    }
+    function openPulseCrud(kind,index){
+      const cfg = PULSE[kind], row = index===undefined ? {} : state.db[cfg.arr][index];
+      openModal(index===undefined?`Nuevo ${cfg.title}`:`Editar ${cfg.title}`, `<form id="pulseForm" class="grid grid-2">${cfg.fields.map(f=>pulseField(f[0],f[1],f[2], row[f[0]])).join("")}</form>`, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" onclick="savePulseCrud('${kind}',${index===undefined?-1:index})">Guardar</button>`);
+    }
+    async function savePulseCrud(kind,index){
+      const cfg = PULSE[kind]; let r = readForm("pulseForm");
+      if(!r[cfg.key]) r[cfg.key] = idFor(cfg.key.replace("ID",""));
+      if(kind==="lecturas") r.DiferenciaReal = num(r.LecturaFinal)-num(r.LecturaInicial);
+      if(index>=0) r._rowNum = state.db[cfg.arr][index]._rowNum;
+      index>=0 ? state.db[cfg.arr][index]=r : state.db[cfg.arr].push(r);
+      closeModal(); render(); toast("Registro PulseControl guardado","success");
+      try{ await api(cfg.save,{payload:JSON.stringify(r)}); }catch(e){ toast(e.message,"error"); }
+    }
+    async function deletePulseCrud(kind,index){
+      const cfg=PULSE[kind], row=state.db[cfg.arr][index];
+      if(!confirm("Eliminar registro?")) return;
+      state.db[cfg.arr].splice(index,1); render(); toast("Registro eliminado","success");
+      try{ await api(cfg.del,{id:row[cfg.key],rowNum:row._rowNum}); }catch(e){ toast(e.message,"error"); }
+    }
+    function pulseAuditorias(){
+      return state.db.pulseLecturas.map(l => {
+        const start = isoDate(l.FechaSemana);
+        const end = new Date(start+"T12:00:00"); end.setDate(end.getDate()+6);
+        const endIso = end.toISOString().slice(0,10);
+        const rep = state.db.pulseServicios.filter(s => isoDate(s.Fecha)>=start && isoDate(s.Fecha)<=endIso && String(s.EquipoID)===String(l.EquipoID) && String(s.Sucursal)===String(l.Sucursal) && String(s.Cabina)===String(l.Cabina)).reduce((sum,s)=>sum+num(s.DisparosReportados),0);
+        const real = num(l.DiferenciaReal), diff = real - rep, pct = real ? Math.round((diff/real)*10000)/100 : 0;
+        return { FechaSemana:l.FechaSemana, EquipoID:l.EquipoID, Sucursal:l.Sucursal, Cabina:l.Cabina, OperadoraID:l.OperadoraID, PulsosReales:real, PulsosReportados:rep, Diferencia:diff, PorcentajeDesviacion:pct, Alerta:Math.abs(pct)<=5?"OK":Math.abs(pct)<=15?"Advertencia":"Critico" };
+      });
+    }
+    function renderPulseAuditoria(){
+      const rows = pulseAuditorias();
+      return `<div class="card"><div class="card-head"><h3>Auditoría/IA</h3><span class="pill info">${rows.length} registros</span></div><div class="table-wrap"><table><thead><tr><th>Semana</th><th>Equipo</th><th>Sucursal</th><th>Cabina</th><th>Operadora</th><th>Reales</th><th>Reportados</th><th>Diferencia</th><th>%</th><th>Alerta</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${fmtDate(r.FechaSemana)}</td><td>${esc(r.EquipoID)}</td><td>${esc(r.Sucursal)}</td><td>${esc(r.Cabina)}</td><td>${esc(r.OperadoraID)}</td><td>${fmtNum(r.PulsosReales)}</td><td>${fmtNum(r.PulsosReportados)}</td><td>${fmtNum(r.Diferencia)}</td><td>${r.PorcentajeDesviacion}%</td><td>${statusPill(r.Alerta)}</td></tr>`).join(""):'<tr><td colspan="10" class="empty">Registra lecturas y servicios para generar auditoría.</td></tr>'}</tbody></table></div></div>`;
+    }
+
+    function renderConfig(){
+      return `<div class="grid grid-2"><div class="card"><div class="card-head"><h3>Backend Google Apps Script</h3><span class="pill ${state.connected?"ok":"off"}">${state.connected?"Conectado":"Sin verificar"}</span></div><div class="card-body">
+        <div class="field"><label>URL del Apps Script</label><input id="apiInput" value="${esc(apiUrl())}" placeholder="https://script.google.com/macros/s/.../exec"></div>
+        <div class="toolbar" style="margin-top:14px"><button class="btn primary" onclick="saveApiUrl()">Guardar URL</button><button class="btn" onclick="testConnection()">Probar conexión</button><button class="btn accent" onclick="setupBackend()">Inicializar hojas</button><button class="btn" onclick="loadAllData()">Cargar datos</button></div>
+      </div></div><div class="card"><div class="card-head"><h3>Diagnóstico</h3></div><div class="card-body"><p><b>Versión UI:</b> ${CURRENT_VERSION}</p><p><b>Hojas requeridas:</b> Sucursales, Equipos, Tecnicos, Reportes, CatalogoPiezas, PulseEquipos, PulseOperadoras, PulseLecturas, PulseServicios, PulseMantenimientos.</p><p><b>PulseControl:</b> integrado en menú Láser y con botón Actualizar oculto.</p></div></div></div>`;
+    }
+    function saveApiUrl(){ state.apiUrl = $("apiInput").value.trim(); localStorage.setItem("csl_api_url", state.apiUrl); toast("URL guardada", "success"); }
+
+    function openModal(title, body, foot){
+      $("modalRoot").innerHTML = `<div class="modal"><div class="modal-head"><h3>${title}</h3><button class="btn icon" onclick="closeModal()">×</button></div><div class="modal-body">${body}</div><div class="modal-foot">${foot || '<button class="btn" onclick="closeModal()">Cerrar</button>'}</div></div>`;
+      $("modalRoot").classList.add("show");
+    }
+    function closeModal(){ $("modalRoot").classList.remove("show"); $("modalRoot").innerHTML = ""; }
+    $("modalRoot").addEventListener("click", (e) => { if (e.target.id === "modalRoot") closeModal(); });
+
+    render();
+  </script>
+</body>
+</html>

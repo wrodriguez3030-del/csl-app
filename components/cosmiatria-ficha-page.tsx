@@ -1,0 +1,703 @@
+﻿"use client"
+
+import { useEffect, useMemo, useState } from "react"
+import { ArrowDownAZ, ArrowUpAZ, Edit, ExternalLink, Eye, Link2, Plus, Printer, Trash2 } from "lucide-react"
+import { FichaDermatologiaForm } from "@/components/ficha-dermatologia-form"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SeqBadge } from "@/components/seq-badge"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
+import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
+import type { ClienteCosmiatria } from "@/lib/types"
+import type { FichaDermoCosmiatrica } from "@/lib/dermo-cosmiatria"
+
+type SortKey = "fecha" | "nombre" | "sucursal" | "operadora" | "estado"
+
+const sortOptions: { value: SortKey; label: string }[] = [
+  { value: "fecha", label: "Fecha" },
+  { value: "nombre", label: "Cliente" },
+  { value: "sucursal", label: "Sucursal" },
+  { value: "operadora", label: "Operadora" },
+  { value: "estado", label: "Estado" },
+]
+
+function sortValue(record: FichaDermoCosmiatrica, key: SortKey) {
+  return String(record[key] || "").toLowerCase()
+}
+
+function uniqueText(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "es"))
+}
+
+function getOperadoraName(record: Record<string, unknown>) {
+  return String(record.Nombre || record.nombre || record.Operadora || record.operadora || "").trim()
+}
+
+function normalizeCliente(raw: Record<string, unknown>): ClienteCosmiatria {
+  return {
+    ClienteID: String(raw.ClienteID ?? raw.cliente_id ?? raw.id ?? ""),
+    NumeroCliente: String(raw.NumeroCliente ?? raw.numero_cliente ?? ""),
+    DocumentoIdentidad: String(raw.DocumentoIdentidad ?? raw.documento_identidad ?? ""),
+    Email: String(raw.Email ?? raw.email ?? ""),
+    Nombre: String(raw.Nombre ?? raw.nombre ?? ""),
+    Apellido: String(raw.Apellido ?? raw.apellido ?? ""),
+    Telefono: String(raw.Telefono ?? raw.telefono ?? ""),
+    Telefono2: String(raw.Telefono2 ?? raw.telefono2 ?? ""),
+    Direccion: String(raw.Direccion ?? raw.direccion ?? ""),
+    Localidad: String(raw.Localidad ?? raw.localidad ?? ""),
+    Ciudad: String(raw.Ciudad ?? raw.ciudad ?? ""),
+    Region: String(raw.Region ?? raw.region ?? ""),
+    FechaNacimiento: String(raw.FechaNacimiento ?? raw.fecha_nacimiento ?? ""),
+    Edad: Number(raw.Edad ?? raw.edad ?? 0),
+    Genero: String(raw.Genero ?? raw.genero ?? ""),
+    Sucursal: String(raw.Sucursal ?? raw.sucursal ?? ""),
+    PuedeAgendar: Boolean(raw.PuedeAgendar ?? raw.puede_agendar ?? true),
+    ClienteDesde: String(raw.ClienteDesde ?? raw.cliente_desde ?? ""),
+    Estado: (String(raw.Estado ?? raw.estado ?? "Activo") === "Inactivo" ? "Inactivo" : "Activo") as ClienteCosmiatria["Estado"],
+    Notas: String(raw.Notas ?? raw.notas ?? ""),
+  }
+}
+
+function DetailItem({ label, value }: { label: string; value?: string | string[] }) {
+  const text = Array.isArray(value) ? value.filter(Boolean).join(", ") : value
+  return (
+    <div className="rounded-lg border bg-muted/20 p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 whitespace-pre-wrap text-sm">{text || "-"}</p>
+    </div>
+  )
+}
+
+const consentimientoCosmiatria = [
+  "CONSENTIMIENTO INFORMADO",
+  "PROCEDIMIENTO: LIMPIEZA FACIAL Y/O TRATAMIENTOS DE COSMIATRÃA",
+  "El tratamiento de cosmiatrÃ­a en Cibao Spa Laser puede incluir limpieza facial profunda, peelings quÃ­micos, tratamientos con lÃ¡ser, aparatologÃ­a estÃ©tica, extracciÃ³n, hidrataciÃ³n, despigmentantes, protocolos antiacnÃ©, rejuvenecimiento y otros procedimientos diseÃ±ados para mejorar la apariencia y salud de la piel.",
+  "Confirmo que Cibao Spa Laser me ha explicado en palabras comprensibles la naturaleza del procedimiento, su finalidad, beneficios esperados, limitaciones, alternativas disponibles, molestias normales y cuidados necesarios antes y despuÃ©s del tratamiento.",
+  "Declaro que he informado de manera completa y verdadera mis antecedentes mÃ©dicos, medicamentos, alergias, cirugÃ­as, embarazo, lactancia, enfermedades de la piel, exposiciÃ³n solar reciente, tratamientos estÃ©ticos previos y cualquier condiciÃ³n que pueda influir en el procedimiento.",
+  "Comprendo que los procesos estÃ©ticos no son una ciencia exacta y que nadie puede garantizar resultados perfectos, permanentes o idÃ©nticos entre personas. Los resultados dependen de mi tipo de piel, hÃ¡bitos, seguimiento de indicaciones y respuesta individual.",
+  "Se me han informado posibles efectos secundarios como enrojecimiento, ardor, sensibilidad, resequedad, descamaciÃ³n, brotes, irritaciÃ³n, hinchazÃ³n, hematomas, hiperpigmentaciÃ³n, hipopigmentaciÃ³n, infecciÃ³n, cicatriz, reacciÃ³n alÃ©rgica o resultado no deseado.",
+  "Autorizo a Cibao Spa Laser a tomar y conservar datos, fotografÃ­as, evoluciÃ³n clÃ­nica y firma digital como parte de mi expediente estÃ©tico. Este material serÃ¡ usado para diagnÃ³stico, seguimiento, control interno y respaldo de la historia del tratamiento.",
+  "Me comprometo a seguir las instrucciones indicadas antes, durante y despuÃ©s del procedimiento, incluyendo el uso de protector solar, hidrataciÃ³n, evitar exposiciÃ³n solar directa, saunas, calor excesivo, manipulaciÃ³n de la piel o productos no indicados cuando aplique.",
+  "Entiendo que debo notificar de inmediato cualquier molestia intensa, reacciÃ³n inesperada, lesiÃ³n, alergia, cambio de medicaciÃ³n o condiciÃ³n mÃ©dica nueva antes de continuar con nuevas sesiones.",
+  "Acepto que Cibao Spa Laser puede retrasar, modificar o suspender el procedimiento si el personal considera que existe riesgo, contraindicaciÃ³n, falta de informaciÃ³n clÃ­nica o incumplimiento de cuidados.",
+  "Reconozco que se me ha dado oportunidad de hacer preguntas, que mis dudas fueron respondidas satisfactoriamente y que firmo este consentimiento libre y voluntariamente.",
+  "Autorizo la realizaciÃ³n del procedimiento en Cibao Spa Laser y libero al centro y a su personal de responsabilidad por complicaciones derivadas de informaciÃ³n omitida, indicaciones incumplidas o reacciones individuales no previsibles.",
+  "Este consentimiento aplica a la ficha dermo-cosmiÃ¡trica registrada y a los procedimientos relacionados con la evaluaciÃ³n y tratamiento indicado para mi caso, sin sustituir una consulta mÃ©dica dermatolÃ³gica cuando sea necesaria.",
+]
+
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+}
+
+function printValue(value: unknown) {
+  if (Array.isArray(value)) return value.filter(Boolean).join(", ")
+  return String(value ?? "")
+}
+
+function printField(label: string, value: unknown) {
+  return `<div class="f"><b>${escapeHtml(label)}:</b> ${escapeHtml(printValue(value))}</div>`
+}
+
+function printRow(...fields: string[]) {
+  return `<div class="row">${fields.join("")}</div>`
+}
+
+function printTable(title: string, headers: string[], rows: unknown[][]) {
+  return `<h2>${escapeHtml(title)}</h2><table><thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>${
+    rows.length
+      ? rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(printValue(cell))}</td>`).join("")}</tr>`).join("")
+      : `<tr><td colspan="${headers.length}">&nbsp;</td></tr>`
+  }</tbody></table>`
+}
+
+function buildFichaPrintHtml(ficha: FichaDermoCosmiatrica) {
+  return `<!doctype html><html><head><meta charset="utf-8" /><title>Ficha DermatologÃ­a - ${escapeHtml(ficha.nombre || ficha.id)}</title><style>
+@page{size:letter;margin:8mm;}
+*{box-sizing:border-box;}
+body{font-family:Arial,Helvetica,sans-serif;margin:0;font-size:9px;color:#111827;background:white;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.header{text-align:center;margin-bottom:8px;border-bottom:2px solid #00897b;padding-bottom:5px;}
+.logo{font-size:16px;font-weight:bold;color:#00897b;}
+h1{font-size:12px;margin:4px 0 0;}
+h2{background:#00897b;color:white;padding:4px 6px;font-size:9.5px;margin:7px 0 4px;text-transform:uppercase;}
+.subtitle{margin:2px 0 0;color:#4b5563;font-size:8.5px;}
+.row{display:flex;gap:7px;margin:2px 0;}
+.f{flex:1;min-height:13px;padding:2px;border-bottom:1px dotted #999;}
+.f b{color:#555;}
+table{width:100%;border-collapse:collapse;margin:4px 0;font-size:8.4px;}
+th{background:#00897b;color:white;padding:3px;text-align:left;}
+td{border:1px solid #ccc;padding:2px 3px;vertical-align:top;}
+.consent h2{margin-top:0;}
+.consent p{margin:4px 0;line-height:1.25;text-align:justify;font-size:8.6px;}
+.consent .consent-title{font-weight:bold;color:#00897b;text-align:center;font-size:10.5px;margin:5px 0;}
+.empty{color:#9ca3af;}
+.page-break{break-before:page;page-break-before:always;}
+.signature{margin-top:24px;border-top:1px solid #111827;padding-top:5px;text-align:center;break-inside:avoid;page-break-inside:avoid;}
+.signature h2{margin:0 0 5px;text-align:left;}
+.firma-box{margin:3px auto 0;width:360px;max-width:100%;padding-top:3px;}
+.firma-box img{display:block;margin:0 auto 4px;max-width:300px;max-height:82px;border:1px solid #ccc;background:white;padding:5px;}
+.firma-box p{margin:2px 0;font-size:8.5px;}
+.meta{margin-top:4px;color:#374151;font-size:8px;}
+@media print{button{display:none}.page-break{break-before:page;page-break-before:always;}}
+</style></head><body>
+<div class="header"><div class="logo">CIBAO SPA LASER</div><h1>FICHA DERMATOLÃ“GICA / DERMO-COSMIÃTRICA</h1><p class="subtitle">Documento generado desde el sistema CSL</p></div>
+${printRow(printField("Fecha", ficha.fecha), printField("Estado", ficha.estado))}
+${printRow(printField("Sucursal", ficha.sucursal), printField("Operadora", ficha.operadora), printField("Especialista", ficha.nombreEspecialista || ficha.especialista))}
+<h2>Datos del cliente</h2>
+${printRow(printField("Nombre", ficha.nombre), printField("Edad", ficha.edad), printField("Cédula", ficha.cedula || ficha.documento))}
+${printRow(printField("Ciudad", ficha.ciudad), printField("TelÃ©fono", ficha.telefono), printField("Email", ficha.email))}
+${printRow(printField("Fecha nacimiento", ficha.fechaNacimiento), printField("Dirección", ficha.direccion))}
+${printRow(printField("OcupaciÃ³n", ficha.ocupacion))}
+${printRow(printField("Motivo de consulta", ficha.motivoConsulta))}
+<h2>Evaluación dermatológica</h2>
+${printRow(printField("Tipo de piel", ficha.tipoPiel), printField("Fototipo", ficha.fototipo), printField("Estado general", ficha.estadoGeneralPiel))}
+${printRow(printField("Sensibilidad", ficha.sensibilidad), printField("Hidratación", ficha.hidratacion), printField("Color piel", ficha.colorPiel))}
+${printRow(printField("Manchas", ficha.manchas), printField("Acné", ficha.acne), printField("Rosácea", ficha.rosacea), printField("Melasma", ficha.melasma))}
+${printRow(printField("Cicatrices", ficha.cicatrices), printField("Lesiones visibles", ficha.lesionesVisibles), printField("Irritación", ficha.irritacion))}
+${printRow(printField("Observaciones de la piel", ficha.observacionesPiel))}
+<h2>HÃ¡bitos y semiologÃ­a cutÃ¡nea</h2>
+${printRow(printField("Alcohol", ficha.alcohol), printField("Cigarrillos", ficha.cigarrillos), printField("CafÃ©", ficha.cafe))}
+${printRow(printField("Calidad de sueÃ±o", ficha.calidadSueno), printField("Vasos de agua", ficha.vasosAgua))}
+${printRow(printField("Fototipo", ficha.fototipo), printField("Biotipo", ficha.biotipo), printField("Color piel", ficha.colorPiel))}
+${printRow(printField("Grasa", ficha.grasa), printField("Seca", ficha.seca), printField("Textura", ficha.textura))}
+<h2>Antecedentes médicos</h2>
+${printTable("Antecedentes médicos", ["Campo", "Valores"], [["Marcados", ficha.antecedentesMedicos], ["Notas", ficha.antecedentesMedicosNotas]])}
+${printRow(printField("Medicamentos", `${ficha.medicamentos || ""} ${ficha.medicamentosCuales || ""}`), printField("Medicamento tÃ³pico", `${ficha.medicamentoTopico || ""} ${ficha.medicamentoTopicoCuales || ""}`))}
+${printRow(printField("Alergias", `${ficha.alergias || ""} ${ficha.alergiasCuales || ""}`), printField("CirugÃ­as", `${ficha.cirugias || ""} ${ficha.cirugiasCuales || ""}`))}
+${printRow(printField("CÃ¡ncer de piel", `${ficha.cancerPiel || ""} ${ficha.cancerPielCuales || ""}`), printField("Herpes", ficha.herpes), printField("Embarazada", ficha.embarazada))}
+${printRow(printField("CosmÃ©tico actual", `${ficha.cosmeticoActual || ""} ${ficha.cosmeticoActualCuales || ""}`))}
+${printRow(printField("Tolera jabones, perfumes, cremas", ficha.toleraCosmeticos))}
+${printRow(printField("DepilaciÃ³n lÃ¡ser", `${ficha.depilaLaser || ""} ${ficha.reaccionLaser || ""}`))}
+${printRow(printField("ReacciÃ³n al frÃ­o, viento o estufas", ficha.reaccionClima))}
+<h2>Alergias, medicamentos y condiciones especiales</h2>
+${printRow(printField("Alergias", `${ficha.alergias || ""} ${ficha.alergiasNotas || ficha.alergiasCuales || ""}`), printField("Medicamentos", `${ficha.medicamentos || ""} ${ficha.medicamentosNotas || ficha.medicamentosCuales || ""}`))}
+${printRow(printField("Fotosensibilizantes", `${ficha.medicamentosFotosensibilizantes || ""} ${ficha.medicamentosFotosensibilizantesNotas || ""}`), printField("Embarazo", `${ficha.embarazo || ficha.embarazada || ""} ${ficha.embarazoNotas || ""}`), printField("Lactancia", `${ficha.lactancia || ""} ${ficha.lactanciaNotas || ""}`))}
+${printRow(printField("Piel sensible", `${ficha.pielSensible || ""} ${ficha.pielSensibleNotas || ""}`), printField("Queloides", `${ficha.queloides || ""} ${ficha.queloidesNotas || ""}`), printField("Exposición solar", `${ficha.exposicionSolar || ""} ${ficha.exposicionSolarNotas || ""}`))}
+${printTable("Crono y fotoenvejecimiento", ["Campo", "Valores"], [
+    ["Se observa", ficha.seObserva],
+    ["Tratamientos previos", ficha.tratamientosPrevios],
+    ["Modificaciones pigmentarias", ficha.modificacionesPigmentarias],
+    ["Lentigo solar", ficha.lentigoSolar],
+    ["InvoluciÃ³n cutÃ¡nea", ficha.involucionCutanea],
+    ["Alteraciones de textura", ficha.texturaAlteraciones],
+    ["LipidizaciÃ³n cutÃ¡nea", ficha.lipidizacionCutanea],
+  ])}
+<h2>Observaciones</h2>
+${printRow(printField("Observaciones generales", ficha.observaciones))}
+${printRow(printField("Observaciones profesionales", ficha.observacionesProfesionales))}
+${printRow(printField("Recomendaciones", ficha.recomendaciones))}
+${printRow(printField("Cuidados sugeridos", ficha.cuidadosSugeridos), printField("Recomienda procedimiento", ficha.recomiendaProcedimiento), printField("Próxima evaluación", ficha.proximaEvaluacion))}
+<h2>Declaración del cliente</h2>
+${printRow(printField("Declaración aceptada", ficha.declaracionAceptada ? "Sí" : "No"))}
+<div class="consent page-break">
+  <h2>Consentimiento informado</h2>
+  ${consentimientoCosmiatria.map((line, index) => index < 2 ? `<p class="consent-title">${escapeHtml(line)}</p>` : `<p>${escapeHtml(line)}</p>`).join("")}
+  <div class="signature">
+    <h2>Firmas digitales</h2>
+    <div class="row">
+      <div class="firma-box">
+        ${ficha.firma ? `<img src="${escapeHtml(ficha.firma)}" alt="Firma digital del cliente" />` : "<div style='height:70px'></div>"}
+        <p><b>${escapeHtml(ficha.nombre || "Cliente")}</b> Â· Firma del cliente</p>
+      </div>
+      <div class="firma-box">
+        ${ficha.firmaEspecialista ? `<img src="${escapeHtml(ficha.firmaEspecialista)}" alt="Firma especialista" />` : "<div style='height:70px'></div>"}
+        <p><b>${escapeHtml(ficha.nombreEspecialista || ficha.especialista || "Especialista")}</b> Â· Firma del especialista</p>
+      </div>
+    </div>
+    <div class="meta">
+      ${printRow(printField("CÃ©dula", ficha.cedula), printField("Fecha", ficha.fecha))}
+      ${printRow(printField("Sucursal", ficha.sucursal), printField("Operadora", ficha.operadora))}
+    </div>
+  </div>
+</div>
+</body></html>`
+}
+
+export function CosmiatriaFichaPage() {
+  const { apiUrl, dbPulsos, showToast, setIsLoading, setLoadingMessage, incrementFormOpen, decrementFormOpen } = useAppStore()
+  const [records, setRecords] = useState<FichaDermoCosmiatrica[]>([])
+  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<FichaDermoCosmiatrica | null>(null)
+  const [viewing, setViewing] = useState<FichaDermoCosmiatrica | null>(null)
+  const [operatorOptions, setOperatorOptions] = useState<string[]>([])
+  const [clientes, setClientes] = useState<ClienteCosmiatria[]>([])
+  const [search, setSearch] = useState("")
+  const [filterSucursal, setFilterSucursal] = useState("todas")
+  const [filterOperadora, setFilterOperadora] = useState("todas")
+  const [sortKey, setSortKey] = useState<SortKey>("fecha")
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
+
+  // Consentimientos del cliente cuya ficha se estÃ¡ visualizando.
+  const [viewingConsents, setViewingConsents] = useState<{
+    masajes: Array<{ id: string; fecha: string; sucursal: string; estado: string; tipoMasaje?: string; zonaTratar?: string }>
+    tatuajes: Array<{ id: string; fecha: string; sucursal: string; estado: string; tipoProcedimiento?: string; zonaTratar?: string }>
+  } | null>(null)
+  const [viewingConsentsLoading, setViewingConsentsLoading] = useState(false)
+
+  const loadRecords = async () => {
+    const normalized = normalizeApiUrl(apiUrl)
+    try {
+      setIsLoading(true)
+      setLoadingMessage("Cargando fichas...")
+      const result = await apiJsonp(normalized, { action: "getFichasDermatologia" })
+      if (!result?.ok) throw new Error(String((result as { error?: string })?.error || "No se pudieron cargar las fichas"))
+      setRecords(((result as { records?: FichaDermoCosmiatrica[] }).records || []))
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Error cargando fichas", "error")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const loadOperadoras = async () => {
+    try {
+      const result = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getAllPulsosData" })
+      if (!result?.ok) throw new Error(String((result as { error?: string })?.error || "No se pudieron cargar las operadoras"))
+      const recordsFromApi = ((result as { operadoras?: Record<string, unknown>[] }).operadoras || []).map(getOperadoraName)
+      setOperatorOptions(uniqueText(recordsFromApi))
+    } catch (error) {
+      const fallback = dbPulsos.operadoras.map((operadora) => String(operadora.Nombre || "").trim())
+      setOperatorOptions(uniqueText(fallback))
+      showToast(error instanceof Error ? error.message : "No se pudieron cargar las operadoras", "error")
+    }
+  }
+
+  const loadClientes = async () => {
+    try {
+      const result = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getClientesCosmiatria" })
+      if (!result?.ok) throw new Error(String((result as { error?: string })?.error || "No se pudieron cargar los clientes"))
+      const rows = ((result as { records?: Record<string, unknown>[] }).records || []).map(normalizeCliente)
+      setClientes(rows)
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "No se pudieron cargar los clientes", "error")
+    }
+  }
+
+  useEffect(() => {
+    void loadRecords()
+    void loadOperadoras()
+    void loadClientes()
+  }, [apiUrl])
+
+  // Auto-refresh silencioso del listado de fichas cada 60s.
+  // Pausa cuando el usuario tiene un dialog abierto (form/ver).
+  const refreshSilent = async () => {
+    const normalized = normalizeApiUrl(apiUrl)
+    try {
+      const result = await apiJsonp(normalized, { action: "getFichasDermatologia" })
+      if (result?.ok) setRecords(((result as { records?: FichaDermoCosmiatrica[] }).records || []))
+    } catch {}
+  }
+  useAutoRefresh(refreshSilent, {
+    intervalMs: 60_000,
+    skipWhen: () => open || !!viewing,
+  })
+
+  useEffect(() => {
+    if (open) {
+      incrementFormOpen()
+      return () => decrementFormOpen()
+    }
+  }, [open, incrementFormOpen, decrementFormOpen])
+
+  // Carga consentimientos del cliente cuando se abre la vista de una ficha.
+  useEffect(() => {
+    const clienteId = viewing?.clienteId
+    if (!clienteId) {
+      setViewingConsents(null)
+      return
+    }
+    let cancelled = false
+    setViewingConsentsLoading(true)
+    void (async () => {
+      try {
+        const result = await apiJsonp(normalizeApiUrl(apiUrl), {
+          action: "getClienteHistorial",
+          clienteId,
+        }) as {
+          ok?: boolean
+          consentMasajes?: Array<{ id: string; fecha: string; sucursal: string; estado: string; tipoMasaje?: string; zonaTratar?: string }>
+          consentTatuajesCejas?: Array<{ id: string; fecha: string; sucursal: string; estado: string; tipoProcedimiento?: string; zonaTratar?: string }>
+        }
+        if (cancelled) return
+        if (!result?.ok) {
+          setViewingConsents({ masajes: [], tatuajes: [] })
+          return
+        }
+        setViewingConsents({
+          masajes: Array.isArray(result.consentMasajes) ? result.consentMasajes : [],
+          tatuajes: Array.isArray(result.consentTatuajesCejas) ? result.consentTatuajesCejas : [],
+        })
+      } catch {
+        if (!cancelled) setViewingConsents({ masajes: [], tatuajes: [] })
+      } finally {
+        if (!cancelled) setViewingConsentsLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [viewing?.clienteId, apiUrl])
+
+  const sucursales = useMemo(
+    () => uniqueText([...records.map((record) => record.sucursal), ...dbPulsos.operadoras.map((operadora) => String(operadora.Sucursal || ""))]),
+    [records, dbPulsos.operadoras]
+  )
+
+  const operadoras = useMemo(
+    () => uniqueText([...operatorOptions, ...records.map((record) => record.operadora)]),
+    [operatorOptions, records]
+  )
+
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return records
+      .filter((record) => {
+        if (filterSucursal !== "todas" && record.sucursal !== filterSucursal) return false
+        if (filterOperadora !== "todas" && record.operadora !== filterOperadora) return false
+        if (!query) return true
+        return [
+          record.nombre,
+          record.telefono,
+          record.cedula,
+          record.email,
+          record.ciudad,
+          record.ocupacion,
+          record.motivoConsulta,
+          record.operadora,
+          record.sucursal,
+          record.estado,
+        ].join(" ").toLowerCase().includes(query)
+      })
+      .sort((a, b) => sortValue(a, sortKey).localeCompare(sortValue(b, sortKey), "es", { numeric: true }) * (sortDir === "asc" ? 1 : -1))
+  }, [records, search, filterSucursal, filterOperadora, sortKey, sortDir])
+
+  const setSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir((current) => current === "asc" ? "desc" : "asc")
+    else {
+      setSortKey(key)
+      setSortDir(key === "fecha" ? "desc" : "asc")
+    }
+  }
+
+  const submit = async (value: FichaDermoCosmiatrica) => {
+    const result = await apiJsonp(normalizeApiUrl(apiUrl), {
+      action: "saveFichaDermatologia",
+      data: JSON.stringify(value),
+    })
+    if (!result?.ok) throw new Error(String((result as { error?: string })?.error || "No se pudo guardar"))
+    await loadRecords()
+    await loadClientes()
+    setOpen(false)
+    setEditing(null)
+    const email = (result as { email?: { sent?: boolean; warning?: string } }).email
+    if (email?.sent) showToast("Ficha guardada y enviada por correo", "success")
+    else showToast(email?.warning ? `Ficha guardada, correo no enviado: ${email.warning}` : "Ficha guardada", email?.warning ? "error" : "success")
+  }
+
+  const remove = async (id: string) => {
+    if (!confirm("Â¿Eliminar esta ficha?")) return
+    const result = await apiJsonp(normalizeApiUrl(apiUrl), { action: "deleteFichaDermatologia", id })
+    if (!result?.ok) {
+      showToast("No se pudo eliminar", "error")
+      return
+    }
+    setRecords((current) => current.filter((record) => record.id !== id))
+    showToast("Ficha eliminada", "success")
+  }
+
+  const copyPublicLink = async () => {
+    await navigator.clipboard.writeText(`${window.location.origin}/ficha-dermatologia`)
+    showToast("Link pÃºblico copiado", "success")
+  }
+
+  const startNew = () => {
+    setEditing(null)
+    setOpen(true)
+  }
+
+  const startEdit = (record: FichaDermoCosmiatrica) => {
+    setEditing(record)
+    setOpen(true)
+  }
+
+  const printFicha = (record: FichaDermoCosmiatrica) => {
+    const printWindow = window.open("", "_blank")
+    if (!printWindow) {
+      showToast("El navegador bloqueÃ³ la ventana de impresiÃ³n", "error")
+      return
+    }
+    printWindow.document.write(buildFichaPrintHtml(record))
+    printWindow.document.close()
+    setTimeout(() => {
+      printWindow.focus()
+      printWindow.print()
+    }, 500)
+  }
+
+  const sortLabel = (key: SortKey) => sortKey === key ? (sortDir === "asc" ? " â†‘" : " â†“") : " â†•"
+  const publicLink = typeof window !== "undefined" ? `${window.location.origin}/ficha-dermatologia` : "/ficha-dermatologia"
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-xl font-bold">CosmiatrÃ­a</h2>
+          <p className="text-sm text-muted-foreground">Ficha DermatologÃ­a / Dermo-CosmiÃ¡trica</p>
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 md:flex md:flex-wrap">
+          <Button variant="outline" onClick={copyPublicLink}><Link2 className="mr-2 h-4 w-4" />Copiar link pÃºblico</Button>
+          <Button variant="outline" onClick={() => { void loadRecords(); void loadOperadoras(); void loadClientes() }}>Actualizar</Button>
+          <Button onClick={startNew}><Plus className="mr-2 h-4 w-4" />Nueva ficha</Button>
+        </div>
+      </div>
+
+      <Card className="border-primary/25 bg-primary/5">
+        <CardContent className="grid gap-3 pt-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
+          <div className="min-w-0">
+            <Label>Link para enviar a clientes</Label>
+            <Input value={publicLink} readOnly onFocus={(event) => event.currentTarget.select()} />
+          </div>
+          <Button variant="outline" onClick={copyPublicLink}><Link2 className="mr-2 h-4 w-4" />Copiar link</Button>
+          <Button variant="outline" onClick={() => window.open(publicLink, "_blank")}><ExternalLink className="mr-2 h-4 w-4" />Abrir</Button>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Total</p><p className="text-3xl font-bold">{records.length}</p></CardContent></Card>
+        <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Completadas</p><p className="text-3xl font-bold text-green-500">{records.filter((record) => record.estado === "Completada").length}</p></CardContent></Card>
+        <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Operadoras</p><p className="text-3xl font-bold">{operadoras.length}</p></CardContent></Card>
+      </div>
+
+      <Card>
+        <CardContent className="grid gap-3 pt-4 lg:grid-cols-[minmax(240px,1fr)_180px_180px_180px_150px]">
+          <div>
+            <Label>Buscar</Label>
+            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente, telÃ©fono, cÃ©dula, correo, motivo..." />
+          </div>
+          <div>
+            <Label>Sucursal</Label>
+            <Select value={filterSucursal} onValueChange={setFilterSucursal}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="todas">Todas</SelectItem>{sucursales.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Operadora</Label>
+            <Select value={filterOperadora} onValueChange={setFilterOperadora}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="todas">Todas</SelectItem>{operadoras.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Ordenar por</Label>
+            <Select value={sortKey} onValueChange={(value) => setSortKey(value as SortKey)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>{sortOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <Button className="mt-auto" variant="outline" onClick={() => setSortDir((current) => current === "asc" ? "desc" : "asc")}>
+            {sortDir === "asc" ? <ArrowUpAZ className="mr-2 h-4 w-4" /> : <ArrowDownAZ className="mr-2 h-4 w-4" />}
+            {sortDir === "asc" ? "Asc" : "Desc"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-0 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead><tr className="border-b bg-muted/30">
+              <th className="w-12 px-3 py-2 text-center text-[10px] font-black uppercase tracking-widest text-muted-foreground">#</th>
+              <th className="cursor-pointer px-3 py-2 text-left text-xs" onClick={() => setSort("fecha")}>Fecha{sortLabel("fecha")}</th>
+              <th className="cursor-pointer px-3 py-2 text-left text-xs" onClick={() => setSort("nombre")}>Cliente{sortLabel("nombre")}</th>
+              <th className="cursor-pointer px-3 py-2 text-left text-xs" onClick={() => setSort("sucursal")}>Sucursal{sortLabel("sucursal")}</th>
+              <th className="cursor-pointer px-3 py-2 text-left text-xs" onClick={() => setSort("operadora")}>Operadora{sortLabel("operadora")}</th>
+              <th className="cursor-pointer px-3 py-2 text-center text-xs" onClick={() => setSort("estado")}>Estado{sortLabel("estado")}</th>
+              <th className="px-3 py-2 text-right text-xs">Acciones</th>
+            </tr></thead>
+            <tbody>
+              {filtered.length === 0 ? <tr><td colSpan={7} className="py-12 text-center text-muted-foreground">Sin fichas registradas</td></tr> : filtered.map((record, seqIndex) => (
+                <tr key={record.id} className="border-b hover:bg-muted/20">
+                  <td className="px-3 py-2 text-center"><SeqBadge n={seqIndex + 1} /></td>
+                  <td className="px-3 py-2 text-xs">{record.fecha}</td>
+                  <td className="px-3 py-2">
+                    <div className="font-medium">{record.nombre}</div>
+                    <div className="text-xs text-muted-foreground">{record.telefono}</div>
+                  </td>
+                  <td className="px-3 py-2 text-xs">{record.sucursal}</td>
+                  <td className="px-3 py-2 text-xs">{record.operadora}</td>
+                  <td className="px-3 py-2 text-center"><Badge variant="outline">{record.estado}</Badge></td>
+                  <td className="px-3 py-2">
+                    <div className="flex justify-end gap-1">
+                      <Button size="sm" variant="ghost" title="Ver" onClick={() => setViewing(record)}><Eye className="h-4 w-4" /></Button>
+                      <Button size="sm" variant="ghost" title="Editar" onClick={() => startEdit(record)}><Edit className="h-4 w-4" /></Button>
+                      <Button size="sm" variant="ghost" title="Imprimir PDF" onClick={() => printFicha(record)}><Printer className="h-4 w-4 text-cyan-500" /></Button>
+                      <Button size="sm" variant="ghost" title="Eliminar" onClick={() => void remove(record.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+
+      <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) setEditing(null) }}>
+        <DialogContent className="h-[96dvh] !w-[96vw] !max-w-[1450px] overflow-y-auto p-3 sm:p-5">
+          <DialogHeader><DialogTitle>{editing ? "Editar Ficha DermatologÃ­a" : "Nueva Ficha DermatologÃ­a"}</DialogTitle></DialogHeader>
+          <FichaDermatologiaForm
+            key={editing?.id || "new-ficha-dermatologia"}
+            initialValue={editing || undefined}
+            operadoras={operadoras}
+            clientes={clientes}
+            submitLabel="Guardar y enviar PDF"
+            onCancel={() => { setOpen(false); setEditing(null) }}
+            onSubmit={submit}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!viewing} onOpenChange={(value) => { if (!value) setViewing(null) }}>
+        <DialogContent className="max-h-[92vh] w-[94vw] max-w-5xl overflow-y-auto">
+          <DialogHeader><DialogTitle>Ver Ficha DermatologÃ­a</DialogTitle></DialogHeader>
+          {viewing ? (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader><CardTitle className="text-base">Datos del cliente</CardTitle></CardHeader>
+                <CardContent className="grid gap-3 md:grid-cols-3">
+                  <DetailItem label="Fecha" value={viewing.fecha} />
+                  <DetailItem label="Cliente" value={viewing.nombre} />
+                  <DetailItem label="TelÃ©fono" value={viewing.telefono} />
+                  <DetailItem label="CÃ©dula" value={viewing.cedula} />
+                  <DetailItem label="Email" value={viewing.email} />
+                  <DetailItem label="Ciudad" value={viewing.ciudad} />
+                  <DetailItem label="Sucursal" value={viewing.sucursal} />
+                  <DetailItem label="Operadora" value={viewing.operadora} />
+                  <DetailItem label="Especialista" value={viewing.nombreEspecialista || viewing.especialista} />
+                  <DetailItem label="Estado" value={viewing.estado} />
+                  <div className="md:col-span-3"><DetailItem label="Motivo de consulta" value={viewing.motivoConsulta} /></div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader><CardTitle className="text-base">Evaluación Dermatológica</CardTitle></CardHeader>
+                <CardContent className="grid gap-3 md:grid-cols-3">
+                  <DetailItem label="Tipo de piel" value={viewing.tipoPiel} />
+                  <DetailItem label="Fototipo" value={viewing.fototipo} />
+                  <DetailItem label="Estado general" value={viewing.estadoGeneralPiel} />
+                  <DetailItem label="Sensibilidad" value={viewing.sensibilidad} />
+                  <DetailItem label="Hidratación" value={viewing.hidratacion} />
+                  <DetailItem label="Biotipo" value={viewing.biotipo} />
+                  <DetailItem label="Color piel" value={viewing.colorPiel} />
+                  <DetailItem label="Manchas / Acné / Rosácea" value={`${viewing.manchas || "-"} / ${viewing.acne || "-"} / ${viewing.rosacea || "-"}`} />
+                  <div className="md:col-span-3"><DetailItem label="Observaciones de piel" value={viewing.observacionesPiel} /></div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader><CardTitle className="text-base">Antecedentes, alergias y medicamentos</CardTitle></CardHeader>
+                <CardContent className="grid gap-3 md:grid-cols-3">
+                  <DetailItem label="Antecedentes médicos" value={viewing.antecedentesMedicos} />
+                  <DetailItem label="Notas antecedentes" value={viewing.antecedentesMedicosNotas} />
+                  <DetailItem label="Medicamentos" value={`${viewing.medicamentos || "-"} ${viewing.medicamentosCuales || ""}`} />
+                  <DetailItem label="Alergias" value={`${viewing.alergias || "-"} ${viewing.alergiasCuales || ""}`} />
+                  <DetailItem label="Fotosensibilizantes" value={`${viewing.medicamentosFotosensibilizantes || "-"} ${viewing.medicamentosFotosensibilizantesNotas || ""}`} />
+                  <DetailItem label="CirugÃ­as" value={`${viewing.cirugias || "-"} ${viewing.cirugiasCuales || ""}`} />
+                  <DetailItem label="Embarazo / Lactancia" value={`${viewing.embarazo || viewing.embarazada || "-"} / ${viewing.lactancia || "-"}`} />
+                  <DetailItem label="Piel sensible / Queloides" value={`${viewing.pielSensible || "-"} / ${viewing.queloides || "-"}`} />
+                  <DetailItem label="Se observa" value={viewing.seObserva} />
+                  <DetailItem label="Tratamientos previos" value={viewing.tratamientosPrevios} />
+                  <DetailItem label="Modificaciones pigmentarias" value={viewing.modificacionesPigmentarias} />
+                  <div className="md:col-span-3"><DetailItem label="Observaciones" value={viewing.observaciones} /></div>
+                  <div className="md:col-span-3"><DetailItem label="Observaciones profesionales" value={viewing.observacionesProfesionales} /></div>
+                  <div className="md:col-span-3"><DetailItem label="Recomendaciones" value={viewing.recomendaciones} /></div>
+                </CardContent>
+              </Card>
+              {viewing.firma || viewing.firmaEspecialista ? (
+                <Card>
+                  <CardHeader><CardTitle className="text-base">Firmas digitales</CardTitle></CardHeader>
+                  <CardContent className="grid gap-4 md:grid-cols-2">
+                    {viewing.firma ? <DetailItem label="Firma cliente" value={viewing.nombre} /> : null}
+                    {viewing.firmaEspecialista ? <DetailItem label="Firma especialista" value={viewing.nombreEspecialista || viewing.especialista} /> : null}
+                    {viewing.firma ? <img src={viewing.firma} alt="Firma del cliente" className="h-28 rounded border bg-white p-2" /> : null}
+                    {viewing.firmaEspecialista ? <img src={viewing.firmaEspecialista} alt="Firma del especialista" className="h-28 rounded border bg-white p-2" /> : null}
+                  </CardContent>
+                </Card>
+              ) : null}
+
+              {/* Consentimientos relacionados al cliente de esta ficha */}
+              {viewing.clienteId ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      Consentimientos del cliente
+                      {viewingConsents ? (
+                        <Badge variant="outline">
+                          {viewingConsents.masajes.length + viewingConsents.tatuajes.length}
+                        </Badge>
+                      ) : null}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {viewingConsentsLoading ? (
+                      <div className="text-sm text-muted-foreground">Cargando consentimientosâ€¦</div>
+                    ) : !viewingConsents || (viewingConsents.masajes.length === 0 && viewingConsents.tatuajes.length === 0) ? (
+                      <div className="text-sm text-muted-foreground">Sin consentimientos relacionados con este cliente.</div>
+                    ) : (
+                      <div className="space-y-3">
+                        {viewingConsents.masajes.length > 0 ? (
+                          <div>
+                            <div className="mb-1 text-xs font-black uppercase tracking-wide text-muted-foreground">
+                              Masajes ({viewingConsents.masajes.length})
+                            </div>
+                            <div className="grid gap-2">
+                              {viewingConsents.masajes.map((c) => (
+                                <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 p-3 text-sm">
+                                  <div>
+                                    <div className="font-semibold">{c.fecha} Â· {c.estado}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {c.sucursal} {c.tipoMasaje ? `Â· ${c.tipoMasaje}` : ""} {c.zonaTratar ? `Â· ${c.zonaTratar}` : ""}
+                                    </div>
+                                  </div>
+                                  <Badge variant="outline" className="font-mono text-[10px]">{c.id}</Badge>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                        {viewingConsents.tatuajes.length > 0 ? (
+                          <div>
+                            <div className="mb-1 text-xs font-black uppercase tracking-wide text-muted-foreground">
+                              Tatuajes y cejas ({viewingConsents.tatuajes.length})
+                            </div>
+                            <div className="grid gap-2">
+                              {viewingConsents.tatuajes.map((c) => (
+                                <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 p-3 text-sm">
+                                  <div>
+                                    <div className="font-semibold">{c.fecha} Â· {c.estado}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {c.sucursal} {c.tipoProcedimiento ? `Â· ${c.tipoProcedimiento}` : ""} {c.zonaTratar ? `Â· ${c.zonaTratar}` : ""}
+                                    </div>
+                                  </div>
+                                  <Badge variant="outline" className="font-mono text-[10px]">{c.id}</Badge>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ) : null}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}

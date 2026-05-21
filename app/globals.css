@@ -1,0 +1,276 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* =========================================================================
+   CSL · Sistema visual basado en el Manual de Identidad de Cibao Spa Laser.
+   - Estética SaaS / Canva: clara, limpia, premium.
+   - Paleta principal: turquesa / aqua del logo, neutros fríos, acento rosa.
+   - Las variables --brand-* son la fuente de verdad. Las variables shadcn
+     (--background, --primary, etc.) las consumen para mantener compat con
+     el sistema de tokens existente.
+   ========================================================================= */
+
+:root {
+  /* ---- Tokens de marca (fuente única) ---- */
+  --brand-primary:       #14B7B0; /* turquesa principal del logo */
+  --brand-primary-soft:  #E6FAF9; /* turquesa muy suave para fondos */
+  --brand-primary-dark:  #063B4A; /* azul petróleo para títulos serios */
+  --brand-accent:        #22C7C9; /* acento brillante para hover/CTA */
+  --brand-soft:          #EEF7F8; /* superficie auxiliar (sidebar, hover) */
+
+  --brand-bg-page:       #F7FAFC; /* fondo general del producto */
+  --brand-bg-card:       #FFFFFF; /* superficies elevadas (cards) */
+  --brand-bg-subtle:     #F4F8FA; /* zonas calmadas dentro de cards */
+
+  --brand-text:          #102A3A; /* texto principal */
+  --brand-text-muted:    #64748B; /* texto secundario */
+  --brand-text-strong:   #0B3442; /* títulos */
+
+  --brand-border:        #E1ECF2; /* bordes neutros suaves */
+  --brand-border-strong: #C7D7E0; /* bordes notorios */
+
+  --brand-success:       #16A34A;
+  --brand-warning:       #D97706; /* legible sobre blanco */
+  --brand-danger:        #DC2626;
+
+  --brand-badge-new-bg:  #FCE7F3;
+  --brand-badge-new-fg:  #DB2777;
+
+  /* ---- Tokens shadcn / Tailwind (consumen los de marca) ---- */
+  --background: var(--brand-bg-page);
+  --foreground: var(--brand-text);
+  --card: var(--brand-bg-card);
+  --card-foreground: var(--brand-text);
+  --popover: var(--brand-bg-card);
+  --popover-foreground: var(--brand-text);
+  --primary: var(--brand-primary);
+  --primary-foreground: #FFFFFF;
+  --secondary: var(--brand-soft);
+  --secondary-foreground: var(--brand-primary-dark);
+  --muted: var(--brand-bg-subtle);
+  --muted-foreground: var(--brand-text-muted);
+  --accent: var(--brand-primary-soft);
+  --accent-foreground: var(--brand-primary-dark);
+  --destructive: var(--brand-danger);
+  --destructive-foreground: #FFFFFF;
+  --border: var(--brand-border);
+  --input: var(--brand-border);
+  --ring: var(--brand-primary);
+  --chart-1: var(--brand-primary);
+  --chart-2: #0F766E;
+  --chart-3: #F472B6;
+  --chart-4: #2563EB;
+  --chart-5: #F59E0B;
+  --success: var(--brand-success);
+  --success-foreground: #FFFFFF;
+  --warning: var(--brand-warning);
+  --warning-foreground: #FFFFFF;
+  --radius: 1rem;
+
+  /* Sidebar — claro y premium */
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: var(--brand-primary-dark);
+  --sidebar-primary: var(--brand-primary);
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: var(--brand-primary-soft);
+  --sidebar-accent-foreground: var(--brand-primary-dark);
+  --sidebar-border: var(--brand-border);
+  --sidebar-ring: var(--brand-primary);
+}
+
+/* Eco — mantener compat con .dark/.light que algunos componentes prueban. */
+.dark,
+.light {
+  --background: var(--brand-bg-page);
+  --foreground: var(--brand-text);
+  --card: var(--brand-bg-card);
+  --card-foreground: var(--brand-text);
+  --popover: var(--brand-bg-card);
+  --popover-foreground: var(--brand-text);
+  --primary: var(--brand-primary);
+  --primary-foreground: #FFFFFF;
+  --secondary: var(--brand-soft);
+  --secondary-foreground: var(--brand-primary-dark);
+  --muted: var(--brand-bg-subtle);
+  --muted-foreground: var(--brand-text-muted);
+  --accent: var(--brand-primary-soft);
+  --accent-foreground: var(--brand-primary-dark);
+  --destructive: var(--brand-danger);
+  --destructive-foreground: #FFFFFF;
+  --border: var(--brand-border);
+  --input: var(--brand-border);
+  --ring: var(--brand-primary);
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), 'Inter', sans-serif;
+  --font-heading: var(--font-jakarta), var(--font-inter), sans-serif;
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback', monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 6px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    /* Fondo SaaS premium: blanco con halo turquesa muy sutil arriba a la izquierda. */
+    background:
+      radial-gradient(1100px 480px at 6% -8%, rgba(20, 183, 176, 0.07), transparent 70%),
+      radial-gradient(900px 420px at 100% 0%, rgba(252, 231, 243, 0.45), transparent 65%),
+      linear-gradient(180deg, #FFFFFF 0%, var(--brand-bg-page) 65%, #F4F8FA 100%);
+    min-height: 100vh;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-jakarta), var(--font-inter), sans-serif;
+    color: var(--brand-text-strong);
+    letter-spacing: -0.025em;
+  }
+}
+
+@layer components {
+  .csl-page-shell {
+    @apply space-y-6;
+  }
+
+  /* Card "premium" — superficie blanca + sombra muy suave + borde casi imperceptible. */
+  .csl-section-card {
+    @apply rounded-2xl border border-[color:var(--brand-border)] bg-white shadow-[0_8px_28px_rgba(15,45,68,.05)];
+  }
+
+  .csl-soft-panel {
+    @apply rounded-2xl border border-[color:var(--brand-border)] bg-[color:var(--brand-bg-subtle)] shadow-sm;
+  }
+
+  .csl-table-wrap {
+    @apply overflow-hidden rounded-2xl border border-[color:var(--brand-border)] bg-white shadow-[0_8px_28px_rgba(15,45,68,.05)];
+  }
+
+  .csl-kicker {
+    @apply text-[11px] font-black uppercase tracking-[0.22em] text-[color:var(--brand-primary-dark)];
+  }
+
+  /* Badge pequeño "NEW" — rosa marca, legible sobre blanco. */
+  .csl-new-badge {
+    @apply rounded-full bg-[color:var(--brand-badge-new-bg)] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[color:var(--brand-badge-new-fg)] ring-1 ring-pink-200;
+  }
+
+  /* Pequeño pill turquesa para acentos (estados activos, encabezados de sección). */
+  .csl-pill {
+    @apply inline-flex items-center gap-1 rounded-full bg-[color:var(--brand-primary-soft)] px-2.5 py-1 text-[11px] font-bold text-[color:var(--brand-primary-dark)] ring-1 ring-[color:var(--brand-primary)]/15;
+  }
+
+  /* Ícono de KPI: cuadrado redondeado turquesa suave. */
+  .csl-kpi-icon {
+    @apply grid h-10 w-10 place-items-center rounded-xl bg-[color:var(--brand-primary-soft)] text-[color:var(--brand-primary)] ring-1 ring-[color:var(--brand-primary)]/15;
+  }
+}
+
+/* Inputs / selects — borde claro, focus turquesa accesible. */
+input, textarea, select,
+[data-slot="select-trigger"] {
+  @apply border-[color:var(--brand-border)] bg-white shadow-sm;
+}
+
+input:focus, textarea:focus,
+[data-slot="select-trigger"]:focus {
+  @apply border-[color:var(--brand-primary)] ring-4 ring-[color:var(--brand-primary)]/15;
+}
+
+/* Scrollbar limpio, alineado a la marca. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #CDDCE5;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--brand-primary);
+  background-clip: content-box;
+}
+
+/* =========================================================================
+   Compatibilidad: muchos componentes heredados usan clases pensadas para
+   fondo oscuro (text-pink-200, text-emerald-300, text-amber-300, etc.) que
+   sobre fondo claro quedan ilegibles. Las re-mapeamos a tonos profundos.
+   No tocamos los componentes uno por uno: lo arreglamos en CSS aquí.
+   ========================================================================= */
+
+/* Texto pale → texto profundo, mismo "espíritu" de color */
+.text-pink-200 { color: #BE185D !important; }
+.text-pink-300 { color: #BE185D !important; }
+.text-emerald-200 { color: #047857 !important; }
+.text-emerald-300 { color: #059669 !important; }
+.text-emerald-400 { color: #047857 !important; }
+.text-amber-200 { color: #B45309 !important; }
+.text-amber-300 { color: #B45309 !important; }
+.text-amber-400 { color: #B45309 !important; }
+.text-rose-200 { color: #BE123C !important; }
+.text-rose-300 { color: #BE123C !important; }
+.text-cyan-200 { color: #0E7490 !important; }
+.text-cyan-300 { color: #0E7490 !important; }
+.text-red-200 { color: #B91C1C !important; }
+.text-red-300 { color: #B91C1C !important; }
+.text-yellow-200 { color: #A16207 !important; }
+.text-yellow-300 { color: #A16207 !important; }
+.text-orange-200 { color: #C2410C !important; }
+.text-orange-300 { color: #C2410C !important; }
+.text-blue-200 { color: #1D4ED8 !important; }
+.text-blue-300 { color: #1D4ED8 !important; }
+.text-green-300 { color: #15803D !important; }
+.text-green-400 { color: #16A34A !important; }
