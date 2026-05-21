@@ -981,8 +981,8 @@ export function CertificadosDepicenterPage() {
                   <TableHead className="cursor-pointer select-none" onClick={() => handleSort("otorgadoA")}>
                     Otorgado a <ArrowUpDown className="ml-1 inline h-3 w-3" />
                   </TableHead>
-                  <TableHead className="hidden md:table-cell">Cortesía de</TableHead>
-                  <TableHead className="hidden lg:table-cell">Válido por</TableHead>
+                  <TableHead>Cortesía de</TableHead>
+                  <TableHead>Válido por</TableHead>
                   <TableHead className="cursor-pointer select-none" onClick={() => handleSort("sucursal")}>Sucursal</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
@@ -1009,8 +1009,8 @@ export function CertificadosDepicenterPage() {
                       <TableCell className="font-semibold whitespace-nowrap">{formatDate(cert.fecha)}</TableCell>
                       <TableCell className="font-mono text-xs">{cert.codigo}</TableCell>
                       <TableCell className="font-bold">{cert.otorgadoA || "—"}</TableCell>
-                      <TableCell className="hidden md:table-cell">{cert.cortesiaDe || "—"}</TableCell>
-                      <TableCell className="hidden lg:table-cell">{cert.validoPor || "—"}</TableCell>
+                      <TableCell>{cert.cortesiaDe || "—"}</TableCell>
+                      <TableCell>{cert.validoPor || "—"}</TableCell>
                       <TableCell>{cert.sucursal || "—"}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={ESTADO_BADGE[cert.estado] || ""}>

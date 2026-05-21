@@ -420,9 +420,9 @@ export function ReportesFirmadosPage() {
                   <TableHead>Fecha</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead>Cliente</TableHead>
-                  <TableHead className="hidden md:table-cell">Documento</TableHead>
-                  <TableHead className="hidden lg:table-cell">Sucursal</TableHead>
-                  <TableHead className="hidden lg:table-cell">Especialista</TableHead>
+                  <TableHead>Documento</TableHead>
+                  <TableHead>Sucursal</TableHead>
+                  <TableHead>Especialista</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
@@ -456,9 +456,9 @@ export function ReportesFirmadosPage() {
                         <div className="font-bold">{r.cliente || "—"}</div>
                         <div className="text-xs text-muted-foreground">{r.telefono || r.correo || ""}</div>
                       </TableCell>
-                      <TableCell className="hidden md:table-cell">{r.documento || "—"}</TableCell>
-                      <TableCell className="hidden lg:table-cell">{r.sucursal || "—"}</TableCell>
-                      <TableCell className="hidden lg:table-cell">{r.especialista || "—"}</TableCell>
+                      <TableCell>{r.documento || "—"}</TableCell>
+                      <TableCell>{r.sucursal || "—"}</TableCell>
+                      <TableCell>{r.especialista || "—"}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={r.firmaCliente ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}>
                           {r.estado || (r.firmaCliente ? "Firmado" : "Pendiente")}

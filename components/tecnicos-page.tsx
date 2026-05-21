@@ -293,10 +293,10 @@ export function TecnicosPage() {
                   <TableHead className={SEQ_HEADER_CLASS}>#</TableHead>
                   <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Codigo")}>Codigo{sortIcon("Codigo")}</TableHead>
                   <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Nombre")}>Nombre{sortIcon("Nombre")}</TableHead>
-                  <TableHead className="hidden md:table-cell cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Telefono")}>Telefono{sortIcon("Telefono")}</TableHead>
-                  <TableHead className="hidden lg:table-cell cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Correo")}>Correo{sortIcon("Correo")}</TableHead>
+                  <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Telefono")}>Telefono{sortIcon("Telefono")}</TableHead>
+                  <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Correo")}>Correo{sortIcon("Correo")}</TableHead>
                   <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Estado")}>Estado{sortIcon("Estado")}</TableHead>
-                  <TableHead className="hidden xl:table-cell cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Notas")}>Notas{sortIcon("Notas")}</TableHead>
+                  <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Notas")}>Notas{sortIcon("Notas")}</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -307,10 +307,10 @@ export function TecnicosPage() {
                       <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
                       <TableCell className="font-medium">{t.Codigo}</TableCell>
                       <TableCell>{t.Nombre}</TableCell>
-                      <TableCell className="hidden md:table-cell text-muted-foreground">
+                      <TableCell className="text-muted-foreground">
                         {t.Telefono || "-"}
                       </TableCell>
-                      <TableCell className="hidden lg:table-cell text-muted-foreground">
+                      <TableCell className="text-muted-foreground">
                         {t.Correo || "-"}
                       </TableCell>
                       <TableCell>
@@ -327,7 +327,7 @@ export function TecnicosPage() {
                           {t.Estado || "Activo"}
                         </Badge>
                       </TableCell>
-                      <TableCell className="hidden xl:table-cell text-muted-foreground">
+                      <TableCell className="text-muted-foreground">
                         {t.Notas || "-"}
                       </TableCell>
                       <TableCell>

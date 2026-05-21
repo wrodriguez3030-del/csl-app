@@ -456,11 +456,11 @@ export function ReportesPage() {
                   <TableHead className={SEQ_HEADER_CLASS}>#</TableHead>
                   <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Fecha")}>Fecha<SortIcon col="Fecha" /></TableHead>
                   <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Equipo")}>Equipo<SortIcon col="Equipo" /></TableHead>
-                  <TableHead className="hidden sm:table-cell cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Sucursal")}>Sucursal<SortIcon col="Sucursal" /></TableHead>
+                  <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Sucursal")}>Sucursal<SortIcon col="Sucursal" /></TableHead>
                   <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Tipo")}>Tipo<SortIcon col="Tipo" /></TableHead>
-                  <TableHead className="hidden md:table-cell cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Tecnico")}>Tecnico<SortIcon col="Tecnico" /></TableHead>
-                  <TableHead className="hidden lg:table-cell cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Estado")}>Estado<SortIcon col="Estado" /></TableHead>
-                  <TableHead className="hidden xl:table-cell">Piezas</TableHead>
+                  <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Tecnico")}>Tecnico<SortIcon col="Tecnico" /></TableHead>
+                  <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Estado")}>Estado<SortIcon col="Estado" /></TableHead>
+                  <TableHead>Piezas</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -479,16 +479,14 @@ export function ReportesPage() {
                           {formatDate(r.Fecha)}
                         </TableCell>
                         <TableCell className="font-medium">{r.EquipoID}</TableCell>
-                        <TableCell className="hidden sm:table-cell">
-                          {r.Sucursal}
-                        </TableCell>
+                        <TableCell>{r.Sucursal}</TableCell>
                         <TableCell>
                           <Badge variant="secondary">{r.Tipo}</Badge>
                         </TableCell>
-                        <TableCell className="hidden md:table-cell text-muted-foreground">
+                        <TableCell className="text-muted-foreground">
                           {r.Atendio || "-"}
                         </TableCell>
-                        <TableCell className="hidden lg:table-cell">
+                        <TableCell>
                           <div className="flex items-center gap-1">
                             <Badge
                               variant="secondary"
@@ -504,7 +502,7 @@ export function ReportesPage() {
                             </Badge>
                           </div>
                         </TableCell>
-                        <TableCell className="hidden xl:table-cell text-sm text-muted-foreground">
+                        <TableCell className="text-sm text-muted-foreground">
                           {resumen}
                         </TableCell>
                         <TableCell>

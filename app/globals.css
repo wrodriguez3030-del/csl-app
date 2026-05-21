@@ -188,7 +188,7 @@
   }
 
   .csl-table-wrap {
-    @apply overflow-hidden rounded-2xl border border-[color:var(--brand-border)] bg-white shadow-[0_8px_28px_rgba(15,45,68,.05)];
+    @apply overflow-x-auto rounded-2xl border border-[color:var(--brand-border)] bg-white shadow-[0_8px_28px_rgba(15,45,68,.05)];
   }
 
   .csl-kicker {

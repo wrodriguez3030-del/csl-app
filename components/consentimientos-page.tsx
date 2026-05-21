@@ -1204,8 +1204,8 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
                   <TableHead className={SEQ_HEADER_CLASS}>#</TableHead>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Cliente</TableHead>
-                  <TableHead className="hidden md:table-cell">Sucursal</TableHead>
-                  <TableHead className="hidden lg:table-cell">Teléfono</TableHead>
+                  <TableHead>Sucursal</TableHead>
+                  <TableHead>Teléfono</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
@@ -1240,8 +1240,8 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
                       </div>
                       <div className="text-xs text-muted-foreground">{record.documento || record.id}</div>
                     </TableCell>
-                    <TableCell className="hidden md:table-cell">{record.sucursal || "-"}</TableCell>
-                    <TableCell className="hidden lg:table-cell text-muted-foreground">{record.telefono || "-"}</TableCell>
+                    <TableCell>{record.sucursal || "-"}</TableCell>
+                    <TableCell className="text-muted-foreground">{record.telefono || "-"}</TableCell>
                     <TableCell><StatusBadge status={record.estado} /></TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
