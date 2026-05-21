@@ -504,55 +504,114 @@ export function CredencialesPage() {
         </CardHeader>
 
         <CardContent className="p-0">
-          <div className="max-h-[calc(100vh-360px)] overflow-auto">
-            <table className="min-w-[1680px] w-full table-fixed text-sm">
-              <thead className="sticky top-0 z-10 bg-white text-slate-600 shadow-[0_1px_0_rgba(255,255,255,0.1)]">
-                <tr className="border-b border-slate-200 text-left">
-                  <th className="w-12 whitespace-nowrap px-3 py-4 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">#</th>
-                  <th className="w-44 whitespace-nowrap px-4 py-4 font-medium"><button type="button" onClick={() => handleSort("sucursal")}>Sucursal<SortIcon col="sucursal" /></button></th>
-                  <th className="w-56 whitespace-nowrap px-4 py-4 font-medium"><button type="button" onClick={() => handleSort("area")}>Área<SortIcon col="area" /></button></th>
-                  <th className="w-52 whitespace-nowrap px-4 py-4 font-medium"><button type="button" onClick={() => handleSort("equipo")}>Equipo<SortIcon col="equipo" /></button></th>
-                  <th className="w-56 whitespace-nowrap px-4 py-4 font-medium"><button type="button" onClick={() => handleSort("sistema")}>Sistema<SortIcon col="sistema" /></button></th>
-                  <th className="w-72 whitespace-nowrap px-4 py-4 font-medium"><button type="button" onClick={() => handleSort("usuario")}>Usuario<SortIcon col="usuario" /></button></th>
-                  <th className="w-44 whitespace-nowrap px-4 py-4 font-medium"><button type="button" onClick={() => handleSort("contrasena")}>Contraseña<SortIcon col="contrasena" /></button></th>
-                  <th className="w-32 whitespace-nowrap px-4 py-4 font-medium"><button type="button" onClick={() => handleSort("pin")}>PIN<SortIcon col="pin" /></button></th>
-                  <th className="w-80 whitespace-nowrap px-4 py-4 font-medium"><button type="button" onClick={() => handleSort("url")}>URL<SortIcon col="url" /></button></th>
-                  <th className="w-72 whitespace-nowrap px-4 py-4 font-medium"><button type="button" onClick={() => handleSort("correo")}>Correo<SortIcon col="correo" /></button></th>
-                  <th className="sticky right-0 w-40 whitespace-nowrap bg-white px-4 py-4 font-medium">Acciones</th>
-                </tr>
-              </thead>
-
-              <tbody>
+          {!filtered.length ? (
+            <div className="px-4 py-10 text-center text-sm text-slate-500">No hay registros para mostrar.</div>
+          ) : (
+            <>
+              {/* Mobile/tablet: cards */}
+              <div className="space-y-3 p-4 lg:hidden">
                 {filtered.map((record, index) => {
                   const passKey = `${record.id}-pass`
                   const pinKey = `${record.id}-pin`
-                  const rowKey = `${record.id || "sinid"}-${record.usuario || "sinusuario"}-${index}`
-
+                  const rowKey = `${record.id || "sinid"}-${record.usuario || "sinusuario"}-${index}-card`
                   return (
-                    <tr key={rowKey} className="group border-b border-slate-200 text-slate-700 hover:bg-cyan-50/60">
-                      <td className="whitespace-nowrap px-3 py-4 text-center"><SeqBadge n={index + 1} /></td>
-                      <td className="truncate whitespace-nowrap px-4 py-4" title={record.sucursal}>{record.sucursal || "—"}</td>
-                      <td className="truncate whitespace-nowrap px-4 py-4" title={record.area}>{record.area || "—"}</td>
-                      <td className="truncate whitespace-nowrap px-4 py-4 font-medium text-slate-950" title={record.equipo}>{record.equipo || "—"}</td>
-                      <td className="truncate whitespace-nowrap px-4 py-4" title={record.sistema}>{record.sistema || "—"}</td>
-                      <td className="truncate whitespace-nowrap px-4 py-4 font-mono text-xs text-cyan-700" title={record.usuario}>{record.usuario || "—"}</td>
-                      <td className="whitespace-nowrap px-4 py-4"><div className="flex items-center gap-2"><span className="max-w-28 truncate font-mono text-xs">{visibleFields[passKey] ? record.contrasena || "—" : mask(record.contrasena || "") || "—"}</span><button type="button" onClick={() => toggleField(passKey)} className="rounded-md p-1 text-slate-500 hover:bg-cyan-50 hover:text-cyan-700"><Eye className="h-4 w-4" /></button></div></td>
-                      <td className="whitespace-nowrap px-4 py-4"><div className="flex items-center gap-2"><span className="max-w-20 truncate font-mono text-xs">{visibleFields[pinKey] ? record.pin || "—" : mask(record.pin || "") || "—"}</span><button type="button" onClick={() => toggleField(pinKey)} className="rounded-md p-1 text-slate-500 hover:bg-cyan-50 hover:text-cyan-700"><Eye className="h-4 w-4" /></button></div></td>
-                      <td className="truncate whitespace-nowrap px-4 py-4" title={record.url}>{record.url ? <a href={normalizeUrl(record.url)} target="_blank" rel="noreferrer" className="text-slate-600 hover:text-cyan-400">{record.url}</a> : "—"}</td>
-                      <td className="truncate whitespace-nowrap px-4 py-4" title={record.correo}>{record.correo || "—"}</td>
-                      <td className="sticky right-0 whitespace-nowrap bg-white px-4 py-4 shadow-[-14px_0_24px_rgba(255,255,255,0.92)] group-hover:bg-slate-50"><div className="flex gap-2"><button type="button" title="Ver" onClick={() => setViewRecord(record)} className="rounded-lg border border-cyan-500/30 p-2 text-cyan-400 hover:bg-cyan-50"><Eye className="h-4 w-4" /></button><button type="button" title="Imprimir" onClick={() => printCredencial(record)} className="rounded-lg border border-cyan-500/30 p-2 text-cyan-400 hover:bg-cyan-50"><Printer className="h-4 w-4" /></button><button type="button" title="Editar" onClick={() => openEdit(record)} className="rounded-lg border border-blue-500/30 p-2 text-blue-400 hover:bg-blue-50"><Edit className="h-4 w-4" /></button><button type="button" title="Eliminar" onClick={() => void removeRecord(record.id)} className="rounded-lg border border-red-500/30 p-2 text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></button></div></td>
-                    </tr>
+                    <div key={rowKey} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                      <div className="mb-2 flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <SeqBadge n={index + 1} />
+                          <div className="min-w-0">
+                            <div className="font-semibold text-slate-950 break-words">{record.equipo || "—"}</div>
+                            <div className="text-xs text-muted-foreground break-words">{record.sucursal || "—"} · {record.area || "—"}</div>
+                          </div>
+                        </div>
+                        <div className="flex flex-shrink-0 gap-0.5">
+                          <button type="button" title="Ver" onClick={() => setViewRecord(record)} className="rounded-lg border border-cyan-500/30 p-1.5 text-cyan-600 hover:bg-cyan-50"><Eye className="h-3.5 w-3.5" /></button>
+                          <button type="button" title="Imprimir" onClick={() => printCredencial(record)} className="rounded-lg border border-cyan-500/30 p-1.5 text-cyan-600 hover:bg-cyan-50"><Printer className="h-3.5 w-3.5" /></button>
+                          <button type="button" title="Editar" onClick={() => openEdit(record)} className="rounded-lg border border-blue-500/30 p-1.5 text-blue-600 hover:bg-blue-50"><Edit className="h-3.5 w-3.5" /></button>
+                          <button type="button" title="Eliminar" onClick={() => void removeRecord(record.id)} className="rounded-lg border border-red-500/30 p-1.5 text-red-600 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                        <div>
+                          <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Sistema</span>
+                          <span className="break-words">{record.sistema || "—"}</span>
+                        </div>
+                        <div>
+                          <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Usuario</span>
+                          <span className="font-mono text-cyan-700 break-all">{record.usuario || "—"}</span>
+                        </div>
+                        <div>
+                          <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Contraseña</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono break-all">{visibleFields[passKey] ? record.contrasena || "—" : mask(record.contrasena || "") || "—"}</span>
+                            <button type="button" onClick={() => toggleField(passKey)} className="rounded p-0.5 text-slate-500 hover:bg-cyan-50 hover:text-cyan-700 flex-shrink-0"><Eye className="h-3 w-3" /></button>
+                          </div>
+                        </div>
+                        <div>
+                          <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">PIN</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono break-all">{visibleFields[pinKey] ? record.pin || "—" : mask(record.pin || "") || "—"}</span>
+                            <button type="button" onClick={() => toggleField(pinKey)} className="rounded p-0.5 text-slate-500 hover:bg-cyan-50 hover:text-cyan-700 flex-shrink-0"><Eye className="h-3 w-3" /></button>
+                          </div>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">URL</span>
+                          {record.url ? <a href={normalizeUrl(record.url)} target="_blank" rel="noreferrer" className="text-cyan-700 hover:underline break-all">{record.url}</a> : <span>—</span>}
+                        </div>
+                        <div className="col-span-2">
+                          <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Correo</span>
+                          <span className="break-all">{record.correo || "—"}</span>
+                        </div>
+                      </div>
+                    </div>
                   )
                 })}
+              </div>
 
-                {!filtered.length && (
-                  <tr>
-                    <td colSpan={11} className="px-4 py-10 text-center text-slate-500">No hay registros para mostrar.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              {/* Desktop (lg+): tabla compacta con texto wrap, sin min-w forzado */}
+              <div className="hidden max-h-[calc(100vh-360px)] overflow-auto lg:block">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 z-10 bg-white text-slate-600 shadow-[0_1px_0_rgba(255,255,255,0.1)]">
+                    <tr className="border-b border-slate-200 text-left">
+                      <th className="px-2 py-3 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">#</th>
+                      <th className="px-2 py-3 font-medium"><button type="button" onClick={() => handleSort("sucursal")}>Sucursal<SortIcon col="sucursal" /></button></th>
+                      <th className="px-2 py-3 font-medium"><button type="button" onClick={() => handleSort("area")}>Área<SortIcon col="area" /></button></th>
+                      <th className="px-2 py-3 font-medium"><button type="button" onClick={() => handleSort("equipo")}>Equipo<SortIcon col="equipo" /></button></th>
+                      <th className="px-2 py-3 font-medium"><button type="button" onClick={() => handleSort("sistema")}>Sistema<SortIcon col="sistema" /></button></th>
+                      <th className="px-2 py-3 font-medium"><button type="button" onClick={() => handleSort("usuario")}>Usuario<SortIcon col="usuario" /></button></th>
+                      <th className="px-2 py-3 font-medium"><button type="button" onClick={() => handleSort("contrasena")}>Contraseña<SortIcon col="contrasena" /></button></th>
+                      <th className="px-2 py-3 font-medium"><button type="button" onClick={() => handleSort("pin")}>PIN<SortIcon col="pin" /></button></th>
+                      <th className="px-2 py-3 font-medium"><button type="button" onClick={() => handleSort("url")}>URL<SortIcon col="url" /></button></th>
+                      <th className="px-2 py-3 font-medium"><button type="button" onClick={() => handleSort("correo")}>Correo<SortIcon col="correo" /></button></th>
+                      <th className="px-2 py-3 font-medium">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((record, index) => {
+                      const passKey = `${record.id}-pass`
+                      const pinKey = `${record.id}-pin`
+                      const rowKey = `${record.id || "sinid"}-${record.usuario || "sinusuario"}-${index}`
+                      return (
+                        <tr key={rowKey} className="group border-b border-slate-200 align-top text-slate-700 hover:bg-cyan-50/60">
+                          <td className="px-2 py-2.5 text-center"><SeqBadge n={index + 1} /></td>
+                          <td className="px-2 py-2.5 break-words" title={record.sucursal}>{record.sucursal || "—"}</td>
+                          <td className="px-2 py-2.5 break-words" title={record.area}>{record.area || "—"}</td>
+                          <td className="px-2 py-2.5 break-words font-medium text-slate-950" title={record.equipo}>{record.equipo || "—"}</td>
+                          <td className="px-2 py-2.5 break-words" title={record.sistema}>{record.sistema || "—"}</td>
+                          <td className="px-2 py-2.5 break-all font-mono text-[11px] text-cyan-700" title={record.usuario}>{record.usuario || "—"}</td>
+                          <td className="px-2 py-2.5"><div className="flex items-center gap-1"><span className="break-all font-mono text-[11px]">{visibleFields[passKey] ? record.contrasena || "—" : mask(record.contrasena || "") || "—"}</span><button type="button" onClick={() => toggleField(passKey)} className="rounded p-0.5 text-slate-500 hover:bg-cyan-50 hover:text-cyan-700 flex-shrink-0"><Eye className="h-3 w-3" /></button></div></td>
+                          <td className="px-2 py-2.5"><div className="flex items-center gap-1"><span className="break-all font-mono text-[11px]">{visibleFields[pinKey] ? record.pin || "—" : mask(record.pin || "") || "—"}</span><button type="button" onClick={() => toggleField(pinKey)} className="rounded p-0.5 text-slate-500 hover:bg-cyan-50 hover:text-cyan-700 flex-shrink-0"><Eye className="h-3 w-3" /></button></div></td>
+                          <td className="px-2 py-2.5 break-all" title={record.url}>{record.url ? <a href={normalizeUrl(record.url)} target="_blank" rel="noreferrer" className="text-cyan-700 hover:underline">{record.url}</a> : "—"}</td>
+                          <td className="px-2 py-2.5 break-all" title={record.correo}>{record.correo || "—"}</td>
+                          <td className="px-2 py-2.5"><div className="flex gap-0.5"><button type="button" title="Ver" onClick={() => setViewRecord(record)} className="rounded border border-cyan-500/30 p-1 text-cyan-600 hover:bg-cyan-50"><Eye className="h-3.5 w-3.5" /></button><button type="button" title="Imprimir" onClick={() => printCredencial(record)} className="rounded border border-cyan-500/30 p-1 text-cyan-600 hover:bg-cyan-50"><Printer className="h-3.5 w-3.5" /></button><button type="button" title="Editar" onClick={() => openEdit(record)} className="rounded border border-blue-500/30 p-1 text-blue-600 hover:bg-blue-50"><Edit className="h-3.5 w-3.5" /></button><button type="button" title="Eliminar" onClick={() => void removeRecord(record.id)} className="rounded border border-red-500/30 p-1 text-red-600 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></button></div></td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 

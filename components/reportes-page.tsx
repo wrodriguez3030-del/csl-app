@@ -449,116 +449,151 @@ export function ReportesPage() {
           <CardTitle className="text-base">Lista de reportes</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className={SEQ_HEADER_CLASS}>#</TableHead>
-                  <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Fecha")}>Fecha<SortIcon col="Fecha" /></TableHead>
-                  <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Equipo")}>Equipo<SortIcon col="Equipo" /></TableHead>
-                  <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Sucursal")}>Sucursal<SortIcon col="Sucursal" /></TableHead>
-                  <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Tipo")}>Tipo<SortIcon col="Tipo" /></TableHead>
-                  <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Tecnico")}>Tecnico<SortIcon col="Tecnico" /></TableHead>
-                  <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Estado")}>Estado<SortIcon col="Estado" /></TableHead>
-                  <TableHead>Piezas</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredReportes.length > 0 ? (
-                  filteredReportes.map((r, i) => {
-                    const piezas = parsePiezas(r.PiezasJSON)
-                    const resumen = piezas.length
-                      ? `${piezas[0].pieza}${piezas.length > 1 ? ` +${piezas.length - 1}` : ""}`
-                      : r.PartesTexto || "-"
-
-                    return (
-                      <TableRow key={r.ID || r._rowNum || i}>
-                        <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatDate(r.Fecha)}
-                        </TableCell>
-                        <TableCell className="font-medium">{r.EquipoID}</TableCell>
-                        <TableCell>{r.Sucursal}</TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">{r.Tipo}</Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {r.Atendio || "-"}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Badge
-                              variant="secondary"
-                              className={estadoColor[r.EstadoEquipo || ""] || ""}
-                            >
+          {filteredReportes.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              Sin reportes que coincidan con los filtros.
+            </div>
+          ) : (
+            <>
+              {/* Mobile: card por reporte (sin scroll horizontal) */}
+              <div className="space-y-3 md:hidden">
+                {filteredReportes.map((r, i) => {
+                  const piezas = parsePiezas(r.PiezasJSON)
+                  const resumen = piezas.length
+                    ? `${piezas[0].pieza}${piezas.length > 1 ? ` +${piezas.length - 1}` : ""}`
+                    : r.PartesTexto || "-"
+                  return (
+                    <div
+                      key={r.ID || r._rowNum || i}
+                      className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"
+                    >
+                      <div className="mb-2 flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <SeqBadge n={i + 1} />
+                          <div className="text-xs text-muted-foreground">{formatDate(r.Fecha)}</div>
+                          <Badge variant="secondary" className="text-[10px]">{r.Tipo}</Badge>
+                        </div>
+                        <div className="flex gap-0.5">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setViewDialog(r)} title="Ver reporte">
+                            <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrint(r)} title="Imprimir">
+                            <Printer className="h-3.5 w-3.5 text-primary" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(r)} title="Editar">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeleteDialog(r)} title="Eliminar">
+                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                        <div>
+                          <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Equipo</span>
+                          <span className="font-semibold">{r.EquipoID}</span>
+                        </div>
+                        <div>
+                          <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Sucursal</span>
+                          <span>{r.Sucursal || "-"}</span>
+                        </div>
+                        <div>
+                          <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Técnico</span>
+                          <span>{r.Atendio || "-"}</span>
+                        </div>
+                        <div>
+                          <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Estado</span>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <Badge variant="secondary" className={`${estadoColor[r.EstadoEquipo || ""] || ""} text-[10px]`}>
                               {r.EstadoEquipo || "-"}
                             </Badge>
-                            <Badge
-                              variant="outline"
-                              className={prioColor[r.Prioridad || ""] || ""}
-                            >
+                            <Badge variant="outline" className={`${prioColor[r.Prioridad || ""] || ""} text-[10px]`}>
                               {r.Prioridad || "-"}
                             </Badge>
                           </div>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {resumen}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setViewDialog(r)}
-                              title="Ver reporte"
-                            >
-                              <Eye className="h-4 w-4 text-muted-foreground" />
-                              <span className="sr-only">Ver</span>
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handlePrint(r)}
-                              title="Imprimir PDF"
-                            >
-                              <Printer className="h-4 w-4 text-primary" />
-                              <span className="sr-only">Imprimir</span>
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleEdit(r)}
-                            >
-                              <Pencil className="h-4 w-4" />
-                              <span className="sr-only">Editar</span>
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setDeleteDialog(r)}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                              <span className="sr-only">Eliminar</span>
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
-                ) : (
-                  <TableRow>
-                    <TableCell
-                      colSpan={9}
-                      className="text-center text-muted-foreground py-8"
-                    >
-                      Sin reportes que coincidan con los filtros.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Piezas</span>
+                          <span className="text-muted-foreground">{resumen}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Desktop/tablet: tabla compacta (texto wrap, sin scroll horizontal forzado) */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className={SEQ_HEADER_CLASS}>#</TableHead>
+                      <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Fecha")}>Fecha<SortIcon col="Fecha" /></TableHead>
+                      <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Equipo")}>Equipo<SortIcon col="Equipo" /></TableHead>
+                      <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Sucursal")}>Sucursal<SortIcon col="Sucursal" /></TableHead>
+                      <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Tipo")}>Tipo<SortIcon col="Tipo" /></TableHead>
+                      <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Tecnico")}>Tecnico<SortIcon col="Tecnico" /></TableHead>
+                      <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Estado")}>Estado<SortIcon col="Estado" /></TableHead>
+                      <TableHead>Piezas</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredReportes.map((r, i) => {
+                      const piezas = parsePiezas(r.PiezasJSON)
+                      const resumen = piezas.length
+                        ? `${piezas[0].pieza}${piezas.length > 1 ? ` +${piezas.length - 1}` : ""}`
+                        : r.PartesTexto || "-"
+
+                      return (
+                        <TableRow key={r.ID || r._rowNum || i}>
+                          <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{formatDate(r.Fecha)}</TableCell>
+                          <TableCell className="font-medium">{r.EquipoID}</TableCell>
+                          <TableCell className="text-xs">{r.Sucursal}</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className="text-[10px]">{r.Tipo}</Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{r.Atendio || "-"}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap items-center gap-1">
+                              <Badge variant="secondary" className={`${estadoColor[r.EstadoEquipo || ""] || ""} text-[10px]`}>
+                                {r.EstadoEquipo || "-"}
+                              </Badge>
+                              <Badge variant="outline" className={`${prioColor[r.Prioridad || ""] || ""} text-[10px]`}>
+                                {r.Prioridad || "-"}
+                              </Badge>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{resumen}</TableCell>
+                          <TableCell>
+                            <div className="flex justify-end gap-0.5">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setViewDialog(r)} title="Ver reporte">
+                                <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span className="sr-only">Ver</span>
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrint(r)} title="Imprimir PDF">
+                                <Printer className="h-3.5 w-3.5 text-primary" />
+                                <span className="sr-only">Imprimir</span>
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(r)}>
+                                <Pencil className="h-3.5 w-3.5" />
+                                <span className="sr-only">Editar</span>
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeleteDialog(r)}>
+                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                                <span className="sr-only">Eliminar</span>
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 

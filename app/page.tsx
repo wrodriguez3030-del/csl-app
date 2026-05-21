@@ -248,23 +248,16 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
       <Sidebar />
       <LoadingOverlay />
       <ToastNotification />
       <div className="lg:pl-72">
         <Header onRefresh={activeTab !== "config" && !String(activeTab).startsWith("pulsos-") && !String(activeTab).startsWith("pulse-") ? handleRefresh : undefined} />
         {/* Layout centrado:
-              - tablas con muchas columnas (credenciales, fichas, clientes) tienen un cap más amplio
-              - el resto se centra a 1480px máx, con padding lateral creciente en xl
-              - mx-auto garantiza balance horizontal en pantallas anchas */}
-        <main
-          className={`mx-auto px-4 py-6 sm:px-6 lg:px-8 lg:py-8 xl:px-10 ${
-            activeTab === "credenciales" || activeTab === "cosmiatria-ficha" || activeTab === "cosmiatria-clientes"
-              ? "max-w-[1720px]"
-              : "max-w-[1480px]"
-          }`}
-        >
+              - max-w-[1480px] como cap general para que en pantallas muy anchas el contenido no quede infinito
+              - min-w-0 para que las tablas hijas no fuercen overflow horizontal del shell */}
+        <main className="mx-auto min-w-0 max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8 xl:px-10">
           {renderPage()}
         </main>
       </div>

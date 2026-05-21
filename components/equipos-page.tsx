@@ -174,36 +174,36 @@ export function EquiposPage() {
                     <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
                     <TableCell className="font-medium">{eq.EquipoID}</TableCell>
                     <TableCell>{eq.Sucursal}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{eq.Observaciones || "-"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{eq.Observaciones || "-"}</TableCell>
                     <TableCell>{eq.Modelo}</TableCell>
                     <TableCell className="text-muted-foreground">{eq.Serie || "-"}</TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2 min-w-[120px]">
-                        <Progress value={pct(eq)} className="h-1.5 flex-1" />
-                        <span className="text-xs text-muted-foreground w-8">{pct(eq)}%</span>
+                      <div className="flex items-center gap-1.5">
+                        <Progress value={pct(eq)} className="h-1.5 w-12 flex-shrink-0" />
+                        <span className="text-[10px] font-bold text-muted-foreground tabular-nums">{pct(eq)}%</span>
                       </div>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-[10px] text-muted-foreground tabular-nums">
                         {Number(eq.P_Cabeza || 0).toLocaleString()}
                       </span>
                     </TableCell>
-                    <TableCell className="tabular-nums">
+                    <TableCell className="tabular-nums text-xs">
                       {Number(eq.P_Totales || 0).toLocaleString()}
                     </TableCell>
                     <TableCell>
                       <Badge variant={eq.Estado === "Activo" ? "default" : "secondary"}
-                        className={eq.Estado === "Activo" ? "bg-green-500/20 text-green-400 border-green-500/30" : ""}>
+                        className={eq.Estado === "Activo" ? "bg-green-500/20 text-green-700 border-green-500/30" : ""}>
                         {eq.Estado || "Activo"}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex gap-1 justify-end">
+                      <div className="flex gap-0.5 justify-end">
                         <RecordActions
                           title={`Equipo: ${eq.EquipoID}`}
                           record={eq as unknown as Record<string, unknown>}
                           onEdit={() => { setFormData(eq); setEditingEquipo(eq); setIsFormOpen(true) }}
                           onDelete={() => setDeleteDialog(eq)}
                         />
-                        <Button size="icon" variant="ghost" onClick={() => handleToggleStatus(eq)}>
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleToggleStatus(eq)}>
                           {eq.Estado === "Activo"
                             ? <PowerOff className="h-3.5 w-3.5 text-orange-500" />
                             : <Power className="h-3.5 w-3.5 text-green-500" />}

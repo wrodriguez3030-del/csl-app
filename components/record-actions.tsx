@@ -82,21 +82,21 @@ export function RecordActions<T extends Record<string, unknown>>({ title, record
 
   return (
     <>
-      <div className="flex justify-end gap-1">
-        <Button size="icon" variant="ghost" title="Ver" onClick={() => setOpen(true)}>
-          <Eye className="h-4 w-4 text-muted-foreground" />
+      <div className="flex justify-end gap-0.5">
+        <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver" onClick={() => setOpen(true)}>
+          <Eye className="h-3.5 w-3.5 text-muted-foreground" />
         </Button>
-        <Button size="icon" variant="ghost" title="Imprimir" onClick={() => onPrint ? onPrint() : printRecord(printTitle || title, entries)}>
-          <Printer className="h-4 w-4 text-primary" />
+        <Button size="icon" variant="ghost" className="h-7 w-7" title="Imprimir" onClick={() => onPrint ? onPrint() : printRecord(printTitle || title, entries)}>
+          <Printer className="h-3.5 w-3.5 text-primary" />
         </Button>
         {onEdit ? (
-          <Button size="icon" variant="ghost" title="Editar" onClick={onEdit}>
-            <Pencil className="h-4 w-4" />
+          <Button size="icon" variant="ghost" className="h-7 w-7" title="Editar" onClick={onEdit}>
+            <Pencil className="h-3.5 w-3.5" />
           </Button>
         ) : null}
         {onDelete ? (
-          <Button size="icon" variant="ghost" title="Eliminar" onClick={onDelete}>
-            <Trash2 className="h-4 w-4 text-destructive" />
+          <Button size="icon" variant="ghost" className="h-7 w-7" title="Eliminar" onClick={onDelete}>
+            <Trash2 className="h-3.5 w-3.5 text-destructive" />
           </Button>
         ) : null}
       </div>

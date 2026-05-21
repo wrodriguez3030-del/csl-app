@@ -401,7 +401,7 @@ export function CosmiatriaClientesPage() {
 
       <Card>
         <CardContent className="p-0 overflow-x-auto">
-          <table className="w-full min-w-[1050px] text-sm">
+          <table className="w-full text-sm">
             <thead className="bg-muted/40">
               <tr className="border-b">
                 <th className="w-12 px-3 py-3 text-center text-[10px] font-black uppercase tracking-widest text-muted-foreground">#</th>
