@@ -88,6 +88,23 @@ export function fromDb(entity: string, row: Row): Row {
       }
     case "certificados_regalo":
       return { codigo: row.codigo, otorgadoA: row.otorgado_a, cortesiaDe: row.cortesia_de, validoPor: row.valido_por, fecha: row.fecha, sucursal: row.sucursal, tipo: row.tipo, firma: row.firma, emitidoEn: row.emitido_en, estado: row.estado, canjeadoEn: row.canjeado_en, notasEstado: row.notas_estado }
+    case "piezas_poliza_lista":
+      return {
+        id: row.id,
+        PiezaNombre: row.pieza_nombre,
+        CategoriaSnapshot: row.categoria_snapshot,
+        Cantidad: row.cantidad,
+        Suplidor: row.suplidor,
+        Prioridad: row.prioridad,
+        Estado: row.estado,
+        Sucursal: row.sucursal,
+        FechaSolicitada: row.fecha_solicitada,
+        FechaRecibida: row.fecha_recibida,
+        Nota: row.nota,
+        CreadoPor: row.creado_por,
+        CreatedAt: row.created_at,
+        UpdatedAt: row.updated_at,
+      }
     case "certificados_depicenter":
       return {
         codigo: row.codigo,

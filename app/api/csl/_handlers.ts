@@ -299,6 +299,58 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "deletePieza":
       await deleteRow("piezas", textValue(params, "pieza"))
       return { ok: true }
+    case "getPiezasPolizaLista":
+      return { ok: true, records: await getRows("piezas_poliza_lista") }
+    case "savePiezaPolizaLista": {
+      // id opcional → generamos UUID server-side si es nuevo. La columna en DB
+      // tiene default gen_random_uuid(), pero upsertRow requiere la clave en
+      // el payload para el onConflict (no podemos delegarlo).
+      const id = textValue(params, "id") || (globalThis.crypto?.randomUUID?.() ?? `pp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`)
+      const estadoRaw = textValue(params, "estado", "pendiente")
+      const estado: "pendiente" | "recibida" = estadoRaw === "recibida" ? "recibida" : "pendiente"
+      const fechaRecibida = dateValue(params.fechaRecibida)
+      const row: Row = {
+        id,
+        pieza_nombre: textValue(params, "piezaNombre"),
+        categoria_snapshot: textValue(params, "categoriaSnapshot") || null,
+        cantidad: Math.max(1, numberValue(params, "cantidad", 1)),
+        suplidor: textValue(params, "suplidor") || null,
+        prioridad: textValue(params, "prioridad", "Media"),
+        estado,
+        sucursal: textValue(params, "sucursal") || null,
+        fecha_solicitada: dateValue(params.fechaSolicitada) || new Date().toISOString().slice(0, 10),
+        // Coherencia estado ↔ fecha_recibida:
+        //   recibida → si el cliente pasó fecha la usamos, sino hoy
+        //   pendiente → siempre null (limpieza si se devolvió a pendiente)
+        fecha_recibida: estado === "recibida" ? (fechaRecibida || new Date().toISOString().slice(0, 10)) : null,
+        nota: textValue(params, "nota") || null,
+        creado_por: user.id,
+      }
+      if (!row.pieza_nombre) throw new Error("Falta el nombre de la pieza")
+      await upsertRow("piezas_poliza_lista", row)
+      return { ok: true, record: fromDb("piezas_poliza_lista", row) }
+    }
+    case "markPiezaPolizaRecibida": {
+      const id = textValue(params, "id")
+      if (!id) throw new Error("Falta id")
+      await updateRowFields("piezas_poliza_lista", id, {
+        estado: "recibida",
+        fecha_recibida: dateValue(params.fechaRecibida) || new Date().toISOString().slice(0, 10),
+      })
+      return { ok: true }
+    }
+    case "markPiezaPolizaPendiente": {
+      const id = textValue(params, "id")
+      if (!id) throw new Error("Falta id")
+      await updateRowFields("piezas_poliza_lista", id, {
+        estado: "pendiente",
+        fecha_recibida: null,
+      })
+      return { ok: true }
+    }
+    case "deletePiezaPolizaLista":
+      await deleteRow("piezas_poliza_lista", textValue(params, "id"))
+      return { ok: true }
     case "saveReporte": {
       const row = { report_id: textValue(params, "reportId"), fecha: dateValue(params.fecha), equipo_id: textValue(params, "equipoId"), sucursal: textValue(params, "sucursal"), empresa: textValue(params, "empresa"), cliente: textValue(params, "cliente"), domicilio: textValue(params, "domicilio"), ciudad: textValue(params, "ciudad", "Santiago"), modelo: textValue(params, "modelo"), serie: textValue(params, "serie"), numero: textValue(params, "numero"), tipo: textValue(params, "tipo", "Preventivo"), estado_equipo: textValue(params, "estadoEquipo", "Operativo"), prioridad: textValue(params, "prioridad", "Baja"), problema: textValue(params, "problema"), correccion: textValue(params, "correccion"), observaciones: textValue(params, "observaciones"), checklist: textValue(params, "checklist"), p_cabeza: numberValue(params, "pcabeza"), p_totales: numberValue(params, "ptotales"), atendio: textValue(params, "atendio"), piezas_json: textValue(params, "piezasJson", "[]"), partes_texto: textValue(params, "partesTexto"), firma_cliente: textValue(params, "firmaCliente"), firma_tecnico: textValue(params, "firmaTecnico"), fotos: textValue(params, "fotos", "[]") }
       const config = tableConfig("reportes")

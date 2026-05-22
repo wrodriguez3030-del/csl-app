@@ -29,6 +29,7 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "historial-equipos", label: "Historial por equipo", section: "Mantenimiento" },
   { id: "errores", label: "Errores y Piezas", section: "Mantenimiento" },
   { id: "inventario", label: "Inventario", section: "Mantenimiento" },
+  { id: "piezas-poliza", label: "Lista piezas póliza", section: "Mantenimiento" },
   { id: "pulse-dashboard", label: "Dashboard", section: "PulseControl CSL" },
   { id: "pulse-equipos", label: "Equipos", section: "PulseControl CSL" },
   { id: "pulsos-operadoras", label: "Operadoras", section: "Pulsos" },

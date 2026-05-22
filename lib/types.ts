@@ -88,6 +88,23 @@ export interface PiezaCatalogo {
   Activa?: "Sí" | "No"
 }
 
+export interface PiezaPolizaLista {
+  id: string
+  PiezaNombre: string
+  CategoriaSnapshot?: string
+  Cantidad: number
+  Suplidor?: string
+  Prioridad: "Baja" | "Media" | "Alta"
+  Estado: "pendiente" | "recibida"
+  Sucursal?: string
+  FechaSolicitada: string
+  FechaRecibida?: string | null
+  Nota?: string
+  CreadoPor?: string
+  CreatedAt?: string
+  UpdatedAt?: string
+}
+
 export interface InventarioItem {
   _rowNum?: string
   ItemID: string
@@ -326,5 +343,7 @@ export type TabId =
   | "cliente-certificados-imprimir"
   | "cliente-certificados-talonario"
   | "cliente-certificados-validez"
+  // Mantenimiento — checklist de piezas pendientes/recibidas
+  | "piezas-poliza"
   // Módulo Administración (solo superadmin)
   | "admin-users"

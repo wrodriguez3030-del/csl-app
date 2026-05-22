@@ -43,6 +43,7 @@ export const ENTITY_TABLES: Record<string, { table: string; key: string; order?:
   csl_consent_tatuajes_cejas: { table: "csl_consent_tatuajes_cejas", key: "consent_id", order: "fecha" },
   certificados_regalo: { table: "csl_certificados_regalo", key: "codigo", order: "fecha" },
   certificados_depicenter: { table: "csl_certificados_depicenter", key: "codigo", order: "fecha" },
+  piezas_poliza_lista: { table: "csl_piezas_poliza_lista", key: "id", order: "fecha_solicitada" },
 }
 
 export function tableConfig(entity: string) {

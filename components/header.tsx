@@ -23,6 +23,7 @@ const pageMeta: Partial<Record<TabId, { title: string; description: string; eyeb
   "historial-equipos": { title: "Historial por equipo", description: "Resumen de mantenimientos, piezas y frecuencia por equipo", eyebrow: "Mantenimiento" },
   errores: { title: "Errores y Piezas", description: "Catálogo técnico de fallas, piezas y criticidad", eyebrow: "Catálogo técnico" },
   inventario: { title: "Inventario", description: "Control de stock, costos y disponibilidad", eyebrow: "Mantenimiento" },
+  "piezas-poliza": { title: "Lista piezas póliza", description: "Piezas pendientes y recibidas por suplidor", eyebrow: "Mantenimiento" },
   "pulse-dashboard": { title: "PulseControl CSL", description: "Panel integrado de control de pulsos GentleYAG", eyebrow: "Láser" },
   "pulse-equipos": { title: "Equipos GentleYAG", description: "11 equipos controlados por sucursal y cabina", eyebrow: "PulseControl" },
   "pulsos-operadoras": { title: "Operadoras", description: "Operadoras activas vinculadas a sucursal", eyebrow: "PulseControl" },

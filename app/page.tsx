@@ -16,6 +16,7 @@ import { ReportesPage } from "@/components/reportes-page"
 import { HistorialEquiposPage } from "@/components/historial-equipos-page"
 import { CatalogoPage } from "@/components/catalogo-page"
 import { InventarioPage } from "@/components/inventario-page"
+import { PiezasPolizaPage } from "@/components/piezas-poliza-page"
 import { CredencialesPage } from "@/components/credenciales-page"
 import { RecursosHumanosPage } from "@/components/recursos-humanos-page"
 import { EmpleadosPage } from "@/components/empleados-page"
@@ -207,6 +208,8 @@ export default function HomePage() {
         return <CatalogoPage />
       case "inventario":
         return <InventarioPage />
+      case "piezas-poliza":
+        return <PiezasPolizaPage />
       case "credenciales":
         return <CredencialesPage />
       case "pulse-dashboard":

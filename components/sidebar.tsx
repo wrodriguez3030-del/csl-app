@@ -15,6 +15,7 @@ import {
   Building2,
   ChevronDown,
   ChevronRight,
+  ClipboardCheck,
   ClipboardList,
   Cog,
   ContactRound,
@@ -62,6 +63,7 @@ const CORE_GROUPS: { label: string; items: NavItem[] }[] = [
       { id: "reportes", label: "Lista de reportes", icon: <ClipboardList className="h-4 w-4" /> },
       { id: "historial-equipos", label: "Historial por equipo", icon: <BarChart3 className="h-4 w-4" /> },
       { id: "inventario", label: "Inventario", icon: <Package className="h-4 w-4" /> },
+      { id: "piezas-poliza", label: "Lista piezas póliza", icon: <ClipboardCheck className="h-4 w-4" /> },
     ],
   },
 ]
