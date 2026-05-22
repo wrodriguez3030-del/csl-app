@@ -395,9 +395,12 @@ export function AdminUsersPage() {
         </CardContent>
       </Card>
 
-      {/* Dialog create/edit — modal grande, footer sticky, menus en grid 2-3 cols */}
+      {/* Dialog create/edit — modal XL, footer sticky, menus en grid 3 cols desktop */}
       <Dialog open={open} onOpenChange={(v) => { if (!saving) setOpen(v) }}>
-        <DialogContent className="flex max-h-[92vh] w-[96vw] max-w-4xl flex-col overflow-hidden p-0">
+        <DialogContent
+          className="flex flex-col overflow-hidden p-0 sm:max-w-[min(1100px,96vw)] sm:max-h-[90vh] sm:w-[min(1100px,96vw)]"
+          style={{ width: "min(1100px, 96vw)", maxWidth: "min(1100px, 96vw)", maxHeight: "90vh" }}
+        >
           <DialogHeader className="border-b border-border px-6 pt-6 pb-4">
             <DialogTitle className="text-xl">
               {editing ? `Editar usuario: ${editing.nombre}` : "Nuevo usuario"}
@@ -414,14 +417,15 @@ export function AdminUsersPage() {
               </div>
             ) : null}
 
-            {/* Campos principales: 3 columnas en desktop */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {/* Fila 1: Nombre, Email, Contraseña */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div className="space-y-1.5">
                 <Label>Nombre *</Label>
                 <Input
                   value={form.nombre}
                   onChange={e => { setForm({...form, nombre: e.target.value}); setFormError(null) }}
                   placeholder="Nombre Apellido"
+                  className="w-full"
                 />
               </div>
               <div className="space-y-1.5">
@@ -432,6 +436,7 @@ export function AdminUsersPage() {
                   onChange={e => { setForm({...form, email: e.target.value}); setFormError(null) }}
                   placeholder="user@ejemplo.com"
                   disabled={!!editing}
+                  className="w-full"
                 />
               </div>
               <div className="space-y-1.5">
@@ -440,9 +445,14 @@ export function AdminUsersPage() {
                   type="text"
                   value={form.password}
                   onChange={e => { setForm({...form, password: e.target.value}); setFormError(null) }}
-                  placeholder={editing ? "Dejar vacío para no cambiar" : "Mín 6, evitar comunes (123456, password...)"}
+                  placeholder={editing ? "Dejar vacío para no cambiar" : "Mín 8, mezcla letras+números+símbolos"}
+                  className="w-full"
                 />
               </div>
+            </div>
+
+            {/* Fila 2: Negocio, Rol, Estado */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div className="space-y-1.5">
                 <Label>Negocio *</Label>
                 <Select
@@ -459,7 +469,7 @@ export function AdminUsersPage() {
                     setFormError(null)
                   }}
                 >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="csl">Cibao Spa Laser (CSL)</SelectItem>
                     <SelectItem value="depicenter">Depicenter Skin Laser</SelectItem>
@@ -469,7 +479,7 @@ export function AdminUsersPage() {
               <div className="space-y-1.5">
                 <Label>Rol *</Label>
                 <Select value={form.role} onValueChange={(v) => { setForm({...form, role: v as RoleKey}); setFormError(null) }}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="usuario">Usuario</SelectItem>
                     <SelectItem value="admin">Admin (todos los menús)</SelectItem>
@@ -480,7 +490,7 @@ export function AdminUsersPage() {
               <div className="space-y-1.5">
                 <Label>Estado</Label>
                 <Select value={form.activo ? "1" : "0"} onValueChange={(v) => setForm({...form, activo: v === "1"})}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="1">Activo</SelectItem>
                     <SelectItem value="0">Inactivo</SelectItem>
@@ -508,7 +518,7 @@ export function AdminUsersPage() {
                     <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setForm({...form, menus: []})}>Limpiar</Button>
                   </div>
                 </div>
-                <div className="rounded-lg border border-border bg-muted/20 p-3 max-h-[42vh] overflow-y-auto">
+                <div className="rounded-lg border border-border bg-muted/20 p-4 max-h-[45vh] min-h-[200px] overflow-y-auto">
                   {Object.entries(
                     MENU_OPTIONS.reduce<Record<string, typeof MENU_OPTIONS>>((acc, opt) => {
                       if (opt.id === "admin-users") return acc
@@ -517,12 +527,16 @@ export function AdminUsersPage() {
                     }, {})
                   ).map(([section, opts]) => (
                     <div key={section} className="mb-4 last:mb-0">
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">{section}</p>
-                      <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2 border-b border-border/50 pb-1">{section}</p>
+                      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
                         {opts.map((opt) => {
                           const checked = form.menus.includes(opt.id)
                           return (
-                            <label key={opt.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm transition-colors hover:bg-white/80">
+                            <label
+                              key={opt.id}
+                              className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors hover:bg-white/80"
+                              title={opt.label}
+                            >
                               <input
                                 type="checkbox"
                                 checked={checked}
@@ -532,8 +546,9 @@ export function AdminUsersPage() {
                                     : form.menus.filter(m => m !== opt.id)
                                   setForm({...form, menus: next})
                                 }}
+                                className="h-4 w-4 flex-shrink-0"
                               />
-                              <span className="truncate">{opt.label}</span>
+                              <span className="break-words">{opt.label}</span>
                             </label>
                           )
                         })}

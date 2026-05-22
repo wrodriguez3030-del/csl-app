@@ -204,8 +204,27 @@ export async function POST(request: Request) {
           { ok: false, error: `Contraseña inválida: ${createError.message}` },
           { status: 400 },
         )
+      } else if (msg.includes("database error") || msg.includes("constraint") || msg.includes("violates")) {
+        // Trigger en auth.users intentando insertar en csl_user_profiles sin
+        // business_id — bug clásico tras la migración multi-tenant. Se arregla
+        // con `alter table csl_user_profiles alter column business_id set default <csl-uuid>`
+        // (SQL ya aplicado el 2026-05-22). Si aparece otra vez, probablemente
+        // el default se perdió o hay otro trigger nuevo.
+        console.error("[admin/users/POST] Database trigger error during createUser:", createError.message)
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Error de trigger de Supabase al crear el usuario. Falta DEFAULT en csl_user_profiles.business_id — pegá en SQL Editor: alter table public.csl_user_profiles alter column business_id set default (select id from public.businesses where slug='csl');",
+          },
+          { status: 500 },
+        )
       } else {
-        throw createError
+        // Mantener el mensaje crudo de Supabase pero con prefijo claro
+        console.error("[admin/users/POST] Unhandled createUser error:", createError)
+        return NextResponse.json(
+          { ok: false, error: `Supabase Auth rechazó: ${createError.message}` },
+          { status: 500 },
+        )
       }
     } else {
       userId = created.user.id
