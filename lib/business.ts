@@ -46,7 +46,9 @@ export const BUSINESS_FALLBACK: Record<BusinessSlug, Business> = {
     name: "Depicenter Skin Laser",
     displayName: "Depicenter Skin Laser",
     logoUrl: "/brands/depicenter-logo.jpg",
-    primaryColor: "#FF6B9D",
+    // Turquesa identidad del logo. Misma familia que CSL pero levemente
+    // más profundo para diferenciarlos sutilmente. Ajustable en DB.
+    primaryColor: "#1FB5AE",
     active: true,
   },
 }

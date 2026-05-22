@@ -40,7 +40,7 @@ values
     'Depicenter Skin Laser',
     'Depicenter Skin Laser',
     '/brands/depicenter-logo.jpg',
-    '#FF6B9D'
+    '#1FB5AE'
   )
 on conflict (slug) do nothing;
 
