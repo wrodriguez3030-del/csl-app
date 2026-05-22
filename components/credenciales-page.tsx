@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { Search, Plus, Trash2, Edit, Eye, Download, Upload, RefreshCw, Printer } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { Search, Plus, Trash2, Edit, Eye, Download, Upload, RefreshCw, Printer, Lock, LockOpen, ShieldCheck, Loader2 } from "lucide-react"
 import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -161,7 +161,31 @@ export function CredencialesPage() {
   const [sortKey, setSortKey] = useState<CredencialSortKey>("sucursal")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
 
-  const loadCredenciales = async () => {
+  // Gate TOTP — bloquea el render y el fetch de credenciales hasta que el
+  // usuario presente un código del Authenticator. Estado:
+  //   null  = todavía no sabemos (checkpoint inicial)
+  //   true  = acceso activo (cookie httpOnly válida)
+  //   false = sin acceso, mostrar pantalla de verificación
+  const [accessGranted, setAccessGranted] = useState<boolean | null>(null)
+  const [accessExpiresAt, setAccessExpiresAt] = useState<number | undefined>()
+
+  const refreshAccess = useCallback(async () => {
+    try {
+      const res = await fetch("/api/security/credentials-access", { cache: "no-store" })
+      const data = (await res.json()) as { active?: boolean; expiresAt?: number }
+      setAccessGranted(Boolean(data?.active))
+      setAccessExpiresAt(data?.expiresAt)
+    } catch {
+      setAccessGranted(false)
+      setAccessExpiresAt(undefined)
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshAccess()
+  }, [refreshAccess])
+
+  const loadCredenciales = useCallback(async () => {
     const normalized = normalizeApiUrl(apiUrl)
     if (!normalized) {
       setRecords([])
@@ -181,11 +205,27 @@ export function CredencialesPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [apiUrl, setIsLoading, setLoadingMessage, showToast])
 
+  // CRÍTICO: solo dispara la carga cuando hay acceso confirmado. Antes de eso
+  // no se hace fetch a la API que devuelve credenciales — la lista en memoria
+  // se mantiene vacía.
   useEffect(() => {
-    void loadCredenciales()
-  }, [apiUrl])
+    if (accessGranted) void loadCredenciales()
+  }, [accessGranted, loadCredenciales])
+
+  const handleLockAccess = useCallback(async () => {
+    try {
+      await fetch("/api/security/logout-credentials-access", { method: "POST" })
+    } catch {
+      // El cleanup local es lo único que realmente importa para la UI.
+    }
+    setRecords([])
+    setVisibleFields({})
+    setAccessGranted(false)
+    setAccessExpiresAt(undefined)
+    showToast("Acceso bloqueado", "success")
+  }, [showToast])
 
   const filtered = useMemo(() => {
     return records
@@ -399,8 +439,54 @@ export function CredencialesPage() {
     URL.revokeObjectURL(url)
   }
 
+  // Loading inicial — todavía estamos consultando si la cookie está vigente.
+  if (accessGranted === null) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <div className="flex items-center gap-3 text-sm text-slate-500">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Verificando acceso a credenciales…
+        </div>
+      </div>
+    )
+  }
+
+  // Sin acceso — render gate, NUNCA mostramos records (que están vacíos).
+  if (!accessGranted) {
+    return (
+      <CredentialsTotpGate
+        onUnlock={(expiresAt) => {
+          setAccessGranted(true)
+          setAccessExpiresAt(expiresAt)
+        }}
+      />
+    )
+  }
+
   return (
     <div className="space-y-6">
+      {/* Indicador de acceso temporal + botón de bloqueo manual */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5">
+        <div className="flex items-center gap-2 text-xs font-semibold text-emerald-800">
+          <ShieldCheck className="h-4 w-4" />
+          <span>Credenciales desbloqueadas temporalmente</span>
+          {accessExpiresAt ? (
+            <span className="rounded-full bg-white/70 px-2 py-0.5 font-mono text-[10px] text-emerald-700">
+              hasta {new Date(accessExpiresAt * 1000).toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          ) : null}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1 text-xs text-emerald-800 hover:bg-emerald-100"
+          onClick={() => void handleLockAccess()}
+        >
+          <Lock className="h-3.5 w-3.5" />
+          Bloquear acceso
+        </Button>
+      </div>
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="rounded-2xl border-cyan-500/20 bg-cyan-50">
           <CardContent className="p-4">
@@ -686,3 +772,124 @@ export function CredencialesPage() {
 }
 
 export default CredencialesPage
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gate TOTP — pantalla de verificación previa al menú Credenciales.
+// Se renderiza cuando el cookie httpOnly csl_credentials_access no está activo.
+// Valida el código contra /api/security/verify-credentials-token (server-side).
+// ─────────────────────────────────────────────────────────────────────────────
+function CredentialsTotpGate({ onUnlock }: { onUnlock: (expiresAt?: number) => void }) {
+  const [token, setToken] = useState("")
+  const [verifying, setVerifying] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [attempts, setAttempts] = useState(0)
+
+  const verify = useCallback(
+    async (code: string) => {
+      const clean = code.replace(/\D+/g, "").slice(0, 6)
+      if (clean.length !== 6) {
+        setError("El código debe tener 6 dígitos.")
+        return
+      }
+      if (attempts >= 5) {
+        setError("Demasiados intentos. Espera unos segundos.")
+        return
+      }
+      setVerifying(true)
+      setError(null)
+      try {
+        const res = await fetch("/api/security/verify-credentials-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: clean }),
+        })
+        const data = (await res.json()) as { ok?: boolean; error?: string; expiresAt?: number }
+        if (res.ok && data?.ok) {
+          onUnlock(data.expiresAt)
+        } else {
+          setAttempts((n) => n + 1)
+          setError(data?.error || "Código inválido o expirado")
+          setToken("")
+        }
+      } catch {
+        setError("No se pudo verificar el código. Reintenta.")
+      } finally {
+        setVerifying(false)
+      }
+    },
+    [attempts, onUnlock],
+  )
+
+  const handleChange = (raw: string) => {
+    const clean = raw.replace(/\D+/g, "").slice(0, 6)
+    setToken(clean)
+    setError(null)
+    // Auto-verificar cuando completa los 6 dígitos.
+    if (clean.length === 6 && !verifying) {
+      void verify(clean)
+    }
+  }
+
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center px-4">
+      <Card className="w-full max-w-md rounded-[28px] border-slate-200 bg-white shadow-[0_18px_55px_rgba(15,45,68,.08)]">
+        <CardHeader className="space-y-2 pb-4">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200">
+            <Lock className="h-5 w-5" />
+          </div>
+          <CardTitle className="text-center text-xl font-bold text-slate-950">
+            Verificación requerida
+          </CardTitle>
+          <p className="text-center text-sm text-slate-500">
+            Por seguridad, ingresa el código de tu Authenticator para acceder al sistema de credenciales.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="totp-input" className="text-xs font-bold uppercase tracking-wider text-slate-600">
+              Código de 6 dígitos
+            </Label>
+            <Input
+              id="totp-input"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              value={token}
+              onChange={(e) => handleChange(e.target.value)}
+              onPaste={(e) => {
+                e.preventDefault()
+                const text = e.clipboardData.getData("text")
+                handleChange(text)
+              }}
+              placeholder="••••••"
+              disabled={verifying}
+              className="h-14 rounded-xl text-center font-mono text-2xl tracking-[0.6em] tabular-nums"
+              maxLength={6}
+            />
+            {error ? (
+              <p className="text-center text-sm font-semibold text-rose-600">{error}</p>
+            ) : null}
+          </div>
+          <Button
+            className="h-11 w-full rounded-xl bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+            onClick={() => void verify(token)}
+            disabled={verifying || token.length !== 6}
+          >
+            {verifying ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando…
+              </>
+            ) : (
+              <>
+                <LockOpen className="mr-2 h-4 w-4" /> Verificar acceso
+              </>
+            )}
+          </Button>
+          <p className="text-center text-[11px] text-slate-400">
+            El acceso queda activo por 15 minutos. Después se vuelve a solicitar el código.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
