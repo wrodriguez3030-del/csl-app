@@ -183,6 +183,15 @@ export function logout() {
   if (typeof window === "undefined") return
   void supabaseBrowser.auth.signOut()
   clearLocalSession()
+  // Multi-tenant: limpiar cualquier db persistida del Zustand store en
+  // localStorage. Sin esto, el próximo login (otro user, otro business)
+  // vería datos del user anterior hasta que se complete el refresh.
+  try {
+    localStorage.removeItem("csl-maintenance-storage")     // legacy v1
+    localStorage.removeItem("csl-maintenance-storage-v2")  // actual v2
+  } catch {
+    // localStorage puede no estar disponible (modo privado, etc.) — no es bloqueante.
+  }
 }
 
 export function getSessionUser(): SystemUser | null {

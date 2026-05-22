@@ -130,18 +130,19 @@ export const useAppStore = create<AppState>()(
       decrementFormOpen: () => set((state) => ({ formOpenCount: Math.max(0, state.formOpenCount - 1) })),
     }),
     {
-      name: "csl-maintenance-storage",
+      // v2: invalida cualquier cache pre-multitenant que tenía db.sucursales
+      // del CSL user en el localStorage del browser. Si un Depicenter user
+      // entra con la storage vieja, sigue viendo CSL hasta el refresh —
+      // bug observado el 2026-05-22. El bump de nombre garantiza que el
+      // browser empiece limpio post-deploy.
+      name: "csl-maintenance-storage-v2",
+      // NO persistimos db ni dbPulsos: en multi-tenant cada user puede tener
+      // datos distintos, y persistir lleva a fugas cross-tenant entre logins.
+      // El handleRefresh en app/page.tsx carga db fresca tras login.
       partialize: (state) => ({
         apiUrl: "/api/csl",
         activeTab: state.activeTab,
         pulsosSectionOpen: state.pulsosSectionOpen,
-        db: state.db,
-        dbPulsos: {
-          operadoras: state.dbPulsos.operadoras,
-          lecturasSemanales: state.dbPulsos.lecturasSemanales,
-          sesionesCliente: [],
-          auditoriasSemanales: state.dbPulsos.auditoriasSemanales,
-        },
       }),
     }
   )
