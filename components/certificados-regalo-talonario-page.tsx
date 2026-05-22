@@ -268,7 +268,7 @@ export function CertificadosRegaloTalonarioPage() {
           <p className="text-sm text-muted-foreground">Coloca el talonario pre-impreso en la impresora. Se imprimen solo valores, fecha y QR.</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setShowCalibration((value) => !value)}>Calibrar impresiÃ³n</Button>
+          <Button variant="outline" onClick={() => setShowCalibration((value) => !value)}>Calibrar impresión</Button>
           <Button variant="outline" onClick={handleCalibrationPrint} disabled={isPrinting}>Imprimir prueba</Button>
           <Button onClick={handlePrint} disabled={isPrinting || !form.otorgadoA || !form.cortesiaDe || !form.validoPor}><Printer className="mr-2 h-4 w-4" />{isPrinting ? "Preparando..." : "Imprimir campos"}</Button>
         </div>
@@ -318,7 +318,7 @@ export function CertificadosRegaloTalonarioPage() {
 
       {showCalibration ? (
         <Card className="no-print border-primary/40">
-          <CardHeader><CardTitle className="text-base">CalibraciÃ³n de impresiÃ³n</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">Calibración de impresión</CardTitle></CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
             <div className="space-y-1.5">
               <Label>Mover X pt</Label>
@@ -345,11 +345,11 @@ export function CertificadosRegaloTalonarioPage() {
               <Input type="number" step="0.5" value={calibration.qrOffsetY} onChange={(event) => updateCalibration({ qrOffsetY: Number(event.target.value) || 0 })} />
             </div>
             <div className="space-y-1.5">
-              <Label>DÃ­a X</Label>
+              <Label>Día X</Label>
               <Input type="number" step="0.5" value={calibration.diaX} onChange={(event) => updateCalibration({ diaX: Number(event.target.value) || 0 })} />
             </div>
             <div className="space-y-1.5">
-              <Label>DÃ­a Y</Label>
+              <Label>Día Y</Label>
               <Input type="number" step="0.5" value={calibration.diaY} onChange={(event) => updateCalibration({ diaY: Number(event.target.value) || 0 })} />
             </div>
             <div className="space-y-1.5">
@@ -361,11 +361,11 @@ export function CertificadosRegaloTalonarioPage() {
               <Input type="number" step="0.5" value={calibration.mesY} onChange={(event) => updateCalibration({ mesY: Number(event.target.value) || 0 })} />
             </div>
             <div className="space-y-1.5">
-              <Label>AÃ±o X</Label>
+              <Label>Año X</Label>
               <Input type="number" step="0.5" value={calibration.anoX} onChange={(event) => updateCalibration({ anoX: Number(event.target.value) || 0 })} />
             </div>
             <div className="space-y-1.5">
-              <Label>AÃ±o Y</Label>
+              <Label>Año Y</Label>
               <Input type="number" step="0.5" value={calibration.anoY} onChange={(event) => updateCalibration({ anoY: Number(event.target.value) || 0 })} />
             </div>
             <div className="md:col-span-3 lg:col-span-6 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

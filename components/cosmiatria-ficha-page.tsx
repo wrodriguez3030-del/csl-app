@@ -75,19 +75,19 @@ function DetailItem({ label, value }: { label: string; value?: string | string[]
 
 const consentimientoCosmiatria = [
   "CONSENTIMIENTO INFORMADO",
-  "PROCEDIMIENTO: LIMPIEZA FACIAL Y/O TRATAMIENTOS DE COSMIATRÃA",
-  "El tratamiento de cosmiatrÃ­a en Cibao Spa Laser puede incluir limpieza facial profunda, peelings quÃ­micos, tratamientos con lÃ¡ser, aparatologÃ­a estÃ©tica, extracciÃ³n, hidrataciÃ³n, despigmentantes, protocolos antiacnÃ©, rejuvenecimiento y otros procedimientos diseÃ±ados para mejorar la apariencia y salud de la piel.",
-  "Confirmo que Cibao Spa Laser me ha explicado en palabras comprensibles la naturaleza del procedimiento, su finalidad, beneficios esperados, limitaciones, alternativas disponibles, molestias normales y cuidados necesarios antes y despuÃ©s del tratamiento.",
-  "Declaro que he informado de manera completa y verdadera mis antecedentes mÃ©dicos, medicamentos, alergias, cirugÃ­as, embarazo, lactancia, enfermedades de la piel, exposiciÃ³n solar reciente, tratamientos estÃ©ticos previos y cualquier condiciÃ³n que pueda influir en el procedimiento.",
-  "Comprendo que los procesos estÃ©ticos no son una ciencia exacta y que nadie puede garantizar resultados perfectos, permanentes o idÃ©nticos entre personas. Los resultados dependen de mi tipo de piel, hÃ¡bitos, seguimiento de indicaciones y respuesta individual.",
-  "Se me han informado posibles efectos secundarios como enrojecimiento, ardor, sensibilidad, resequedad, descamaciÃ³n, brotes, irritaciÃ³n, hinchazÃ³n, hematomas, hiperpigmentaciÃ³n, hipopigmentaciÃ³n, infecciÃ³n, cicatriz, reacciÃ³n alÃ©rgica o resultado no deseado.",
-  "Autorizo a Cibao Spa Laser a tomar y conservar datos, fotografÃ­as, evoluciÃ³n clÃ­nica y firma digital como parte de mi expediente estÃ©tico. Este material serÃ¡ usado para diagnÃ³stico, seguimiento, control interno y respaldo de la historia del tratamiento.",
-  "Me comprometo a seguir las instrucciones indicadas antes, durante y despuÃ©s del procedimiento, incluyendo el uso de protector solar, hidrataciÃ³n, evitar exposiciÃ³n solar directa, saunas, calor excesivo, manipulaciÃ³n de la piel o productos no indicados cuando aplique.",
-  "Entiendo que debo notificar de inmediato cualquier molestia intensa, reacciÃ³n inesperada, lesiÃ³n, alergia, cambio de medicaciÃ³n o condiciÃ³n mÃ©dica nueva antes de continuar con nuevas sesiones.",
-  "Acepto que Cibao Spa Laser puede retrasar, modificar o suspender el procedimiento si el personal considera que existe riesgo, contraindicaciÃ³n, falta de informaciÃ³n clÃ­nica o incumplimiento de cuidados.",
+  "PROCEDIMIENTO: LIMPIEZA FACIAL Y/O TRATAMIENTOS DE COSMIATRÍA",
+  "El tratamiento de cosmiatría en Cibao Spa Laser puede incluir limpieza facial profunda, peelings químicos, tratamientos con láser, aparatología estética, extracción, hidratación, despigmentantes, protocolos antiacné, rejuvenecimiento y otros procedimientos diseñados para mejorar la apariencia y salud de la piel.",
+  "Confirmo que Cibao Spa Laser me ha explicado en palabras comprensibles la naturaleza del procedimiento, su finalidad, beneficios esperados, limitaciones, alternativas disponibles, molestias normales y cuidados necesarios antes y después del tratamiento.",
+  "Declaro que he informado de manera completa y verdadera mis antecedentes médicos, medicamentos, alergias, cirugías, embarazo, lactancia, enfermedades de la piel, exposición solar reciente, tratamientos estéticos previos y cualquier condición que pueda influir en el procedimiento.",
+  "Comprendo que los procesos estéticos no son una ciencia exacta y que nadie puede garantizar resultados perfectos, permanentes o idénticos entre personas. Los resultados dependen de mi tipo de piel, hábitos, seguimiento de indicaciones y respuesta individual.",
+  "Se me han informado posibles efectos secundarios como enrojecimiento, ardor, sensibilidad, resequedad, descamación, brotes, irritación, hinchazón, hematomas, hiperpigmentación, hipopigmentación, infección, cicatriz, reacción alérgica o resultado no deseado.",
+  "Autorizo a Cibao Spa Laser a tomar y conservar datos, fotografías, evolución clínica y firma digital como parte de mi expediente estético. Este material será usado para diagnóstico, seguimiento, control interno y respaldo de la historia del tratamiento.",
+  "Me comprometo a seguir las instrucciones indicadas antes, durante y después del procedimiento, incluyendo el uso de protector solar, hidratación, evitar exposición solar directa, saunas, calor excesivo, manipulación de la piel o productos no indicados cuando aplique.",
+  "Entiendo que debo notificar de inmediato cualquier molestia intensa, reacción inesperada, lesión, alergia, cambio de medicación o condición médica nueva antes de continuar con nuevas sesiones.",
+  "Acepto que Cibao Spa Laser puede retrasar, modificar o suspender el procedimiento si el personal considera que existe riesgo, contraindicación, falta de información clínica o incumplimiento de cuidados.",
   "Reconozco que se me ha dado oportunidad de hacer preguntas, que mis dudas fueron respondidas satisfactoriamente y que firmo este consentimiento libre y voluntariamente.",
-  "Autorizo la realizaciÃ³n del procedimiento en Cibao Spa Laser y libero al centro y a su personal de responsabilidad por complicaciones derivadas de informaciÃ³n omitida, indicaciones incumplidas o reacciones individuales no previsibles.",
-  "Este consentimiento aplica a la ficha dermo-cosmiÃ¡trica registrada y a los procedimientos relacionados con la evaluaciÃ³n y tratamiento indicado para mi caso, sin sustituir una consulta mÃ©dica dermatolÃ³gica cuando sea necesaria.",
+  "Autorizo la realización del procedimiento en Cibao Spa Laser y libero al centro y a su personal de responsabilidad por complicaciones derivadas de información omitida, indicaciones incumplidas o reacciones individuales no previsibles.",
+  "Este consentimiento aplica a la ficha dermo-cosmiátrica registrada y a los procedimientos relacionados con la evaluación y tratamiento indicado para mi caso, sin sustituir una consulta médica dermatológica cuando sea necesaria.",
 ]
 
 function escapeHtml(value: unknown) {
@@ -120,7 +120,7 @@ function printTable(title: string, headers: string[], rows: unknown[][]) {
 }
 
 function buildFichaPrintHtml(ficha: FichaDermoCosmiatrica) {
-  return `<!doctype html><html><head><meta charset="utf-8" /><title>Ficha DermatologÃ­a - ${escapeHtml(ficha.nombre || ficha.id)}</title><style>
+  return `<!doctype html><html><head><meta charset="utf-8" /><title>Ficha Dermatología - ${escapeHtml(ficha.nombre || ficha.id)}</title><style>
 @page{size:letter;margin:8mm;}
 *{box-sizing:border-box;}
 body{font-family:Arial,Helvetica,sans-serif;margin:0;font-size:9px;color:#111827;background:white;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
@@ -148,14 +148,14 @@ td{border:1px solid #ccc;padding:2px 3px;vertical-align:top;}
 .meta{margin-top:4px;color:#374151;font-size:8px;}
 @media print{button{display:none}.page-break{break-before:page;page-break-before:always;}}
 </style></head><body>
-<div class="header"><div class="logo">CIBAO SPA LASER</div><h1>FICHA DERMATOLÃ“GICA / DERMO-COSMIÃTRICA</h1><p class="subtitle">Documento generado desde el sistema CSL</p></div>
+<div class="header"><div class="logo">CIBAO SPA LASER</div><h1>FICHA DERMATOLÓGICA / DERMO-COSMIÁTRICA</h1><p class="subtitle">Documento generado desde el sistema CSL</p></div>
 ${printRow(printField("Fecha", ficha.fecha), printField("Estado", ficha.estado))}
 ${printRow(printField("Sucursal", ficha.sucursal), printField("Operadora", ficha.operadora), printField("Especialista", ficha.nombreEspecialista || ficha.especialista))}
 <h2>Datos del cliente</h2>
 ${printRow(printField("Nombre", ficha.nombre), printField("Edad", ficha.edad), printField("Cédula", ficha.cedula || ficha.documento))}
-${printRow(printField("Ciudad", ficha.ciudad), printField("TelÃ©fono", ficha.telefono), printField("Email", ficha.email))}
+${printRow(printField("Ciudad", ficha.ciudad), printField("Teléfono", ficha.telefono), printField("Email", ficha.email))}
 ${printRow(printField("Fecha nacimiento", ficha.fechaNacimiento), printField("Dirección", ficha.direccion))}
-${printRow(printField("OcupaciÃ³n", ficha.ocupacion))}
+${printRow(printField("Ocupación", ficha.ocupacion))}
 ${printRow(printField("Motivo de consulta", ficha.motivoConsulta))}
 <h2>Evaluación dermatológica</h2>
 ${printRow(printField("Tipo de piel", ficha.tipoPiel), printField("Fototipo", ficha.fototipo), printField("Estado general", ficha.estadoGeneralPiel))}
@@ -163,20 +163,20 @@ ${printRow(printField("Sensibilidad", ficha.sensibilidad), printField("Hidrataci
 ${printRow(printField("Manchas", ficha.manchas), printField("Acné", ficha.acne), printField("Rosácea", ficha.rosacea), printField("Melasma", ficha.melasma))}
 ${printRow(printField("Cicatrices", ficha.cicatrices), printField("Lesiones visibles", ficha.lesionesVisibles), printField("Irritación", ficha.irritacion))}
 ${printRow(printField("Observaciones de la piel", ficha.observacionesPiel))}
-<h2>HÃ¡bitos y semiologÃ­a cutÃ¡nea</h2>
-${printRow(printField("Alcohol", ficha.alcohol), printField("Cigarrillos", ficha.cigarrillos), printField("CafÃ©", ficha.cafe))}
-${printRow(printField("Calidad de sueÃ±o", ficha.calidadSueno), printField("Vasos de agua", ficha.vasosAgua))}
+<h2>Hábitos y semiología cutánea</h2>
+${printRow(printField("Alcohol", ficha.alcohol), printField("Cigarrillos", ficha.cigarrillos), printField("Café", ficha.cafe))}
+${printRow(printField("Calidad de sueño", ficha.calidadSueno), printField("Vasos de agua", ficha.vasosAgua))}
 ${printRow(printField("Fototipo", ficha.fototipo), printField("Biotipo", ficha.biotipo), printField("Color piel", ficha.colorPiel))}
 ${printRow(printField("Grasa", ficha.grasa), printField("Seca", ficha.seca), printField("Textura", ficha.textura))}
 <h2>Antecedentes médicos</h2>
 ${printTable("Antecedentes médicos", ["Campo", "Valores"], [["Marcados", ficha.antecedentesMedicos], ["Notas", ficha.antecedentesMedicosNotas]])}
-${printRow(printField("Medicamentos", `${ficha.medicamentos || ""} ${ficha.medicamentosCuales || ""}`), printField("Medicamento tÃ³pico", `${ficha.medicamentoTopico || ""} ${ficha.medicamentoTopicoCuales || ""}`))}
-${printRow(printField("Alergias", `${ficha.alergias || ""} ${ficha.alergiasCuales || ""}`), printField("CirugÃ­as", `${ficha.cirugias || ""} ${ficha.cirugiasCuales || ""}`))}
-${printRow(printField("CÃ¡ncer de piel", `${ficha.cancerPiel || ""} ${ficha.cancerPielCuales || ""}`), printField("Herpes", ficha.herpes), printField("Embarazada", ficha.embarazada))}
-${printRow(printField("CosmÃ©tico actual", `${ficha.cosmeticoActual || ""} ${ficha.cosmeticoActualCuales || ""}`))}
+${printRow(printField("Medicamentos", `${ficha.medicamentos || ""} ${ficha.medicamentosCuales || ""}`), printField("Medicamento tópico", `${ficha.medicamentoTopico || ""} ${ficha.medicamentoTopicoCuales || ""}`))}
+${printRow(printField("Alergias", `${ficha.alergias || ""} ${ficha.alergiasCuales || ""}`), printField("Cirugías", `${ficha.cirugias || ""} ${ficha.cirugiasCuales || ""}`))}
+${printRow(printField("Cáncer de piel", `${ficha.cancerPiel || ""} ${ficha.cancerPielCuales || ""}`), printField("Herpes", ficha.herpes), printField("Embarazada", ficha.embarazada))}
+${printRow(printField("Cosmético actual", `${ficha.cosmeticoActual || ""} ${ficha.cosmeticoActualCuales || ""}`))}
 ${printRow(printField("Tolera jabones, perfumes, cremas", ficha.toleraCosmeticos))}
-${printRow(printField("DepilaciÃ³n lÃ¡ser", `${ficha.depilaLaser || ""} ${ficha.reaccionLaser || ""}`))}
-${printRow(printField("ReacciÃ³n al frÃ­o, viento o estufas", ficha.reaccionClima))}
+${printRow(printField("Depilación láser", `${ficha.depilaLaser || ""} ${ficha.reaccionLaser || ""}`))}
+${printRow(printField("Reacción al frío, viento o estufas", ficha.reaccionClima))}
 <h2>Alergias, medicamentos y condiciones especiales</h2>
 ${printRow(printField("Alergias", `${ficha.alergias || ""} ${ficha.alergiasNotas || ficha.alergiasCuales || ""}`), printField("Medicamentos", `${ficha.medicamentos || ""} ${ficha.medicamentosNotas || ficha.medicamentosCuales || ""}`))}
 ${printRow(printField("Fotosensibilizantes", `${ficha.medicamentosFotosensibilizantes || ""} ${ficha.medicamentosFotosensibilizantesNotas || ""}`), printField("Embarazo", `${ficha.embarazo || ficha.embarazada || ""} ${ficha.embarazoNotas || ""}`), printField("Lactancia", `${ficha.lactancia || ""} ${ficha.lactanciaNotas || ""}`))}
@@ -186,9 +186,9 @@ ${printTable("Crono y fotoenvejecimiento", ["Campo", "Valores"], [
     ["Tratamientos previos", ficha.tratamientosPrevios],
     ["Modificaciones pigmentarias", ficha.modificacionesPigmentarias],
     ["Lentigo solar", ficha.lentigoSolar],
-    ["InvoluciÃ³n cutÃ¡nea", ficha.involucionCutanea],
+    ["Involución cutánea", ficha.involucionCutanea],
     ["Alteraciones de textura", ficha.texturaAlteraciones],
-    ["LipidizaciÃ³n cutÃ¡nea", ficha.lipidizacionCutanea],
+    ["Lipidización cutánea", ficha.lipidizacionCutanea],
   ])}
 <h2>Observaciones</h2>
 ${printRow(printField("Observaciones generales", ficha.observaciones))}
@@ -205,15 +205,15 @@ ${printRow(printField("Declaración aceptada", ficha.declaracionAceptada ? "Sí"
     <div class="row">
       <div class="firma-box">
         ${ficha.firma ? `<img src="${escapeHtml(ficha.firma)}" alt="Firma digital del cliente" />` : "<div style='height:70px'></div>"}
-        <p><b>${escapeHtml(ficha.nombre || "Cliente")}</b> Â· Firma del cliente</p>
+        <p><b>${escapeHtml(ficha.nombre || "Cliente")}</b> · Firma del cliente</p>
       </div>
       <div class="firma-box">
         ${ficha.firmaEspecialista ? `<img src="${escapeHtml(ficha.firmaEspecialista)}" alt="Firma especialista" />` : "<div style='height:70px'></div>"}
-        <p><b>${escapeHtml(ficha.nombreEspecialista || ficha.especialista || "Especialista")}</b> Â· Firma del especialista</p>
+        <p><b>${escapeHtml(ficha.nombreEspecialista || ficha.especialista || "Especialista")}</b> · Firma del especialista</p>
       </div>
     </div>
     <div class="meta">
-      ${printRow(printField("CÃ©dula", ficha.cedula), printField("Fecha", ficha.fecha))}
+      ${printRow(printField("Cédula", ficha.cedula), printField("Fecha", ficha.fecha))}
       ${printRow(printField("Sucursal", ficha.sucursal), printField("Operadora", ficha.operadora))}
     </div>
   </div>
@@ -235,7 +235,7 @@ export function CosmiatriaFichaPage() {
   const [sortKey, setSortKey] = useState<SortKey>("fecha")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
 
-  // Consentimientos del cliente cuya ficha se estÃ¡ visualizando.
+  // Consentimientos del cliente cuya ficha se está visualizando.
   const [viewingConsents, setViewingConsents] = useState<{
     masajes: Array<{ id: string; fecha: string; sucursal: string; estado: string; tipoMasaje?: string; zonaTratar?: string }>
     tatuajes: Array<{ id: string; fecha: string; sucursal: string; estado: string; tipoProcedimiento?: string; zonaTratar?: string }>
@@ -402,7 +402,7 @@ export function CosmiatriaFichaPage() {
   }
 
   const remove = async (id: string) => {
-    if (!confirm("Â¿Eliminar esta ficha?")) return
+    if (!confirm("¿Eliminar esta ficha?")) return
     const result = await apiJsonp(normalizeApiUrl(apiUrl), { action: "deleteFichaDermatologia", id })
     if (!result?.ok) {
       showToast("No se pudo eliminar", "error")
@@ -414,7 +414,7 @@ export function CosmiatriaFichaPage() {
 
   const copyPublicLink = async () => {
     await navigator.clipboard.writeText(`${window.location.origin}/ficha-dermatologia`)
-    showToast("Link pÃºblico copiado", "success")
+    showToast("Link público copiado", "success")
   }
 
   const startNew = () => {
@@ -430,7 +430,7 @@ export function CosmiatriaFichaPage() {
   const printFicha = (record: FichaDermoCosmiatrica) => {
     const printWindow = window.open("", "_blank")
     if (!printWindow) {
-      showToast("El navegador bloqueÃ³ la ventana de impresiÃ³n", "error")
+      showToast("El navegador bloqueó la ventana de impresión", "error")
       return
     }
     printWindow.document.write(buildFichaPrintHtml(record))
@@ -441,18 +441,18 @@ export function CosmiatriaFichaPage() {
     }, 500)
   }
 
-  const sortLabel = (key: SortKey) => sortKey === key ? (sortDir === "asc" ? " â†‘" : " â†“") : " â†•"
+  const sortLabel = (key: SortKey) => sortKey === key ? (sortDir === "asc" ? " ↑" : " ↓") : " ↕"
   const publicLink = typeof window !== "undefined" ? `${window.location.origin}/ficha-dermatologia` : "/ficha-dermatologia"
 
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-xl font-bold">CosmiatrÃ­a</h2>
-          <p className="text-sm text-muted-foreground">Ficha DermatologÃ­a / Dermo-CosmiÃ¡trica</p>
+          <h2 className="text-xl font-bold">Cosmiatría</h2>
+          <p className="text-sm text-muted-foreground">Ficha Dermatología / Dermo-Cosmiátrica</p>
         </div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 md:flex md:flex-wrap">
-          <Button variant="outline" onClick={copyPublicLink}><Link2 className="mr-2 h-4 w-4" />Copiar link pÃºblico</Button>
+          <Button variant="outline" onClick={copyPublicLink}><Link2 className="mr-2 h-4 w-4" />Copiar link público</Button>
           <Button variant="outline" onClick={() => { void loadRecords(); void loadOperadoras(); void loadClientes() }}>Actualizar</Button>
           <Button onClick={startNew}><Plus className="mr-2 h-4 w-4" />Nueva ficha</Button>
         </div>
@@ -479,7 +479,7 @@ export function CosmiatriaFichaPage() {
         <CardContent className="grid gap-3 pt-4 lg:grid-cols-[minmax(240px,1fr)_180px_180px_180px_150px]">
           <div>
             <Label>Buscar</Label>
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente, telÃ©fono, cÃ©dula, correo, motivo..." />
+            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente, teléfono, cédula, correo, motivo..." />
           </div>
           <div>
             <Label>Sucursal</Label>
@@ -550,7 +550,7 @@ export function CosmiatriaFichaPage() {
 
       <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) setEditing(null) }}>
         <DialogContent className="h-[96dvh] !w-[96vw] !max-w-[1450px] overflow-y-auto p-3 sm:p-5">
-          <DialogHeader><DialogTitle>{editing ? "Editar Ficha DermatologÃ­a" : "Nueva Ficha DermatologÃ­a"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? "Editar Ficha Dermatología" : "Nueva Ficha Dermatología"}</DialogTitle></DialogHeader>
           <FichaDermatologiaForm
             key={editing?.id || "new-ficha-dermatologia"}
             initialValue={editing || undefined}
@@ -565,7 +565,7 @@ export function CosmiatriaFichaPage() {
 
       <Dialog open={!!viewing} onOpenChange={(value) => { if (!value) setViewing(null) }}>
         <DialogContent className="max-h-[92vh] w-[94vw] max-w-5xl overflow-y-auto">
-          <DialogHeader><DialogTitle>Ver Ficha DermatologÃ­a</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Ver Ficha Dermatología</DialogTitle></DialogHeader>
           {viewing ? (
             <div className="space-y-4">
               <Card>
@@ -573,8 +573,8 @@ export function CosmiatriaFichaPage() {
                 <CardContent className="grid gap-3 md:grid-cols-3">
                   <DetailItem label="Fecha" value={viewing.fecha} />
                   <DetailItem label="Cliente" value={viewing.nombre} />
-                  <DetailItem label="TelÃ©fono" value={viewing.telefono} />
-                  <DetailItem label="CÃ©dula" value={viewing.cedula} />
+                  <DetailItem label="Teléfono" value={viewing.telefono} />
+                  <DetailItem label="Cédula" value={viewing.cedula} />
                   <DetailItem label="Email" value={viewing.email} />
                   <DetailItem label="Ciudad" value={viewing.ciudad} />
                   <DetailItem label="Sucursal" value={viewing.sucursal} />
@@ -606,7 +606,7 @@ export function CosmiatriaFichaPage() {
                   <DetailItem label="Medicamentos" value={`${viewing.medicamentos || "-"} ${viewing.medicamentosCuales || ""}`} />
                   <DetailItem label="Alergias" value={`${viewing.alergias || "-"} ${viewing.alergiasCuales || ""}`} />
                   <DetailItem label="Fotosensibilizantes" value={`${viewing.medicamentosFotosensibilizantes || "-"} ${viewing.medicamentosFotosensibilizantesNotas || ""}`} />
-                  <DetailItem label="CirugÃ­as" value={`${viewing.cirugias || "-"} ${viewing.cirugiasCuales || ""}`} />
+                  <DetailItem label="Cirugías" value={`${viewing.cirugias || "-"} ${viewing.cirugiasCuales || ""}`} />
                   <DetailItem label="Embarazo / Lactancia" value={`${viewing.embarazo || viewing.embarazada || "-"} / ${viewing.lactancia || "-"}`} />
                   <DetailItem label="Piel sensible / Queloides" value={`${viewing.pielSensible || "-"} / ${viewing.queloides || "-"}`} />
                   <DetailItem label="Se observa" value={viewing.seObserva} />
@@ -644,7 +644,7 @@ export function CosmiatriaFichaPage() {
                   </CardHeader>
                   <CardContent>
                     {viewingConsentsLoading ? (
-                      <div className="text-sm text-muted-foreground">Cargando consentimientosâ€¦</div>
+                      <div className="text-sm text-muted-foreground">Cargando consentimientos…</div>
                     ) : !viewingConsents || (viewingConsents.masajes.length === 0 && viewingConsents.tatuajes.length === 0) ? (
                       <div className="text-sm text-muted-foreground">Sin consentimientos relacionados con este cliente.</div>
                     ) : (
@@ -658,9 +658,9 @@ export function CosmiatriaFichaPage() {
                               {viewingConsents.masajes.map((c) => (
                                 <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 p-3 text-sm">
                                   <div>
-                                    <div className="font-semibold">{c.fecha} Â· {c.estado}</div>
+                                    <div className="font-semibold">{c.fecha} · {c.estado}</div>
                                     <div className="text-xs text-muted-foreground">
-                                      {c.sucursal} {c.tipoMasaje ? `Â· ${c.tipoMasaje}` : ""} {c.zonaTratar ? `Â· ${c.zonaTratar}` : ""}
+                                      {c.sucursal} {c.tipoMasaje ? `· ${c.tipoMasaje}` : ""} {c.zonaTratar ? `· ${c.zonaTratar}` : ""}
                                     </div>
                                   </div>
                                   <Badge variant="outline" className="font-mono text-[10px]">{c.id}</Badge>
@@ -678,9 +678,9 @@ export function CosmiatriaFichaPage() {
                               {viewingConsents.tatuajes.map((c) => (
                                 <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 p-3 text-sm">
                                   <div>
-                                    <div className="font-semibold">{c.fecha} Â· {c.estado}</div>
+                                    <div className="font-semibold">{c.fecha} · {c.estado}</div>
                                     <div className="text-xs text-muted-foreground">
-                                      {c.sucursal} {c.tipoProcedimiento ? `Â· ${c.tipoProcedimiento}` : ""} {c.zonaTratar ? `Â· ${c.zonaTratar}` : ""}
+                                      {c.sucursal} {c.tipoProcedimiento ? `· ${c.tipoProcedimiento}` : ""} {c.zonaTratar ? `· ${c.zonaTratar}` : ""}
                                     </div>
                                   </div>
                                   <Badge variant="outline" className="font-mono text-[10px]">{c.id}</Badge>
