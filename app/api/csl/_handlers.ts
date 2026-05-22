@@ -26,6 +26,7 @@ import {
   getProfile,
   getRows,
   getRowsPaged,
+  loadBusinessContext,
   requireAdmin,
   resolveClienteId,
   syncFichasCliente,
@@ -34,6 +35,7 @@ import {
   upsertClienteCosmiatriaPreserving,
   upsertRow,
 } from "@/lib/server/csl-crud"
+import { runWithBusinessContext } from "@/lib/server/business-context"
 import {
   clienteCosmiatriaToDb,
   consentToDb,
@@ -55,6 +57,19 @@ const MENU_IDS: string[] = [...ALL_MENU_IDS]
 export async function handleAction(params: ActionParams, user: ActionUser) {
   const action = textValue(params, "action")
 
+  // Cargar BusinessContext UNA vez por request. Todos los CRUD ops dentro
+  // de runWithBusinessContext lo leen automático y filtran por business_id.
+  // Si el profile no tiene business_id (no debería pasar post-migración 002),
+  // ctx queda null y los CRUD ops no filtran — riesgo aceptable porque la
+  // migración garantizó backfill.
+  const businessContext = await loadBusinessContext(user.id)
+
+  return runWithBusinessContext(businessContext, async () => {
+    return dispatchAction(action, params, user)
+  })
+}
+
+async function dispatchAction(action: string, params: ActionParams, user: ActionUser) {
   switch (action) {
     case "health": {
       const { error } = await getSupabaseAdmin().from("csl_sucursales").select("codigo").limit(1)

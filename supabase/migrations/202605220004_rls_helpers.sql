@@ -9,6 +9,9 @@
 -- Rollback: drop function public.current_business_id; drop function public.is_superadmin;
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- NOTA: csl_user_profiles usa columna `activo` (boolean, español), no `active`.
+-- Esto se descubrió aplicando la migración en prod el 2026-05-22. coalesce(activo, true)
+-- trata users sin valor explícito como activos (comportamiento legacy).
 create or replace function public.current_business_id()
 returns uuid
 language sql
@@ -19,7 +22,7 @@ as $$
   select business_id
   from public.csl_user_profiles
   where user_id = auth.uid()
-    and active = true
+    and coalesce(activo, true) = true
   limit 1
 $$;
 
@@ -34,7 +37,7 @@ as $$
     select is_superadmin
     from public.csl_user_profiles
     where user_id = auth.uid()
-      and active = true
+      and coalesce(activo, true) = true
     limit 1
   ), false)
 $$;

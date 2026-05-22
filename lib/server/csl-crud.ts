@@ -7,7 +7,18 @@
 
 import { getSupabaseAdmin } from "./supabase"
 import { fichaClientPatchFromCliente, fromDb, mergeClienteRows } from "./csl-transforms"
+import { getBusinessContext } from "./business-context"
 import type { BusinessContext, Row } from "./csl-types"
+
+/**
+ * Tablas que NO tienen columna business_id y deben quedar exentas de filtro
+ * tenant. Si un caller invoca getRows/upsertRow contra una de estas, el
+ * contexto se ignora.
+ */
+const TENANT_EXEMPT_TABLES = new Set<string>([
+  // Tabla de tenants en sí — global, no per-business
+  "businesses",
+])
 
 export const SYSTEM_ENTITIES = ["sucursales", "equipos", "reportes", "piezas", "tecnicos", "inventario"] as const
 export const PULSOS_ENTITIES = ["operadoras", "lecturas_semanales", "sesiones_cliente", "auditorias_semanales"] as const
@@ -43,12 +54,19 @@ export function tableConfig(entity: string) {
 export async function getRows(entity: string): Promise<Row[]> {
   const supabase = getSupabaseAdmin()
   const config = tableConfig(entity)
+  // Auto-aplicar filter por business_id desde el contexto del request.
+  // Service Role bypasa RLS, así que el filtro EXPLÍCITO acá es la única defensa.
+  const ctx = getBusinessContext()
+  const applyTenant = ctx && !ctx.isSuperadmin && !TENANT_EXEMPT_TABLES.has(config.table)
   const pageSize = 1000
   let from = 0
   const rows: Row[] = []
 
   while (true) {
     let query = supabase.from(config.table).select("*")
+    if (applyTenant) {
+      query = query.eq("business_id", ctx!.businessId)
+    }
     if (config.order) {
       query = query.order(config.order, { ascending: entity !== "reportes" && entity !== "sesiones_cliente" })
     }
@@ -83,8 +101,14 @@ export async function getRowsPaged(
   const offset = Math.max(0, options.offset ?? 0)
   const limit = Math.max(1, Math.min(1000, options.limit))
   const ascending = options.ascending ?? (entity !== "reportes" && entity !== "sesiones_cliente")
+  // Tenant filter: idéntico patrón que getRows.
+  const ctx = getBusinessContext()
+  const applyTenant = ctx && !ctx.isSuperadmin && !TENANT_EXEMPT_TABLES.has(config.table)
 
   let query = supabase.from(config.table).select("*", { count: "exact" })
+  if (applyTenant) {
+    query = query.eq("business_id", ctx!.businessId)
+  }
   if (config.order) query = query.order(config.order, { ascending })
 
   for (const [column, value] of Object.entries(options.filters ?? {})) {
@@ -106,7 +130,20 @@ export async function upsertRow(entity: string, row: Row) {
   const config = tableConfig(entity)
   if (!row[config.key]) throw new Error(`Falta clave ${config.key}`)
 
+  // Inyectar business_id desde contexto. Si el caller pasó uno y NO es
+  // superadmin, debe coincidir con su tenant (anti-fuga).
+  const ctx = getBusinessContext()
+  const applyTenant = ctx && !TENANT_EXEMPT_TABLES.has(config.table)
   const payload: Row = { ...row, updated_at: new Date().toISOString() }
+  if (applyTenant) {
+    if (!ctx!.isSuperadmin && payload.business_id && payload.business_id !== ctx!.businessId) {
+      throw new Error(`Intento de escribir en business_id ajeno bloqueado`)
+    }
+    if (!payload.business_id) {
+      payload.business_id = ctx!.businessId
+    }
+  }
+
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const { error } = await supabase
       .from(config.table)
@@ -125,17 +162,39 @@ export async function deleteRow(entity: string, keyValue: string) {
   const config = tableConfig(entity)
   if (!keyValue) throw new Error(`Falta clave para eliminar ${entity}`)
 
-  const { error } = await supabase.from(config.table).delete().eq(config.key, keyValue)
+  // Tenant verification: si hay contexto y no es superadmin, solo permite
+  // borrar rows que pertenecen al business del user.
+  const ctx = getBusinessContext()
+  const applyTenant = ctx && !ctx.isSuperadmin && !TENANT_EXEMPT_TABLES.has(config.table)
+
+  let query = supabase.from(config.table).delete().eq(config.key, keyValue)
+  if (applyTenant) {
+    query = query.eq("business_id", ctx!.businessId)
+  }
+  const { error } = await query
   if (error) throw error
 }
 
 export async function updateRowFields(entity: string, keyValue: string, fields: Row) {
   const supabase = getSupabaseAdmin()
   const config = tableConfig(entity)
-  const { error } = await supabase
+  const ctx = getBusinessContext()
+  const applyTenant = ctx && !ctx.isSuperadmin && !TENANT_EXEMPT_TABLES.has(config.table)
+
+  // Sanitizar: no permitir cambiar business_id desde fields (sería escape de tenant).
+  const safeFields = { ...fields }
+  if (applyTenant && safeFields.business_id) {
+    delete safeFields.business_id
+  }
+
+  let query = supabase
     .from(config.table)
-    .update({ ...fields, updated_at: new Date().toISOString() })
+    .update({ ...safeFields, updated_at: new Date().toISOString() })
     .eq(config.key, keyValue)
+  if (applyTenant) {
+    query = query.eq("business_id", ctx!.businessId)
+  }
+  const { error } = await query
   if (error) throw error
 }
 
