@@ -141,6 +141,8 @@ export interface Business {
   id: string
   slug: BusinessSlug
   name: string
+  /** Nombre corto para usar en labels compactos: "CSL", "Depicenter". */
+  shortName: string
   displayName: string
   logoUrl: string
   primaryColor: string

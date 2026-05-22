@@ -148,7 +148,7 @@ export function Sidebar() {
               </div>
               <div className="min-w-0">
                 <h1 className="font-heading text-[15px] font-black leading-tight text-[color:var(--brand-primary-dark)]">{business.name}</h1>
-                <p className="mt-0.5 text-[11px] font-medium text-slate-500">Sistema Integral {business.slug.toUpperCase()}</p>
+                <p className="mt-0.5 text-[11px] font-medium text-slate-500">Sistema Integral {business.shortName}</p>
               </div>
             </div>
             <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setSidebarOpen(false)}>
@@ -185,7 +185,7 @@ export function Sidebar() {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2">
-                    PulseControl CSL <span className="csl-new-badge">NEW</span>
+                    PulseControl {business.shortName} <span className="csl-new-badge">NEW</span>
                   </span>
                   <span className="block text-[11px] font-medium text-slate-500">Control de pulsos GentleYAG</span>
                 </span>
@@ -208,7 +208,7 @@ export function Sidebar() {
 
         <div className="relative border-t border-[color:var(--brand-border)] p-4">
           <div className="rounded-xl bg-[color:var(--brand-bg-subtle)] px-3 py-2 ring-1 ring-[color:var(--brand-border)]">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">CSL App</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">{business.shortName} App</p>
             <p className="mt-0.5 text-xs text-slate-500">v24.0 · Seguridad por usuario</p>
           </div>
         </div>

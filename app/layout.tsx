@@ -19,7 +19,10 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "Cibao Spa Laser - Sistema de Mantenimientos",
+  // Title genérico: el branding por business (CSL / Depicenter) se aplica
+  // dinámicamente en sidebar.tsx + header.tsx una vez el user está logueado.
+  // No podemos hacer este title dinámico server-side sin acceso al user.
+  title: "Sistema Integral de Mantenimientos",
   description:
     "Sistema integral de gestión de mantenimientos para equipos láser",
   generator: "v0.app",

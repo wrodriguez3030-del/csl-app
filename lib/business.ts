@@ -35,6 +35,7 @@ export const BUSINESS_FALLBACK: Record<BusinessSlug, Business> = {
     id: "fallback-csl",
     slug: "csl",
     name: "Cibao Spa Laser",
+    shortName: "CSL",
     displayName: "Cibao Spa Laser · CSL",
     logoUrl: "/cibao-spa-laser-logo.jpeg",
     primaryColor: "#14B7B0",
@@ -44,6 +45,7 @@ export const BUSINESS_FALLBACK: Record<BusinessSlug, Business> = {
     id: "fallback-depicenter",
     slug: "depicenter",
     name: "Depicenter Skin Laser",
+    shortName: "Depicenter",
     displayName: "Depicenter Skin Laser",
     logoUrl: "/brands/depicenter-logo.jpg",
     // Turquesa identidad del logo. Misma familia que CSL pero levemente

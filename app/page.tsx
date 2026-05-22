@@ -40,6 +40,7 @@ import { AdminUsersPage } from "@/components/admin-users-page"
 import { canAccessMenu, clearLocalSession, getSessionUser, type SystemUser } from "@/lib/security"
 import { supabaseBrowser } from "@/lib/supabase-client"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
+import { useCurrentBusiness } from "@/hooks/use-current-business"
 import type { Database, DatabasePulsos } from "@/lib/types"
 
 export default function HomePage() {
@@ -60,6 +61,15 @@ export default function HomePage() {
 
   const [user, setUser] = useState<SystemUser | null>(null)
   const [isReady, setIsReady] = useState(false)
+  // Branding dinámico del tab del navegador: cuando el user está logueado,
+  // el title del browser refleja su business (CSL o Depicenter).
+  const business = useCurrentBusiness()
+  useEffect(() => {
+    if (typeof document === "undefined") return
+    document.title = user
+      ? `${business.name} · Sistema de Mantenimientos`
+      : "Sistema Integral de Mantenimientos"
+  }, [user, business.name])
 
   useEffect(() => {
     const sync = async () => {
