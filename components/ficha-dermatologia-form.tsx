@@ -1,7 +1,7 @@
 ﻿"use client"
 
-import { useMemo, useState } from "react"
-import { FileSignature, Loader2, Send, UserRound } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { FileSignature, Loader2, RefreshCcw, Send, UserRound } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -153,6 +153,12 @@ function ConditionalYesNo({ label, value, notes, notesLabel, onChange, onNotesCh
 export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes = [], submitLabel = "Enviar ficha", onCancel, onSubmit }: Props) {
   const [form, setForm] = useState<FichaDermoCosmiatrica>(initialValue || { ...emptyFichaDermo, id: `dermo_${Date.now()}` })
   const [clientSearch, setClientSearch] = useState("")
+  // Estado explícito del dropdown — antes el render se derivaba de
+  // `clientSearch.trim() && matchedClientes.length`, pero como setClientSearch
+  // tras seleccionar dejaba el texto = nombre del cliente, el cliente seguía
+  // matcheando consigo mismo y el dropdown nunca se cerraba.
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const pickerRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
@@ -170,6 +176,21 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
       .slice(0, 8)
   }, [clientes, clientSearch])
 
+  // Cerrar dropdown al hacer click fuera (la lista flota absoluta y antes
+  // tapaba la "tarjeta de cliente vinculado", dando la falsa sensación de
+  // que la selección no había funcionado).
+  useEffect(() => {
+    if (!dropdownOpen) return
+    const onDocPointerDown = (event: PointerEvent) => {
+      if (!pickerRef.current) return
+      if (!pickerRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    document.addEventListener("pointerdown", onDocPointerDown)
+    return () => document.removeEventListener("pointerdown", onDocPointerDown)
+  }, [dropdownOpen])
+
   const update = (patch: Partial<FichaDermoCosmiatrica>) => setForm((current) => ({ ...current, ...patch }))
 
   const selectCliente = (cliente: ClienteCosmiatria) => {
@@ -186,7 +207,28 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
       fechaNacimiento: cliente.FechaNacimiento || form.fechaNacimiento,
       direccion: clienteDireccion(cliente) || form.direccion,
     })
-    setClientSearch(clienteNombre(cliente))
+    // Limpiamos la búsqueda y cerramos el dropdown explícitamente para que
+    // la tarjeta "Cliente vinculado" quede visible y el usuario pueda seguir
+    // llenando la ficha sin que el popover tape el resto del formulario.
+    setClientSearch("")
+    setDropdownOpen(false)
+  }
+
+  const handleCambiarCliente = () => {
+    update({
+      clienteId: undefined,
+      nombre: "",
+      telefono: "",
+      cedula: "",
+      documento: "",
+      email: "",
+      ciudad: "",
+      edad: "",
+      fechaNacimiento: "",
+      direccion: "",
+    })
+    setClientSearch("")
+    setDropdownOpen(true)
   }
 
   const submit = async () => {
@@ -200,6 +242,7 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
       await onSubmit({ ...form, estado: form.estado || "Completada", fechaRegistro: form.fechaRegistro || new Date().toISOString() })
       setForm({ ...emptyFichaDermo, id: `dermo_${Date.now()}`, fecha: new Date().toISOString().slice(0, 10) })
       setClientSearch("")
+      setDropdownOpen(false)
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "No se pudo guardar la ficha")
     } finally {
@@ -250,33 +293,61 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
         <CardHeader><CardTitle className="flex items-center gap-2 text-base"><UserRound className="h-4 w-4" />Cliente vinculado</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           {clientes.length ? (
-            <div className="relative rounded-xl border border-primary/25 bg-primary/10 p-3">
-              <Label>Buscar cliente registrado</Label>
+            <div ref={pickerRef} className="relative rounded-xl border border-primary/25 bg-primary/10 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <Label>Buscar cliente registrado</Label>
+                {form.clienteId ? (
+                  <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={handleCambiarCliente}>
+                    <RefreshCcw className="mr-1 h-3 w-3" /> Cambiar cliente
+                  </Button>
+                ) : null}
+              </div>
               <Input
                 value={clientSearch}
-                onChange={(event) => setClientSearch(event.target.value)}
+                onChange={(event) => {
+                  setClientSearch(event.target.value)
+                  setDropdownOpen(true)
+                }}
+                onFocus={() => setDropdownOpen(true)}
                 placeholder="Buscar por nombre, teléfono, documento, correo o sucursal..."
                 className="mt-1"
               />
-              {clientSearch.trim() && matchedClientes.length ? (
-                <div className="absolute left-3 right-3 top-[76px] z-20 max-h-72 overflow-y-auto rounded-xl border bg-popover p-1 shadow-xl">
+              {dropdownOpen && clientSearch.trim() && matchedClientes.length ? (
+                <div className="absolute left-3 right-3 top-[88px] z-30 max-h-72 overflow-y-auto rounded-xl border bg-popover p-1 shadow-xl">
                   {matchedClientes.map((cliente) => (
-                    <button key={cliente.ClienteID} type="button" onClick={() => selectCliente(cliente)} className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-muted">
+                    <button
+                      key={cliente.ClienteID}
+                      type="button"
+                      // onMouseDown preventDefault evita que el blur del Input
+                      // robe el evento y cancele el onClick en algunos browsers.
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => selectCliente(cliente)}
+                      className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-muted focus:bg-muted focus:outline-none"
+                    >
                       <span className="font-semibold">{clienteNombre(cliente)}</span>
                       <span className="ml-2 text-xs text-muted-foreground">{cliente.Telefono || "Sin teléfono"}</span>
                       <span className="block text-xs text-muted-foreground">{cliente.Sucursal || "Sin sucursal"} · {cliente.DocumentoIdentidad || cliente.Email || "Sin documento"}</span>
                     </button>
                   ))}
                 </div>
-              ) : clientSearch.trim() ? (
+              ) : dropdownOpen && clientSearch.trim() ? (
                 <div className="mt-2 rounded-lg border bg-background px-3 py-2 text-sm text-muted-foreground">No se encontró en Clientes</div>
               ) : null}
             </div>
           ) : null}
           <div className="rounded-2xl border bg-white p-4 shadow-sm">
-            <p className="text-[11px] font-black uppercase tracking-wide text-muted-foreground">Cliente vinculado</p>
-            <p className="mt-1 text-lg font-bold text-primary">{form.nombre || "Sin cliente seleccionado"}</p>
-            <p className="text-sm text-muted-foreground">{form.telefono || "Sin teléfono"} {form.cedula || form.documento ? `· ${form.cedula || form.documento}` : ""}</p>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-black uppercase tracking-wide text-muted-foreground">Cliente vinculado</p>
+                <p className="mt-1 text-lg font-bold text-primary">{form.nombre || "Sin cliente seleccionado"}</p>
+                <p className="text-sm text-muted-foreground">{form.telefono || "Sin teléfono"} {form.cedula || form.documento ? `· ${form.cedula || form.documento}` : ""}</p>
+              </div>
+              {form.clienteId ? (
+                <Button type="button" variant="ghost" size="sm" className="shrink-0 text-xs" onClick={handleCambiarCliente}>
+                  <RefreshCcw className="mr-1 h-3 w-3" /> Cambiar
+                </Button>
+              ) : null}
+            </div>
           </div>
         </CardContent>
       </Card>

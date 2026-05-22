@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
 import { loadXLSX } from "@/lib/load-xlsx"
 import { SEQ_HEADER_CLASS, SeqBadge } from "@/components/seq-badge"
@@ -159,6 +159,12 @@ export function PulsosSesionesPage() {
   const [form, setForm] = useState<SesionCliente>(empty)
   const [clientes, setClientes] = useState<ClienteCosmiatria[]>([])
   const [clientSearch, setClientSearch] = useState("")
+  // Estado explícito del dropdown del selector de cliente: antes el render
+  // se derivaba solo de `clientSearch.trim()` y como tras seleccionar el
+  // texto se reescribía con el nombre del cliente, el dropdown se quedaba
+  // abierto (el cliente seguía matcheando consigo mismo).
+  const [clienteDropdownOpen, setClienteDropdownOpen] = useState(false)
+  const clientePickerRef = useRef<HTMLDivElement>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [filterDesde, setFilterDesde] = useState("")
   const [filterHasta, setFilterHasta] = useState("")
@@ -246,8 +252,25 @@ export function PulsosSesionesPage() {
       Cliente: nombre,
       Sucursal: cliente.Sucursal || form.Sucursal,
     })
-    setClientSearch(`${nombre} · ${cliente.Telefono || "sin teléfono"}`)
+    // Limpiar la búsqueda + cerrar el dropdown explícitamente. El nombre
+    // queda visible en el campo "Cliente *" de abajo, que es la fuente de
+    // verdad para guardar.
+    setClientSearch("")
+    setClienteDropdownOpen(false)
   }
+
+  // Cerrar dropdown del selector al hacer click fuera.
+  useEffect(() => {
+    if (!clienteDropdownOpen) return
+    const onDocPointerDown = (event: PointerEvent) => {
+      if (!clientePickerRef.current) return
+      if (!clientePickerRef.current.contains(event.target as Node)) {
+        setClienteDropdownOpen(false)
+      }
+    }
+    document.addEventListener("pointerdown", onDocPointerDown)
+    return () => document.removeEventListener("pointerdown", onDocPointerDown)
+  }, [clienteDropdownOpen])
 
   const openNew = () => { setForm({ ...empty }); setClientSearch(""); setIsEditing(false); setOpen(true) }
   const openEdit = (s: SesionCliente) => { setForm({ ...s }); setClientSearch(s.Cliente || ""); setIsEditing(true); setOpen(true) }
@@ -711,20 +734,25 @@ export function PulsosSesionesPage() {
             </div>
             <div className="space-y-1.5 col-span-2">
               <Label>Buscar cliente registrado</Label>
-              <div className="relative">
+              <div className="relative" ref={clientePickerRef}>
                 <Input
                   value={clientSearch}
-                  onChange={e => setClientSearch(e.target.value)}
+                  onChange={e => {
+                    setClientSearch(e.target.value)
+                    setClienteDropdownOpen(true)
+                  }}
+                  onFocus={() => setClienteDropdownOpen(true)}
                   placeholder="Buscar por nombre, teléfono o documento..."
                 />
-                {clientSearch.trim() ? (
+                {clienteDropdownOpen && clientSearch.trim() ? (
                   <div className="absolute left-0 right-0 top-10 z-30 max-h-64 overflow-y-auto rounded-xl border bg-popover p-1 shadow-xl">
                     {matchedClientes.length ? matchedClientes.map((cliente) => (
                       <button
                         key={cliente.ClienteID}
                         type="button"
+                        onMouseDown={(event) => event.preventDefault()}
                         onClick={() => selectCliente(cliente)}
-                        className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-muted"
+                        className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-muted focus:bg-muted focus:outline-none"
                       >
                         <span className="font-semibold">{clienteNombre(cliente)}</span>
                         <span className="ml-2 text-xs text-muted-foreground">{cliente.Telefono || "Sin teléfono"}</span>
