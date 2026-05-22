@@ -34,6 +34,40 @@ import {
 import { Pencil, Trash2, Download, Search, Printer, Eye } from "lucide-react"
 import type { Reporte, PiezaIntervenida, Database } from "@/lib/types"
 
+// Nombre sugerido del PDF al imprimir/guardar desde el navegador.
+// Browsers usan document.title del print window como filename sugerido,
+// y normalmente añaden la extensión .pdf cuando se elige "Guardar como PDF".
+// Por eso devolvemos el nombre SIN .pdf.
+//
+// Formato: Equipo-<id>-Serie-<ultimos4digitos>
+// Fallbacks: SIN-EQUIPO / SIN-SERIE.
+function buildReportePdfBaseName(reporte: Reporte): string {
+  const equipoRaw = String(reporte.EquipoID ?? "").trim()
+  const serieRaw = String(reporte.Serie ?? "").trim()
+
+  // Últimos 4 dígitos numéricos del serial (después de extraer solo dígitos):
+  //   "9914-0950-1480" → "991409501480" → "1480"
+  //   "ABC123456"      → "123456"       → "3456"
+  //   "1480"           → "1480"         → "1480"
+  const digits = serieRaw.replace(/\D/g, "")
+  const last4 = digits ? digits.slice(-4) : ""
+
+  const equipoPart = equipoRaw || "SIN-EQUIPO"
+  const seriePart = last4 || "SIN-SERIE"
+
+  // Sanitizar para nombres de archivo Windows-safe: < > : " / \ | ? *
+  // y espacios/caracteres raros. Mantiene letras, números, guiones y _.
+  const sanitize = (s: string) =>
+    s
+      .normalize("NFKD")
+      .replace(/[^\w-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      || "X"
+
+  return `Equipo-${sanitize(equipoPart)}-Serie-${sanitize(seriePart)}`
+}
+
 function formatDate(dateStr: string | undefined): string {
   if (!dateStr) return "-"
   try {
@@ -147,6 +181,9 @@ export function ReportesPage() {
 
   const handlePrint = (reporte: Reporte) => {
     const piezas = parsePiezas(reporte.PiezasJSON)
+    // Nombre sugerido del PDF: Equipo-<id>-Serie-<ultimos4>.pdf
+    // El navegador toma document.title como filename al "Guardar como PDF".
+    const pdfBaseName = buildReportePdfBaseName(reporte)
     const printWindow = window.open("", "_blank")
     if (!printWindow) return
 
@@ -155,7 +192,7 @@ export function ReportesPage() {
       <html>
       <head>
         <meta charset="UTF-8">
-        <title>Reporte ${reporte.ID}</title>
+        <title>${pdfBaseName}</title>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: Arial, sans-serif; font-size: 11px; color: black; background: white; }
@@ -298,7 +335,12 @@ export function ReportesPage() {
     `
     printWindow.document.write(content)
     printWindow.document.close()
+    // Algunos navegadores ignoran el <title> escrito vía document.write hasta
+    // que la ventana está totalmente cargada — forzamos el título también
+    // dinámicamente justo antes de print() para que el "Guardar como PDF"
+    // sugiera Equipo-X-Serie-XXXX.
     printWindow.onload = () => {
+      try { printWindow.document.title = pdfBaseName } catch {}
       printWindow.print()
     }
   }
