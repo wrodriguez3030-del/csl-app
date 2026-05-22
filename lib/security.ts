@@ -1,6 +1,6 @@
 ﻿"use client"
 
-import type { TabId } from "@/lib/types"
+import type { BusinessSlug, TabId } from "@/lib/types"
 import { supabaseBrowser } from "@/lib/supabase-client"
 import { ALL_MENU_IDS, MENU_ID_SET, MENU_OPTIONS, type MenuPermission } from "@/lib/menus"
 
@@ -15,6 +15,17 @@ export interface SystemUser {
   isAdmin: boolean
   menus: MenuPermission[]
   createdAt: string
+
+  // ─── Multi-tenant (opcional) ──────────────────────────────────────────────
+  // Estos campos vienen de csl_user_profiles cuando las migraciones SQL ya se
+  // aplicaron (ver supabase/migrations/202605220002*). Hasta entonces son
+  // undefined y el sistema cae a CSL por default vía useCurrentBusiness().
+  /** Slug del negocio del usuario. undefined = pre-migración (asumimos CSL). */
+  businessSlug?: BusinessSlug
+  /** UUID del negocio en businesses table. undefined = pre-migración. */
+  businessId?: string
+  /** Si true, ignora filtros multi-tenant (acceso global). undefined = false. */
+  isSuperadmin?: boolean
 }
 
 export const USERS_STORAGE_KEY = "csl_system_users_v1"
@@ -50,6 +61,14 @@ function normalizeMenus(value: unknown): MenuPermission[] {
 
 function userFromProfile(profile: Record<string, unknown>, fallbackId: string, fallbackEmail: string): SystemUser {
   const isAdmin = Boolean(profile.is_admin ?? profile.isAdmin)
+  // Multi-tenant: estos campos solo existen después de la migración
+  // 202605220002. Antes de eso, son undefined y el sistema sigue tratando
+  // a todos los usuarios como CSL vía useCurrentBusiness() fallback.
+  const businessId = profile.business_id ? String(profile.business_id) : undefined
+  const businessSlug = profile.business_slug
+    ? String(profile.business_slug)
+    : undefined
+  const isSuperadmin = Boolean(profile.is_superadmin ?? profile.isSuperadmin)
   return {
     id: String(profile.user_id ?? profile.id ?? fallbackId),
     nombre: String(profile.nombre ?? profile.name ?? fallbackEmail.split("@")[0] ?? "Usuario"),
@@ -59,6 +78,9 @@ function userFromProfile(profile: Record<string, unknown>, fallbackId: string, f
     isAdmin,
     menus: isAdmin ? [...ALL_MENU_IDS] : normalizeMenus(profile.menus),
     createdAt: String(profile.created_at ?? profile.createdAt ?? nowIso()),
+    businessId,
+    businessSlug: businessSlug === "csl" || businessSlug === "depicenter" ? businessSlug : undefined,
+    isSuperadmin,
   }
 }
 

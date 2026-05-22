@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import type { TabId } from "@/lib/types"
 import { logout } from "@/lib/security"
 import { useSessionUser } from "@/hooks/use-session-user"
+import { useCurrentBusiness } from "@/hooks/use-current-business"
+import { BusinessLogo } from "@/components/business-logo"
 import { cn } from "@/lib/utils"
 
 const pageMeta: Partial<Record<TabId, { title: string; description: string; eyebrow: string }>> = {
@@ -49,6 +51,8 @@ interface HeaderProps {
 export function Header({ onRefresh }: HeaderProps) {
   const { activeTab, setSidebarOpen, isLoading, isConnected, lastSyncAt, isSyncing } = useAppStore()
   const user = useSessionUser()
+  // Multi-tenant branding: idéntico fallback que Sidebar.
+  const business = useCurrentBusiness()
   const meta = pageMeta[activeTab] || pageMeta.panel!
 
   const isPulse = useMemo(() => String(activeTab).startsWith("pulsos-") || String(activeTab).startsWith("pulse-"), [activeTab])
@@ -80,7 +84,7 @@ export function Header({ onRefresh }: HeaderProps) {
         </Button>
 
         <div className="hidden h-11 w-20 shrink-0 items-center justify-center rounded-xl bg-white p-1.5 ring-1 ring-[color:var(--brand-border)] sm:flex">
-          <img src="/cibao-spa-laser-logo.jpeg" alt="Cibao Spa Laser" className="h-full w-full object-contain" />
+          <BusinessLogo business={business} className="h-full w-full object-contain" />
         </div>
 
         <div className="min-w-0 flex-1">

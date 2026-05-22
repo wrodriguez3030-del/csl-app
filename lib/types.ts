@@ -120,6 +120,54 @@ export interface Database {
 }
 
 // =====================================================
+// MULTI-TENANT (negocios) — ver supabase/migrations/202605220001*
+// =====================================================
+
+/** Slugs soportados. Coinciden 1:1 con `businesses.slug` en DB. */
+export type BusinessSlug = "csl" | "depicenter"
+
+/**
+ * Roles propuestos en el plan multi-tenant. Por ahora solo se distingue
+ * `is_superadmin` boolean en csl_user_profiles; este enum queda definido
+ * para cuando se introduzca la columna `role` en una migración futura.
+ */
+export type UserRole = "superadmin" | "admin" | "tecnico" | "usuario"
+
+/**
+ * Representación hidratada de un negocio para el cliente. Construido a
+ * partir de la fila `businesses` o del fallback local en `lib/business.ts`.
+ */
+export interface Business {
+  id: string
+  slug: BusinessSlug
+  name: string
+  displayName: string
+  logoUrl: string
+  primaryColor: string
+  active: boolean
+}
+
+/**
+ * Perfil del usuario tal como vive en la tabla `csl_user_profiles` (más
+ * los campos derivados que el frontend necesita: businessSlug, business
+ * hidratado). Hoy el sistema usa `SystemUser` en lib/security.ts; este
+ * tipo paralelo es para módulos nuevos que prefieran trabajar con shape
+ * más limpio y campos multi-tenant explícitos.
+ */
+export interface UserProfile {
+  id: string
+  userId: string
+  email: string
+  fullName: string
+  role: UserRole
+  businessId: string
+  businessSlug: BusinessSlug
+  business?: Business
+  active: boolean
+  isSuperadmin: boolean
+}
+
+// =====================================================
 // MÓDULO CONTROL DE PULSOS
 // =====================================================
 

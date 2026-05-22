@@ -7,7 +7,7 @@
 
 import { getSupabaseAdmin } from "./supabase"
 import { fichaClientPatchFromCliente, fromDb, mergeClienteRows } from "./csl-transforms"
-import type { Row } from "./csl-types"
+import type { BusinessContext, Row } from "./csl-types"
 
 export const SYSTEM_ENTITIES = ["sucursales", "equipos", "reportes", "piezas", "tecnicos", "inventario"] as const
 export const PULSOS_ENTITIES = ["operadoras", "lecturas_semanales", "sesiones_cliente", "auditorias_semanales"] as const
@@ -276,4 +276,125 @@ export async function requireAdmin(userId: string) {
   const profile = await getProfile(userId)
   if (!profile?.is_admin) throw new Error("Solo un administrador puede gestionar usuarios")
   return profile
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Multi-tenant helpers (preparados, no activos)
+// ═════════════════════════════════════════════════════════════════════════════
+// Las funciones de abajo APLICAN filtro/inyección por business_id usando un
+// BusinessContext (ver csl-types.ts). Nadie las llama todavía: los handlers
+// actuales usan getRows/upsertRow/etc. sin filtro y eso sigue funcionando.
+//
+// Activación posterior (después de aplicar las migraciones SQL 202605220*):
+//   1. _handlers.ts construye BusinessContext desde el JWT (loadBusinessContext)
+//   2. Reemplaza llamadas a getRows(entity) → getRowsForBusiness(entity, ctx)
+//   3. Reemplaza upsertRow(entity, row) → upsertRowForBusiness(entity, row, ctx)
+//   4. Etc.
+//
+// Cero impacto en producción mientras no se llamen.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Lee el BusinessContext del usuario logueado. Devuelve null si la columna
+ * business_id aún no existe en csl_user_profiles (pre-migración 002) o si
+ * el usuario no tiene business asignado.
+ */
+export async function loadBusinessContext(userId: string): Promise<BusinessContext | null> {
+  if (!userId) return null
+  const supabase = getSupabaseAdmin()
+  try {
+    const { data, error } = await supabase
+      .from("csl_user_profiles")
+      .select("business_id, is_superadmin, businesses(slug)")
+      .eq("user_id", userId)
+      .maybeSingle()
+    if (error || !data) return null
+    const row = data as Row
+    const businessId = row.business_id ? String(row.business_id) : null
+    if (!businessId) return null
+    const businesses = row.businesses as { slug?: string } | undefined
+    return {
+      businessId,
+      businessSlug: String(businesses?.slug ?? "csl"),
+      isSuperadmin: Boolean(row.is_superadmin),
+    }
+  } catch {
+    // Si la columna no existe (pre-migración), Supabase retorna error 42703.
+    // Devolvemos null para que el caller use lógica legacy.
+    return null
+  }
+}
+
+/**
+ * getRows + filtro business_id. Superadmin ve todo.
+ * Usa el mismo cliente admin (Service Role) que getRows para no requerir
+ * todavía el JWT pass-through del usuario. Cuando se active RLS (Fase 5
+ * del plan), esto se reemplaza por un cliente con anon + JWT.
+ */
+export async function getRowsForBusiness(entity: string, ctx: BusinessContext): Promise<Row[]> {
+  if (ctx.isSuperadmin) return getRows(entity)
+  const supabase = getSupabaseAdmin()
+  const config = tableConfig(entity)
+  const pageSize = 1000
+  let from = 0
+  const rows: Row[] = []
+  while (true) {
+    let query = supabase.from(config.table).select("*").eq("business_id", ctx.businessId)
+    if (config.order) {
+      query = query.order(config.order, { ascending: entity !== "reportes" && entity !== "sesiones_cliente" })
+    }
+    const { data, error } = await query.range(from, from + pageSize - 1)
+    if (error) throw error
+    rows.push(...((data || []) as Row[]))
+    if (!data || data.length < pageSize) break
+    from += pageSize
+  }
+  return rows.map((row) => fromDb(entity, row))
+}
+
+/**
+ * upsertRow con inyección de business_id. Para superadmin, si el row trae
+ * business_id explícito lo respeta; sino, usa el del contexto.
+ */
+export async function upsertRowForBusiness(entity: string, row: Row, ctx: BusinessContext) {
+  const businessId = ctx.isSuperadmin && row.business_id ? row.business_id : ctx.businessId
+  const enriched: Row = { ...row, business_id: businessId }
+  return upsertRow(entity, enriched)
+}
+
+/**
+ * deleteRow con verificación de business_id. Un usuario no puede borrar
+ * rows de otro tenant aunque tenga el key.
+ */
+export async function deleteRowForBusiness(entity: string, keyValue: string, ctx: BusinessContext) {
+  if (ctx.isSuperadmin) return deleteRow(entity, keyValue)
+  if (!keyValue) throw new Error(`Falta clave para eliminar ${entity}`)
+  const supabase = getSupabaseAdmin()
+  const config = tableConfig(entity)
+  const { error } = await supabase
+    .from(config.table)
+    .delete()
+    .eq(config.key, keyValue)
+    .eq("business_id", ctx.businessId)
+  if (error) throw error
+}
+
+/**
+ * updateRowFields con verificación + inyección de business_id.
+ */
+export async function updateRowFieldsForBusiness(
+  entity: string,
+  keyValue: string,
+  fields: Row,
+  ctx: BusinessContext,
+) {
+  const supabase = getSupabaseAdmin()
+  const config = tableConfig(entity)
+  let query = supabase
+    .from(config.table)
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq(config.key, keyValue)
+  if (!ctx.isSuperadmin) query = query.eq("business_id", ctx.businessId)
+  const { error } = await query
+  if (error) throw error
 }

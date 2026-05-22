@@ -6,6 +6,8 @@ import { useAppStore } from "@/lib/store"
 import type { TabId } from "@/lib/types"
 import { canAccessMenu } from "@/lib/security"
 import { useSessionUser } from "@/hooks/use-session-user"
+import { useCurrentBusiness } from "@/hooks/use-current-business"
+import { BusinessLogo } from "@/components/business-logo"
 import {
   Activity,
   BarChart3,
@@ -108,6 +110,9 @@ const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
 export function Sidebar() {
   const { activeTab, setActiveTab, sidebarOpen, setSidebarOpen, pulsosSectionOpen, setPulsosSectionOpen } = useAppStore()
   const user = useSessionUser()
+  // Multi-tenant: branding dinámico según el business del usuario logueado.
+  // Pre-migración (user sin businessSlug) cae a CSL → comportamiento idéntico.
+  const business = useCurrentBusiness()
 
   const visiblePulse = useMemo(() => PULSE_ITEMS.filter((item) => canAccessMenu(user, item.id)), [user])
   const isPulseActive = visiblePulse.some((item) => item.id === activeTab)
@@ -132,11 +137,11 @@ export function Sidebar() {
             <div className="flex min-w-0 items-center gap-3">
               {/* Logo: respetamos el área limpia que pide el manual de identidad. */}
               <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1.5 ring-1 ring-[color:var(--brand-border)]">
-                <img src="/cibao-spa-laser-logo.jpeg" alt="Cibao Spa Laser" className="h-full w-full object-contain" />
+                <BusinessLogo business={business} className="h-full w-full object-contain" />
               </div>
               <div className="min-w-0">
-                <h1 className="font-heading text-[15px] font-black leading-tight text-[color:var(--brand-primary-dark)]">Cibao Spa Laser</h1>
-                <p className="mt-0.5 text-[11px] font-medium text-slate-500">Sistema Integral CSL</p>
+                <h1 className="font-heading text-[15px] font-black leading-tight text-[color:var(--brand-primary-dark)]">{business.name}</h1>
+                <p className="mt-0.5 text-[11px] font-medium text-slate-500">Sistema Integral {business.slug.toUpperCase()}</p>
               </div>
             </div>
             <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setSidebarOpen(false)}>
