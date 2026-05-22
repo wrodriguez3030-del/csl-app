@@ -65,9 +65,12 @@ function userFromProfile(profile: Record<string, unknown>, fallbackId: string, f
   // 202605220002. Antes de eso, son undefined y el sistema sigue tratando
   // a todos los usuarios como CSL vía useCurrentBusiness() fallback.
   const businessId = profile.business_id ? String(profile.business_id) : undefined
-  const businessSlug = profile.business_slug
-    ? String(profile.business_slug)
-    : undefined
+  // El slug viene del join con businesses(slug) en la query del login.
+  // Fallback: campo plano business_slug si alguna ruta vieja lo provee.
+  const businessRel = profile.businesses as { slug?: unknown } | null | undefined
+  const businessSlug =
+    (businessRel?.slug ? String(businessRel.slug) : undefined) ??
+    (profile.business_slug ? String(profile.business_slug) : undefined)
   const isSuperadmin = Boolean(profile.is_superadmin ?? profile.isSuperadmin)
   return {
     id: String(profile.user_id ?? profile.id ?? fallbackId),
@@ -130,11 +133,15 @@ export async function login(username: string, password: string): Promise<{ ok: b
 
   if (error || !data.user) return { ok: false, error: error?.message || "No se pudo iniciar sesion" }
 
+  // Pull profile + joined businesses(slug) so the frontend knows the tenant
+  // slug immediately on login. The csl_user_profiles table only stores
+  // business_id (uuid); the slug lives in businesses.slug. Without this
+  // join, useCurrentBusiness() falls back to CSL for every user (bug).
   const { data: profile } = await withTimeout(
     Promise.resolve(
       supabaseBrowser
       .from("csl_user_profiles")
-      .select("*")
+      .select("*, businesses(slug, name)")
       .eq("user_id", data.user.id)
         .maybeSingle()
     ),
