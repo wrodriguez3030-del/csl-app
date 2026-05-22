@@ -20,7 +20,12 @@ import {
   AlertTriangle, TrendingDown, Boxes,
 } from "lucide-react"
 import { RecordActions } from "@/components/record-actions"
-import type { InventarioItem } from "@/lib/types"
+import type { InventarioItem, PiezaCatalogo } from "@/lib/types"
+
+const emptyPiezaCatalogo: PiezaCatalogo = {
+  Pieza: "", Categoria: "", Prioridad: "Media", Tipo: "Consumible",
+  Funcion: "", FallasComunes: "", Activa: "Sí",
+}
 
 const empty: InventarioItem = {
   ItemID: "", CodigoBarras: "", Pieza: "", Categoria: "",
@@ -53,6 +58,11 @@ export function InventarioPage() {
   const [adjustQuantity, setAdjustQuantity] = useState(0)
   const [adjustType, setAdjustType] = useState<"add"|"remove">("add")
   const [adjustSucursal, setAdjustSucursal] = useState<"Rafael Vidal"|"Los Jardines"|"Villa Olga"|"La Vega">("Rafael Vidal")
+
+  // Estado para crear nueva pieza del catálogo inline (desde el modal de inventario)
+  const [showNuevaPieza, setShowNuevaPieza] = useState(false)
+  const [nuevaPiezaForm, setNuevaPiezaForm] = useState<PiezaCatalogo>(emptyPiezaCatalogo)
+  const [savingNuevaPieza, setSavingNuevaPieza] = useState(false)
 
   const inventario = db.inventario || []
 
@@ -144,6 +154,55 @@ export function InventarioPage() {
     
     showToast(isEditing ? "Item actualizado" : "Item agregado al inventario", "success")
     setOpen(false)
+  }
+
+  // Crea una pieza del catálogo desde el modal de Nuevo item de inventario.
+  // Guarda local (optimistic) + Supabase (savePieza), y auto-rellena el form
+  // principal de inventario con la nueva pieza para no perder el contexto.
+  const handleSaveNuevaPieza = async () => {
+    const nombre = nuevaPiezaForm.Pieza.trim()
+    if (!nombre) {
+      showToast("Nombre de la pieza es obligatorio", "error")
+      return
+    }
+    if (db.piezas.some(p => p.Pieza.toLowerCase() === nombre.toLowerCase())) {
+      showToast("Ya existe una pieza con ese nombre en el catálogo", "error")
+      return
+    }
+    setSavingNuevaPieza(true)
+    const nueva: PiezaCatalogo = { ...nuevaPiezaForm, Pieza: nombre }
+    // Optimistic update local + auto-select en el form principal de inventario.
+    setDb({ ...db, piezas: [...db.piezas, nueva] })
+    setForm({
+      ...form,
+      Pieza: nombre,
+      Categoria: nueva.Categoria || form.Categoria,
+      Observaciones: form.Observaciones || nueva.Funcion || "",
+    })
+    // Persistir en Supabase via Apps Script (mismo action que catalogo-page).
+    const normalized = normalizeApiUrl(apiUrl)
+    if (normalized) {
+      try {
+        await apiJsonp(normalized, {
+          action: "savePieza",
+          pieza: nombre,
+          categoria: nueva.Categoria || "",
+          prioridad: nueva.Prioridad,
+          tipo: nueva.Tipo,
+          funcion: nueva.Funcion || "",
+          fallasComunes: nueva.FallasComunes || "",
+          activa: "Sí",
+        })
+        showToast(`Pieza "${nombre}" agregada al catálogo`, "success")
+      } catch (error) {
+        showToast(`Pieza guardada localmente (Supabase: ${error instanceof Error ? error.message : "sin conexión"})`, "info")
+      }
+    } else {
+      showToast(`Pieza "${nombre}" guardada localmente`, "info")
+    }
+    setSavingNuevaPieza(false)
+    setShowNuevaPieza(false)
+    setNuevaPiezaForm(emptyPiezaCatalogo)
   }
 
   const guardarEnSupabase = async (item: InventarioItem, action = "updateInventario") => {
@@ -489,7 +548,23 @@ export function InventarioPage() {
               <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase">Información general</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2 space-y-1.5">
-                  <Label>Pieza del catálogo *</Label>
+                  <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <Label>Pieza del catálogo *</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 self-start gap-1 text-xs sm:self-auto"
+                      onClick={() => {
+                        // Pre-cargar categoría si el usuario ya escribió una en el form principal.
+                        setNuevaPiezaForm({ ...emptyPiezaCatalogo, Categoria: form.Categoria || "" })
+                        setShowNuevaPieza(true)
+                      }}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Nueva pieza
+                    </Button>
+                  </div>
                   <Select
                     value={form.Pieza}
                     onValueChange={(v) => {
@@ -506,7 +581,7 @@ export function InventarioPage() {
                     <SelectTrigger><SelectValue placeholder="Selecciona una pieza del catálogo" /></SelectTrigger>
                     <SelectContent className="max-h-[300px]">
                       {db.piezas.length === 0 ? (
-                        <SelectItem value="__none__" disabled>No hay piezas en el catálogo — carga el catálogo primero</SelectItem>
+                        <SelectItem value="__none__" disabled>No hay piezas en el catálogo — usa &quot;+ Nueva pieza&quot;</SelectItem>
                       ) : (
                         db.piezas
                           .filter(p => p.Pieza)
@@ -620,6 +695,92 @@ export function InventarioPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}><X className="h-4 w-4 mr-2" />Cancelar</Button>
             <Button onClick={handleSave}><Save className="h-4 w-4 mr-2" />Guardar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Nueva pieza del catálogo (secundario, abierto desde el modal de Nuevo item) */}
+      <Dialog open={showNuevaPieza} onOpenChange={(v) => { if (!savingNuevaPieza) setShowNuevaPieza(v) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5 text-primary" />
+              Nueva pieza del catálogo
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label>Nombre de la pieza *</Label>
+              <Input
+                value={nuevaPiezaForm.Pieza}
+                onChange={e => setNuevaPiezaForm({ ...nuevaPiezaForm, Pieza: e.target.value })}
+                placeholder="Ej: Lámpara Xenon GentleYAG"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Categoría</Label>
+              <Input
+                value={nuevaPiezaForm.Categoria}
+                onChange={e => setNuevaPiezaForm({ ...nuevaPiezaForm, Categoria: e.target.value })}
+                placeholder="Ej: Consumibles principales"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Prioridad</Label>
+                <Select value={nuevaPiezaForm.Prioridad} onValueChange={v => setNuevaPiezaForm({ ...nuevaPiezaForm, Prioridad: v as PiezaCatalogo["Prioridad"] })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Alta">Alta</SelectItem>
+                    <SelectItem value="Media-Alta">Media-Alta</SelectItem>
+                    <SelectItem value="Media">Media</SelectItem>
+                    <SelectItem value="Baja">Baja</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Tipo</Label>
+                <Select value={nuevaPiezaForm.Tipo} onValueChange={v => setNuevaPiezaForm({ ...nuevaPiezaForm, Tipo: v as PiezaCatalogo["Tipo"] })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Consumible">Consumible</SelectItem>
+                    <SelectItem value="Consumible técnico">Consumible técnico</SelectItem>
+                    <SelectItem value="Consumible operativo">Consumible operativo</SelectItem>
+                    <SelectItem value="No consumible">No consumible</SelectItem>
+                    <SelectItem value="No consumible crítico">No consumible crítico</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Descripción / Función</Label>
+              <Input
+                value={nuevaPiezaForm.Funcion || ""}
+                onChange={e => setNuevaPiezaForm({ ...nuevaPiezaForm, Funcion: e.target.value })}
+                placeholder="¿Para qué sirve la pieza?"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Fallas comunes</Label>
+              <Input
+                value={nuevaPiezaForm.FallasComunes || ""}
+                onChange={e => setNuevaPiezaForm({ ...nuevaPiezaForm, FallasComunes: e.target.value })}
+                placeholder="Opcional"
+              />
+            </div>
+            <p className="rounded-md bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+              💡 Marca, Modelo, Número de parte y Código de barras se llenan en el item de inventario, no en el catálogo.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNuevaPieza(false)} disabled={savingNuevaPieza}>
+              <X className="h-4 w-4 mr-2" /> Cancelar
+            </Button>
+            <Button onClick={handleSaveNuevaPieza} disabled={savingNuevaPieza || !nuevaPiezaForm.Pieza.trim()}>
+              <Save className="h-4 w-4 mr-2" />
+              {savingNuevaPieza ? "Guardando..." : "Guardar pieza"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
