@@ -96,6 +96,9 @@ export function AdminUsersPage() {
   const [form, setForm] = useState<FormState>(emptyForm)
   const [editing, setEditing] = useState<AdminUserRow | null>(null)
   const [saving, setSaving] = useState(false)
+  // Error inline en el dialog. Visible mientras el modal está abierto.
+  // Se limpia cuando abrís el modal o cambias el form.
+  const [formError, setFormError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<AdminUserRow | null>(null)
   const [tempPasswordModal, setTempPasswordModal] = useState<{ email: string; password: string } | null>(null)
 
@@ -127,6 +130,7 @@ export function AdminUsersPage() {
   const openNew = () => {
     setEditing(null)
     setForm({ ...emptyForm, menus: SUGGESTED_MENUS_CSL })
+    setFormError(null)
     setOpen(true)
   }
 
@@ -142,11 +146,13 @@ export function AdminUsersPage() {
       activo: u.activo,
       menus: (u.menus || []) as MenuPermission[],
     })
+    setFormError(null)
     setOpen(true)
   }
 
   const handleSave = async () => {
     setSaving(true)
+    setFormError(null)
     try {
       const payload = {
         nombre: form.nombre,
@@ -174,20 +180,28 @@ export function AdminUsersPage() {
           body: JSON.stringify(patchBody),
         })
         showToast(`Usuario "${form.nombre}" actualizado`, "success")
+        setOpen(false)
+        setForm(emptyForm)
       } else {
         await authedFetch("/api/admin/users", {
           method: "POST",
           body: JSON.stringify(payload),
         })
-        // Mostrar el password temporal una vez al admin para que pueda compartirlo
-        setTempPasswordModal({ email: form.email, password: form.password })
-        showToast(`Usuario "${form.nombre}" creado`, "success")
+        // Capturar email+password ANTES de limpiar el form (setForm es async).
+        const tempEmail = form.email
+        const tempPwd = form.password
+        setOpen(false)
+        setForm(emptyForm)
+        // Mostrar el password temporal una vez al admin para que pueda compartirlo.
+        setTempPasswordModal({ email: tempEmail, password: tempPwd })
+        showToast(`Usuario "${tempEmail}" creado`, "success")
       }
-      setOpen(false)
-      setForm(emptyForm)
       void loadUsers()
     } catch (e) {
-      showToast(e instanceof Error ? e.message : "Error guardando", "error")
+      const msg = e instanceof Error ? e.message : "Error guardando"
+      // Mostrar error INLINE en el dialog (no solo toast, que puede no verse).
+      setFormError(msg)
+      showToast(msg, "error")
     } finally {
       setSaving(false)
     }
@@ -381,25 +395,53 @@ export function AdminUsersPage() {
         </CardContent>
       </Card>
 
-      {/* Dialog create/edit */}
+      {/* Dialog create/edit — modal grande, footer sticky, menus en grid 2-3 cols */}
       <Dialog open={open} onOpenChange={(v) => { if (!saving) setOpen(v) }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editing ? `Editar usuario: ${editing.nombre}` : "Nuevo usuario"}</DialogTitle>
+        <DialogContent className="flex max-h-[92vh] w-[96vw] max-w-4xl flex-col overflow-hidden p-0">
+          <DialogHeader className="border-b border-border px-6 pt-6 pb-4">
+            <DialogTitle className="text-xl">
+              {editing ? `Editar usuario: ${editing.nombre}` : "Nuevo usuario"}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+          {/* Cuerpo scrolleable */}
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            {/* Error inline — visible mientras no se cierre */}
+            {formError ? (
+              <div className="rounded-md border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+                <p className="font-bold">No se pudo {editing ? "guardar" : "crear"} el usuario</p>
+                <p className="mt-1 break-words">{formError}</p>
+              </div>
+            ) : null}
+
+            {/* Campos principales: 3 columnas en desktop */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <div className="space-y-1.5">
                 <Label>Nombre *</Label>
-                <Input value={form.nombre} onChange={e => setForm({...form, nombre: e.target.value})} placeholder="Nombre Apellido" />
+                <Input
+                  value={form.nombre}
+                  onChange={e => { setForm({...form, nombre: e.target.value}); setFormError(null) }}
+                  placeholder="Nombre Apellido"
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Email *</Label>
-                <Input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} placeholder="user@ejemplo.com" disabled={!!editing} />
+                <Input
+                  type="email"
+                  value={form.email}
+                  onChange={e => { setForm({...form, email: e.target.value}); setFormError(null) }}
+                  placeholder="user@ejemplo.com"
+                  disabled={!!editing}
+                />
               </div>
               <div className="space-y-1.5">
-                <Label>Contraseña {editing ? "(dejar vacío para no cambiar)" : "temporal *"}</Label>
-                <Input type="text" value={form.password} onChange={e => setForm({...form, password: e.target.value})} placeholder="mín 6 caracteres" />
+                <Label>Contraseña {editing ? "(opcional)" : "temporal *"}</Label>
+                <Input
+                  type="text"
+                  value={form.password}
+                  onChange={e => { setForm({...form, password: e.target.value}); setFormError(null) }}
+                  placeholder={editing ? "Dejar vacío para no cambiar" : "Mín 6, evitar comunes (123456, password...)"}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Negocio *</Label>
@@ -410,11 +452,11 @@ export function AdminUsersPage() {
                     setForm({
                       ...form,
                       businessSlug: slug,
-                      // Auto-sugerir menús apropiados si el user es "usuario normal"
                       menus: form.role === "usuario"
                         ? (slug === "depicenter" ? SUGGESTED_MENUS_DEPICENTER : SUGGESTED_MENUS_CSL)
                         : form.menus,
                     })
+                    setFormError(null)
                   }}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -426,12 +468,12 @@ export function AdminUsersPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>Rol *</Label>
-                <Select value={form.role} onValueChange={(v) => setForm({...form, role: v as RoleKey})}>
+                <Select value={form.role} onValueChange={(v) => { setForm({...form, role: v as RoleKey}); setFormError(null) }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="usuario">Usuario (acceso a menús seleccionados)</SelectItem>
-                    <SelectItem value="admin">Admin (todos los menús del negocio)</SelectItem>
-                    <SelectItem value="superadmin">Superadmin (cross-tenant, ambos negocios)</SelectItem>
+                    <SelectItem value="usuario">Usuario</SelectItem>
+                    <SelectItem value="admin">Admin (todos los menús)</SelectItem>
+                    <SelectItem value="superadmin">Superadmin (cross-tenant)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -447,33 +489,40 @@ export function AdminUsersPage() {
               </div>
             </div>
 
+            {(form.role === "admin" || form.role === "superadmin") && (
+              <p className="rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                💡 {form.role === "superadmin"
+                  ? "Superadmin: acceso a TODOS los menús + datos de TODOS los negocios. Bypasa filtros tenant."
+                  : "Admin: acceso a TODOS los menús, pero sólo a los datos de su negocio."}
+              </p>
+            )}
+
             {form.role === "usuario" && (
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>Menús permitidos (selecciona al menos uno)</Label>
-                  <div className="flex gap-2">
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setForm({...form, menus: form.businessSlug === "depicenter" ? SUGGESTED_MENUS_DEPICENTER : SUGGESTED_MENUS_CSL})}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Label className="text-sm">Menús permitidos · <span className="text-muted-foreground font-normal">{form.menus.length} seleccionados</span></Label>
+                  <div className="flex gap-1">
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => setForm({...form, menus: form.businessSlug === "depicenter" ? SUGGESTED_MENUS_DEPICENTER : SUGGESTED_MENUS_CSL})}>
                       Preset {form.businessSlug.toUpperCase()}
                     </Button>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setForm({...form, menus: []})}>Limpiar</Button>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setForm({...form, menus: []})}>Limpiar</Button>
                   </div>
                 </div>
-                <div className="max-h-64 overflow-y-auto rounded-md border border-border bg-muted/30 p-3">
+                <div className="rounded-lg border border-border bg-muted/20 p-3 max-h-[42vh] overflow-y-auto">
                   {Object.entries(
                     MENU_OPTIONS.reduce<Record<string, typeof MENU_OPTIONS>>((acc, opt) => {
-                      // No mostrar admin-users en checkboxes — es exclusivo de superadmin
                       if (opt.id === "admin-users") return acc
                       ;(acc[opt.section] = acc[opt.section] || []).push(opt)
                       return acc
                     }, {})
                   ).map(([section, opts]) => (
-                    <div key={section} className="mb-3 last:mb-0">
-                      <p className="text-[11px] font-bold uppercase text-muted-foreground mb-1">{section}</p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                    <div key={section} className="mb-4 last:mb-0">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">{section}</p>
+                      <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-3">
                         {opts.map((opt) => {
                           const checked = form.menus.includes(opt.id)
                           return (
-                            <label key={opt.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-white/60 rounded px-1.5 py-0.5">
+                            <label key={opt.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm transition-colors hover:bg-white/80">
                               <input
                                 type="checkbox"
                                 checked={checked}
@@ -484,7 +533,7 @@ export function AdminUsersPage() {
                                   setForm({...form, menus: next})
                                 }}
                               />
-                              <span>{opt.label}</span>
+                              <span className="truncate">{opt.label}</span>
                             </label>
                           )
                         })}
@@ -492,26 +541,27 @@ export function AdminUsersPage() {
                     </div>
                   ))}
                 </div>
-                <p className="text-[11px] text-muted-foreground">
-                  {form.menus.length} menús seleccionados
-                </p>
               </div>
             )}
-
-            {(form.role === "admin" || form.role === "superadmin") && (
-              <p className="rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-800">
-                💡 {form.role === "superadmin"
-                  ? "Superadmin tiene acceso a TODOS los menús + datos de TODOS los negocios. Bypasa filtros tenant."
-                  : "Admin tiene acceso a TODOS los menús, pero solo a los datos de su negocio."}
-              </p>
-            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}><X className="h-4 w-4 mr-2" />Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving || !form.nombre || !form.email || (!editing && !form.password)}>
-              {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Guardando...</> : <><Save className="h-4 w-4 mr-2" />{editing ? "Guardar cambios" : "Crear usuario"}</>}
+
+          {/* Footer sticky */}
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border bg-slate-50/80 px-6 py-4">
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>
+              <X className="h-4 w-4 mr-2" />Cancelar
             </Button>
-          </DialogFooter>
+            <Button
+              onClick={handleSave}
+              disabled={saving || !form.nombre || !form.email || (!editing && !form.password)}
+              className="min-w-[160px]"
+            >
+              {saving ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{editing ? "Guardando..." : "Creando..."}</>
+              ) : (
+                <><Save className="h-4 w-4 mr-2" />{editing ? "Guardar cambios" : "Crear usuario"}</>
+              )}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

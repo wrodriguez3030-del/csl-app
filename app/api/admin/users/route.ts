@@ -139,29 +139,81 @@ export async function POST(request: Request) {
 
     const supabase = getSupabaseAdmin()
 
-    // Prevenir duplicado por email
-    const { data: existing } = await supabase
+    // Prevenir duplicado por email (profile existente con ese username)
+    const { data: existingProfile } = await supabase
       .from("csl_user_profiles")
-      .select("user_id")
+      .select("user_id, username")
       .ilike("username", email)
       .maybeSingle()
-    if (existing) {
+    if (existingProfile) {
       return NextResponse.json(
-        { ok: false, error: "Ya existe un usuario con ese email" },
+        { ok: false, error: `Ya existe un usuario con el email ${email}` },
         { status: 409 },
       )
     }
 
-    // 1. Crear user en Supabase Auth
+    // 1. Crear user en Supabase Auth.
+    // Si Supabase falla con "email_exists" significa que en auth.users hay un
+    // usuario con ese email PERO sin profile en csl_user_profiles (huérfano
+    // de un intento previo fallido). En ese caso, recuperamos: buscamos el
+    // user_id existente y le creamos el profile, sin override del password.
+    let userId: string | null = null
     const { data: created, error: createError } = await supabase.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
       user_metadata: { nombre, username: email, is_admin: isAdmin, activo, menus: effectiveMenus },
     })
-    if (createError) throw createError
 
-    const userId = created.user.id
+    if (createError) {
+      const msg = (createError.message || "").toLowerCase()
+      const isDuplicate = msg.includes("already") || msg.includes("exists") || (createError as { code?: string }).code === "email_exists"
+
+      if (isDuplicate) {
+        // Buscar el user_id en auth.users (huérfano) y recuperar
+        // listUsers no permite filtrar por email server-side; iteramos hasta encontrar.
+        let foundUser: { id: string; email?: string } | undefined
+        for (let page = 1; page <= 5 && !foundUser; page += 1) {
+          const { data: list, error: listError } = await supabase.auth.admin.listUsers({ page, perPage: 200 })
+          if (listError) throw listError
+          foundUser = (list.users || []).find((u) => (u.email || "").toLowerCase() === email)
+          if (!list.users || list.users.length < 200) break
+        }
+        if (!foundUser) {
+          // Auth user existe pero no lo encontramos — probablemente leaked password rejection
+          return NextResponse.json(
+            {
+              ok: false,
+              error: `Supabase rechazó el usuario: ${createError.message}. ${msg.includes("weak") || msg.includes("leaked") ? "La contraseña fue rechazada por seguridad (puede estar en la lista de contraseñas filtradas). Probá con una más fuerte." : ""}`,
+            },
+            { status: 400 },
+          )
+        }
+        userId = foundUser.id
+        // Como recuperamos a un huérfano, NO overrideamos su password.
+      } else if (msg.includes("weak") || msg.includes("leaked") || msg.includes("pwned") || msg.includes("compromised")) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Contraseña rechazada: aparece en listas de contraseñas filtradas. Usá una más fuerte (mezcla letras, números y símbolos).",
+          },
+          { status: 400 },
+        )
+      } else if (msg.includes("password")) {
+        return NextResponse.json(
+          { ok: false, error: `Contraseña inválida: ${createError.message}` },
+          { status: 400 },
+        )
+      } else {
+        throw createError
+      }
+    } else {
+      userId = created.user.id
+    }
+
+    if (!userId) {
+      return NextResponse.json({ ok: false, error: "No se pudo determinar el user_id" }, { status: 500 })
+    }
 
     // 2. Insertar profile con business_id + role
     const profilePayload = {
