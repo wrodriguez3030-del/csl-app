@@ -1095,10 +1095,12 @@ export function CertificadosDepicenterPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="md:col-span-3">
-                  <Label className="text-xs">Emitido por (especialista / recepción)</Label>
-                  <Input className="mt-1" value={form.emitidoPor} onChange={(e) => update({ emitidoPor: e.target.value })} placeholder="Nombre del emisor" />
-                </div>
+                {/* Campos eliminados visualmente (siguen en form state como
+                    string vacío para no romper el payload del API ni los
+                    certificados existentes que sí los tienen):
+                    - emitidoPor (especialista / recepción)
+                    Si en el futuro vuelve a hacer falta capturarlo en UI,
+                    el state ya existe en form.emitidoPor. */}
               </div>
             </section>
 
@@ -1117,42 +1119,13 @@ export function CertificadosDepicenterPage() {
                   <Label>Válido por *</Label>
                   <Input className="mt-1" value={form.validoPor} onChange={(e) => update({ validoPor: e.target.value })} placeholder="Servicio, monto o descripción del certificado" />
                 </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div>
-                    <Label>Monto (opcional)</Label>
-                    <Input className="mt-1" value={form.monto} onChange={(e) => update({ monto: e.target.value })} placeholder="Ej: 3500.00" />
-                  </div>
-                  <div>
-                    <Label>Servicio (opcional)</Label>
-                    <Input className="mt-1" value={form.servicio} onChange={(e) => update({ servicio: e.target.value })} placeholder="Ej: Depilación piernas completas" />
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-2xl border p-4">
-              <h3 className="mb-4 font-heading text-lg font-black">Datos del cliente</h3>
-              <div className="grid gap-3 md:grid-cols-2">
-                <div>
-                  <Label>Nombre del cliente</Label>
-                  <Input className="mt-1" value={form.clienteNombre} onChange={(e) => update({ clienteNombre: e.target.value })} placeholder="Si es distinto del beneficiario" />
-                </div>
-                <div>
-                  <Label>Documento</Label>
-                  <Input className="mt-1" value={form.clienteDocumento} onChange={(e) => update({ clienteDocumento: e.target.value })} />
-                </div>
-                <div>
-                  <Label>Teléfono</Label>
-                  <Input className="mt-1" value={form.clienteTelefono} onChange={(e) => update({ clienteTelefono: e.target.value })} />
-                </div>
-                <div>
-                  <Label>Correo</Label>
-                  <Input type="email" className="mt-1" value={form.clienteCorreo} onChange={(e) => update({ clienteCorreo: e.target.value })} />
-                </div>
-                <div className="md:col-span-2">
-                  <Label>Observaciones</Label>
-                  <Textarea className="mt-1" value={form.observaciones} onChange={(e) => update({ observaciones: e.target.value })} placeholder="Notas internas, restricciones, fecha de uso prevista…" />
-                </div>
+                {/* Campos eliminados visualmente (siguen en form state como ""):
+                    - monto / servicio (opcionales)
+                    - sección completa "Datos del cliente": clienteNombre,
+                      clienteDocumento, clienteTelefono, clienteCorreo
+                    - observaciones
+                    Si querés volver a capturarlos, todos siguen en el form
+                    state y en el payload del API. La DB no se tocó. */}
               </div>
             </section>
 
