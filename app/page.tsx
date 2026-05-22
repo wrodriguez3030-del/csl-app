@@ -36,6 +36,7 @@ import { CertificadosRegaloImpresionPage } from "@/components/certificados-regal
 import { CertificadosRegaloTalonarioPage } from "@/components/certificados-regalo-talonario-page"
 import { CertificadosRegaloValidezPage } from "@/components/certificados-regalo-validez-page"
 import { LoginPage } from "@/components/login-page"
+import { AdminUsersPage } from "@/components/admin-users-page"
 import { canAccessMenu, clearLocalSession, getSessionUser, type SystemUser } from "@/lib/security"
 import { supabaseBrowser } from "@/lib/supabase-client"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
@@ -236,6 +237,8 @@ export default function HomePage() {
         return <CertificadosRegaloTalonarioPage />
       case "cliente-certificados-validez":
         return <CertificadosRegaloValidezPage />
+      case "admin-users":
+        return <AdminUsersPage />
       default:
         return <ConfigPage />
     }

@@ -27,6 +27,7 @@ import {
   LayoutDashboard,
   Package,
   Settings,
+  ShieldCheck,
   Sparkles,
   Stethoscope,
   Users,
@@ -102,6 +103,12 @@ const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
       { id: "cliente-certificados-imprimir", label: "CF para imprimir", icon: <Gift className="h-4 w-4" /> },
       { id: "cliente-certificados-talonario", label: "CF Talonario pre-impreso", icon: <Gift className="h-4 w-4" /> },
       { id: "cliente-certificados-validez", label: "Validar certificados", icon: <Gift className="h-4 w-4" /> },
+    ],
+  },
+  {
+    label: "Administración",
+    items: [
+      { id: "admin-users", label: "Usuarios", icon: <ShieldCheck className="h-4 w-4" /> },
     ],
   },
   { label: "Sistema", items: [{ id: "config", label: "Configuracion", icon: <Settings className="h-4 w-4" /> }] },

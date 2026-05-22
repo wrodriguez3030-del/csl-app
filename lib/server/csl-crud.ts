@@ -337,6 +337,22 @@ export async function requireAdmin(userId: string) {
   return profile
 }
 
+/**
+ * Más estricto que requireAdmin: requiere is_superadmin = true.
+ * Usado por el módulo de gestión de usuarios cross-tenant, donde un
+ * admin normal no debería poder crear/asignar usuarios a OTROS negocios.
+ *
+ * Lanza con mensaje claro si: no hay profile / inactivo / no superadmin.
+ */
+export async function requireSuperadmin(userId: string) {
+  if (!userId) throw new Error("No autenticado")
+  const profile = await getProfile(userId)
+  if (!profile) throw new Error("Perfil no encontrado")
+  if (profile.activo === false) throw new Error("Usuario inactivo")
+  if (!profile.is_superadmin) throw new Error("Acceso denegado: se requiere rol superadmin")
+  return profile
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Multi-tenant helpers (preparados, no activos)
 // ═════════════════════════════════════════════════════════════════════════════

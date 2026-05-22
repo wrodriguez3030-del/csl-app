@@ -324,3 +324,5 @@ export type TabId =
   | "cliente-certificados-imprimir"
   | "cliente-certificados-talonario"
   | "cliente-certificados-validez"
+  // Módulo Administración (solo superadmin)
+  | "admin-users"

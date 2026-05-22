@@ -192,6 +192,9 @@ export function getSessionUser(): SystemUser | null {
 
 export function canAccessMenu(user: SystemUser | null, tab: TabId): boolean {
   if (!user) return false
+  // Admin de Usuarios: SOLO superadmin. is_admin normal NO alcanza —
+  // es una operación cross-tenant que requiere el rol más alto.
+  if (tab === "admin-users") return Boolean(user.isSuperadmin)
   if (user.isAdmin) return true
   if (tab === "pulse-dashboard" || tab === "pulse-equipos" || tab === "pulse-mantenimiento") {
     return Array.isArray(user.menus) && user.menus.some((menu) => String(menu).startsWith("pulsos-"))

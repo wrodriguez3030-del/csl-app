@@ -49,6 +49,7 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "cliente-certificados-talonario", label: "CF Regalos Talonario Pre-impreso", section: "Atención a cliente" },
   { id: "cliente-certificados-validez", label: "Validar Certificados", section: "Atención a cliente" },
   { id: "config", label: "Configuración", section: "Sistema" },
+  { id: "admin-users", label: "Usuarios", section: "Administración" },
 ]
 
 /** Lista plana de IDs — útil para resolver permisos de admin (todos los menús). */
