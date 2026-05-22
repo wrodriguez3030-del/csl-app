@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type React from "react"
-import { Eye, FileSignature, FileText, Link as LinkIcon, Loader2, Pencil, Printer, Save, Search, Trash2, UserPlus, Users, X } from "lucide-react"
+import { Eye, FileSignature, FileText, Link as LinkIcon, Loader2, MessageCircle, Pencil, Printer, Save, Search, Trash2, UserPlus, Users, X } from "lucide-react"
+import { LinkGeneratorDialog } from "@/components/link-generator-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -829,6 +830,12 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
   // Mensaje de validación visible dentro del dialog (no sólo toast).
   const [saveError, setSaveError] = useState("")
   const [isSaving, setIsSaving] = useState(false)
+  // Dialog para generar link único de envío al cliente vía WhatsApp.
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false)
+  const publicFormType = kind === "masajes" ? "consentimiento_masajes" : "consentimiento_tatuajes_cejas"
+  const publicFormTitle = kind === "masajes"
+    ? "Enviar Consentimiento de Masajes a un cliente"
+    : "Enviar Consentimiento de Tatuajes/Cejas a un cliente"
 
   const loadRecords = useCallback(async () => {
     try {
@@ -1158,6 +1165,9 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
               <p className="mt-1 max-w-2xl text-sm text-slate-500">{config.subtitle}</p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setLinkDialogOpen(true)} className="gap-2 rounded-full">
+                <MessageCircle className="h-4 w-4" /> Generar link para cliente
+              </Button>
               <Button variant="outline" onClick={loadRecords} className="rounded-full">Actualizar</Button>
               <Button onClick={startCreate} className="gap-2 rounded-full"><FileSignature className="h-4 w-4" /> Nuevo consentimiento</Button>
             </div>
@@ -1284,6 +1294,13 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
       />
 
       <DetailDialog record={detail} kind={kind} clientes={clientes} onClose={() => setDetail(null)} onPrint={(record) => printConsent(record, kind)} onEdit={(record) => { setDetail(null); startEdit(record) }} />
+
+      <LinkGeneratorDialog
+        open={linkDialogOpen}
+        onOpenChange={setLinkDialogOpen}
+        formType={publicFormType}
+        title={publicFormTitle}
+      />
     </div>
   )
 }

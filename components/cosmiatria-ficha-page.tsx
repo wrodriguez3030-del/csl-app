@@ -1,8 +1,9 @@
 ﻿"use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { ArrowDownAZ, ArrowUpAZ, Edit, ExternalLink, Eye, Link2, Plus, Printer, Trash2 } from "lucide-react"
+import { ArrowDownAZ, ArrowUpAZ, Edit, ExternalLink, Eye, Link2, MessageCircle, Plus, Printer, Trash2 } from "lucide-react"
 import { FichaDermatologiaForm } from "@/components/ficha-dermatologia-form"
+import { LinkGeneratorDialog } from "@/components/link-generator-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -234,6 +235,8 @@ export function CosmiatriaFichaPage() {
   const [filterOperadora, setFilterOperadora] = useState("todas")
   const [sortKey, setSortKey] = useState<SortKey>("fecha")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
+  // Dialog "Generar link para cliente" — link único, un uso, 12h, WhatsApp.
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false)
 
   // Consentimientos del cliente cuya ficha se está visualizando.
   const [viewingConsents, setViewingConsents] = useState<{
@@ -451,7 +454,8 @@ export function CosmiatriaFichaPage() {
           <h2 className="text-xl font-bold">Cosmiatría</h2>
           <p className="text-sm text-muted-foreground">Ficha Dermatología / Dermo-Cosmiátrica</p>
         </div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 md:flex md:flex-wrap">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-4 md:flex md:flex-wrap">
+          <Button variant="outline" onClick={() => setLinkDialogOpen(true)}><MessageCircle className="mr-2 h-4 w-4" />Generar link para cliente</Button>
           <Button variant="outline" onClick={copyPublicLink}><Link2 className="mr-2 h-4 w-4" />Copiar link público</Button>
           <Button variant="outline" onClick={() => { void loadRecords(); void loadOperadoras(); void loadClientes() }}>Actualizar</Button>
           <Button onClick={startNew}><Plus className="mr-2 h-4 w-4" />Nueva ficha</Button>
@@ -698,6 +702,13 @@ export function CosmiatriaFichaPage() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <LinkGeneratorDialog
+        open={linkDialogOpen}
+        onOpenChange={setLinkDialogOpen}
+        formType="ficha_dermatologica"
+        title="Enviar Ficha Dermatológica a un cliente"
+      />
     </div>
   )
 }
