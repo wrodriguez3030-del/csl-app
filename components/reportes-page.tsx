@@ -39,7 +39,7 @@ import type { Reporte, PiezaIntervenida, Database } from "@/lib/types"
 // y normalmente añaden la extensión .pdf cuando se elige "Guardar como PDF".
 // Por eso devolvemos el nombre SIN .pdf.
 //
-// Formato: Equipo-<id>-Serie-<ultimos4digitos>
+// Formato: equipo-<id>-serial-<ultimos4digitos>
 // Fallbacks: SIN-EQUIPO / SIN-SERIE.
 function buildReportePdfBaseName(reporte: Reporte): string {
   const equipoRaw = String(reporte.EquipoID ?? "").trim()
@@ -65,7 +65,7 @@ function buildReportePdfBaseName(reporte: Reporte): string {
       .replace(/^-|-$/g, "")
       || "X"
 
-  return `Equipo-${sanitize(equipoPart)}-Serie-${sanitize(seriePart)}`
+  return `equipo-${sanitize(equipoPart)}-serial-${sanitize(seriePart)}`
 }
 
 function formatDate(dateStr: string | undefined): string {

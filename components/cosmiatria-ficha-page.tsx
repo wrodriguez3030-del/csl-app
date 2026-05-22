@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { ArrowDownAZ, ArrowUpAZ, Edit, ExternalLink, Eye, Link2, MessageCircle, Plus, Printer, Trash2 } from "lucide-react"
+import { Edit, ExternalLink, Eye, Link2, MessageCircle, Plus, Printer, Trash2 } from "lucide-react"
 import { FichaDermatologiaForm } from "@/components/ficha-dermatologia-form"
 import { LinkGeneratorDialog } from "@/components/link-generator-dialog"
 import { Badge } from "@/components/ui/badge"
@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SeqBadge } from "@/components/seq-badge"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
@@ -19,13 +18,8 @@ import type { FichaDermoCosmiatrica } from "@/lib/dermo-cosmiatria"
 
 type SortKey = "fecha" | "nombre" | "sucursal" | "operadora" | "estado"
 
-const sortOptions: { value: SortKey; label: string }[] = [
-  { value: "fecha", label: "Fecha" },
-  { value: "nombre", label: "Cliente" },
-  { value: "sucursal", label: "Sucursal" },
-  { value: "operadora", label: "Operadora" },
-  { value: "estado", label: "Estado" },
-]
+// Sort interactivo desde los headers de la tabla — los dropdowns de
+// "Ordenar por" + Asc/Desc se removieron para simplificar el toolbar.
 
 function sortValue(record: FichaDermoCosmiatrica, key: SortKey) {
   return String(record[key] || "").toLowerCase()
@@ -231,8 +225,6 @@ export function CosmiatriaFichaPage() {
   const [operatorOptions, setOperatorOptions] = useState<string[]>([])
   const [clientes, setClientes] = useState<ClienteCosmiatria[]>([])
   const [search, setSearch] = useState("")
-  const [filterSucursal, setFilterSucursal] = useState("todas")
-  const [filterOperadora, setFilterOperadora] = useState("todas")
   const [sortKey, setSortKey] = useState<SortKey>("fecha")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
   // Dialog "Generar link para cliente" — link único, un uso, 12h, WhatsApp.
@@ -362,8 +354,6 @@ export function CosmiatriaFichaPage() {
     const query = search.trim().toLowerCase()
     return records
       .filter((record) => {
-        if (filterSucursal !== "todas" && record.sucursal !== filterSucursal) return false
-        if (filterOperadora !== "todas" && record.operadora !== filterOperadora) return false
         if (!query) return true
         return [
           record.nombre,
@@ -379,7 +369,7 @@ export function CosmiatriaFichaPage() {
         ].join(" ").toLowerCase().includes(query)
       })
       .sort((a, b) => sortValue(a, sortKey).localeCompare(sortValue(b, sortKey), "es", { numeric: true }) * (sortDir === "asc" ? 1 : -1))
-  }, [records, search, filterSucursal, filterOperadora, sortKey, sortDir])
+  }, [records, search, sortKey, sortDir])
 
   const setSort = (key: SortKey) => {
     if (sortKey === key) setSortDir((current) => current === "asc" ? "desc" : "asc")
@@ -479,37 +469,18 @@ export function CosmiatriaFichaPage() {
         <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Operadoras</p><p className="text-3xl font-bold">{operadoras.length}</p></CardContent></Card>
       </div>
 
+      {/* Filtros: dejamos solo el buscador. Sucursal/Operadora/Ordenar por
+          (dropdowns) eran ruido — el orden y el filtro por columna siguen
+          disponibles haciendo click en los headers clickeables de la tabla. */}
       <Card>
-        <CardContent className="grid gap-3 pt-4 lg:grid-cols-[minmax(240px,1fr)_180px_180px_180px_150px]">
-          <div>
-            <Label>Buscar</Label>
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente, teléfono, cédula, correo, motivo..." />
-          </div>
-          <div>
-            <Label>Sucursal</Label>
-            <Select value={filterSucursal} onValueChange={setFilterSucursal}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="todas">Todas</SelectItem>{sucursales.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Operadora</Label>
-            <Select value={filterOperadora} onValueChange={setFilterOperadora}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="todas">Todas</SelectItem>{operadoras.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Ordenar por</Label>
-            <Select value={sortKey} onValueChange={(value) => setSortKey(value as SortKey)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>{sortOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-          <Button className="mt-auto" variant="outline" onClick={() => setSortDir((current) => current === "asc" ? "desc" : "asc")}>
-            {sortDir === "asc" ? <ArrowUpAZ className="mr-2 h-4 w-4" /> : <ArrowDownAZ className="mr-2 h-4 w-4" />}
-            {sortDir === "asc" ? "Asc" : "Desc"}
-          </Button>
+        <CardContent className="pt-4">
+          <Label>Buscar</Label>
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Cliente, teléfono, cédula, correo, motivo..."
+            className="mt-1"
+          />
         </CardContent>
       </Card>
 

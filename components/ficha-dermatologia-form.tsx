@@ -136,6 +136,93 @@ function SelectField({ label, value, options, placeholder = "Seleccionar", onCha
   )
 }
 
+// 10 motivos predefinidos según pedido del equipo. Si el cliente tiene un
+// motivo distinto, usar el botón "Agregar otro motivo" (input libre).
+const MOTIVOS_CONSULTA_PREDEFINIDOS = [
+  "Acné",
+  "Manchas",
+  "Melasma",
+  "Hidratación facial",
+  "Rejuvenecimiento",
+  "Control de grasa",
+  "Poros dilatados",
+  "Sensibilidad / irritación",
+  "Limpieza profunda",
+  "Evaluación general de la piel",
+] as const
+
+function MotivoConsultaPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const motivos = value ? value.split(",").map((m) => m.trim()).filter(Boolean) : []
+  const [extra, setExtra] = useState("")
+  const [adding, setAdding] = useState(false)
+  const available = MOTIVOS_CONSULTA_PREDEFINIDOS.filter((m) => !motivos.includes(m))
+  const add = (motivo: string) => {
+    if (!motivo || motivos.includes(motivo)) return
+    onChange([...motivos, motivo].join(", "))
+  }
+  const remove = (motivo: string) => {
+    onChange(motivos.filter((m) => m !== motivo).join(", "))
+  }
+  const commitOtro = () => {
+    const trimmed = extra.trim()
+    if (trimmed && !motivos.includes(trimmed)) {
+      onChange([...motivos, trimmed].join(", "))
+    }
+    setExtra("")
+    setAdding(false)
+  }
+  return (
+    <div className="space-y-2">
+      {motivos.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {motivos.map((m) => (
+            <span key={m} className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2.5 py-1 text-xs font-semibold text-primary">
+              {m}
+              <button type="button" onClick={() => remove(m)} aria-label={`Quitar ${m}`} className="rounded-full text-primary/70 hover:text-primary">×</button>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">Selecciona uno o más motivos. Puedes agregar uno personalizado.</p>
+      )}
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Select
+          value=""
+          onValueChange={(v) => v && add(v)}
+        >
+          <SelectTrigger className="sm:flex-1">
+            <SelectValue placeholder={available.length ? "Selecciona un motivo..." : "Todos agregados"} />
+          </SelectTrigger>
+          <SelectContent>
+            {available.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {!adding ? (
+          <Button type="button" variant="outline" onClick={() => setAdding(true)} className="shrink-0">
+            + Agregar otro motivo
+          </Button>
+        ) : null}
+      </div>
+      {adding ? (
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input
+            value={extra}
+            onChange={(e) => setExtra(e.target.value)}
+            placeholder="Escribir motivo personalizado..."
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitOtro() } }}
+            autoFocus
+            className="sm:flex-1"
+          />
+          <div className="flex gap-2">
+            <Button type="button" onClick={commitOtro} disabled={!extra.trim()}>Agregar</Button>
+            <Button type="button" variant="ghost" onClick={() => { setExtra(""); setAdding(false) }}>Cancelar</Button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function ConditionalYesNo({ label, value, notes, notesLabel, onChange, onNotesChange }: { label: string; value: string; notes: string; notesLabel?: string; onChange: (value: string) => void; onNotesChange: (value: string) => void }) {
   return (
     <div className="rounded-2xl border bg-white p-3 shadow-sm">
@@ -274,18 +361,18 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
           <div><Label>Fecha</Label><Input type="date" value={form.fecha} onChange={(event) => update({ fecha: event.target.value })} /></div>
           <div><Label>Sucursal *</Label><Select value={form.sucursal} onValueChange={(value) => update({ sucursal: value })}><SelectTrigger><SelectValue placeholder="Seleccionar sucursal" /></SelectTrigger><SelectContent>{sucursalesCosmiatria.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></div>
           <div>
-            <Label>Operadora</Label>
+            <Label>Especialista</Label>
             {operadoras.length ? (
-              <Select value={form.operadora} onValueChange={(value) => update({ operadora: value })}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar operadora" /></SelectTrigger>
+              <Select value={form.operadora} onValueChange={(value) => update({ operadora: value, nombreEspecialista: value, especialista: value })}>
+                <SelectTrigger><SelectValue placeholder="Seleccionar especialista" /></SelectTrigger>
                 <SelectContent>{operadoras.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
               </Select>
             ) : (
-              <Input value={form.operadora} onChange={(event) => update({ operadora: event.target.value })} placeholder="Nombre de operadora" />
+              <Input value={form.operadora} onChange={(event) => update({ operadora: event.target.value, nombreEspecialista: event.target.value, especialista: event.target.value })} placeholder="Nombre del especialista" />
             )}
           </div>
-          <div><Label>Especialista</Label><Input value={form.nombreEspecialista || form.especialista} onChange={(event) => update({ nombreEspecialista: event.target.value, especialista: event.target.value })} placeholder="Nombre del especialista" /></div>
-          <div><Label>Estado</Label><Select value={form.estado} onValueChange={(value) => update({ estado: value as FichaDermoCosmiatrica["estado"] })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Pendiente">Pendiente</SelectItem><SelectItem value="Completada">Completada</SelectItem><SelectItem value="Archivada">Archivada</SelectItem></SelectContent></Select></div>
+          {/* Estado: oculto del UI del cliente. Internamente se default-ea a
+              "Pendiente" y al submit se eleva a "Completada" automáticamente. */}
         </CardContent>
       </Card>
 
@@ -364,7 +451,12 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
           <div><Label>Ciudad</Label><Input value={form.ciudad} onChange={(event) => update({ ciudad: event.target.value })} /></div>
           <div><Label>Ocupación</Label><Input value={form.ocupacion} onChange={(event) => update({ ocupacion: event.target.value })} /></div>
           <div className="col-span-full"><Label>Dirección</Label><Input value={form.direccion} onChange={(event) => update({ direccion: event.target.value })} /></div>
-          <div className="col-span-full"><Label>Motivo de la consulta *</Label><Input value={form.motivoConsulta} onChange={(event) => update({ motivoConsulta: event.target.value })} /></div>
+          <div className="col-span-full">
+            <Label>Motivo de la consulta *</Label>
+            <div className="mt-2">
+              <MotivoConsultaPicker value={form.motivoConsulta} onChange={(v) => update({ motivoConsulta: v })} />
+            </div>
+          </div>
         </CardContent>
       </Card>
 
