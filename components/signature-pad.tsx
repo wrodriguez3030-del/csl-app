@@ -8,9 +8,21 @@ interface SignaturePadProps {
   label: string
   value?: string
   onChange: (dataUrl: string) => void
+  /**
+   * Clase Tailwind opcional para sobrescribir las alturas responsivas
+   * por defecto. Si no se pasa, usa min 280px en móvil, 320px sm, 380px lg.
+   */
+  heightClass?: string
 }
 
-export function SignaturePad({ label, value, onChange }: SignaturePadProps) {
+// Dimensiones internas del canvas (backing store). Grande para que la firma
+// se vea nítida al escalar y al exportar a PDF/PNG. La proporción es ~2.5:1
+// que encaja bien tanto en el contenedor responsive como en la caja
+// rectangular que renderiza el PDF (drawSignatureImage usa scaleToFit).
+const CANVAS_INTERNAL_WIDTH = 1000
+const CANVAS_INTERNAL_HEIGHT = 400
+
+export function SignaturePad({ label, value, onChange, heightClass }: SignaturePadProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [drawing, setDrawing] = useState(false)
   const [isEmpty, setIsEmpty] = useState(!value)
@@ -18,11 +30,13 @@ export function SignaturePad({ label, value, onChange }: SignaturePadProps) {
   const initCanvas = (canvas: HTMLCanvasElement) => {
     const ctx = canvas.getContext("2d")
     if (!ctx) return
-    // Fondo blanco para que la firma se vea bien en PDF
+    // Fondo blanco para que la firma se vea bien en PDF y al imprimir.
     ctx.fillStyle = "#ffffff"
     ctx.fillRect(0, 0, canvas.width, canvas.height)
     ctx.strokeStyle = "#000000"
-    ctx.lineWidth = 2
+    // lineWidth en pixeles del canvas; al escalar al CSS visible queda
+    // ~2 CSS px en escritorio y ~3 CSS px en tablet — buen grosor táctil.
+    ctx.lineWidth = 3.5
     ctx.lineCap = "round"
     ctx.lineJoin = "round"
   }
@@ -35,14 +49,17 @@ export function SignaturePad({ label, value, onChange }: SignaturePadProps) {
       const img = new Image()
       img.onload = () => {
         const ctx = canvas.getContext("2d")
-        if (ctx) ctx.drawImage(img, 0, 0)
+        if (ctx) ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
       }
       img.src = value
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const getPos = (e: React.MouseEvent | React.TouchEvent, canvas: HTMLCanvasElement) => {
     const rect = canvas.getBoundingClientRect()
+    // scaleX/scaleY compensan la diferencia entre el backing store (1000×400)
+    // y el tamaño CSS real del canvas — mantiene la firma fluida.
     const scaleX = canvas.width / rect.width
     const scaleY = canvas.height / rect.height
     if ("touches" in e) {
@@ -100,20 +117,28 @@ export function SignaturePad({ label, value, onChange }: SignaturePadProps) {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</span>
-        {!isEmpty && (
-          <Button variant="ghost" size="sm" onClick={clear} className="h-6 px-2 text-xs gap-1 text-muted-foreground">
-            <Eraser className="h-3 w-3" /> Borrar
-          </Button>
-        )}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={clear}
+          disabled={isEmpty}
+          className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40"
+        >
+          <Eraser className="h-3 w-3" /> Borrar
+        </Button>
       </div>
-      <div className="relative rounded-lg border border-border overflow-hidden">
+      <div className="relative rounded-xl border-2 border-dashed border-border bg-white p-1 shadow-sm">
         <canvas
           ref={canvasRef}
-          width={400}
-          height={120}
-          className="w-full touch-none cursor-crosshair"
+          width={CANVAS_INTERNAL_WIDTH}
+          height={CANVAS_INTERNAL_HEIGHT}
+          // touch-none evita que el scroll de la página robe el gesto al
+          // firmar con el dedo. Alturas responsive según UX request:
+          // móvil ≥ 280px, sm/tablet ≥ 320px, lg/desktop ≥ 380px.
+          className={`block w-full touch-none cursor-crosshair rounded-lg bg-white ${heightClass ?? "h-[280px] sm:h-[320px] lg:h-[380px]"}`}
           style={{ background: "#ffffff" }}
           onMouseDown={startDraw}
           onMouseMove={draw}
@@ -124,8 +149,8 @@ export function SignaturePad({ label, value, onChange }: SignaturePadProps) {
           onTouchEnd={endDraw}
         />
         {isEmpty && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <p className="text-xs text-muted-foreground/40">Firma aquí</p>
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <p className="select-none text-sm text-muted-foreground/40">Firma aquí</p>
           </div>
         )}
       </div>
