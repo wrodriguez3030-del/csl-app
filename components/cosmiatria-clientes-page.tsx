@@ -419,7 +419,11 @@ export function CosmiatriaClientesPage() {
               {filtered.length === 0 ? (
                 <tr><td colSpan={9} className="py-12 text-center text-muted-foreground">No hay clientes registrados</td></tr>
               ) : filtered.map((cliente, seqIndex) => (
-                <tr key={cliente.ClienteID} className="border-b hover:bg-muted/20">
+                <tr
+                  key={cliente.ClienteID}
+                  className="cursor-pointer border-b hover:bg-muted/20"
+                  onClick={() => setViewing(cliente)}
+                >
                   <td className="px-3 py-3 text-center"><SeqBadge n={seqIndex + 1} /></td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-2">
@@ -436,7 +440,7 @@ export function CosmiatriaClientesPage() {
                   <td className="px-3 py-3 text-xs">{cliente.ClienteDesde || "—"}</td>
                   <td className="px-3 py-3 text-center"><Badge variant="outline">{cliente.FichasCount || 0}</Badge></td>
                   <td className="px-3 py-3 text-center"><Badge className={cliente.Estado === "Activo" ? "bg-green-500/15 text-green-500" : ""}>{cliente.Estado}</Badge></td>
-                  <td className="px-3 py-3">
+                  <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                     <RecordActions
                       title={`Cliente: ${cliente.Nombre} ${cliente.Apellido}`}
                       record={clienteRecord(cliente)}

@@ -1004,7 +1004,11 @@ export function CertificadosDepicenterPage() {
                   </TableRow>
                 ) : (
                   filtered.map((cert, i) => (
-                    <TableRow key={cert.codigo}>
+                    <TableRow
+                      key={cert.codigo}
+                      className="cursor-pointer"
+                      onClick={() => setViewing(cert)}
+                    >
                       <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
                       <TableCell className="font-semibold whitespace-nowrap">{formatDate(cert.fecha)}</TableCell>
                       <TableCell className="font-mono text-xs">{cert.codigo}</TableCell>
@@ -1017,7 +1021,7 @@ export function CertificadosDepicenterPage() {
                           {cert.estado}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-1">
                           <Button variant="ghost" size="icon" title="Ver / vista previa" onClick={() => setViewing(cert)}>
                             <Eye className="h-4 w-4" />

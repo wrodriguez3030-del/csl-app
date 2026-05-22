@@ -601,7 +601,19 @@ export function CredencialesPage() {
                   const pinKey = `${record.id}-pin`
                   const rowKey = `${record.id || "sinid"}-${record.usuario || "sinusuario"}-${index}-card`
                   return (
-                    <div key={rowKey} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <div
+                      key={rowKey}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setViewRecord(record)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault()
+                          setViewRecord(record)
+                        }
+                      }}
+                      className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition-colors hover:border-cyan-200 hover:bg-cyan-50/65 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+                    >
                       <div className="mb-2 flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <SeqBadge n={index + 1} />
@@ -610,7 +622,7 @@ export function CredencialesPage() {
                             <div className="text-xs text-muted-foreground break-words">{record.sucursal || "—"} · {record.area || "—"}</div>
                           </div>
                         </div>
-                        <div className="flex flex-shrink-0 gap-0.5">
+                        <div className="flex flex-shrink-0 gap-0.5" onClick={(e) => e.stopPropagation()}>
                           <button type="button" title="Ver" onClick={() => setViewRecord(record)} className="rounded-lg border border-cyan-500/30 p-1.5 text-cyan-600 hover:bg-cyan-50"><Eye className="h-3.5 w-3.5" /></button>
                           <button type="button" title="Imprimir" onClick={() => printCredencial(record)} className="rounded-lg border border-cyan-500/30 p-1.5 text-cyan-600 hover:bg-cyan-50"><Printer className="h-3.5 w-3.5" /></button>
                           <button type="button" title="Editar" onClick={() => openEdit(record)} className="rounded-lg border border-blue-500/30 p-1.5 text-blue-600 hover:bg-blue-50"><Edit className="h-3.5 w-3.5" /></button>
@@ -678,7 +690,11 @@ export function CredencialesPage() {
                       const pinKey = `${record.id}-pin`
                       const rowKey = `${record.id || "sinid"}-${record.usuario || "sinusuario"}-${index}`
                       return (
-                        <tr key={rowKey} className="group border-b border-slate-200 align-top text-slate-700 hover:bg-cyan-50/60">
+                        <tr
+                          key={rowKey}
+                          className="group cursor-pointer border-b border-slate-200 align-top text-slate-700 hover:bg-cyan-50/60"
+                          onClick={() => setViewRecord(record)}
+                        >
                           <td className="px-2 py-2.5 text-center"><SeqBadge n={index + 1} /></td>
                           <td className="px-2 py-2.5 break-words" title={record.sucursal}>{record.sucursal || "—"}</td>
                           <td className="px-2 py-2.5 break-words" title={record.area}>{record.area || "—"}</td>
@@ -689,7 +705,7 @@ export function CredencialesPage() {
                           <td className="px-2 py-2.5"><div className="flex items-center gap-1"><span className="break-all font-mono text-[11px]">{visibleFields[pinKey] ? record.pin || "—" : mask(record.pin || "") || "—"}</span><button type="button" onClick={() => toggleField(pinKey)} className="rounded p-0.5 text-slate-500 hover:bg-cyan-50 hover:text-cyan-700 flex-shrink-0"><Eye className="h-3 w-3" /></button></div></td>
                           <td className="px-2 py-2.5 break-all" title={record.url}>{record.url ? <a href={normalizeUrl(record.url)} target="_blank" rel="noreferrer" className="text-cyan-700 hover:underline">{record.url}</a> : "—"}</td>
                           <td className="px-2 py-2.5 break-all" title={record.correo}>{record.correo || "—"}</td>
-                          <td className="px-2 py-2.5"><div className="flex gap-0.5"><button type="button" title="Ver" onClick={() => setViewRecord(record)} className="rounded border border-cyan-500/30 p-1 text-cyan-600 hover:bg-cyan-50"><Eye className="h-3.5 w-3.5" /></button><button type="button" title="Imprimir" onClick={() => printCredencial(record)} className="rounded border border-cyan-500/30 p-1 text-cyan-600 hover:bg-cyan-50"><Printer className="h-3.5 w-3.5" /></button><button type="button" title="Editar" onClick={() => openEdit(record)} className="rounded border border-blue-500/30 p-1 text-blue-600 hover:bg-blue-50"><Edit className="h-3.5 w-3.5" /></button><button type="button" title="Eliminar" onClick={() => void removeRecord(record.id)} className="rounded border border-red-500/30 p-1 text-red-600 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></button></div></td>
+                          <td className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}><div className="flex gap-0.5"><button type="button" title="Ver" onClick={() => setViewRecord(record)} className="rounded border border-cyan-500/30 p-1 text-cyan-600 hover:bg-cyan-50"><Eye className="h-3.5 w-3.5" /></button><button type="button" title="Imprimir" onClick={() => printCredencial(record)} className="rounded border border-cyan-500/30 p-1 text-cyan-600 hover:bg-cyan-50"><Printer className="h-3.5 w-3.5" /></button><button type="button" title="Editar" onClick={() => openEdit(record)} className="rounded border border-blue-500/30 p-1 text-blue-600 hover:bg-blue-50"><Edit className="h-3.5 w-3.5" /></button><button type="button" title="Eliminar" onClick={() => void removeRecord(record.id)} className="rounded border border-red-500/30 p-1 text-red-600 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></button></div></td>
                         </tr>
                       )
                     })}

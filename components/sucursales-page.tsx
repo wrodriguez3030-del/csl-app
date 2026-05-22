@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog"
 import { Plus, Pencil, Trash2, Power, PowerOff, Save, X } from "lucide-react"
 import { RecordActions } from "@/components/record-actions"
+import { RecordViewDialog } from "@/components/record-view-dialog"
 import type { Sucursal, Database } from "@/lib/types"
 
 const emptySucursal: Sucursal = {
@@ -53,6 +54,7 @@ export function SucursalesPage() {
   const [formData, setFormData] = useState<Sucursal>(emptySucursal)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [deleteDialog, setDeleteDialog] = useState<Sucursal | null>(null)
+  const [viewSucursal, setViewSucursal] = useState<Sucursal | null>(null)
   const [sortCol, setSortCol] = useState<string>("")
   const [sortDir, setSortDir] = useState<"asc"|"desc">("asc")
   const handleSort = (col: string) => {
@@ -218,7 +220,11 @@ export function SucursalesPage() {
                 </TableRow>
               ) : (
                 sortedSucursales.map((s, i) => (
-                  <TableRow key={s.Codigo || i}>
+                  <TableRow
+                    key={s.Codigo || i}
+                    className="cursor-pointer"
+                    onClick={() => setViewSucursal(s)}
+                  >
                     <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
                     <TableCell className="font-medium">{s.Codigo}</TableCell>
                     <TableCell>{s.Nombre}</TableCell>
@@ -231,7 +237,7 @@ export function SucursalesPage() {
                     </TableCell>
                     <TableCell>{s.Notas || "-"}</TableCell>
                     <TableCell>{s.Correo || "-"}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex gap-1 justify-end">
                         <RecordActions
                           title={`Sucursal: ${s.Nombre}`}
@@ -308,6 +314,12 @@ export function SucursalesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <RecordViewDialog
+        record={viewSucursal as unknown as Record<string, unknown> | null}
+        title={viewSucursal ? `Sucursal: ${viewSucursal.Nombre}` : ""}
+        onClose={() => setViewSucursal(null)}
+      />
 
       {/* Delete Dialog */}
       <Dialog open={!!deleteDialog} onOpenChange={() => setDeleteDialog(null)}>

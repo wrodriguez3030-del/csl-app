@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dialog"
 import { Plus, Pencil, Trash2, Power, PowerOff, Save, X } from "lucide-react"
 import { RecordActions } from "@/components/record-actions"
+import { RecordViewDialog } from "@/components/record-view-dialog"
 import type { Tecnico, Database } from "@/lib/types"
 
 const emptyTecnico: Tecnico = {
@@ -59,6 +60,7 @@ export function TecnicosPage() {
   const [formData, setFormData] = useState<Tecnico>(emptyTecnico)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [deleteDialog, setDeleteDialog] = useState<Tecnico | null>(null)
+  const [viewTecnico, setViewTecnico] = useState<Tecnico | null>(null)
   const [sortCol, setSortCol] = useState<string>("")
   const [sortDir, setSortDir] = useState<"asc"|"desc">("asc")
   const handleSort = (col: string) => {
@@ -303,7 +305,11 @@ export function TecnicosPage() {
               <TableBody>
                 {db.tecnicos.length > 0 ? (
                   sortedTecnicos.map((t, i) => (
-                    <TableRow key={t.Codigo}>
+                    <TableRow
+                      key={t.Codigo}
+                      className="cursor-pointer"
+                      onClick={() => setViewTecnico(t)}
+                    >
                       <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
                       <TableCell className="font-medium">{t.Codigo}</TableCell>
                       <TableCell>{t.Nombre}</TableCell>
@@ -330,7 +336,7 @@ export function TecnicosPage() {
                       <TableCell className="text-muted-foreground">
                         {t.Notas || "-"}
                       </TableCell>
-                      <TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-1">
                           <RecordActions
                             title={`Técnico: ${t.Nombre}`}
@@ -369,6 +375,12 @@ export function TecnicosPage() {
           </div>
         </CardContent>
       </Card>
+
+      <RecordViewDialog
+        record={viewTecnico as unknown as Record<string, unknown> | null}
+        title={viewTecnico ? `Técnico: ${viewTecnico.Nombre}` : ""}
+        onClose={() => setViewTecnico(null)}
+      />
 
       {/* Delete Dialog */}
       <Dialog open={!!deleteDialog} onOpenChange={() => setDeleteDialog(null)}>

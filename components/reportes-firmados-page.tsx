@@ -443,7 +443,11 @@ export function ReportesFirmadosPage() {
                   </TableRow>
                 ) : (
                   filtered.map((r, i) => (
-                    <TableRow key={`${r.tipo}-${r.id}-${i}`}>
+                    <TableRow
+                      key={`${r.tipo}-${r.id}-${i}`}
+                      className="cursor-pointer"
+                      onClick={() => setDetalle(r)}
+                    >
                       <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
                       <TableCell className="font-semibold whitespace-nowrap">{formatDate(r.fecha)}</TableCell>
                       <TableCell>
@@ -464,7 +468,7 @@ export function ReportesFirmadosPage() {
                           {r.estado || (r.firmaCliente ? "Firmado" : "Pendiente")}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-1">
                           <Button variant="ghost" size="icon" title="Ver detalle" onClick={() => setDetalle(r)}>
                             <Eye className="h-4 w-4" />

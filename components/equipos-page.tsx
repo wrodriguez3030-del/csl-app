@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog"
 import { Plus, Pencil, Trash2, Power, PowerOff, Save, X } from "lucide-react"
 import { RecordActions } from "@/components/record-actions"
+import { RecordViewDialog } from "@/components/record-view-dialog"
 import type { Equipo } from "@/lib/types"
 
 const emptyEquipo: Equipo = {
@@ -35,6 +36,14 @@ export function EquiposPage() {
   const [formData, setFormData] = useState<Equipo>(emptyEquipo)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [deleteDialog, setDeleteDialog] = useState<Equipo | null>(null)
+  const [viewEquipo, setViewEquipo] = useState<Equipo | null>(null)
+
+  // Reportes relacionados al equipo abierto (mostrados como extraSlot del dialog).
+  const reportesEquipo = viewEquipo
+    ? db.reportes
+        .filter((r) => r.EquipoID === viewEquipo.EquipoID)
+        .sort((a, b) => String(b.Fecha || "").localeCompare(String(a.Fecha || "")))
+    : []
   const [sortCol, setSortCol] = useState<string>("EquipoID")
   const [sortDir, setSortDir] = useState<"asc"|"desc">("asc")
 
@@ -170,7 +179,11 @@ export function EquiposPage() {
                 </TableRow>
               ) : (
                 sortedEquipos.map((eq, i) => (
-                  <TableRow key={eq.EquipoID || i}>
+                  <TableRow
+                    key={eq.EquipoID || i}
+                    className="cursor-pointer"
+                    onClick={() => setViewEquipo(eq)}
+                  >
                     <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
                     <TableCell className="font-medium">{eq.EquipoID}</TableCell>
                     <TableCell>{eq.Sucursal}</TableCell>
@@ -195,7 +208,7 @@ export function EquiposPage() {
                         {eq.Estado || "Activo"}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex gap-0.5 justify-end">
                         <RecordActions
                           title={`Equipo: ${eq.EquipoID}`}
@@ -217,6 +230,67 @@ export function EquiposPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <RecordViewDialog
+        record={viewEquipo as unknown as Record<string, unknown> | null}
+        title={viewEquipo ? `Equipo ${viewEquipo.EquipoID} · ${viewEquipo.Modelo || ""}` : ""}
+        onClose={() => setViewEquipo(null)}
+        extraSlot={
+          viewEquipo ? (
+            <div className="mt-4 border-t pt-4">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Reportes relacionados
+                </p>
+                <Badge variant="secondary" className="text-[10px]">
+                  {reportesEquipo.length}
+                </Badge>
+              </div>
+              {reportesEquipo.length === 0 ? (
+                <p className="rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  Sin reportes registrados para este equipo.
+                </p>
+              ) : (
+                <div className="max-h-64 space-y-1.5 overflow-y-auto">
+                  {reportesEquipo.slice(0, 20).map((r) => (
+                    <div
+                      key={r.ID}
+                      className="flex items-start justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-xs"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            {String(r.Fecha || "").slice(0, 10)}
+                          </span>
+                          <Badge variant="secondary" className="text-[10px]">
+                            {r.Tipo || "-"}
+                          </Badge>
+                          {r.Atendio ? (
+                            <span className="text-[10px] text-muted-foreground">{r.Atendio}</span>
+                          ) : null}
+                        </div>
+                        {r.Problema ? (
+                          <p className="mt-1 text-[11px] text-foreground break-words">{r.Problema}</p>
+                        ) : null}
+                      </div>
+                      {r.EstadoEquipo ? (
+                        <Badge variant="outline" className="flex-shrink-0 text-[10px]">
+                          {r.EstadoEquipo}
+                        </Badge>
+                      ) : null}
+                    </div>
+                  ))}
+                  {reportesEquipo.length > 20 ? (
+                    <p className="pt-1 text-center text-[10px] text-muted-foreground">
+                      +{reportesEquipo.length - 20} más
+                    </p>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          ) : null
+        }
+      />
 
       {/* Form Dialog */}
       <Dialog open={isFormOpen} onOpenChange={(o) => { if (!o) { setIsFormOpen(false); setEditingEquipo(null) } }}>

@@ -20,6 +20,7 @@ import {
   AlertTriangle, TrendingDown, Boxes,
 } from "lucide-react"
 import { RecordActions } from "@/components/record-actions"
+import { RecordViewDialog } from "@/components/record-view-dialog"
 import type { InventarioItem, PiezaCatalogo } from "@/lib/types"
 
 const emptyPiezaCatalogo: PiezaCatalogo = {
@@ -63,6 +64,8 @@ export function InventarioPage() {
   const [showNuevaPieza, setShowNuevaPieza] = useState(false)
   const [nuevaPiezaForm, setNuevaPiezaForm] = useState<PiezaCatalogo>(emptyPiezaCatalogo)
   const [savingNuevaPieza, setSavingNuevaPieza] = useState(false)
+  // Vista de detalle (clic en fila) — usa el dialog genérico.
+  const [viewItem, setViewItem] = useState<InventarioItem | null>(null)
   // Cuando el usuario elige "+ Nueva categoría" en el select, mostramos input
   // libre para escribirla. También entra en este modo si la categoría
   // pre-cargada del form principal no existe aún en el catálogo.
@@ -499,7 +502,11 @@ export function InventarioPage() {
                 const stock = filterSuc === "todas" ? stockTotal(i) : stockBySuc(i, filterSuc)
                 const status = stockStatus(i)
                 return (
-                  <tr key={i.ItemID} className="border-b border-border/50 hover:bg-muted/20">
+                  <tr
+                    key={i.ItemID}
+                    className="cursor-pointer border-b border-border/50 hover:bg-muted/20"
+                    onClick={() => setViewItem(i)}
+                  >
                     <td className="px-3 py-2 text-center"><SeqBadge n={seqIndex + 1} /></td>
                     <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{i.CodigoBarras || "-"}</td>
                     <td className="px-3 py-2 font-semibold">{i.Pieza}</td>
@@ -508,7 +515,7 @@ export function InventarioPage() {
                     <td className="px-3 py-2 text-right font-mono text-xs">{i.PrecioVenta ? money(i.PrecioVenta) : "-"}</td>
                     <td className="px-3 py-2 text-right font-mono font-bold">{fmt(stock)}</td>
                     <td className="px-3 py-2 text-center"><Badge className={status.color + " text-xs"}>{status.label}</Badge></td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                       <div className="flex gap-1 justify-end items-center">
                         <div className="flex gap-0.5 bg-muted/50 rounded px-1.5 py-1">
                           <button 
@@ -707,6 +714,12 @@ export function InventarioPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <RecordViewDialog
+        record={viewItem as unknown as Record<string, unknown> | null}
+        title={viewItem ? `Inventario: ${viewItem.Pieza}` : ""}
+        onClose={() => setViewItem(null)}
+      />
 
       {/* Nueva pieza del catálogo (secundario, abierto desde el modal de Nuevo item) */}
       <Dialog

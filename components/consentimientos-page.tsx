@@ -1219,7 +1219,11 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
                   const linked = record.clienteId ? clientes.find((c) => c.ClienteID === record.clienteId) : null
                   const displayName = (linked && clienteFullName(linked)) || record.nombreCliente || "—"
                   return (
-                  <TableRow key={record.id}>
+                  <TableRow
+                    key={record.id}
+                    className="cursor-pointer"
+                    onClick={() => setDetail(record)}
+                  >
                     <TableCell className="text-center"><SeqBadge n={seqIndex + 1} /></TableCell>
                     <TableCell className="font-semibold">{formatDate(record.fecha)}</TableCell>
                     <TableCell>
@@ -1243,7 +1247,7 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
                     <TableCell>{record.sucursal || "-"}</TableCell>
                     <TableCell className="text-muted-foreground">{record.telefono || "-"}</TableCell>
                     <TableCell><StatusBadge status={record.estado} /></TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon" onClick={() => setDetail(record)} title="Ver"><Eye className="h-4 w-4" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => printConsent(record, kind)} title="Imprimir PDF"><Printer className="h-4 w-4 text-primary" /></Button>

@@ -1,15 +1,24 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { useAppStore } from "@/lib/store"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { BarChart3 } from "lucide-react"
 import { SEQ_HEADER_CLASS, SeqBadge } from "@/components/seq-badge"
 
 export function HistorialEquiposPage() {
   const { db } = useAppStore()
+  const [viewEquipoId, setViewEquipoId] = useState<string | null>(null)
+
+  // Reportes filtrados por equipo seleccionado (para el dialog de detalle).
+  const reportesViewEquipo = viewEquipoId
+    ? db.reportes
+        .filter((r) => (r.EquipoID || "Sin equipo") === viewEquipoId)
+        .sort((a, b) => String(b.Fecha || "").localeCompare(String(a.Fecha || "")))
+    : []
   const rows = useMemo(() => {
     const map = new Map<string, { equipo: string; sucursal: string; modelo: string; reportes: number; ultimo: string; piezas: number }>()
     db.reportes.forEach((reporte) => {
@@ -47,7 +56,11 @@ export function HistorialEquiposPage() {
             </TableHeader>
             <TableBody>
               {rows.length ? rows.map((row, i) => (
-                <TableRow key={row.equipo}>
+                <TableRow
+                  key={row.equipo}
+                  className="cursor-pointer"
+                  onClick={() => setViewEquipoId(row.equipo)}
+                >
                   <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
                   <TableCell className="font-black">{row.equipo}</TableCell>
                   <TableCell>{row.sucursal}</TableCell>
@@ -63,6 +76,51 @@ export function HistorialEquiposPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Dialog de detalle: lista completa de reportes para el equipo seleccionado. */}
+      <Dialog open={Boolean(viewEquipoId)} onOpenChange={(open) => !open && setViewEquipoId(null)}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Historial del equipo {viewEquipoId}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>{reportesViewEquipo.length} reportes</span>
+              {reportesViewEquipo[0]?.Sucursal ? <span>{reportesViewEquipo[0].Sucursal}</span> : null}
+            </div>
+            {reportesViewEquipo.length === 0 ? (
+              <p className="rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                Sin reportes registrados para este equipo.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {reportesViewEquipo.map((r) => (
+                  <div
+                    key={r.ID}
+                    className="flex items-start justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-xs"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {String(r.Fecha || "").slice(0, 10)}
+                        </span>
+                        <Badge variant="secondary" className="text-[10px]">{r.Tipo || "-"}</Badge>
+                        {r.Atendio ? <span className="text-[10px] text-muted-foreground">{r.Atendio}</span> : null}
+                      </div>
+                      {r.Problema ? (
+                        <p className="mt-1 break-words text-[11px] text-foreground">{r.Problema}</p>
+                      ) : null}
+                    </div>
+                    {r.EstadoEquipo ? (
+                      <Badge variant="outline" className="flex-shrink-0 text-[10px]">{r.EstadoEquipo}</Badge>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -465,7 +465,16 @@ export function ReportesPage() {
                   return (
                     <div
                       key={r.ID || r._rowNum || i}
-                      className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setViewDialog(r)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault()
+                          setViewDialog(r)
+                        }
+                      }}
+                      className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition-colors hover:border-cyan-200 hover:bg-cyan-50/65 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
                     >
                       <div className="mb-2 flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2">
@@ -473,7 +482,7 @@ export function ReportesPage() {
                           <div className="text-xs text-muted-foreground">{formatDate(r.Fecha)}</div>
                           <Badge variant="secondary" className="text-[10px]">{r.Tipo}</Badge>
                         </div>
-                        <div className="flex gap-0.5">
+                        <div className="flex gap-0.5" onClick={(e) => e.stopPropagation()}>
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setViewDialog(r)} title="Ver reporte">
                             <Eye className="h-3.5 w-3.5 text-muted-foreground" />
                           </Button>
@@ -546,7 +555,11 @@ export function ReportesPage() {
                         : r.PartesTexto || "-"
 
                       return (
-                        <TableRow key={r.ID || r._rowNum || i}>
+                        <TableRow
+                          key={r.ID || r._rowNum || i}
+                          className="cursor-pointer"
+                          onClick={() => setViewDialog(r)}
+                        >
                           <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
                           <TableCell className="text-xs text-muted-foreground">{formatDate(r.Fecha)}</TableCell>
                           <TableCell className="font-medium">{r.EquipoID}</TableCell>
@@ -566,7 +579,7 @@ export function ReportesPage() {
                             </div>
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">{resumen}</TableCell>
-                          <TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
                             <div className="flex justify-end gap-0.5">
                               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setViewDialog(r)} title="Ver reporte">
                                 <Eye className="h-3.5 w-3.5 text-muted-foreground" />
