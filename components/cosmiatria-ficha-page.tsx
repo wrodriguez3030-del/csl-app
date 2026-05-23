@@ -175,7 +175,6 @@ ${printRow(printField("Cáncer de piel", `${ficha.cancerPiel || ""} ${ficha.canc
 ${printRow(printField("Cosmético actual", `${ficha.cosmeticoActual || ""} ${ficha.cosmeticoActualCuales || ""}`))}
 ${printRow(printField("Tolera jabones, perfumes, cremas", ficha.toleraCosmeticos))}
 ${printRow(printField("Depilación láser", `${ficha.depilaLaser || ""} ${ficha.reaccionLaser || ""}`))}
-${printRow(printField("Reacción al frío, viento o estufas", ficha.reaccionClima))}
 <h2>Alergias, medicamentos y condiciones especiales</h2>
 ${printRow(printField("Alergias", `${ficha.alergias || ""} ${ficha.alergiasNotas || ficha.alergiasCuales || ""}`), printField("Medicamentos", `${ficha.medicamentos || ""} ${ficha.medicamentosNotas || ficha.medicamentosCuales || ""}`))}
 ${printRow(printField("Fotosensibilizantes", `${ficha.medicamentosFotosensibilizantes || ""} ${ficha.medicamentosFotosensibilizantesNotas || ""}`), printField("Embarazo", `${ficha.embarazo || ficha.embarazada || ""} ${ficha.embarazoNotas || ""}`), printField("Lactancia", `${ficha.lactancia || ""} ${ficha.lactanciaNotas || ""}`))}

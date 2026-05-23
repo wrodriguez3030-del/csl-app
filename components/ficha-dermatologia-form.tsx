@@ -644,7 +644,6 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
           <div className="col-span-full"><Label>¿Tolera jabones, perfumes, cremas?</Label><Textarea className="min-h-24" value={form.toleraCosmeticos} onChange={(event) => update({ toleraCosmeticos: event.target.value })} /></div>
           <YesNoField label="¿Se depila a láser?" value={form.depilaLaser} onChange={(value) => update({ depilaLaser: value })} />
           <div><Label>¿Cómo reacciona?</Label><Input value={form.reaccionLaser} onChange={(event) => update({ reaccionLaser: event.target.value })} /></div>
-          <div className="col-span-full"><Label>Reacción al frío, viento o estufas</Label><Textarea className="min-h-24" value={form.reaccionClima} onChange={(event) => update({ reaccionClima: event.target.value })} /></div>
         </CardContent>
       </Card>
 
