@@ -9,7 +9,26 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
 import { supabaseBrowser } from "@/lib/supabase-client"
+import { normalizeAddress } from "@/lib/address"
 import type { ClienteCosmiatria } from "@/lib/types"
+
+// 10 motivos canónicos para Ficha Dermatológica. Espejo de
+// MOTIVOS_CONSULTA_PREDEFINIDOS en ficha-dermatologia-form.tsx — mantener
+// en sync si se agregan/cambian (lista corta, drift improbable).
+const MOTIVOS_CONSULTA = [
+  "Acné",
+  "Manchas",
+  "Melasma",
+  "Hidratación facial",
+  "Rejuvenecimiento",
+  "Control de grasa",
+  "Poros dilatados",
+  "Sensibilidad / irritación",
+  "Limpieza profunda",
+  "Evaluación general de la piel",
+] as const
+
+const MOTIVO_OTRO = "__otro__"
 
 type FormType =
   | "ficha_dermatologica"
@@ -58,10 +77,14 @@ function clienteNombre(cliente: ClienteCosmiatria) {
 }
 
 function clienteDireccion(cliente: ClienteCosmiatria) {
-  return [cliente.Direccion, cliente.Localidad, cliente.Ciudad, cliente.Region]
+  // Concatenamos las 4 partes y luego normalizeAddress remueve duplicados +
+  // corrige typos conocidos. Ej: dirección/localidad/ciudad que vienen como
+  // "santiago, santiago, santaigo, santiago" → "Santiago".
+  const raw = [cliente.Direccion, cliente.Localidad, cliente.Ciudad, cliente.Region]
     .map((value) => String(value || "").trim())
     .filter(Boolean)
     .join(", ")
+  return normalizeAddress(raw)
 }
 
 function onlyDigits(value: string) {
@@ -125,6 +148,12 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
   const [prefill, setPrefill] = useState<PrefillState>(emptyPrefill)
   const [manualMode, setManualMode] = useState(false) // true = se acepta editar sin cliente seleccionado
 
+  // Motivo de consulta (solo ficha_dermatologica): dropdown con 10 motivos
+  // canónicos + opción "Otro motivo" que muestra input libre.
+  // motivoSelected = "" | uno de MOTIVOS_CONSULTA | MOTIVO_OTRO
+  const [motivoSelected, setMotivoSelected] = useState<string>("")
+  const [motivoOtroText, setMotivoOtroText] = useState("")
+
   // ─── Generación del link ─────────────────────────────────────────────────
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState("")
@@ -154,6 +183,8 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       setClientSearch("")
       setDropdownOpen(false)
       setManualMode(false)
+      setMotivoSelected("")
+      setMotivoOtroText("")
       setError("")
       setResult(null)
       setCopied(false)
@@ -229,6 +260,26 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       setError("Selecciona o ingresa el nombre del cliente antes de generar el link.")
       return
     }
+
+    // Resolver motivoConsulta final (solo ficha): seleccionado de la lista
+    // o el texto manual si eligió "Otro motivo".
+    let motivoConsultaFinal = ""
+    if (formType === "ficha_dermatologica") {
+      if (motivoSelected === MOTIVO_OTRO) {
+        motivoConsultaFinal = motivoOtroText.trim()
+        if (!motivoConsultaFinal) {
+          setError("Escribe el motivo de consulta o elige uno de la lista.")
+          return
+        }
+      } else if (motivoSelected) {
+        motivoConsultaFinal = motivoSelected
+      }
+      if (!motivoConsultaFinal) {
+        setError("Selecciona un motivo de consulta de la lista.")
+        return
+      }
+    }
+
     setGenerating(true)
     try {
       const { data: { session } } = await supabaseBrowser.auth.getSession()
@@ -247,8 +298,12 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       include("correo")
       include("direccion")
       include("sucursal")
-      if (formType === "ficha_dermatologica") include("motivoConsulta")
-      else include("servicio")
+      if (formType === "ficha_dermatologica") {
+        // Sobrescribimos motivoConsulta con el valor resuelto (lista u Otro).
+        if (motivoConsultaFinal) prefillPayload.motivoConsulta = motivoConsultaFinal
+      } else {
+        include("servicio")
+      }
 
       const response = await fetch("/api/public-form-links", {
         method: "POST",
@@ -441,14 +496,28 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                     )}
                   </div>
                   {isFicha ? (
-                    <div>
-                      <Label className="text-xs">Motivo de consulta</Label>
-                      <Input
-                        value={prefill.motivoConsulta}
-                        onChange={(e) => update({ motivoConsulta: e.target.value })}
-                        placeholder="Ej. Manchas, acné..."
-                        className="mt-1"
-                      />
+                    <div className="sm:col-span-2">
+                      <Label className="text-xs">Motivo de consulta *</Label>
+                      <Select value={motivoSelected} onValueChange={setMotivoSelected}>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="Selecciona un motivo..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MOTIVOS_CONSULTA.map((m) => (
+                            <SelectItem key={m} value={m}>{m}</SelectItem>
+                          ))}
+                          <SelectItem value={MOTIVO_OTRO}>+ Otro motivo</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {motivoSelected === MOTIVO_OTRO ? (
+                        <Input
+                          value={motivoOtroText}
+                          onChange={(e) => setMotivoOtroText(e.target.value)}
+                          placeholder="Escribir motivo personalizado..."
+                          className="mt-2"
+                          autoFocus
+                        />
+                      ) : null}
                     </div>
                   ) : (
                     <div className="sm:col-span-2">
@@ -510,7 +579,11 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
           {!result ? (
             <>
               <Button variant="outline" onClick={() => onOpenChange(false)} disabled={generating}>Cancelar</Button>
-              <Button onClick={generate} disabled={generating || !prefill.nombre.trim()} className="gap-2">
+              <Button
+                onClick={generate}
+                disabled={generating || !prefill.nombre.trim() || (isFicha && !motivoSelected)}
+                className="gap-2"
+              >
                 {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 {generating ? "Generando..." : "Generar link"}
               </Button>
