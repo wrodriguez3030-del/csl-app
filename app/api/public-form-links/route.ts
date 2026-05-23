@@ -30,9 +30,13 @@ function buildPublicUrl(request: Request, token: string): string {
   return `${url.origin}/formulario-publico/${token}`
 }
 
-function buildWhatsappUrl(publicUrl: string, ttlHours: number): string {
+function buildWhatsappUrl(publicUrl: string, ttlHours: number, clienteNombre?: string): string {
+  // Personalizamos el saludo si tenemos el nombre del cliente. Tomamos solo
+  // el primer nombre para que el mensaje no quede sobre-formal.
+  const firstName = clienteNombre ? clienteNombre.trim().split(/\s+/)[0] : ""
+  const greeting = firstName ? `Hola ${firstName}, por favor complete` : "Hola, por favor complete"
   const mensaje = [
-    "Hola, por favor complete y firme su formulario en este enlace:",
+    `${greeting} y firme su formulario en este enlace:`,
     publicUrl,
     "",
     `Este enlace es válido por ${ttlHours} horas y solo puede usarse una vez.`,
@@ -80,7 +84,7 @@ export async function POST(request: Request) {
     })
 
     const publicUrl = buildPublicUrl(request, token)
-    const whatsappUrl = buildWhatsappUrl(publicUrl, ttlHours)
+    const whatsappUrl = buildWhatsappUrl(publicUrl, ttlHours, clienteNombre || prefillPayload?.nombre)
 
     return json({
       ok: true,
