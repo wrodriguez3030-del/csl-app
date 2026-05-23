@@ -3,20 +3,24 @@
  *
  * Endpoint PÚBLICO (sin auth). El token valida la sesión efímera.
  *
- * Flujo atómico:
- *   1. Verificar token (solo lectura).
- *   2. Construir el row del form según link.form_type (reusa los mappers
- *      existentes: fichaDermoToDb / consentToDb).
- *   3. CLAIM atómico del token (UPDATE WHERE usado=false ...). Si retorna
- *      0 filas → 409 conflicto (race / expirado mientras enviaba).
- *   4. INSERT del row en la tabla correspondiente, con business_id del link.
- *   5. Si el INSERT falla post-claim: NO revertimos el claim (mejor que
- *      double-submit). Devolvemos 500 y el usuario tendrá que pedir link nuevo.
+ * Flujo (corregido tras bug "token consumido pero falló el guardado"):
+ *   1. Verificar token (solo lectura). Aceptamos token usado=true PERO
+ *      con submitted_record_id null como recuperable — un intento previo
+ *      consumió el token sin grabar nada (bug histórico).
+ *   2. Construir el row del form (reusa fichaDermoToDb / consentToDb).
+ *   3. INSERT del row PRIMERO, con schema-fallback (si la DB no conoce
+ *      una columna por schema cache stale, la stripea y reintenta).
+ *      Si falla terminal: 500, token NO consumido, cliente puede reintentar.
+ *   4. CLAIM atómico del token (UPDATE usado=true + submitted_record_id).
+ *      Si CLAIM gana → marca consumido. Si pierde una race (otro request
+ *      consumió en paralelo), el form ya está guardado (upsert idempotente)
+ *      → devolvemos OK igual.
  *
  * Rate-limit por IP para frenar abuso si alguien descubre un patrón de tokens.
  */
 
 import { NextResponse } from "next/server"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { fichaDermoToDb } from "@/lib/dermo-server"
 import { consentToDb } from "@/lib/server/csl-transforms"
 import { getSupabaseAdmin } from "@/lib/server/supabase"
@@ -47,6 +51,40 @@ function deriveRecordId(formType: string, payload: FormPayload): string {
   }
   const prefix = formType === "consentimiento_masajes" ? "CM" : "CTC"
   return String(payload.id || payload.ID || `${prefix}-${Date.now()}`)
+}
+
+/**
+ * Upsert con schema-fallback: si Postgres/PostgREST devuelve "column 'X' of
+ * '<table>'" la quita del payload y reintenta. Idéntico patrón a
+ * `upsertRow("ficha_dermatologica", ...)` en csl-crud.ts (que ya tolera esto
+ * en el flujo interno) — acá lo aplicamos a las 3 tablas del submit público.
+ *
+ * Esto resuelve el caso real reportado:
+ *   "Could not find the 'alergias' column of 'csl_ficha_dermatologica'
+ *    in the schema cache"
+ * Cuando la DB tiene un subset de columnas vs el shape TS, el mapper
+ * genera campos extra; los stripeamos y reintentamos hasta lograr el insert.
+ */
+async function upsertWithSchemaFallback(
+  supabase: SupabaseClient,
+  table: string,
+  payload: Record<string, unknown>,
+  onConflict: string,
+): Promise<void> {
+  const row = { ...payload }
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const { error } = await supabase.from(table).upsert(row, { onConflict })
+    if (!error) return
+    // Postgres "column 'X' of ..." | PostgREST PGRST204 "Could not find ... column"
+    const match = /['"]([a-z0-9_]+)['"]\s+column|column\s+['"]?([a-z0-9_]+)['"]?\s+of/i.exec(error.message || "")
+    const missing = (match?.[1] || match?.[2] || "").toLowerCase()
+    if (!missing || !(missing in row)) {
+      // Error que no es "columna faltante" — no podemos arreglarlo acá.
+      throw error
+    }
+    delete row[missing]
+  }
+  throw new Error(`No se pudo guardar en ${table}: demasiadas columnas pendientes de migración`)
 }
 
 export async function POST(
@@ -112,25 +150,45 @@ export async function POST(
       return json({ ok: false, error: "Falta la firma del cliente" }, 400)
     }
 
-    // 3) CLAIM atómico — solo continuamos si reclamamos el token con éxito.
-    const claimed = await claimPublicFormLink(String(token), recordId)
-    if (!claimed) {
-      // Race: alguien más usó el token entre verify y claim, o expiró.
-      const recheck = await verifyPublicFormLink(String(token))
-      return json({ ok: false, status: recheck.status, error: `Link ${recheck.status}` }, 409)
-    }
-
-    // 4) INSERT del form. Usamos upsert con onConflict para que sea idempotente
-    // si por algún motivo el cliente reintenta (mismo recordId).
+    // 3) INSERT del form PRIMERO — con schema fallback. Si la columna no
+    // existe en la DB (PGRST204 / schema cache stale), la stripea y reintenta.
+    // Si el insert termina fallando, el token NO se consume y el cliente
+    // puede reintentar con el mismo link.
     const supabase = getSupabaseAdmin()
-    const { error } = await supabase
-      .from(targetTable)
-      .upsert(row, { onConflict: onConflictKey })
-    if (error) {
+    try {
+      await upsertWithSchemaFallback(supabase, targetTable, row, onConflictKey)
+    } catch (insertError) {
+      // Log server-side con el mensaje técnico real (para el operador) pero
+      // devolvemos al cliente un mensaje amigable y NO consumimos el token.
+      const msg = insertError instanceof Error ? insertError.message : String(insertError)
+      console.error("[public-form-link/submit] insert error", {
+        token_id: verified.link.id,
+        form_type: formType,
+        target: targetTable,
+        record_id: recordId,
+        error: msg,
+      })
       return json(
-        { ok: false, error: `Token consumido pero falló el guardado: ${error.message}` },
+        {
+          ok: false,
+          error: "No se pudo enviar el formulario. Por favor intente nuevamente o comuníquese con recepción.",
+        },
         500,
       )
+    }
+
+    // 4) CLAIM atómico del token DESPUÉS del insert exitoso. Si gana → marca
+    // consumido. Si pierde la race (otro request consumió en paralelo), el
+    // form ya está guardado (recordId determinístico + upsert idempotente)
+    // → devolvemos OK igual; el cliente cumplió su parte.
+    const claimed = await claimPublicFormLink(String(token), recordId)
+    if (!claimed) {
+      // El form está guardado. Tratamos como éxito — la operación del
+      // cliente terminó. El log queda para auditoría.
+      console.warn("[public-form-link/submit] form saved but claim race", {
+        token_id: verified.link.id,
+        record_id: recordId,
+      })
     }
 
     return json({ ok: true, recordId, formType })

@@ -101,7 +101,11 @@ export async function verifyPublicFormLink(token: string): Promise<VerifyResult>
   if (error || !data) return { status: "invalido" }
   const link = data as PublicFormLink
   if (link.cancelado) return { status: "cancelado", link }
-  if (link.usado) return { status: "usado", link }
+  // Recovery path: si un submit anterior consumió el token pero NO grabó
+  // submitted_record_id (bug histórico: orden CLAIM→INSERT, INSERT fallaba),
+  // tratamos el link como recuperable — el cliente puede reintentar.
+  const usadoYRegistrado = link.usado && link.submitted_record_id && link.submitted_record_id.trim() !== ""
+  if (usadoYRegistrado) return { status: "usado", link }
   if (new Date(link.expira_en) <= new Date()) return { status: "expirado", link }
   return {
     status: "valido",
@@ -134,6 +138,12 @@ export async function claimPublicFormLink(
   const hash = hashToken(token.trim())
   const supabase = getSupabaseAdmin()
   const nowIso = new Date().toISOString()
+  // CLAIM acepta dos casos:
+  //   (a) token nunca consumido: usado=false
+  //   (b) token consumido por bug histórico (usado=true pero
+  //       submitted_record_id null/'') — permitimos reclamar y registrar.
+  // Implementación: usamos .or() en PostgREST. Filtros base siguen siendo
+  // cancelado=false y expira_en>now().
   const { data, error } = await supabase
     .from("csl_public_form_links")
     .update({
@@ -142,9 +152,9 @@ export async function claimPublicFormLink(
       submitted_record_id: submittedRecordId,
     })
     .eq("token_hash", hash)
-    .eq("usado", false)
     .eq("cancelado", false)
     .gt("expira_en", nowIso)
+    .or("usado.eq.false,submitted_record_id.is.null")
     .select("*")
     .maybeSingle()
   if (error || !data) return null
