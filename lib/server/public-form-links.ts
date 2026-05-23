@@ -43,6 +43,18 @@ export function hashToken(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex")
 }
 
+export interface PrefillPayload {
+  nombre?: string
+  telefono?: string
+  documento?: string
+  correo?: string
+  direccion?: string
+  sucursal?: string
+  motivoConsulta?: string
+  servicio?: string
+  [key: string]: string | undefined
+}
+
 export interface PublicFormLink {
   id: string
   business_id: string
@@ -57,6 +69,7 @@ export interface PublicFormLink {
   cancelado: boolean
   submitted_record_id: string | null
   created_at: string
+  prefill_payload: PrefillPayload | null
 }
 
 export type LinkStatus = "valido" | "usado" | "expirado" | "cancelado" | "invalido"
@@ -66,6 +79,7 @@ export interface VerifyResult {
   formType?: FormType
   clienteNombre?: string | null
   clienteTelefono?: string | null
+  prefillPayload?: PrefillPayload | null
   expiraEn?: string
   link?: PublicFormLink
 }
@@ -93,6 +107,7 @@ export async function verifyPublicFormLink(token: string): Promise<VerifyResult>
     formType: link.form_type,
     clienteNombre: link.cliente_nombre,
     clienteTelefono: link.cliente_telefono,
+    prefillPayload: link.prefill_payload,
     expiraEn: link.expira_en,
     link,
   }
@@ -141,6 +156,9 @@ export interface CreateLinkParams {
   createdBy: string
   clienteNombre?: string
   clienteTelefono?: string
+  /** Payload completo de pre-fill — campos opcionales que se hidratan
+   *  en el form público al abrir el link. Ver PrefillPayload. */
+  prefillPayload?: PrefillPayload
   /** TTL en horas; default 12. */
   ttlHours?: number
 }
@@ -158,16 +176,28 @@ export async function createPublicFormLink(
   const expiraEn = new Date(Date.now() + ttlHours * 60 * 60 * 1000).toISOString()
 
   const supabase = getSupabaseAdmin()
+  // Sanitizar prefill: solo guardar strings no vacíos para evitar JSON con
+  // {"correo":""} que después aparece como string vacío en el form público.
+  const cleanedPrefill: PrefillPayload | null = params.prefillPayload
+    ? Object.fromEntries(
+        Object.entries(params.prefillPayload)
+          .filter(([, v]) => typeof v === "string" && v.trim() !== "")
+          .map(([k, v]) => [k, String(v).trim()]),
+      )
+    : null
+  const hasPrefill = cleanedPrefill && Object.keys(cleanedPrefill).length > 0
+
   const { data, error } = await supabase
     .from("csl_public_form_links")
     .insert({
       business_id: params.businessId,
       token_hash: tokenHash,
       form_type: params.formType,
-      cliente_nombre: params.clienteNombre || null,
-      cliente_telefono: params.clienteTelefono || null,
+      cliente_nombre: params.clienteNombre || cleanedPrefill?.nombre || null,
+      cliente_telefono: params.clienteTelefono || cleanedPrefill?.telefono || null,
       creado_por: params.createdBy,
       expira_en: expiraEn,
+      prefill_payload: hasPrefill ? cleanedPrefill : null,
     })
     .select("*")
     .single()

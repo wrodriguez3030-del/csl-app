@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Edit, ExternalLink, Eye, Link2, MessageCircle, Plus, Printer, Trash2 } from "lucide-react"
+import { Edit, Eye, MessageCircle, Plus, Printer, Trash2 } from "lucide-react"
 import { FichaDermatologiaForm } from "@/components/ficha-dermatologia-form"
 import { LinkGeneratorDialog } from "@/components/link-generator-dialog"
 import { Badge } from "@/components/ui/badge"
@@ -405,11 +405,6 @@ export function CosmiatriaFichaPage() {
     showToast("Ficha eliminada", "success")
   }
 
-  const copyPublicLink = async () => {
-    await navigator.clipboard.writeText(`${window.location.origin}/ficha-dermatologia`)
-    showToast("Link público copiado", "success")
-  }
-
   const startNew = () => {
     setEditing(null)
     setOpen(true)
@@ -435,7 +430,6 @@ export function CosmiatriaFichaPage() {
   }
 
   const sortLabel = (key: SortKey) => sortKey === key ? (sortDir === "asc" ? " ↑" : " ↓") : " ↕"
-  const publicLink = typeof window !== "undefined" ? `${window.location.origin}/ficha-dermatologia` : "/ficha-dermatologia"
 
   return (
     <div className="space-y-5">
@@ -444,24 +438,16 @@ export function CosmiatriaFichaPage() {
           <h2 className="text-xl font-bold">Cosmiatría</h2>
           <p className="text-sm text-muted-foreground">Ficha Dermatología / Dermo-Cosmiátrica</p>
         </div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-4 md:flex md:flex-wrap">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:flex md:flex-wrap">
           <Button variant="outline" onClick={() => setLinkDialogOpen(true)}><MessageCircle className="mr-2 h-4 w-4" />Generar link para cliente</Button>
-          <Button variant="outline" onClick={copyPublicLink}><Link2 className="mr-2 h-4 w-4" />Copiar link público</Button>
-          <Button variant="outline" onClick={() => { void loadRecords(); void loadOperadoras(); void loadClientes() }}>Actualizar</Button>
           <Button onClick={startNew}><Plus className="mr-2 h-4 w-4" />Nueva ficha</Button>
         </div>
       </div>
 
-      <Card className="border-primary/25 bg-primary/5">
-        <CardContent className="grid gap-3 pt-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
-          <div className="min-w-0">
-            <Label>Link para enviar a clientes</Label>
-            <Input value={publicLink} readOnly onFocus={(event) => event.currentTarget.select()} />
-          </div>
-          <Button variant="outline" onClick={copyPublicLink}><Link2 className="mr-2 h-4 w-4" />Copiar link</Button>
-          <Button variant="outline" onClick={() => window.open(publicLink, "_blank")}><ExternalLink className="mr-2 h-4 w-4" />Abrir</Button>
-        </CardContent>
-      </Card>
+      {/* (Card estática "Link para enviar a clientes" removida — el link de
+          un solo uso se obtiene desde el botón "Generar link para cliente").
+          La data se refresca automáticamente: el shell de la app corre
+          auto-refresh cada 60s; este módulo lo aprovecha. */}
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Total</p><p className="text-3xl font-bold">{records.length}</p></CardContent></Card>

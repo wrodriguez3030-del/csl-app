@@ -29,33 +29,55 @@ const TITLE: Record<ConsentKind, string> = {
 // puede ajustar la sucursal después si hace falta desde el módulo interno.
 const SUCURSALES_FALLBACK = ["Rafael Vidal", "Los Jardines", "Villa Olga", "La Vega"]
 
+export interface PublicConsentPrefill {
+  nombre?: string
+  telefono?: string
+  documento?: string
+  correo?: string
+  direccion?: string
+  sucursal?: string
+  servicio?: string  // se mapea a observaciones del procedimiento si aplica
+}
+
 interface Props {
   kind: ConsentKind
-  initialNombre?: string
-  initialTelefono?: string
+  prefill?: PublicConsentPrefill
   onSubmit: (payload: Record<string, unknown>) => Promise<void>
 }
 
-export function PublicConsentForm({ kind, initialNombre = "", initialTelefono = "", onSubmit }: Props) {
+export function PublicConsentForm({ kind, prefill = {}, onSubmit }: Props) {
   // Estado del form: usa la MISMA shape ConsentimientoRecord que el interno,
   // para que el backend reciba exactamente lo mismo (consentToDb maneja todos
   // los campos sin omitir).
   const [form, setForm] = useState<ConsentimientoRecord>(() => ({
-    ...emptyRecord(kind, ""),
-    nombreCliente: initialNombre,
-    telefono: initialTelefono,
+    ...emptyRecord(kind, prefill.sucursal || ""),
+    nombreCliente: prefill.nombre || "",
+    telefono: prefill.telefono || "",
+    documento: prefill.documento || "",
+    correo: prefill.correo || "",
+    direccion: prefill.direccion || "",
+    // Si vino "servicio" del operador y aplica al kind, lo pre-cargamos
+    // en observaciones del procedimiento (el cliente lo puede ajustar).
+    observaciones: prefill.servicio || "",
   }))
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
-  // Si llegan nombre/teléfono después (sesion ya cargada), los hidratamos.
+  // Si llega prefill después del primer render (linkState async), hidratamos
+  // solo los campos vacíos para no pisar nada que el cliente ya haya escrito.
   useEffect(() => {
     setForm((current) => ({
       ...current,
-      nombreCliente: current.nombreCliente || initialNombre,
-      telefono: current.telefono || initialTelefono,
+      nombreCliente: current.nombreCliente || prefill.nombre || "",
+      telefono: current.telefono || prefill.telefono || "",
+      documento: current.documento || prefill.documento || "",
+      correo: current.correo || prefill.correo || "",
+      direccion: current.direccion || prefill.direccion || "",
+      sucursal: current.sucursal || prefill.sucursal || "",
+      observaciones: current.observaciones || prefill.servicio || "",
     }))
-  }, [initialNombre, initialTelefono])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill.nombre, prefill.telefono, prefill.documento, prefill.correo, prefill.direccion, prefill.sucursal, prefill.servicio])
 
   const update = (patch: Partial<ConsentimientoRecord>) => setForm((c) => ({ ...c, ...patch }))
 

@@ -1181,7 +1181,6 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
               <Button variant="outline" onClick={() => setLinkDialogOpen(true)} className="gap-2 rounded-full">
                 <MessageCircle className="h-4 w-4" /> Generar link para cliente
               </Button>
-              <Button variant="outline" onClick={loadRecords} className="rounded-full">Actualizar</Button>
               <Button onClick={startCreate} className="gap-2 rounded-full"><FileSignature className="h-4 w-4" /> Nuevo consentimiento</Button>
             </div>
           </div>

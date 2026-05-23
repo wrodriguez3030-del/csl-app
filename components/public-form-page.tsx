@@ -13,12 +13,24 @@ type FormType =
 
 type LinkStatus = "valido" | "usado" | "expirado" | "cancelado" | "invalido" | "loading" | "error"
 
+interface PrefillPayload {
+  nombre?: string
+  telefono?: string
+  documento?: string
+  correo?: string
+  direccion?: string
+  sucursal?: string
+  motivoConsulta?: string
+  servicio?: string
+}
+
 interface VerifyResponse {
   ok: boolean
   status: Exclude<LinkStatus, "loading" | "error">
   formType: FormType | null
   clienteNombre: string | null
   clienteTelefono: string | null
+  prefillPayload: PrefillPayload | null
   expiraEn: string | null
 }
 
@@ -162,15 +174,23 @@ export function PublicFormPage({ token }: { token: string }) {
 
   const formType = linkState.formType
 
+  // Pre-fill rico — todos los campos que el operador haya llenado al generar
+  // el link aparecen ya cargados en el form. El cliente puede corregirlos.
+  const pf = linkState.prefillPayload || {}
+
   if (formType === "ficha_dermatologica") {
-    // Pre-llenar nombre/teléfono si el operador los puso al generar el link.
-    // emptyFichaDermo provee todos los campos requeridos por TS.
     const initial: FichaDermoCosmiatrica = {
       ...emptyFichaDermo,
       id: `dermo_${Date.now()}`,
       fecha: new Date().toISOString().slice(0, 10),
-      nombre: linkState.clienteNombre || "",
-      telefono: linkState.clienteTelefono || "",
+      nombre: pf.nombre || linkState.clienteNombre || "",
+      telefono: pf.telefono || linkState.clienteTelefono || "",
+      documento: pf.documento || "",
+      cedula: pf.documento || "",
+      email: pf.correo || "",
+      direccion: pf.direccion || "",
+      sucursal: pf.sucursal || "",
+      motivoConsulta: pf.motivoConsulta || "",
     }
     return (
       <main className="min-h-screen bg-background px-4 py-6">
@@ -192,8 +212,15 @@ export function PublicFormPage({ token }: { token: string }) {
     <main className="min-h-screen bg-background">
       <PublicConsentForm
         kind={kind}
-        initialNombre={linkState.clienteNombre || ""}
-        initialTelefono={linkState.clienteTelefono || ""}
+        prefill={{
+          nombre: pf.nombre || linkState.clienteNombre || "",
+          telefono: pf.telefono || linkState.clienteTelefono || "",
+          documento: pf.documento || "",
+          correo: pf.correo || "",
+          direccion: pf.direccion || "",
+          sucursal: pf.sucursal || "",
+          servicio: pf.servicio || "",
+        }}
         onSubmit={submit}
       />
     </main>

@@ -13,6 +13,7 @@ import {
   createPublicFormLink,
   isFormType,
   type FormType,
+  type PrefillPayload,
 } from "@/lib/server/public-form-links"
 
 export const dynamic = "force-dynamic"
@@ -59,12 +60,22 @@ export async function POST(request: Request) {
     const clienteNombre = typeof body.clienteNombre === "string" ? body.clienteNombre.trim() : ""
     const clienteTelefono = typeof body.clienteTelefono === "string" ? body.clienteTelefono.trim() : ""
 
+    // Extraer prefill_payload del body: el frontend manda nombre/telefono/
+    // documento/correo/direccion/sucursal/motivoConsulta/servicio según el
+    // tipo de form. Acepta cualquier string key — el código del form público
+    // ignora los que no aplican a su tipo.
+    const prefillPayload: PrefillPayload | undefined =
+      body.prefillPayload && typeof body.prefillPayload === "object"
+        ? (body.prefillPayload as PrefillPayload)
+        : undefined
+
     const { token, link } = await createPublicFormLink({
       businessId: ctx.businessId,
       formType: formType as FormType,
       createdBy: user.id,
       clienteNombre: clienteNombre || undefined,
       clienteTelefono: clienteTelefono || undefined,
+      prefillPayload,
       ttlHours,
     })
 

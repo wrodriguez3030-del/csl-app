@@ -38,6 +38,7 @@ export async function GET(
       formType: result.formType ?? null,
       clienteNombre: result.clienteNombre ?? null,
       clienteTelefono: result.clienteTelefono ?? null,
+      prefillPayload: result.prefillPayload ?? null,
       expiraEn: result.expiraEn ?? null,
     })
   } catch (error) {
