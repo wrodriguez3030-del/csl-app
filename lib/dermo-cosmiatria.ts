@@ -104,7 +104,7 @@
   firmaEspecialista: string
   nombreEspecialista: string
   fechaRegistro: string
-  estado: "Pendiente" | "Completada" | "Archivada"
+  estado: "Pendiente" | "Pendiente de revisión" | "Completada" | "Archivada"
   empresaOculta?: string
 }
 

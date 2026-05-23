@@ -83,16 +83,20 @@ export async function POST(
     let targetTable: "csl_ficha_dermatologica" | "csl_consent_masajes" | "csl_consent_tatuajes_cejas"
     let onConflictKey: "ficha_id" | "consent_id"
 
+    // Estado al venir desde link público = "Pendiente de revisión". La
+    // especialista debe abrirlo en interno, completar los campos clínicos
+    // (Evaluación, Observación cutánea, firma del especialista, etc.) y
+    // cambiarlo a "Completada" / "Firmado" antes del PDF final.
     if (formType === "ficha_dermatologica") {
       recordId = deriveRecordId(formType, body)
-      row = fichaDermoToDb({ ...body, id: recordId, estado: "Completada" }) as Record<string, unknown>
+      row = fichaDermoToDb({ ...body, id: recordId, estado: "Pendiente de revisión" }) as Record<string, unknown>
       row.business_id = businessId
       targetTable = "csl_ficha_dermatologica"
       onConflictKey = "ficha_id"
     } else if (formType === "consentimiento_masajes" || formType === "consentimiento_tatuajes_cejas") {
       recordId = deriveRecordId(formType, body)
       const kind = formType === "consentimiento_masajes" ? "masajes" : "tatuajes"
-      row = consentToDb({ ...body, id: recordId, estado: "Firmado" }, kind) as Record<string, unknown>
+      row = consentToDb({ ...body, id: recordId, estado: "Pendiente de revisión" }, kind) as Record<string, unknown>
       row.business_id = businessId
       targetTable = formType === "consentimiento_masajes" ? "csl_consent_masajes" : "csl_consent_tatuajes_cejas"
       onConflictKey = "consent_id"

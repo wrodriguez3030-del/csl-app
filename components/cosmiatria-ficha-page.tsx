@@ -493,7 +493,17 @@ export function CosmiatriaFichaPage() {
                   </td>
                   <td className="px-3 py-2 text-xs">{record.sucursal}</td>
                   <td className="px-3 py-2 text-xs">{record.operadora}</td>
-                  <td className="px-3 py-2 text-center"><Badge variant="outline">{record.estado}</Badge></td>
+                  <td className="px-3 py-2 text-center">
+                    {record.estado === "Pendiente de revisión" ? (
+                      <Badge variant="outline" className="border-blue-200 bg-blue-50 font-bold text-blue-700">
+                        Cliente firmó · falta especialista
+                      </Badge>
+                    ) : record.estado === "Completada" ? (
+                      <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">{record.estado}</Badge>
+                    ) : (
+                      <Badge variant="outline">{record.estado}</Badge>
+                    )}
+                  </td>
                   <td className="px-3 py-2">
                     <div className="flex justify-end gap-1">
                       <Button size="sm" variant="ghost" title="Ver" onClick={() => setViewing(record)}><Eye className="h-4 w-4" /></Button>

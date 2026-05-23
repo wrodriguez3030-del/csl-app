@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type React from "react"
-import { Eye, FileSignature, FileText, Link as LinkIcon, Loader2, MessageCircle, Pencil, Printer, Save, Search, Trash2, UserPlus, Users, X } from "lucide-react"
+import { CheckCircle2, Eye, FileSignature, FileText, Link as LinkIcon, Loader2, MessageCircle, Pencil, Printer, Save, Search, Trash2, UserPlus, Users, X } from "lucide-react"
 import { LinkGeneratorDialog } from "@/components/link-generator-dialog"
 import { SiNoButtons, SiNoConDetalle, EMBARAZO_WARNING_MESSAGE } from "@/components/si-no-buttons"
 import { Badge } from "@/components/ui/badge"
@@ -23,7 +23,7 @@ import { SEQ_HEADER_CLASS, SeqBadge } from "@/components/seq-badge"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 
 export type ConsentKind = "masajes" | "tatuajes"
-export type ConsentStatus = "Pendiente" | "Firmado" | "Anulado"
+export type ConsentStatus = "Pendiente" | "Pendiente de revisión" | "Firmado" | "Anulado"
 
 interface FichaResumen {
   id: string
@@ -1343,8 +1343,12 @@ function StatusBadge({ status }: { status: ConsentStatus }) {
       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
       : status === "Anulado"
         ? "bg-rose-50 text-rose-700 border-rose-200"
-        : "bg-amber-50 text-amber-700 border-amber-200"
-  return <Badge variant="outline" className={classes}>{status}</Badge>
+        : status === "Pendiente de revisión"
+          ? "bg-blue-50 text-blue-700 border-blue-200 font-bold"
+          : "bg-amber-50 text-amber-700 border-amber-200"
+  // Etiqueta corta para "Pendiente de revisión" cuando vino de link público.
+  const label = status === "Pendiente de revisión" ? "Cliente firmó · falta especialista" : status
+  return <Badge variant="outline" className={classes}>{label}</Badge>
 }
 
 export function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
@@ -1392,6 +1396,7 @@ function ConsentFormDialog({
     () => (form.clienteId ? clientes.find((c) => c.ClienteID === form.clienteId) : null),
     [clientes, form.clienteId],
   )
+  const showPendingBanner = form.estado === "Pendiente de revisión"
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-[1120px]">
@@ -1399,6 +1404,28 @@ function ConsentFormDialog({
           <DialogTitle>{form.id.startsWith(config.idPrefix) ? "Nuevo consentimiento" : "Editar consentimiento"}</DialogTitle>
           <DialogDescription>{config.title} · complete los datos, firme y guarde.</DialogDescription>
         </DialogHeader>
+
+        {showPendingBanner ? (
+          <div className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <MessageCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+              <div>
+                <p className="text-sm font-bold text-amber-900">Formulario enviado por cliente</p>
+                <p className="mt-0.5 text-xs text-amber-800">
+                  El cliente completó y firmó su parte desde un enlace público.
+                  Revisa la información, completa los datos pendientes y finaliza el consentimiento.
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              onClick={() => onUpdate({ estado: "Firmado" })}
+              className="shrink-0 gap-2 bg-amber-600 text-white hover:bg-amber-700"
+            >
+              <CheckCircle2 className="h-4 w-4" /> Marcar como firmado
+            </Button>
+          </div>
+        ) : null}
 
         <div className="grid gap-5">
           <section className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
@@ -1431,7 +1458,12 @@ function ConsentFormDialog({
               <Field label="Estado">
                 <Select value={form.estado} onValueChange={(value) => onUpdate({ estado: value as ConsentStatus })}>
                   <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="Pendiente">Pendiente</SelectItem><SelectItem value="Firmado">Firmado</SelectItem><SelectItem value="Anulado">Anulado</SelectItem></SelectContent>
+                  <SelectContent>
+                    <SelectItem value="Pendiente">Pendiente</SelectItem>
+                    <SelectItem value="Pendiente de revisión">Pendiente de revisión</SelectItem>
+                    <SelectItem value="Firmado">Firmado</SelectItem>
+                    <SelectItem value="Anulado">Anulado</SelectItem>
+                  </SelectContent>
                 </Select>
               </Field>
             </div>

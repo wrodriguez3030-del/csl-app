@@ -212,6 +212,8 @@ export function PublicFormPage({ token }: { token: string }) {
             // para cargar la lista completa. El cliente NO lo cambia.
             operadoras={esp ? [esp] : []}
             clientes={[]}
+            mode="public"
+            submitLabel="Enviar ficha firmada"
             onSubmit={async (value) => { await submit(value as unknown as Record<string, unknown>) }}
           />
         </div>

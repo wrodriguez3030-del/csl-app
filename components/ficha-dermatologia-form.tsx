@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { FileSignature, Loader2, RefreshCcw, Send, UserRound } from "lucide-react"
+import { CheckCircle2, FileSignature, Loader2, MessageCircle, RefreshCcw, Send, UserRound } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -44,6 +44,16 @@ interface Props {
   submitLabel?: string
   onCancel?: () => void
   onSubmit: (value: FichaDermoCosmiatrica) => Promise<void>
+  /**
+   * "internal" (default) muestra el form completo para el personal.
+   * "public" muestra solo lo que el cliente debe completar/revisar desde
+   * el link de WhatsApp: cliente vinculado, antecedentes médicos, alergias,
+   * condiciones especiales, declaración + firma. Las secciones clínicas
+   * (datos generales internos, evaluación dermatológica, observación
+   * cutánea, firma del especialista) quedan ocultas — la especialista
+   * las completa después en interno.
+   */
+  mode?: "internal" | "public"
 }
 
 function toggle(list: string[], value: string) {
@@ -247,7 +257,8 @@ function ConditionalYesNo({
   )
 }
 
-export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes = [], submitLabel = "Enviar ficha", onCancel, onSubmit }: Props) {
+export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes = [], submitLabel = "Enviar ficha", onCancel, onSubmit, mode = "internal" }: Props) {
+  const isPublic = mode === "public"
   const [form, setForm] = useState<FichaDermoCosmiatrica>(initialValue || { ...emptyFichaDermo, id: `dermo_${Date.now()}` })
   const [clientSearch, setClientSearch] = useState("")
   // Estado explícito del dropdown — antes el render se derivaba de
@@ -336,7 +347,14 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
     }
     try {
       setIsLoading(true)
-      await onSubmit({ ...form, estado: form.estado || "Completada", fechaRegistro: form.fechaRegistro || new Date().toISOString() })
+      // En modo público forzamos estado="Pendiente de revisión": el especialista
+      // debe abrirla en interno y completar (Evaluación, Observación cutánea,
+      // firma profesional, etc.) antes de marcarla como Completada.
+      // En modo interno respetamos el estado actual o cae a "Completada".
+      const finalEstado = isPublic
+        ? "Pendiente de revisión"
+        : (form.estado || "Completada")
+      await onSubmit({ ...form, estado: finalEstado, fechaRegistro: form.fechaRegistro || new Date().toISOString() })
       setForm({ ...emptyFichaDermo, id: `dermo_${Date.now()}`, fecha: new Date().toISOString().slice(0, 10) })
       setClientSearch("")
       setDropdownOpen(false)
@@ -347,8 +365,37 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
     }
   }
 
+  const showPendingBanner = !isPublic && form.estado === "Pendiente de revisión"
+  const finalizar = () => {
+    update({ estado: "Completada" })
+    // Hace scroll suave hacia abajo, donde está el botón submit.
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-[1320px] space-y-4 text-sm [&_[role=combobox]]:border-primary/25 [&_[role=combobox]]:bg-primary/10 [&_input]:border-primary/25 [&_input]:bg-primary/10 [&_textarea]:border-primary/25 [&_textarea]:bg-primary/10">
+      {showPendingBanner ? (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="flex flex-col gap-3 pt-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <MessageCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+              <div>
+                <p className="text-sm font-bold text-amber-900">Formulario enviado por cliente</p>
+                <p className="mt-0.5 text-xs text-amber-800">
+                  El cliente completó y firmó su parte desde un enlace público. Revisa la
+                  información, completa los datos pendientes (evaluación, observación
+                  cutánea, firma del especialista) y finaliza el consentimiento.
+                </p>
+              </div>
+            </div>
+            <Button type="button" onClick={finalizar} className="shrink-0 gap-2 bg-amber-600 text-white hover:bg-amber-700">
+              <CheckCircle2 className="h-4 w-4" /> Marcar como completada
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
       <Card className="border-primary/30 bg-primary/5">
         <CardContent className="pt-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -364,7 +411,7 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
         </CardContent>
       </Card>
 
-      <Card>
+      {isPublic ? null : <Card>
         <CardHeader><CardTitle className="text-base">Datos generales</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,220px),1fr))] gap-4">
           <div><Label>ID de ficha</Label><Input value={form.id} readOnly className="bg-muted/40 font-mono text-xs" /></div>
@@ -384,7 +431,7 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
           {/* Estado: oculto del UI del cliente. Internamente se default-ea a
               "Pendiente" y al submit se eleva a "Completada" automáticamente. */}
         </CardContent>
-      </Card>
+      </Card>}
 
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2 text-base"><UserRound className="h-4 w-4" />Cliente vinculado</CardTitle></CardHeader>
@@ -470,7 +517,7 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
         </CardContent>
       </Card>
 
-      <Card>
+      {isPublic ? null : <Card>
         <CardHeader><CardTitle className="text-base">Evaluación Dermatológica</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,170px),1fr))] gap-3">
           <SelectField label="Tipo de piel" value={form.tipoPiel} options={tipoPielOpciones} onChange={(value) => update({ tipoPiel: value })} />
@@ -497,7 +544,7 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
           <div><Label>Color de la piel</Label><Select value={form.colorPiel} onValueChange={(value) => update({ colorPiel: value })}><SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger><SelectContent>{colorPielOpciones.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></div>
           <div className="col-span-full"><Label>Observaciones de la piel</Label><Textarea className="min-h-24" value={form.observacionesPiel} onChange={(event) => update({ observacionesPiel: event.target.value })} /></div>
         </CardContent>
-      </Card>
+      </Card>}
 
       <Card>
         <CardHeader><CardTitle className="text-base">Antecedentes Médicos</CardTitle></CardHeader>
@@ -567,7 +614,7 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
         </CardContent>
       </Card>
 
-      <Card>
+      {isPublic ? null : <Card>
         <CardHeader><CardTitle className="text-base">Observación y envejecimiento cutáneo</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,390px),1fr))] gap-4">
           <CheckboxGroup label="Se observa" options={seObservaOpciones} value={form.seObserva} onChange={(value) => update({ seObserva: value })} />
@@ -594,7 +641,7 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
           <div><Label>¿Recomienda procedimiento?</Label><Select value={form.recomiendaProcedimiento} onValueChange={(value) => update({ recomiendaProcedimiento: value })}><SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger><SelectContent><SelectItem value="Si">Si</SelectItem><SelectItem value="No">No</SelectItem><SelectItem value="Evaluar">Evaluar</SelectItem></SelectContent></Select></div>
           <div><Label>Próxima evaluación</Label><Input type="date" value={form.proximaEvaluacion} onChange={(event) => update({ proximaEvaluacion: event.target.value })} /></div>
         </CardContent>
-      </Card>
+      </Card>}
 
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2 text-base"><FileSignature className="h-4 w-4" />Declaración y firmas</CardTitle></CardHeader>
@@ -606,11 +653,19 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
             <Checkbox checked={form.declaracionAceptada} onCheckedChange={(checked) => update({ declaracionAceptada: checked === true })} />
             <span>Declaro que la información suministrada es verdadera y completa.</span>
           </label>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className={isPublic ? "" : "grid gap-4 md:grid-cols-2"}>
             <SignaturePad label="Firma del cliente" value={form.firma} onChange={(value) => update({ firma: value })} />
-            <SignaturePad label="Firma del especialista" value={form.firmaEspecialista} onChange={(value) => update({ firmaEspecialista: value })} />
+            {isPublic ? null : (
+              <SignaturePad label="Firma del especialista" value={form.firmaEspecialista} onChange={(value) => update({ firmaEspecialista: value })} />
+            )}
           </div>
-          <div><Label>Nombre del especialista</Label><Input value={form.nombreEspecialista || form.especialista} onChange={(event) => update({ nombreEspecialista: event.target.value, especialista: event.target.value })} /></div>
+          {isPublic ? (
+            <p className="text-[11px] text-muted-foreground">
+              La firma del especialista la completa el personal al finalizar tu consentimiento.
+            </p>
+          ) : (
+            <div><Label>Nombre del especialista</Label><Input value={form.nombreEspecialista || form.especialista} onChange={(event) => update({ nombreEspecialista: event.target.value, especialista: event.target.value })} /></div>
+          )}
           <div className="flex justify-between gap-2">
             <div />
             <div className="flex gap-2">
