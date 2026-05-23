@@ -199,7 +199,7 @@ const ZONAS_MASAJE: ReadonlyArray<string> = [
  *  editar manualmente en el formulario. */
 const ESPECIALISTAS_POR_SUCURSAL: Record<string, string> = {
   "Los Jardines": "Benita",
-  "Villa Olga": "Dayhana",
+  "Villa Olga": "DAYHANA",
 }
 
 const DECLARACION_MASAJES: ReadonlyArray<string> = [
