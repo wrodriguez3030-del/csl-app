@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { AlertCircle, CheckCircle2, Clock, Loader2 } from "lucide-react"
-import { FichaDermatologiaForm } from "@/components/ficha-dermatologia-form"
 import { PublicConsentForm, PublicConsentSuccess } from "@/components/public-consent-form"
-import { emptyFichaDermo, type FichaDermoCosmiatrica } from "@/lib/dermo-cosmiatria"
+import { PublicFichaConsentForm } from "@/components/public-ficha-consent-form"
 
 type FormType =
   | "ficha_dermatologica"
@@ -97,12 +96,18 @@ export function PublicFormPage({ token }: { token: string }) {
       body: JSON.stringify(payload),
     })
     const raw = await response.text()
-    let result: { ok?: boolean; error?: string; status?: string; formType?: FormType } = {}
+    let result: { ok?: boolean; error?: string; status?: string; formType?: FormType; recordId?: string } = {}
     try { result = raw ? JSON.parse(raw) : {} } catch { result = { error: raw } }
     if (!response.ok || !result.ok) {
       throw new Error(result.error || `Error ${response.status}`)
     }
-    if (result.formType) setSuccess({ formType: result.formType })
+    // Para consents, la página renderiza pantalla de éxito globalmente.
+    // Para ficha_dermatologica, el PublicFichaConsentForm maneja su propio
+    // success (muestra botón Descargar PDF formal).
+    if (result.formType && result.formType !== "ficha_dermatologica") {
+      setSuccess({ formType: result.formType })
+    }
+    return { recordId: result.recordId }
   }, [token])
 
   if (status === "loading") {
@@ -180,43 +185,27 @@ export function PublicFormPage({ token }: { token: string }) {
   const pf = linkState.prefillPayload || {}
 
   if (formType === "ficha_dermatologica") {
-    // El especialista viaja en prefill.especialista (seleccionado por
-    // recepción al generar el link). Se mapea a los 3 campos del shape
-    // FichaDermoCosmiatrica que tocan especialista (operadora es el
-    // storage real, nombreEspecialista/especialista lo replican para
-    // mappers y PDF).
-    const esp = pf.especialista || ""
-    const initial: FichaDermoCosmiatrica = {
-      ...emptyFichaDermo,
-      id: `dermo_${Date.now()}`,
-      fecha: new Date().toISOString().slice(0, 10),
-      nombre: pf.nombre || linkState.clienteNombre || "",
-      telefono: pf.telefono || linkState.clienteTelefono || "",
-      documento: pf.documento || "",
-      cedula: pf.documento || "",
-      email: pf.correo || "",
-      direccion: pf.direccion || "",
-      sucursal: pf.sucursal || "",
-      operadora: esp,
-      nombreEspecialista: esp,
-      especialista: esp,
-      motivoConsulta: pf.motivoConsulta || "",
-    }
+    // Form público de Ficha Dermatológica = consentimiento formal +
+    // declaración + firma del cliente. Los campos clínicos (antecedentes,
+    // alergias, evaluación, etc.) los completa el especialista después
+    // desde el sistema interno. El cliente ve solo el documento legal.
     return (
-      <main className="min-h-screen bg-background px-4 py-6">
-        <div className="mx-auto max-w-5xl">
-          <FichaDermatologiaForm
-            initialValue={initial}
-            // operadoras=[esp] permite que el campo Especialista (Select)
-            // muestre el preseleccionado del link aunque no haya sesión
-            // para cargar la lista completa. El cliente NO lo cambia.
-            operadoras={esp ? [esp] : []}
-            clientes={[]}
-            mode="public"
-            submitLabel="Enviar ficha firmada"
-            onSubmit={async (value) => { await submit(value as unknown as Record<string, unknown>) }}
-          />
-        </div>
+      <main className="min-h-screen bg-background">
+        <PublicFichaConsentForm
+          prefill={{
+            nombre: pf.nombre || linkState.clienteNombre || "",
+            telefono: pf.telefono || linkState.clienteTelefono || "",
+            documento: pf.documento || "",
+            correo: pf.correo || "",
+            direccion: pf.direccion || "",
+            sucursal: pf.sucursal || "",
+            especialista: pf.especialista || "",
+            motivoConsulta: pf.motivoConsulta || "",
+          }}
+          onSubmit={async (value) => {
+            await submit(value)
+          }}
+        />
       </main>
     )
   }
@@ -236,7 +225,7 @@ export function PublicFormPage({ token }: { token: string }) {
           especialista: pf.especialista || "",
           servicio: pf.servicio || "",
         }}
-        onSubmit={submit}
+        onSubmit={async (value) => { await submit(value) }}
       />
     </main>
   )
