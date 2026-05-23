@@ -87,6 +87,138 @@ async function upsertWithSchemaFallback(
   throw new Error(`No se pudo guardar en ${table}: demasiadas columnas pendientes de migración`)
 }
 
+/**
+ * Asegura un cliente_id válido en csl_cosmiatria_clientes (la PK real es
+ * `cliente_id`, NO `id`).
+ *
+ * Estrategia para evitar el error
+ *   "duplicate key value violates unique constraint
+ *    csl_cosmiatria_clientes_documento_uidx":
+ *
+ *   1. Si el body trae clienteId/cliente_id (vinculado al generar el link)
+ *      → buscar por cliente_id (PK). Si existe, usar.
+ *   2. Si tiene documento_identidad → buscar por esa columna unique.
+ *      Si existe, usar el cliente_id encontrado (no insertar nada nuevo).
+ *   3. Si tiene teléfono → buscar por telefono.
+ *   4. Si no se encontró nada → INSERT nuevo con cliente_id determinístico
+ *      cli_doc_<digits> o cli_tel_<digits>. Si el INSERT falla por
+ *      duplicate-key (race / unique violation), re-buscar por documento
+ *      y devolver el cliente_id existente.
+ *
+ * Devuelve el cliente_id a usar en la ficha/consent, o "" si no había
+ * data suficiente para vincular (no es error — la ficha guarda con
+ * cliente_id vacío).
+ */
+async function ensureCliente(
+  supabase: SupabaseClient,
+  businessId: string,
+  body: FormPayload,
+): Promise<string> {
+  const onlyDigits = (v: unknown) => String(v ?? "").replace(/\D/g, "")
+  const nombre = String(body.nombre || body.Nombre || body.nombreCliente || "").trim()
+  const documento = String(body.documento || body.Documento || body.cedula || body.Cedula || "").trim()
+  const telefono = String(body.telefono || body.Telefono || "").trim()
+  const docDigits = onlyDigits(documento)
+  const telDigits = onlyDigits(telefono)
+  const explicitClienteId = String(body.clienteId || body.cliente_id || body.ClienteID || "").trim()
+  const correo = String(body.correo || body.email || body.Email || "").trim()
+  const direccion = String(body.direccion || body.Direccion || "").trim()
+  const sucursal = String(body.sucursal || body.Sucursal || "").trim()
+
+  // 1) Si vino un clienteId explícito, ver si existe.
+  if (explicitClienteId) {
+    const { data } = await supabase
+      .from("csl_cosmiatria_clientes")
+      .select("cliente_id")
+      .eq("cliente_id", explicitClienteId)
+      .eq("business_id", businessId)
+      .maybeSingle()
+    if (data?.cliente_id) return String(data.cliente_id)
+  }
+
+  // 2) Buscar por documento_identidad (la columna con índice único que
+  //    causa el duplicate-key si insertamos un cliente con el mismo doc).
+  if (documento) {
+    const { data } = await supabase
+      .from("csl_cosmiatria_clientes")
+      .select("cliente_id")
+      .eq("documento_identidad", documento)
+      .eq("business_id", businessId)
+      .maybeSingle()
+    if (data?.cliente_id) return String(data.cliente_id)
+  }
+
+  // 3) Buscar por teléfono como último recurso de matching.
+  if (telefono) {
+    const { data } = await supabase
+      .from("csl_cosmiatria_clientes")
+      .select("cliente_id")
+      .eq("telefono", telefono)
+      .eq("business_id", businessId)
+      .maybeSingle()
+    if (data?.cliente_id) return String(data.cliente_id)
+  }
+
+  // 4) No existe → crear nuevo cliente con cliente_id determinístico.
+  if (!docDigits && !telDigits && !nombre) {
+    // Sin data suficiente para crear ni vincular — devolvemos vacío.
+    return ""
+  }
+  const newClienteId = explicitClienteId
+    || (docDigits ? `cli_doc_${docDigits}` : telDigits ? `cli_tel_${telDigits}` : `cli_${Date.now()}`)
+  const partes = nombre.split(/\s+/).filter(Boolean)
+  const nombreCorto = partes.length > 1 ? partes.slice(0, Math.ceil(partes.length / 2)).join(" ") : (partes[0] || nombre)
+  const apellido = partes.length > 1 ? partes.slice(Math.ceil(partes.length / 2)).join(" ") : ""
+
+  const insertRow: Record<string, unknown> = {
+    cliente_id: newClienteId,
+    business_id: businessId,
+    numero_cliente: docDigits || telDigits || newClienteId,
+    nombre: nombreCorto,
+    apellido,
+    documento_identidad: documento || null,
+    telefono: telefono || null,
+    email: correo || null,
+    direccion: direccion || null,
+    sucursal: sucursal || null,
+    estado: "Activo",
+    cliente_desde: new Date().toISOString().slice(0, 10),
+    payload_json: {},
+  }
+  // Upsert con onConflict en cliente_id para que sea idempotente.
+  const { error: insertErr } = await supabase
+    .from("csl_cosmiatria_clientes")
+    .upsert(insertRow, { onConflict: "cliente_id" })
+
+  if (insertErr) {
+    // 23505 = unique_violation. Si chocó con el unique de documento_identidad,
+    // significa que un cliente con ese doc existe con OTRO cliente_id
+    // (probablemente cli_tel_xxx histórico). Re-buscamos por doc y usamos
+    // ese — no insertamos uno nuevo.
+    if (documento) {
+      const { data: existing } = await supabase
+        .from("csl_cosmiatria_clientes")
+        .select("cliente_id")
+        .eq("documento_identidad", documento)
+        .eq("business_id", businessId)
+        .maybeSingle()
+      if (existing?.cliente_id) return String(existing.cliente_id)
+    }
+    if (telefono) {
+      const { data: existing } = await supabase
+        .from("csl_cosmiatria_clientes")
+        .select("cliente_id")
+        .eq("telefono", telefono)
+        .eq("business_id", businessId)
+        .maybeSingle()
+      if (existing?.cliente_id) return String(existing.cliente_id)
+    }
+    // Si no es duplicate o no encontramos el existente, propagar el error.
+    throw insertErr
+  }
+  return newClienteId
+}
+
 export async function POST(
   request: Request,
   context: { params: Promise<{ token: string }> },
@@ -114,27 +246,54 @@ export async function POST(
     const formType = verified.formType
     const businessId = verified.link.business_id
 
-    // 2) Construir row según tipo de formulario. Forzamos business_id desde
-    // el link — NO confiamos en lo que mande el cliente.
+    // 2) Asegurar cliente_id válido en csl_cosmiatria_clientes ANTES de
+    // armar el row del form. Esto previene:
+    //   (a) "duplicate key on documento_identidad" — si ya existe un cliente
+    //       con ese doc, reusamos su cliente_id (no insertamos uno nuevo).
+    //   (b) Cliente_id huérfano en la ficha/consent que apunte a una fila
+    //       inexistente — el helper crea el cliente si no existe.
+    // Si falla, el token NO se consume (este try lanza al catch externo).
+    const supabase = getSupabaseAdmin()
+    let resolvedClienteId = ""
+    try {
+      resolvedClienteId = await ensureCliente(supabase, businessId, body)
+    } catch (clienteErr) {
+      console.error("[public-form-link/submit] cliente resolve error", {
+        token_id: verified.link.id,
+        form_type: formType,
+        error: clienteErr instanceof Error ? clienteErr.message : String(clienteErr),
+      })
+      return json(
+        {
+          ok: false,
+          error: "No se pudo enviar el formulario. Por favor intente nuevamente o comuníquese con recepción.",
+        },
+        500,
+      )
+    }
+
+    // 3) Construir row del form, inyectando el cliente_id resuelto.
+    // Forzamos business_id desde el link — NO confiamos en lo que mande
+    // el cliente. Estado se fuerza a "Pendiente de revisión".
     let recordId: string
     let row: Record<string, unknown>
     let targetTable: "csl_ficha_dermatologica" | "csl_consent_masajes" | "csl_consent_tatuajes_cejas"
     let onConflictKey: "ficha_id" | "consent_id"
 
-    // Estado al venir desde link público = "Pendiente de revisión". La
-    // especialista debe abrirlo en interno, completar los campos clínicos
-    // (Evaluación, Observación cutánea, firma del especialista, etc.) y
-    // cambiarlo a "Completada" / "Firmado" antes del PDF final.
+    const bodyConCliente = resolvedClienteId
+      ? { ...body, clienteId: resolvedClienteId, cliente_id: resolvedClienteId }
+      : body
+
     if (formType === "ficha_dermatologica") {
-      recordId = deriveRecordId(formType, body)
-      row = fichaDermoToDb({ ...body, id: recordId, estado: "Pendiente de revisión" }) as Record<string, unknown>
+      recordId = deriveRecordId(formType, bodyConCliente)
+      row = fichaDermoToDb({ ...bodyConCliente, id: recordId, estado: "Pendiente de revisión" }) as Record<string, unknown>
       row.business_id = businessId
       targetTable = "csl_ficha_dermatologica"
       onConflictKey = "ficha_id"
     } else if (formType === "consentimiento_masajes" || formType === "consentimiento_tatuajes_cejas") {
-      recordId = deriveRecordId(formType, body)
+      recordId = deriveRecordId(formType, bodyConCliente)
       const kind = formType === "consentimiento_masajes" ? "masajes" : "tatuajes"
-      row = consentToDb({ ...body, id: recordId, estado: "Pendiente de revisión" }, kind) as Record<string, unknown>
+      row = consentToDb({ ...bodyConCliente, id: recordId, estado: "Pendiente de revisión" }, kind) as Record<string, unknown>
       row.business_id = businessId
       targetTable = formType === "consentimiento_masajes" ? "csl_consent_masajes" : "csl_consent_tatuajes_cejas"
       onConflictKey = "consent_id"
@@ -150,11 +309,10 @@ export async function POST(
       return json({ ok: false, error: "Falta la firma del cliente" }, 400)
     }
 
-    // 3) INSERT del form PRIMERO — con schema fallback. Si la columna no
+    // 4) INSERT del form — con schema fallback. Si la columna no
     // existe en la DB (PGRST204 / schema cache stale), la stripea y reintenta.
     // Si el insert termina fallando, el token NO se consume y el cliente
     // puede reintentar con el mismo link.
-    const supabase = getSupabaseAdmin()
     try {
       await upsertWithSchemaFallback(supabase, targetTable, row, onConflictKey)
     } catch (insertError) {
@@ -177,7 +335,7 @@ export async function POST(
       )
     }
 
-    // 4) CLAIM atómico del token DESPUÉS del insert exitoso. Si gana → marca
+    // 5) CLAIM atómico del token DESPUÉS del insert exitoso. Si gana → marca
     // consumido. Si pierde la race (otro request consumió en paralelo), el
     // form ya está guardado (recordId determinístico + upsert idempotente)
     // → devolvemos OK igual; el cliente cumplió su parte.
