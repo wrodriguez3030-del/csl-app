@@ -13,9 +13,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
 import { SeqBadge } from "@/components/seq-badge"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
+import { normalizeAddress } from "@/lib/address"
 
 interface HistorialPayload {
   fichas: Array<{ id: string; fecha: string; sucursal: string; operadora: string; estado: string; motivoConsulta?: string }>
@@ -281,8 +281,29 @@ export function CosmiatriaClientesPage() {
       showToast("Nombre, teléfono y sucursal son obligatorios", "error")
       return
     }
+    // Dedupe check (solo en CREATE): si ya existe un cliente con el mismo
+    // teléfono o documento, avisamos en vez de duplicar. El backend
+    // (resolveClienteId) además mergea por cli_doc_/cli_tel_ pero la
+    // detección temprana evita confusión visual.
+    if (!editing) {
+      const phoneDigits = String(form.Telefono).replace(/\D/g, "")
+      const docDigits = String(form.DocumentoIdentidad || "").replace(/\D/g, "")
+      const dup = clientes.find((c) => {
+        const cPhone = String(c.Telefono || "").replace(/\D/g, "")
+        const cDoc = String(c.DocumentoIdentidad || "").replace(/\D/g, "")
+        return (phoneDigits && cPhone === phoneDigits) || (docDigits && cDoc === docDigits)
+      })
+      if (dup) {
+        showToast(`Ya existe un cliente con ese teléfono/cédula: ${dup.Nombre} ${dup.Apellido || ""}`.trim(), "error")
+        return
+      }
+    }
+    // Limpiar dirección antes de persistir — evita guardar
+    // "santiago, santiago, santaigo" en el catálogo.
+    const direccionLimpia = normalizeAddress(form.Direccion)
     const payload = {
       ...form,
+      Direccion: direccionLimpia,
       ClienteID: form.ClienteID || `cli_${Date.now()}`,
       NumeroCliente: form.NumeroCliente || nextClientNumber(clientes),
     }
@@ -294,7 +315,7 @@ export function CosmiatriaClientesPage() {
       if (!result?.ok) throw new Error(String((result as { error?: string }).error || "No se pudo guardar"))
       await loadData()
       setOpen(false)
-      showToast(editing ? "Cliente actualizado" : "Cliente creado", "success")
+      showToast(editing ? "Cliente actualizado" : "Cliente creado correctamente", "success")
     } catch (error) {
       showToast(error instanceof Error ? error.message : "Error guardando cliente", "error")
     }
@@ -465,31 +486,56 @@ export function CosmiatriaClientesPage() {
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[94vh] w-[94vw] max-w-5xl overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing ? "Editar cliente" : "Nuevo cliente"}</DialogTitle></DialogHeader>
-          <div className="grid gap-4 py-2 md:grid-cols-3">
-            <div><Label>Nombre *</Label><Input value={form.Nombre} onChange={(event) => update({ Nombre: event.target.value.toUpperCase() })} /></div>
-            <div><Label>Apellido</Label><Input value={form.Apellido} onChange={(event) => update({ Apellido: event.target.value.toUpperCase() })} /></div>
-            <div><Label>Número de cliente</Label><Input value={form.NumeroCliente || "Automático"} readOnly className="bg-muted/40 text-muted-foreground" /></div>
-            <div><Label>Fecha de nacimiento</Label><Input type="date" value={form.FechaNacimiento} onChange={(event) => update({ FechaNacimiento: event.target.value, Edad: calculateAge(event.target.value) })} /></div>
-            <div><Label>Cédula / Documento</Label><Input value={form.DocumentoIdentidad} onChange={(event) => update({ DocumentoIdentidad: formatCedula(event.target.value) })} /></div>
-            <div><Label>Edad</Label><Input type="number" value={form.Edad || ""} readOnly className="bg-muted/40 text-muted-foreground" /></div>
-            <div><Label>Teléfono *</Label><Input value={form.Telefono} onChange={(event) => update({ Telefono: formatPhone(event.target.value) })} /></div>
-            <div><Label>Teléfono 2</Label><Input value={form.Telefono2} onChange={(event) => update({ Telefono2: formatPhone(event.target.value) })} /></div>
-            <div><Label>Email</Label><Input type="email" value={form.Email} onChange={(event) => update({ Email: event.target.value })} /></div>
-            <div><Label>Sucursal *</Label><Select value={form.Sucursal} onValueChange={(value) => update({ Sucursal: value })}><SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger><SelectContent>{sucursales.map((sucursal) => <SelectItem key={sucursal} value={sucursal}>{sucursal}</SelectItem>)}</SelectContent></Select></div>
-            <div><Label>Género</Label><Select value={form.Genero} onValueChange={(value) => update({ Genero: value })}><SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger><SelectContent><SelectItem value="Femenino">Femenino</SelectItem><SelectItem value="Masculino">Masculino</SelectItem><SelectItem value="Otro">Otro</SelectItem></SelectContent></Select></div>
-            <div><Label>Dirección</Label><Input value={form.Direccion} onChange={(event) => update({ Direccion: event.target.value })} /></div>
-            <div><Label>Localidad</Label><Input value={form.Localidad} onChange={(event) => update({ Localidad: event.target.value })} /></div>
-            <div><Label>Ciudad</Label><Input value={form.Ciudad} onChange={(event) => update({ Ciudad: event.target.value })} /></div>
-            <div><Label>Región</Label><Input value={form.Region} onChange={(event) => update({ Region: event.target.value })} /></div>
-            <div><Label>Cliente desde</Label><Input type="date" value={form.ClienteDesde} onChange={(event) => update({ ClienteDesde: event.target.value })} /></div>
-            <div><Label>Estado</Label><Select value={form.Estado} onValueChange={(value) => update({ Estado: value as ClienteCosmiatria["Estado"] })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Activo">Activo</SelectItem><SelectItem value="Inactivo">Inactivo</SelectItem></SelectContent></Select></div>
-            <div className="md:col-span-3"><Label>Otros / notas</Label><Textarea value={form.Notas} onChange={(event) => update({ Notas: event.target.value })} /></div>
+        <DialogContent className="max-h-[94vh] w-[94vw] max-w-xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editing ? "Editar cliente" : "Nuevo cliente"}</DialogTitle>
+          </DialogHeader>
+          {/* Alta rápida — solo 6 campos. Los campos extendidos (apellido,
+              fecha nac, edad, telefono2, género, localidad, ciudad, región,
+              cliente desde, estado, notas) se mantienen en el state y NO se
+              pierden al editar — siguen llegando al backend desde form.
+              Si en el futuro se necesita capturarlos, se agregan otra vez
+              aquí o se hace un modal "avanzado" separado. */}
+          <div className="grid gap-4 py-2 sm:grid-cols-2">
+            <div>
+              <Label>Nombre *</Label>
+              <Input value={form.Nombre} onChange={(event) => update({ Nombre: event.target.value.toUpperCase() })} className="mt-1" />
+            </div>
+            <div>
+              <Label>Teléfono *</Label>
+              <Input value={form.Telefono} onChange={(event) => update({ Telefono: formatPhone(event.target.value) })} className="mt-1" />
+            </div>
+            <div>
+              <Label>Cédula / Documento</Label>
+              <Input value={form.DocumentoIdentidad} onChange={(event) => update({ DocumentoIdentidad: formatCedula(event.target.value) })} className="mt-1" />
+            </div>
+            <div>
+              <Label>Correo</Label>
+              <Input type="email" value={form.Email} onChange={(event) => update({ Email: event.target.value })} className="mt-1" />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Dirección</Label>
+              <Input
+                value={form.Direccion}
+                onChange={(event) => update({ Direccion: event.target.value })}
+                onBlur={(event) => update({ Direccion: normalizeAddress(event.target.value) })}
+                placeholder="Calle, sector, ciudad"
+                className="mt-1"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Sucursal *</Label>
+              <Select value={form.Sucursal} onValueChange={(value) => update({ Sucursal: value })}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                <SelectContent>{sucursales.map((sucursal) => <SelectItem key={sucursal} value={sucursal}>{sucursal}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button onClick={saveCliente}>Guardar cliente</Button>
+            <Button onClick={saveCliente} disabled={!form.Nombre || !form.Telefono || !form.Sucursal}>
+              {editing ? "Guardar cliente" : "Crear cliente"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
