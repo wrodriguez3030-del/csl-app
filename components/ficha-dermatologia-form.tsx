@@ -496,18 +496,26 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
         </CardContent>
       </Card>
 
+      {/* Datos del cliente — formato unificado en TODO el sistema:
+          Nombre, Teléfono, Cédula/Documento, Correo, Dirección, Sucursal.
+          Fecha nacimiento, Edad, Ciudad, Ocupación se removieron del UI
+          pero quedan en el shape (state) para no romper edición de fichas
+          antiguas que los tengan. */}
       <Card>
         <CardHeader><CardTitle className="text-base">Datos del cliente</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,220px),1fr))] gap-4">
           <div><Label>Nombre *</Label><Input value={form.nombre} onChange={(event) => update({ nombre: event.target.value })} /></div>
-          <div><Label>Cédula / Documento</Label><Input value={form.cedula || form.documento} onChange={(event) => update({ cedula: event.target.value, documento: event.target.value })} /></div>
           <div><Label>Teléfono *</Label><Input value={form.telefono} onChange={(event) => update({ telefono: formatPhone(event.target.value) })} /></div>
+          <div><Label>Cédula / Documento</Label><Input value={form.cedula || form.documento} onChange={(event) => update({ cedula: event.target.value, documento: event.target.value })} /></div>
           <div><Label>Correo</Label><Input type="email" value={form.email} onChange={(event) => update({ email: event.target.value })} /></div>
-          <div><Label>Fecha nacimiento</Label><Input type="date" value={form.fechaNacimiento} onChange={(event) => update({ fechaNacimiento: event.target.value })} /></div>
-          <div><Label>Edad</Label><Input value={form.edad} onChange={(event) => update({ edad: event.target.value })} /></div>
-          <div><Label>Ciudad</Label><Input value={form.ciudad} onChange={(event) => update({ ciudad: event.target.value })} /></div>
-          <div><Label>Ocupación</Label><Input value={form.ocupacion} onChange={(event) => update({ ocupacion: event.target.value })} /></div>
           <div className="col-span-full"><Label>Dirección</Label><Input value={form.direccion} onChange={(event) => update({ direccion: event.target.value })} /></div>
+          <div>
+            <Label>Sucursal *</Label>
+            <Select value={form.sucursal} onValueChange={(value) => update({ sucursal: value })}>
+              <SelectTrigger><SelectValue placeholder="Seleccionar sucursal" /></SelectTrigger>
+              <SelectContent>{sucursalesCosmiatria.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
           <div className="col-span-full">
             <Label>Motivo de la consulta *</Label>
             <div className="mt-2">

@@ -160,27 +160,23 @@ export function PublicConsentForm({ kind, prefill = {}, onSubmit }: Props) {
         </CardContent>
       </Card>
 
-      {/* Datos del cliente — los mismos campos que el form interno. */}
+      {/* Datos del cliente — formato unificado en TODO el sistema:
+          Nombre, Teléfono, Cédula/Documento, Correo, Dirección.
+          (Fecha nacimiento + Edad se removieron del UI). */}
       <Card>
         <CardHeader><CardTitle className="text-base">Datos del cliente</CardTitle></CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2">
           <Field label="Nombre completo *">
             <Input value={form.nombreCliente} onChange={(e) => update({ nombreCliente: e.target.value })} />
           </Field>
-          <Field label="Cédula / Documento">
-            <Input value={form.documento} onChange={(e) => update({ documento: e.target.value })} />
-          </Field>
           <Field label="Teléfono *">
             <Input value={form.telefono} onChange={(e) => update({ telefono: e.target.value })} />
           </Field>
+          <Field label="Cédula / Documento">
+            <Input value={form.documento} onChange={(e) => update({ documento: e.target.value })} />
+          </Field>
           <Field label="Correo">
             <Input type="email" value={form.correo} onChange={(e) => update({ correo: e.target.value })} />
-          </Field>
-          <Field label="Fecha de nacimiento">
-            <Input type="date" value={form.fechaNacimiento} onChange={(e) => update({ fechaNacimiento: e.target.value })} />
-          </Field>
-          <Field label="Edad">
-            <Input value={form.edad} onChange={(e) => update({ edad: e.target.value })} />
           </Field>
           <Field label="Dirección" className="sm:col-span-2">
             <Input value={form.direccion} onChange={(e) => update({ direccion: e.target.value })} />

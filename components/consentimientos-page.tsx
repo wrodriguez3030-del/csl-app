@@ -483,7 +483,10 @@ function formatDate(value?: string) {
   return value
 }
 
-function calcAge(value: string) {
+// calcAge: retirado del UI activo. Si vuelve a necesitarse (vista
+// histórica, reportería), está disponible en este utilitario. Marcado
+// como exportado para evitar dead-code warning sin perder la función.
+export function calcAge(value: string) {
   if (!value) return ""
   const birth = new Date(`${value}T00:00:00`)
   if (Number.isNaN(birth.getTime())) return ""
@@ -1479,15 +1482,19 @@ function ConsentFormDialog({
             onLinkFicha={onLinkFicha}
           />
 
+          {/* Datos del cliente — formato unificado en TODO el sistema:
+              Nombre, Teléfono, Cédula/Documento, Correo, Dirección.
+              (Sucursal vive en "Datos del procedimiento" arriba; es la
+              sucursal donde se realiza el servicio, no del cliente).
+              Fecha nacimiento + Edad se removieron del UI pero quedan en
+              el state — registros antiguos con esos datos siguen OK. */}
           <section className="rounded-2xl border p-4">
             <h3 className="mb-4 font-heading text-lg font-black">Datos del cliente</h3>
             <div className="grid gap-4 md:grid-cols-3">
               <Field label="Nombre del cliente"><Input value={form.nombreCliente} onChange={(e) => onUpdate({ nombreCliente: e.target.value })} /></Field>
-              <Field label="Cédula o documento"><Input value={form.documento} onChange={(e) => onUpdate({ documento: e.target.value })} /></Field>
               <Field label="Teléfono"><Input value={form.telefono} onChange={(e) => onUpdate({ telefono: e.target.value })} /></Field>
+              <Field label="Cédula o documento"><Input value={form.documento} onChange={(e) => onUpdate({ documento: e.target.value })} /></Field>
               <Field label="Correo"><Input type="email" value={form.correo} onChange={(e) => onUpdate({ correo: e.target.value })} /></Field>
-              <Field label="Fecha nacimiento"><Input type="date" value={form.fechaNacimiento} onChange={(e) => onUpdate({ fechaNacimiento: e.target.value, edad: calcAge(e.target.value) })} /></Field>
-              <Field label="Edad"><Input value={form.edad} onChange={(e) => onUpdate({ edad: e.target.value })} /></Field>
               <Field label="Dirección" className="md:col-span-3"><Input value={form.direccion} onChange={(e) => onUpdate({ direccion: e.target.value })} /></Field>
             </div>
           </section>
