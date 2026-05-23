@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { SiNoButtons } from "@/components/si-no-buttons"
 
 type FamiliarItem = { nombre: string; parentesco: string; edad: string; direccion: string; ocupacion: string }
 type EducacionItem = { escolaridad: string; institucion: string; curso: string; nivel: string; estado: string }
@@ -121,7 +122,6 @@ const estadosCiviles = ["Soltero/a", "Casado/a", "Unión Libre", "Divorciado/a",
 const tiposSangre = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "No sabe"]
 const ciudades = ["Santiago", "La Vega"]
 const tiposCuenta = ["Ahorro", "Corriente"]
-const opcionesSiNo = ["Si", "No"]
 const fallbackSucursales = ["Rafael Vidal", "Los Jardines", "Villa Olga", "La Vega"]
 
 function onlyDigits(value: string) {
@@ -346,7 +346,13 @@ export default function SolicitudEmpleoPublicaPage() {
             <Field label="Número de cuenta"><Input value={form.numeroCuenta} onChange={(e) => setForm({ ...form, numeroCuenta: e.target.value })} /></Field>
             <Field label="Tipo de cuenta"><OptionSelect value={form.tipoCuenta} placeholder="Seleccionar tipo de cuenta" options={tiposCuenta} onChange={(value) => setForm({ ...form, tipoCuenta: value })} /></Field>
             <Field label="Pretensiones salariales"><Input value={form.pretensionesSalariales} onChange={(e) => setForm({ ...form, pretensionesSalariales: e.target.value })} /></Field>
-            <Field label="Licencia de conducir"><OptionSelect value={form.licenciaConducir} placeholder="Seleccionar" options={opcionesSiNo} onChange={(value) => setForm({ ...form, licenciaConducir: value, categoriaLicencia: "" })} /></Field>
+            <Field label="Licencia de conducir">
+              <SiNoButtons
+                value={form.licenciaConducir}
+                options={["Si", "No"]}
+                onChange={(value) => setForm({ ...form, licenciaConducir: value, categoriaLicencia: "" })}
+              />
+            </Field>
           </CardContent>
         </Card>
 

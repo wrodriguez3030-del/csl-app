@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select"
 import { Plus, Save, X, Pencil, Trash2, Search } from "lucide-react"
 import { SignaturePad } from "@/components/signature-pad"
+import { SiNoButtons } from "@/components/si-no-buttons"
 import type { PiezaIntervenida, Reporte, Database } from "@/lib/types"
 
 const emptyReporte: Partial<Reporte> = {
@@ -736,21 +737,11 @@ export function NuevoReportePage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="reemplazo">Se reemplazo</Label>
-              <Select
+              <SiNoButtons
+                label="¿Se reemplazó?"
                 value={piezaForm.reemplazo}
-                onValueChange={(value: "Sí" | "No") =>
-                  setPiezaForm({ ...piezaForm, reemplazo: value })
-                }
-              >
-                <SelectTrigger id="reemplazo">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="No">No</SelectItem>
-                  <SelectItem value="Sí">Si</SelectItem>
-                </SelectContent>
-              </Select>
+                onChange={(value) => setPiezaForm({ ...piezaForm, reemplazo: value as "Sí" | "No" })}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="costo">Costo (RD$)</Label>

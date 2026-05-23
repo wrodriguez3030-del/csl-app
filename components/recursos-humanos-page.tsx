@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Users, Plus, Pencil, Trash2, Save, X, Search, Download, PenTool, User, MapPin, Users2, GraduationCap, Briefcase, Phone, CheckSquare, FileSignature, Landmark, Link2 } from "lucide-react"
 import { RecordActions } from "@/components/record-actions"
+import { SiNoButtons } from "@/components/si-no-buttons"
 
 interface FamiliarItem { nombre: string; parentesco: string; edad: string; direccion: string; ocupacion: string }
 interface EducacionItem { escolaridad: string; institucion: string; curso: string; nivel: string; estado: string }
@@ -92,7 +93,6 @@ const emptyForm: Solicitud = {
 }
 
 const puestos = ["Operadora de Láser", "Cosmiatra", "Masajista", "Asistente Adm", "Encargado"]
-const opcionesSiNo = ["Si", "No"]
 
 function onlyDigits(value: string) {
   return String(value || "").replace(/\D/g, "")
@@ -778,21 +778,21 @@ ${solicitud.firma ? `<div class="firma"><p><b>Firma del Solicitante:</b></p><img
                   <CardHeader className="pb-2"><CardTitle className="text-sm">Información Adicional</CardTitle></CardHeader>
                   <CardContent className="space-y-3">
                     <div className="grid grid-cols-2 gap-3">
-                      <div><Label className="text-xs">Licencia Conducir (Sí/No)</Label>
-                        <Select value={form.licenciaConducir} onValueChange={(value) => setForm({...form, licenciaConducir: value, categoriaLicencia: value === "No" ? "" : form.categoriaLicencia})}>
-                          <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-                          <SelectContent>{opcionesSiNo.map((opcion) => <SelectItem key={opcion} value={opcion}>{opcion}</SelectItem>)}</SelectContent>
-                        </Select>
-                      </div>
+                      <SiNoButtons
+                        label="¿Tiene licencia de conducir?"
+                        value={form.licenciaConducir}
+                        options={["Si", "No"]}
+                        onChange={(value) => setForm({...form, licenciaConducir: value, categoriaLicencia: value === "No" ? "" : form.categoriaLicencia})}
+                      />
                       <div><Label className="text-xs">Categoría de Licencia</Label><Input value={form.categoriaLicencia} onChange={e => setForm({...form, categoriaLicencia: e.target.value})} placeholder="Ej: Categoría 2" /></div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <div><Label className="text-xs">¿Pertenece a AFP?</Label>
-                        <Select value={form.perteneceAFP} onValueChange={(value) => setForm({...form, perteneceAFP: value, cualAFP: value === "No" ? "" : form.cualAFP})}>
-                          <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-                          <SelectContent>{opcionesSiNo.map((opcion) => <SelectItem key={opcion} value={opcion}>{opcion}</SelectItem>)}</SelectContent>
-                        </Select>
-                      </div>
+                      <SiNoButtons
+                        label="¿Pertenece a AFP?"
+                        value={form.perteneceAFP}
+                        options={["Si", "No"]}
+                        onChange={(value) => setForm({...form, perteneceAFP: value, cualAFP: value === "No" ? "" : form.cualAFP})}
+                      />
                       <div><Label className="text-xs">¿Cuál AFP?</Label><Input value={form.cualAFP} onChange={e => setForm({...form, cualAFP: e.target.value})} placeholder="Ej: AFP Popular" /></div>
                     </div>
                     <div><Label className="text-xs">Pretensiones Salariales</Label><Input value={form.pretensionesSalariales} onChange={e => setForm({...form, pretensionesSalariales: e.target.value})} onBlur={e => setForm({...form, pretensionesSalariales: formatMoney(e.target.value)})} placeholder="Ej: RD$ 25,000" /></div>

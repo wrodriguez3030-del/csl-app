@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import type React from "react"
 import { Eye, FileSignature, FileText, Link as LinkIcon, Loader2, MessageCircle, Pencil, Printer, Save, Search, Trash2, UserPlus, Users, X } from "lucide-react"
 import { LinkGeneratorDialog } from "@/components/link-generator-dialog"
+import { SiNoButtons } from "@/components/si-no-buttons"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -1797,24 +1798,11 @@ function MasajesTemplateSections({
         {/* Embarazo Sí/No con notas condicionales */}
         <div className="mb-4 grid gap-3 rounded-xl border bg-[color:var(--brand-bg-subtle)] p-3 md:grid-cols-2">
           <div>
-            <div className="mb-1.5 text-xs font-black uppercase tracking-wide text-[color:var(--brand-primary-dark)]">¿Está embarazada?</div>
-            <div className="flex gap-2">
-              {(["Sí", "No"] as const).map((opt) => {
-                const active = form.embarazo === opt
-                return (
-                  <button
-                    key={opt}
-                    type="button"
-                    onClick={() => onUpdate({ embarazo: opt, ...(opt === "No" ? { embarazoNotas: "" } : {}) })}
-                    className={`rounded-xl border px-4 py-1.5 text-sm font-semibold transition-colors ${
-                      active ? "border-[color:var(--brand-primary)] bg-[color:var(--brand-primary)] text-white" : "border-[color:var(--brand-border)] bg-white hover:bg-muted/30"
-                    }`}
-                  >
-                    {opt}
-                  </button>
-                )
-              })}
-            </div>
+            <SiNoButtons
+              label="¿Está embarazada?"
+              value={form.embarazo || ""}
+              onChange={(opt) => onUpdate({ embarazo: opt as "Sí" | "No", ...(opt === "No" ? { embarazoNotas: "" } : {}) })}
+            />
             {form.embarazo === "Sí" ? (
               <Textarea
                 value={form.embarazoNotas || ""}
@@ -1827,24 +1815,11 @@ function MasajesTemplateSections({
 
           {/* Alergias Sí/No con notas condicionales */}
           <div>
-            <div className="mb-1.5 text-xs font-black uppercase tracking-wide text-[color:var(--brand-primary-dark)]">¿Tiene alergias?</div>
-            <div className="flex gap-2">
-              {(["Sí", "No"] as const).map((opt) => {
-                const active = form.alergiasSiNo === opt
-                return (
-                  <button
-                    key={opt}
-                    type="button"
-                    onClick={() => onUpdate({ alergiasSiNo: opt, ...(opt === "No" ? { alergiasNotas: "", alergias: "" } : {}) })}
-                    className={`rounded-xl border px-4 py-1.5 text-sm font-semibold transition-colors ${
-                      active ? "border-[color:var(--brand-primary)] bg-[color:var(--brand-primary)] text-white" : "border-[color:var(--brand-border)] bg-white hover:bg-muted/30"
-                    }`}
-                  >
-                    {opt}
-                  </button>
-                )
-              })}
-            </div>
+            <SiNoButtons
+              label="¿Tiene alergias?"
+              value={form.alergiasSiNo || ""}
+              onChange={(opt) => onUpdate({ alergiasSiNo: opt as "Sí" | "No", ...(opt === "No" ? { alergiasNotas: "", alergias: "" } : {}) })}
+            />
             {form.alergiasSiNo === "Sí" ? (
               <Textarea
                 value={form.alergiasNotas || ""}
@@ -2037,29 +2012,16 @@ function TatuajesTemplateSections({
     const value = (form[siNoKey] as string | undefined) || ""
     return (
       <div>
-        <div className="mb-1.5 text-xs font-black uppercase tracking-wide text-[color:var(--brand-primary-dark)]">{label}</div>
-        <div className="flex gap-2">
-          {(["Sí", "No"] as const).map((opt) => {
-            const active = value === opt
-            return (
-              <button
-                key={opt}
-                type="button"
-                onClick={() =>
-                  onUpdate({
-                    [siNoKey]: opt,
-                    ...(opt === "No" ? { [notasKey]: "" } : {}),
-                  } as Partial<ConsentimientoRecord>)
-                }
-                className={`rounded-xl border px-4 py-1.5 text-sm font-semibold transition-colors ${
-                  active ? "border-[color:var(--brand-primary)] bg-[color:var(--brand-primary)] text-white" : "border-[color:var(--brand-border)] bg-white hover:bg-muted/30"
-                }`}
-              >
-                {opt}
-              </button>
-            )
-          })}
-        </div>
+        <SiNoButtons
+          label={label}
+          value={value}
+          onChange={(opt) =>
+            onUpdate({
+              [siNoKey]: opt,
+              ...(opt === "No" ? { [notasKey]: "" } : {}),
+            } as Partial<ConsentimientoRecord>)
+          }
+        />
         {value === "Sí" ? (
           <Textarea
             value={String(form[notasKey] ?? "")}

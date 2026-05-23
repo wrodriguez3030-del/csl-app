@@ -25,7 +25,6 @@ import {
   pigmentariasOpciones,
   secaOpciones,
   seObservaOpciones,
-  siNoOpciones,
   sensibilidadOpciones,
   sucursalesCosmiatria,
   tipoPielOpciones,
@@ -36,6 +35,7 @@ import {
 } from "@/lib/dermo-cosmiatria"
 import type { ClienteCosmiatria } from "@/lib/types"
 import { SignaturePad } from "@/components/signature-pad"
+import { SiNoButtons } from "@/components/si-no-buttons"
 
 interface Props {
   initialValue?: FichaDermoCosmiatrica
@@ -96,31 +96,18 @@ function CheckboxGroup({ label, options, value, onChange }: { label: string; opt
   )
 }
 
+// Thin wrapper: delega al SiNoButtons compartido manteniendo la API
+// histórica (label/value/onChange). Forzamos options=["Si","No"] porque
+// las columnas DB de la ficha ya guardan "Si" sin tilde — cambiarlo
+// rompería ediciones y filtros.
 function YesNoField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
-    <div className="space-y-2">
-      <Label>{label}</Label>
-      <div className="grid grid-cols-2 gap-1.5">
-        {siNoOpciones.map((option) => {
-          const isSelected = value === option
-          return (
-            <button
-              key={option}
-              type="button"
-              onClick={() => onChange(option)}
-              className={`flex items-center justify-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
-                isSelected ? "border-primary bg-primary/15 text-primary" : "border-border bg-muted/25 text-muted-foreground hover:bg-muted/50"
-              }`}
-            >
-              <span className={`flex h-4 w-4 items-center justify-center rounded border text-[10px] leading-none ${isSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/50"}`}>
-                {isSelected ? "✓" : ""}
-              </span>
-              {option}
-            </button>
-          )
-        })}
-      </div>
-    </div>
+    <SiNoButtons
+      label={label}
+      value={value}
+      onChange={onChange}
+      options={["Si", "No"] as const}
+    />
   )
 }
 
