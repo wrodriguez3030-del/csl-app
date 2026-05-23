@@ -160,11 +160,16 @@ export function PublicConsentForm({ kind, prefill = {}, onSubmit }: Props) {
         </CardContent>
       </Card>
 
-      {/* Datos del cliente — formato unificado en TODO el sistema:
-          Nombre, Teléfono, Cédula/Documento, Correo, Dirección.
-          (Fecha nacimiento + Edad se removieron del UI). */}
+      {/* Cliente vinculado — el operador ya seleccionó al cliente y
+          pre-cargó sus datos al generar el link. Acá el cliente revisa,
+          corrige si hace falta, completa lo que falta y firma. */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Datos del cliente</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base">Cliente vinculado</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Revise que sus datos estén correctos antes de enviar.
+          </p>
+        </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2">
           <Field label="Nombre completo *">
             <Input value={form.nombreCliente} onChange={(e) => update({ nombreCliente: e.target.value })} />

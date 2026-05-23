@@ -433,7 +433,11 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
         </CardContent>
       </Card>}
 
-      <Card>
+      {/* En público este Card es redundante (no hay picker porque no hay
+          auth, y la tarjeta resumen duplica los campos editables de abajo).
+          La sección de campos editables abajo cambia su título a "Cliente
+          vinculado" en público — ver más abajo. */}
+      {isPublic ? null : <Card>
         <CardHeader><CardTitle className="flex items-center gap-2 text-base"><UserRound className="h-4 w-4" />Cliente vinculado</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           {clientes.length ? (
@@ -494,15 +498,28 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
             </div>
           </div>
         </CardContent>
-      </Card>
+      </Card>}
 
       {/* Datos del cliente — formato unificado en TODO el sistema:
           Nombre, Teléfono, Cédula/Documento, Correo, Dirección, Sucursal.
           Fecha nacimiento, Edad, Ciudad, Ocupación se removieron del UI
           pero quedan en el shape (state) para no romper edición de fichas
-          antiguas que los tengan. */}
+          antiguas que los tengan.
+          Título dinámico: en modo público se llama "Cliente vinculado"
+          (el cliente ve sus datos pre-cargados para revisar), en interno
+          sigue "Datos del cliente" para captura. */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Datos del cliente</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            {isPublic ? <UserRound className="h-4 w-4" /> : null}
+            {isPublic ? "Cliente vinculado" : "Datos del cliente"}
+          </CardTitle>
+          {isPublic ? (
+            <p className="text-xs text-muted-foreground">
+              Revise que sus datos estén correctos antes de enviar.
+            </p>
+          ) : null}
+        </CardHeader>
         <CardContent className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,220px),1fr))] gap-4">
           <div><Label>Nombre *</Label><Input value={form.nombre} onChange={(event) => update({ nombre: event.target.value })} /></div>
           <div><Label>Teléfono *</Label><Input value={form.telefono} onChange={(event) => update({ telefono: formatPhone(event.target.value) })} /></div>
