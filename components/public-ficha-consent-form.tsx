@@ -440,7 +440,8 @@ export function PublicFichaConsentForm({ prefill = {}, onSubmit }: Props) {
         </CardContent>
       </Card>
 
-      {/* 3) Declaración y firma */}
+      {/* 3) Declaración y firma — campos requeridos marcados en rojo
+          mientras no se completen (cliente ve qué falta antes de Enviar). */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -453,11 +454,31 @@ export function PublicFichaConsentForm({ prefill = {}, onSubmit }: Props) {
             informado. Confirmo que la información suministrada es verdadera y completa, y autorizo
             a Cibao Spa Láser y a su personal a realizar el procedimiento descrito.
           </p>
-          <label className="flex cursor-pointer items-start gap-3 rounded-2xl border bg-white p-3 text-sm">
+          <label
+            className={`flex cursor-pointer items-start gap-3 rounded-2xl border-2 bg-white p-3 text-sm transition-colors ${
+              aceptado
+                ? "border-emerald-300 bg-emerald-50/30"
+                : "border-rose-400 bg-rose-50/40 ring-1 ring-rose-200"
+            }`}
+          >
             <Checkbox checked={aceptado} onCheckedChange={(c) => setAceptado(c === true)} />
-            <span>Declaro que he leído y acepto este consentimiento informado.</span>
+            <span className="flex-1">
+              Declaro que he leído y acepto este consentimiento informado.
+              {!aceptado ? (
+                <span className="mt-1 block text-[11px] font-semibold text-rose-600">
+                  Pendiente — marca esta casilla para poder enviar.
+                </span>
+              ) : null}
+            </span>
           </label>
-          <SignaturePad label="Firma del cliente" value={firma} onChange={setFirma} />
+          <div className={!firma ? "rounded-xl ring-2 ring-rose-400 ring-offset-2" : ""}>
+            <SignaturePad label="Firma del cliente *" value={firma} onChange={setFirma} />
+          </div>
+          {!firma ? (
+            <p className="text-[11px] font-semibold text-rose-600">
+              Pendiente — firma en el recuadro de arriba para poder enviar.
+            </p>
+          ) : null}
           <p className="text-[11px] text-muted-foreground">
             La firma del especialista la completará el personal al finalizar el consentimiento.
           </p>
@@ -467,6 +488,18 @@ export function PublicFichaConsentForm({ prefill = {}, onSubmit }: Props) {
       {error ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">
           ⚠ {error}
+        </div>
+      ) : null}
+
+      {/* Lista resumen de pendientes — visible cuando algo falta. Color
+          rojo coherente con el highlight inline en cada campo. */}
+      {!submitting && (!aceptado || !firma) ? (
+        <div className="rounded-xl border-2 border-rose-300 bg-rose-50 p-3 text-sm">
+          <p className="font-bold text-rose-700">⚠ Para firmar y enviar, completa:</p>
+          <ul className="mt-1 list-disc pl-5 text-rose-700">
+            {!aceptado ? <li>Marcar la casilla de aceptación del consentimiento</li> : null}
+            {!firma ? <li>Firmar en el recuadro de Firma del cliente</li> : null}
+          </ul>
         </div>
       ) : null}
 

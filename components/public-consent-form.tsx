@@ -216,18 +216,36 @@ export function PublicConsentForm({ kind, prefill = {}, onSubmit }: Props) {
               Autorizo a Cibao Spa Laser y a su personal a realizar el procedimiento descrito.
             </p>
           </div>
-          <label className="flex cursor-pointer items-start gap-3 rounded-2xl border bg-white p-3 text-sm">
+          <label
+            className={`flex cursor-pointer items-start gap-3 rounded-2xl border-2 bg-white p-3 text-sm transition-colors ${
+              declaracionUnificada
+                ? "border-emerald-300 bg-emerald-50/30"
+                : "border-rose-400 bg-rose-50/40 ring-1 ring-rose-200"
+            }`}
+          >
             <Checkbox checked={declaracionUnificada} onCheckedChange={(checked) => handleDeclaracionUnificada(checked === true)} />
-            <span>
+            <span className="flex-1">
               Declaro que la información suministrada es verdadera y completa,
               y autorizo el procedimiento descrito.
+              {!declaracionUnificada ? (
+                <span className="mt-1 block text-[11px] font-semibold text-rose-600">
+                  Pendiente — marca esta casilla para poder enviar.
+                </span>
+              ) : null}
             </span>
           </label>
-          <SignaturePad
-            label="Firma del cliente"
-            value={form.firmaCliente}
-            onChange={(value) => update({ firmaCliente: value, estado: value ? "Firmado" : form.estado })}
-          />
+          <div className={!form.firmaCliente ? "rounded-xl ring-2 ring-rose-400 ring-offset-2" : ""}>
+            <SignaturePad
+              label="Firma del cliente *"
+              value={form.firmaCliente}
+              onChange={(value) => update({ firmaCliente: value, estado: value ? "Firmado" : form.estado })}
+            />
+          </div>
+          {!form.firmaCliente ? (
+            <p className="text-[11px] font-semibold text-rose-600">
+              Pendiente — firma en el recuadro de arriba para poder enviar.
+            </p>
+          ) : null}
           <p className="text-[11px] text-muted-foreground">
             La firma del especialista se completará internamente al recibir tu envío.
           </p>
@@ -237,6 +255,16 @@ export function PublicConsentForm({ kind, prefill = {}, onSubmit }: Props) {
       {error ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">
           ⚠ {error}
+        </div>
+      ) : null}
+
+      {!submitting && (!declaracionUnificada || !form.firmaCliente) ? (
+        <div className="rounded-xl border-2 border-rose-300 bg-rose-50 p-3 text-sm">
+          <p className="font-bold text-rose-700">⚠ Para enviar, completa:</p>
+          <ul className="mt-1 list-disc pl-5 text-rose-700">
+            {!declaracionUnificada ? <li>Marcar la casilla de aceptación del consentimiento</li> : null}
+            {!form.firmaCliente ? <li>Firmar en el recuadro de Firma del cliente</li> : null}
+          </ul>
         </div>
       ) : null}
 
