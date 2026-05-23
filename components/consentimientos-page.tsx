@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import type React from "react"
 import { Eye, FileSignature, FileText, Link as LinkIcon, Loader2, MessageCircle, Pencil, Printer, Save, Search, Trash2, UserPlus, Users, X } from "lucide-react"
 import { LinkGeneratorDialog } from "@/components/link-generator-dialog"
-import { SiNoButtons } from "@/components/si-no-buttons"
+import { SiNoButtons, SiNoConDetalle, EMBARAZO_WARNING_MESSAGE } from "@/components/si-no-buttons"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -1064,6 +1064,18 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
       showToast(msg, "error")
       return
     }
+    // Bloqueo clínico: NO procesamos consentimiento si la cliente declara
+    // embarazo (masajes) o embarazo/lactancia (tatuajes láser).
+    // Coincide con la alerta visible en la pregunta — el flujo lo continúa
+    // el personal según protocolo.
+    if (kind === "masajes" && form.embarazo === "Sí") {
+      const msg = "No se puede registrar este consentimiento mientras la cliente esté embarazada. Consulte con el personal."
+      setSaveError(msg); showToast(msg, "error"); return
+    }
+    if (kind === "tatuajes" && form.embarazoLactanciaSiNo === "Sí") {
+      const msg = "No se puede registrar este consentimiento mientras la cliente esté embarazada o en lactancia. Consulte con el personal."
+      setSaveError(msg); showToast(msg, "error"); return
+    }
     // Validaciones específicas de Tatuajes/Cejas: aceptaciones obligatorias.
     if (kind === "tatuajes") {
       if (!form.declaracionResultadosAceptada) {
@@ -1798,36 +1810,31 @@ export function MasajesTemplateSections({
         {/* Embarazo Sí/No con notas condicionales */}
         <div className="mb-4 grid gap-3 rounded-xl border bg-[color:var(--brand-bg-subtle)] p-3 md:grid-cols-2">
           <div>
-            <SiNoButtons
+            <SiNoConDetalle
               label="¿Está embarazada?"
               value={form.embarazo || ""}
-              onChange={(opt) => onUpdate({ embarazo: opt as "Sí" | "No", ...(opt === "No" ? { embarazoNotas: "" } : {}) })}
+              onChange={(opt) => onUpdate({ embarazo: opt as "Sí" | "No" })}
+              detailLabel=""
+              detailMultiline
+              detailPlaceholder="Semanas, autorización médica, observaciones relevantes…"
+              detailValue={form.embarazoNotas || ""}
+              onDetailChange={(value) => onUpdate({ embarazoNotas: value })}
+              warningWhenYes={EMBARAZO_WARNING_MESSAGE}
             />
-            {form.embarazo === "Sí" ? (
-              <Textarea
-                value={form.embarazoNotas || ""}
-                onChange={(e) => onUpdate({ embarazoNotas: e.target.value })}
-                placeholder="Semanas, autorización médica, observaciones relevantes…"
-                className="mt-2 min-h-16"
-              />
-            ) : null}
           </div>
 
           {/* Alergias Sí/No con notas condicionales */}
           <div>
-            <SiNoButtons
+            <SiNoConDetalle
               label="¿Tiene alergias?"
               value={form.alergiasSiNo || ""}
-              onChange={(opt) => onUpdate({ alergiasSiNo: opt as "Sí" | "No", ...(opt === "No" ? { alergiasNotas: "", alergias: "" } : {}) })}
+              onChange={(opt) => onUpdate({ alergiasSiNo: opt as "Sí" | "No", ...(opt === "No" ? { alergias: "" } : {}) })}
+              detailLabel=""
+              detailMultiline
+              detailPlaceholder="Tipo de alergia, medicamentos, productos o aceites a evitar…"
+              detailValue={form.alergiasNotas || ""}
+              onDetailChange={(value) => onUpdate({ alergiasNotas: value, alergias: value })}
             />
-            {form.alergiasSiNo === "Sí" ? (
-              <Textarea
-                value={form.alergiasNotas || ""}
-                onChange={(e) => onUpdate({ alergiasNotas: e.target.value, alergias: e.target.value })}
-                placeholder="Tipo de alergia, medicamentos, productos o aceites a evitar…"
-                className="mt-2 min-h-16"
-              />
-            ) : null}
           </div>
         </div>
 
@@ -1997,7 +2004,8 @@ export function TatuajesTemplateSections({
   const isItemChecked = (key: "instruccionesAntes" | "cuidadosDespuesList" | "riesgosAceptadosList" | "politicasAceptadas" | "coloresPigmento", value: string) =>
     Boolean(((form[key] as string[] | undefined) ?? []).includes(value))
 
-  /** Botones Sí/No reusables con notas condicionales. */
+  /** Botones Sí/No reusables con notas condicionales (solo Sí muestra notas).
+   *  Embarazo/lactancia agrega alerta clínica cuando se elige Sí. */
   const SiNoBlock = ({
     label,
     siNoKey,
@@ -2010,26 +2018,20 @@ export function TatuajesTemplateSections({
     placeholder: string
   }) => {
     const value = (form[siNoKey] as string | undefined) || ""
+    const isEmbarazoLactancia = siNoKey === "embarazoLactanciaSiNo"
     return (
       <div>
-        <SiNoButtons
+        <SiNoConDetalle
           label={label}
           value={value}
-          onChange={(opt) =>
-            onUpdate({
-              [siNoKey]: opt,
-              ...(opt === "No" ? { [notasKey]: "" } : {}),
-            } as Partial<ConsentimientoRecord>)
-          }
+          onChange={(opt) => onUpdate({ [siNoKey]: opt } as Partial<ConsentimientoRecord>)}
+          detailLabel=""
+          detailMultiline
+          detailPlaceholder={placeholder}
+          detailValue={String(form[notasKey] ?? "")}
+          onDetailChange={(val) => onUpdate({ [notasKey]: val } as Partial<ConsentimientoRecord>)}
+          warningWhenYes={isEmbarazoLactancia ? EMBARAZO_WARNING_MESSAGE : undefined}
         />
-        {value === "Sí" ? (
-          <Textarea
-            value={String(form[notasKey] ?? "")}
-            onChange={(e) => onUpdate({ [notasKey]: e.target.value } as Partial<ConsentimientoRecord>)}
-            placeholder={placeholder}
-            className="mt-2 min-h-16"
-          />
-        ) : null}
       </div>
     )
   }

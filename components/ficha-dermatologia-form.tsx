@@ -35,7 +35,7 @@ import {
 } from "@/lib/dermo-cosmiatria"
 import type { ClienteCosmiatria } from "@/lib/types"
 import { SignaturePad } from "@/components/signature-pad"
-import { SiNoButtons } from "@/components/si-no-buttons"
+import { SiNoButtons, SiNoConDetalle, EMBARAZO_WARNING_MESSAGE } from "@/components/si-no-buttons"
 
 interface Props {
   initialValue?: FichaDermoCosmiatrica
@@ -210,16 +210,39 @@ function MotivoConsultaPicker({ value, onChange }: { value: string; onChange: (v
   )
 }
 
-function ConditionalYesNo({ label, value, notes, notesLabel, onChange, onNotesChange }: { label: string; value: string; notes: string; notesLabel?: string; onChange: (value: string) => void; onNotesChange: (value: string) => void }) {
+// Thin wrapper sobre SiNoConDetalle: mantiene la API histórica
+// (label/value/notes/onChange/onNotesChange) usada por ~16 call sites.
+// Acepta warningWhenYes para casos especiales (¿Embarazada?).
+function ConditionalYesNo({
+  label,
+  value,
+  notes,
+  notesLabel,
+  onChange,
+  onNotesChange,
+  warningWhenYes,
+}: {
+  label: string
+  value: string
+  notes: string
+  notesLabel?: string
+  onChange: (value: string) => void
+  onNotesChange: (value: string) => void
+  warningWhenYes?: React.ReactNode
+}) {
   return (
     <div className="rounded-2xl border bg-white p-3 shadow-sm">
-      <YesNoField label={label} value={value} onChange={(next) => { onChange(next); if (next === "No") onNotesChange("") }} />
-      {value === "Si" || value === "Sí" ? (
-        <div className="mt-3">
-          <Label>{notesLabel || "Notas"}</Label>
-          <Input value={notes} onChange={(event) => onNotesChange(event.target.value)} placeholder="Especificar..." />
-        </div>
-      ) : null}
+      <SiNoConDetalle
+        label={label}
+        options={["Si", "No"] as const}
+        value={value}
+        onChange={onChange}
+        detailLabel={notesLabel || "Notas"}
+        detailPlaceholder="Especificar..."
+        detailValue={notes}
+        onDetailChange={onNotesChange}
+        warningWhenYes={warningWhenYes}
+      />
     </div>
   )
 }
@@ -483,21 +506,38 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
             <CheckboxGroup label="Antecedentes médicos" options={[...antecedentesMedicosOpciones]} value={form.antecedentesMedicos} onChange={(value) => update({ antecedentesMedicos: value })} />
           </div>
           <div className="col-span-full"><Label>Notas de antecedentes médicos</Label><Textarea className="min-h-24" value={form.antecedentesMedicosNotas} onChange={(event) => update({ antecedentesMedicosNotas: event.target.value })} /></div>
-          {[
+          {/* Sí/No con campo "¿Cuáles?" CONDICIONAL — solo aparece si Sí.
+              Al pasar a No, el componente limpia el detalle automático. */}
+          {([
             ["medicamentos", "¿Toma algún medicamento?", "medicamentosCuales", "¿Cuáles?"],
             ["medicamentoTopico", "¿Usa medicamento tópico?", "medicamentoTopicoCuales", "¿Cuáles?"],
             ["alergias", "¿Alergias?", "alergiasCuales", "¿A qué?"],
             ["cirugias", "¿Cirugías?", "cirugiasCuales", "¿Cuáles?"],
             ["cancerPiel", "¿Cáncer de la piel?", "cancerPielCuales", "¿Cuáles?"],
             ["cosmeticoActual", "¿Usa cosmético actual?", "cosmeticoActualCuales", "¿Cuáles?"],
-          ].map(([key, label, detailKey, detailLabel]) => (
-            <div key={key} className="grid gap-3 rounded-xl border bg-muted/25 p-3 xl:grid-cols-[minmax(170px,0.8fr)_minmax(190px,1.2fr)]">
-              <YesNoField label={label} value={String(form[key as keyof FichaDermoCosmiatrica] || "")} onChange={(value) => update({ [key]: value } as Partial<FichaDermoCosmiatrica>)} />
-              <div><Label>{detailLabel}</Label><Input value={String(form[detailKey as keyof FichaDermoCosmiatrica] || "")} onChange={(event) => update({ [detailKey]: event.target.value } as Partial<FichaDermoCosmiatrica>)} /></div>
+          ] as const).map(([key, label, detailKey, detailLabel]) => (
+            <div key={key} className="rounded-xl border bg-muted/25 p-3">
+              <SiNoConDetalle
+                label={label}
+                options={["Si", "No"] as const}
+                value={String(form[key as keyof FichaDermoCosmiatrica] || "")}
+                onChange={(value) => update({ [key]: value } as Partial<FichaDermoCosmiatrica>)}
+                detailLabel={detailLabel}
+                detailValue={String(form[detailKey as keyof FichaDermoCosmiatrica] || "")}
+                onDetailChange={(value) => update({ [detailKey]: value } as Partial<FichaDermoCosmiatrica>)}
+              />
             </div>
           ))}
           <div className="rounded-xl border bg-muted/25 p-4"><YesNoField label="¿Herpes?" value={form.herpes} onChange={(value) => update({ herpes: value })} /></div>
-          <div className="rounded-xl border bg-muted/25 p-4"><YesNoField label="¿Está embarazada?" value={form.embarazada} onChange={(value) => update({ embarazada: value })} /></div>
+          <div className="rounded-xl border bg-muted/25 p-4">
+            <SiNoConDetalle
+              label="¿Está embarazada?"
+              options={["Si", "No"] as const}
+              value={form.embarazada}
+              onChange={(value) => update({ embarazada: value })}
+              warningWhenYes={EMBARAZO_WARNING_MESSAGE}
+            />
+          </div>
           <div className="col-span-full"><Label>¿Tolera jabones, perfumes, cremas?</Label><Textarea className="min-h-24" value={form.toleraCosmeticos} onChange={(event) => update({ toleraCosmeticos: event.target.value })} /></div>
           <YesNoField label="¿Se depila a láser?" value={form.depilaLaser} onChange={(value) => update({ depilaLaser: value })} />
           <div><Label>¿Cómo reacciona?</Label><Input value={form.reaccionLaser} onChange={(event) => update({ reaccionLaser: event.target.value })} /></div>
@@ -517,7 +557,7 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
       <Card>
         <CardHeader><CardTitle className="text-base">Condiciones Especiales</CardTitle></CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          <ConditionalYesNo label="¿Está embarazada?" value={form.embarazo || form.embarazada} notes={form.embarazoNotas} onChange={(value) => update({ embarazo: value, embarazada: value })} onNotesChange={(value) => update({ embarazoNotas: value })} />
+          <ConditionalYesNo label="¿Está embarazada?" value={form.embarazo || form.embarazada} notes={form.embarazoNotas} onChange={(value) => update({ embarazo: value, embarazada: value })} onNotesChange={(value) => update({ embarazoNotas: value })} warningWhenYes={EMBARAZO_WARNING_MESSAGE} />
           <ConditionalYesNo label="¿Está en lactancia?" value={form.lactancia} notes={form.lactanciaNotas} onChange={(value) => update({ lactancia: value })} onNotesChange={(value) => update({ lactanciaNotas: value })} />
           <ConditionalYesNo label="¿Tiene piel sensible?" value={form.pielSensible} notes={form.pielSensibleNotas} onChange={(value) => update({ pielSensible: value })} onNotesChange={(value) => update({ pielSensibleNotas: value })} />
           <ConditionalYesNo label="¿Tendencia a queloides?" value={form.queloides} notes={form.queloidesNotas} onChange={(value) => update({ queloides: value })} onNotesChange={(value) => update({ queloidesNotas: value })} />

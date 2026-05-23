@@ -65,6 +65,13 @@ export function PublicConsentForm({ kind, initialNombre = "", initialTelefono = 
     if (!form.telefono.trim()) return setError("Tu teléfono es obligatorio.")
     if (!form.sucursal) return setError("Selecciona la sucursal donde se realizará el procedimiento.")
     if (!form.firmaCliente) return setError("Debes firmar antes de enviar.")
+    // Bloqueo clínico (mismo criterio que el form interno).
+    if (kind === "masajes" && form.embarazo === "Sí") {
+      return setError("No podemos continuar con el tratamiento durante el embarazo. Por favor consulte con el personal antes de enviar este formulario.")
+    }
+    if (kind === "tatuajes" && form.embarazoLactanciaSiNo === "Sí") {
+      return setError("No podemos continuar con el tratamiento durante el embarazo o lactancia. Por favor consulte con el personal antes de enviar este formulario.")
+    }
     // Validaciones específicas por tipo: las mismas que aplica el form interno.
     if (kind === "tatuajes") {
       if (!form.declaracionResultadosAceptada || !form.autorizacionFotograficaAceptada || !form.autorizacionProcedimientoAceptada) {
