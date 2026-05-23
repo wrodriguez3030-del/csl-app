@@ -1,103 +1,90 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { CheckCircle2, FileSignature, Loader2, Send } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SignaturePad } from "@/components/signature-pad"
+// REUTILIZAMOS las MISMAS secciones que el formulario interno — para que el
+// cliente vía WhatsApp llene EXACTAMENTE el mismo cuestionario que el equipo
+// llenaría adentro. Ver consentimientos-page.tsx para el contenido.
+import {
+  Field,
+  MasajesTemplateSections,
+  TatuajesTemplateSections,
+  emptyRecord,
+  type ConsentimientoRecord,
+  type ConsentKind,
+} from "@/components/consentimientos-page"
 
-// Texto canónico del consentimiento por tipo. Mantener corto y legal — el
-// detalle clínico lo captura el especialista internamente; acá el cliente
-// solo confirma que entendió y firma.
-const CONSENT_TEXT: Record<"masajes" | "tatuajes", string[]> = {
-  masajes: [
-    "Autorizo voluntariamente la realización del procedimiento de masaje en Cibao Spa Laser y declaro haber recibido información clara sobre la naturaleza, beneficios esperados, posibles molestias y cuidados antes y después de la sesión.",
-    "Declaro que he informado de manera completa y verdadera mis antecedentes médicos relevantes (alergias, embarazo, lesiones, cirugías, medicamentos, condiciones de piel u otras).",
-    "Entiendo que los resultados pueden variar según mi respuesta individual y que el centro no garantiza resultados específicos.",
-    "Acepto seguir las indicaciones del personal y notificar cualquier molestia inusual durante o después del procedimiento.",
-    "Autorizo a Cibao Spa Laser a registrar mi firma digital como respaldo del presente consentimiento.",
-  ],
-  tatuajes: [
-    "Autorizo voluntariamente el procedimiento de eliminación de tatuajes y/o pigmentos en cejas mediante láser, y declaro haber recibido información sobre el procedimiento, alternativas y posibles riesgos (enrojecimiento, ampollas, cambios de pigmentación, cicatrices, infección, resultado parcial).",
-    "Declaro que he informado mis antecedentes médicos, medicamentos, alergias, embarazo/lactancia, queloides, exposición solar reciente y otros datos relevantes.",
-    "Entiendo que pueden requerirse varias sesiones y que los resultados varían según tipo de tinta, profundidad, antigüedad y respuesta individual de mi piel.",
-    "Acepto seguir las instrucciones de cuidados pre y post procedimiento, evitar exposición solar y aplicar las indicaciones del personal.",
-    "Autorizo a Cibao Spa Laser a registrar mi firma digital como respaldo del presente consentimiento.",
-  ],
-}
-
-const TITLE: Record<"masajes" | "tatuajes", string> = {
+const TITLE: Record<ConsentKind, string> = {
   masajes: "Consentimiento — Masajes",
   tatuajes: "Consentimiento — Eliminación de Tatuajes y Cejas",
 }
 
+// Sucursales habituales — el form interno las trae del db.sucursales, pero
+// el público no tiene sesión; usamos un fallback razonable. El operador
+// puede ajustar la sucursal después si hace falta desde el módulo interno.
+const SUCURSALES_FALLBACK = ["Rafael Vidal", "Los Jardines", "Villa Olga", "La Vega"]
+
 interface Props {
-  kind: "masajes" | "tatuajes"
+  kind: ConsentKind
   initialNombre?: string
   initialTelefono?: string
   onSubmit: (payload: Record<string, unknown>) => Promise<void>
 }
 
-interface FormState {
-  nombreCliente: string
-  documento: string
-  telefono: string
-  correo: string
-  fechaNacimiento: string
-  direccion: string
-  zonaTratar: string
-  observaciones: string
-  declaracionAceptada: boolean
-  firmaCliente: string
-}
-
 export function PublicConsentForm({ kind, initialNombre = "", initialTelefono = "", onSubmit }: Props) {
-  const today = new Date().toISOString().slice(0, 10)
-  const [form, setForm] = useState<FormState>({
+  // Estado del form: usa la MISMA shape ConsentimientoRecord que el interno,
+  // para que el backend reciba exactamente lo mismo (consentToDb maneja todos
+  // los campos sin omitir).
+  const [form, setForm] = useState<ConsentimientoRecord>(() => ({
+    ...emptyRecord(kind, ""),
     nombreCliente: initialNombre,
-    documento: "",
     telefono: initialTelefono,
-    correo: "",
-    fechaNacimiento: "",
-    direccion: "",
-    zonaTratar: "",
-    observaciones: "",
-    declaracionAceptada: false,
-    firmaCliente: "",
-  })
+  }))
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
-  const update = (patch: Partial<FormState>) => setForm((c) => ({ ...c, ...patch }))
+  // Si llegan nombre/teléfono después (sesion ya cargada), los hidratamos.
+  useEffect(() => {
+    setForm((current) => ({
+      ...current,
+      nombreCliente: current.nombreCliente || initialNombre,
+      telefono: current.telefono || initialTelefono,
+    }))
+  }, [initialNombre, initialTelefono])
+
+  const update = (patch: Partial<ConsentimientoRecord>) => setForm((c) => ({ ...c, ...patch }))
 
   const submit = async () => {
     setError("")
     if (!form.nombreCliente.trim()) return setError("Tu nombre es obligatorio.")
     if (!form.telefono.trim()) return setError("Tu teléfono es obligatorio.")
-    if (!form.declaracionAceptada) return setError("Debes aceptar la declaración para firmar.")
+    if (!form.sucursal) return setError("Selecciona la sucursal donde se realizará el procedimiento.")
     if (!form.firmaCliente) return setError("Debes firmar antes de enviar.")
+    // Validaciones específicas por tipo: las mismas que aplica el form interno.
+    if (kind === "tatuajes") {
+      if (!form.declaracionResultadosAceptada || !form.autorizacionFotograficaAceptada || !form.autorizacionProcedimientoAceptada) {
+        return setError("Debes aceptar las declaraciones del consentimiento para enviar.")
+      }
+    } else if (kind === "masajes") {
+      if (!form.declaracionAceptada || !form.autorizacionAceptada) {
+        return setError("Debes aceptar las declaraciones del consentimiento para enviar.")
+      }
+    }
     setSubmitting(true)
     try {
+      // El payload es la ConsentimientoRecord completa. El endpoint público
+      // /api/public-form-links/[token]/submit lo pasa por consentToDb (el
+      // mismo mapper que usa el handler interno saveConsentMasajes/...).
       await onSubmit({
-        fecha: today,
-        sucursal: "",
-        nombreCliente: form.nombreCliente.trim(),
-        documento: form.documento.trim(),
-        telefono: form.telefono.trim(),
-        correo: form.correo.trim(),
-        fechaNacimiento: form.fechaNacimiento || "",
-        direccion: form.direccion.trim(),
-        zonaTratar: form.zonaTratar.trim(),
-        observaciones: form.observaciones.trim(),
-        textoConsentimiento: CONSENT_TEXT[kind].join("\n\n"),
-        declaracionAceptada: true,
-        firmaCliente: form.firmaCliente,
-        firmaEspecialista: "",
-        fechaRegistro: new Date().toISOString(),
-      })
+        ...form,
+        estado: "Firmado",
+        fechaRegistro: form.fechaRegistro || new Date().toISOString(),
+      } as unknown as Record<string, unknown>)
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "No se pudo enviar el formulario")
       setSubmitting(false)
@@ -105,7 +92,7 @@ export function PublicConsentForm({ kind, initialNombre = "", initialTelefono = 
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6 text-sm">
+    <div className="mx-auto w-full max-w-3xl space-y-4 px-3 py-5 text-sm">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -113,80 +100,82 @@ export function PublicConsentForm({ kind, initialNombre = "", initialTelefono = 
             {TITLE[kind]}
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-2">
           <p className="text-xs text-muted-foreground">
-            Completa los datos, lee y acepta la declaración, firma y envía. El especialista
-            completará los detalles médicos internamente.
+            Completa todos los campos. Cuando termines, firma y envía. El
+            personal completará su firma en el sistema interno.
           </p>
         </CardContent>
       </Card>
 
+      {/* Datos generales mínimos: fecha (auto), sucursal (obligatoria para
+          que el registro quede correctamente asignado). ID y Estado se
+          ocultan — son administrativos. */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Datos generales</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2">
+          <Field label="Fecha">
+            <Input type="date" value={form.fecha} onChange={(e) => update({ fecha: e.target.value })} />
+          </Field>
+          <Field label="Sucursal *">
+            <Select value={form.sucursal} onValueChange={(value) => update({ sucursal: value })}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+              <SelectContent>
+                {SUCURSALES_FALLBACK.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
+        </CardContent>
+      </Card>
+
+      {/* Datos del cliente — los mismos campos que el form interno. */}
       <Card>
         <CardHeader><CardTitle className="text-base">Datos del cliente</CardTitle></CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <Label>Nombre completo *</Label>
-            <Input value={form.nombreCliente} onChange={(e) => update({ nombreCliente: e.target.value })} className="mt-1" />
-          </div>
-          <div>
-            <Label>Cédula / Documento</Label>
-            <Input value={form.documento} onChange={(e) => update({ documento: e.target.value })} className="mt-1" />
-          </div>
-          <div>
-            <Label>Teléfono *</Label>
-            <Input value={form.telefono} onChange={(e) => update({ telefono: e.target.value })} className="mt-1" />
-          </div>
-          <div>
-            <Label>Correo</Label>
-            <Input type="email" value={form.correo} onChange={(e) => update({ correo: e.target.value })} className="mt-1" />
-          </div>
-          <div>
-            <Label>Fecha de nacimiento</Label>
-            <Input type="date" value={form.fechaNacimiento} onChange={(e) => update({ fechaNacimiento: e.target.value })} className="mt-1" />
-          </div>
-          <div>
-            <Label>Zona a tratar</Label>
-            <Input value={form.zonaTratar} onChange={(e) => update({ zonaTratar: e.target.value })} placeholder="Ej. espalda, cejas..." className="mt-1" />
-          </div>
-          <div className="sm:col-span-2">
-            <Label>Dirección</Label>
-            <Input value={form.direccion} onChange={(e) => update({ direccion: e.target.value })} className="mt-1" />
-          </div>
-          <div className="sm:col-span-2">
-            <Label>Observaciones</Label>
-            <Textarea value={form.observaciones} onChange={(e) => update({ observaciones: e.target.value })} className="mt-1 min-h-[60px]" />
-          </div>
+          <Field label="Nombre completo *">
+            <Input value={form.nombreCliente} onChange={(e) => update({ nombreCliente: e.target.value })} />
+          </Field>
+          <Field label="Cédula / Documento">
+            <Input value={form.documento} onChange={(e) => update({ documento: e.target.value })} />
+          </Field>
+          <Field label="Teléfono *">
+            <Input value={form.telefono} onChange={(e) => update({ telefono: e.target.value })} />
+          </Field>
+          <Field label="Correo">
+            <Input type="email" value={form.correo} onChange={(e) => update({ correo: e.target.value })} />
+          </Field>
+          <Field label="Fecha de nacimiento">
+            <Input type="date" value={form.fechaNacimiento} onChange={(e) => update({ fechaNacimiento: e.target.value })} />
+          </Field>
+          <Field label="Edad">
+            <Input value={form.edad} onChange={(e) => update({ edad: e.target.value })} />
+          </Field>
+          <Field label="Dirección" className="sm:col-span-2">
+            <Input value={form.direccion} onChange={(e) => update({ direccion: e.target.value })} />
+          </Field>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader><CardTitle className="text-base">Declaración informada</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <div className="rounded-xl border bg-muted/30 p-3 text-[13px] leading-relaxed">
-            {CONSENT_TEXT[kind].map((paragraph, idx) => (
-              <p key={idx} className={idx > 0 ? "mt-2" : ""}>{paragraph}</p>
-            ))}
-          </div>
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.declaracionAceptada}
-              onChange={(e) => update({ declaracionAceptada: e.target.checked })}
-              className="mt-1"
-            />
-            <span>He leído y acepto la declaración anterior. Autorizo el procedimiento.</span>
-          </label>
-        </CardContent>
-      </Card>
+      {/* Secciones específicas: REUTILIZAN el componente del interno. */}
+      {kind === "masajes" ? (
+        <MasajesTemplateSections form={form} onUpdate={update} />
+      ) : (
+        <TatuajesTemplateSections form={form} onUpdate={update} />
+      )}
 
+      {/* Firmas — la del especialista queda en blanco; la completa el
+          personal después desde el sistema interno. */}
       <Card>
         <CardHeader><CardTitle className="text-base">Firma del cliente</CardTitle></CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           <SignaturePad
             label="Firma del cliente"
             value={form.firmaCliente}
-            onChange={(value) => update({ firmaCliente: value })}
+            onChange={(value) => update({ firmaCliente: value, estado: value ? "Firmado" : form.estado })}
           />
+          <p className="text-[11px] text-muted-foreground">
+            La firma del especialista se completará internamente al recibir tu envío.
+          </p>
         </CardContent>
       </Card>
 
@@ -196,10 +185,10 @@ export function PublicConsentForm({ kind, initialNombre = "", initialTelefono = 
         </div>
       ) : null}
 
-      <div className="sticky bottom-0 -mx-4 border-t bg-white/95 px-4 py-3 backdrop-blur">
+      <div className="sticky bottom-0 -mx-3 border-t bg-white/95 px-3 py-3 backdrop-blur">
         <Button
           onClick={submit}
-          disabled={submitting || !form.firmaCliente || !form.declaracionAceptada}
+          disabled={submitting || !form.firmaCliente}
           className="w-full gap-2"
           size="lg"
         >
@@ -211,7 +200,7 @@ export function PublicConsentForm({ kind, initialNombre = "", initialTelefono = 
   )
 }
 
-export function PublicConsentSuccess({ kind }: { kind: "masajes" | "tatuajes" }) {
+export function PublicConsentSuccess({ kind }: { kind: ConsentKind }) {
   return (
     <main className="min-h-screen bg-background px-4 py-10">
       <div className="mx-auto max-w-md rounded-2xl border bg-card p-8 text-center shadow-sm">

@@ -22,8 +22,8 @@ import type { ClienteCosmiatria } from "@/lib/types"
 import { SEQ_HEADER_CLASS, SeqBadge } from "@/components/seq-badge"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 
-type ConsentKind = "masajes" | "tatuajes"
-type ConsentStatus = "Pendiente" | "Firmado" | "Anulado"
+export type ConsentKind = "masajes" | "tatuajes"
+export type ConsentStatus = "Pendiente" | "Firmado" | "Anulado"
 
 interface FichaResumen {
   id: string
@@ -38,7 +38,7 @@ interface FichaResumen {
   observaciones?: string
 }
 
-interface ConsentimientoRecord {
+export interface ConsentimientoRecord {
   id: string
   /** FK relacional al cliente. Vacío = aún no vinculado. */
   clienteId: string
@@ -382,7 +382,7 @@ function makeId(prefix: string) {
   return `${prefix}-${stamp}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
 }
 
-function emptyRecord(kind: ConsentKind, sucursal = ""): ConsentimientoRecord {
+export function emptyRecord(kind: ConsentKind, sucursal = ""): ConsentimientoRecord {
   const config = KIND_CONFIG[kind]
   return {
     id: makeId(config.idPrefix),
@@ -1336,7 +1336,7 @@ function StatusBadge({ status }: { status: ConsentStatus }) {
   return <Badge variant="outline" className={classes}>{status}</Badge>
 }
 
-function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
+export function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
   return (
     <div className={className}>
       <Label className="mb-2 text-xs font-black uppercase tracking-[0.12em] text-muted-foreground">{label}</Label>
@@ -1698,7 +1698,7 @@ function SignaturePreview({ label, value }: { label: string; value: string }) {
  * especialista completa observaciones y firmas. Todos los campos viajan
  * por payload_json (no requieren cambios de schema).
  */
-function MasajesTemplateSections({
+export function MasajesTemplateSections({
   form,
   onUpdate,
 }: {
@@ -1982,7 +1982,7 @@ function MasajesTemplateSections({
  * antes (con Sí/No para salud) → cuidados después → riesgos → declaraciones.
  * Todos los campos viajan vía payload_json (sin schema migration).
  */
-function TatuajesTemplateSections({
+export function TatuajesTemplateSections({
   form,
   onUpdate,
 }: {
