@@ -37,6 +37,8 @@ const TITLE: Record<ConsentKind, string> = {
 
 
 export interface PublicConsentPrefill {
+  clienteId?: string  // viene del picker al generar el link — clave para
+                      // que ensureCliente NO inserte un duplicado.
   nombre?: string
   telefono?: string
   documento?: string
@@ -59,6 +61,7 @@ export function PublicConsentForm({ kind, prefill = {}, onSubmit }: Props) {
   // los campos sin omitir).
   const [form, setForm] = useState<ConsentimientoRecord>(() => ({
     ...emptyRecord(kind, prefill.sucursal || ""),
+    clienteId: prefill.clienteId || "",
     nombreCliente: prefill.nombre || "",
     telefono: prefill.telefono || "",
     documento: prefill.documento || "",
@@ -77,6 +80,7 @@ export function PublicConsentForm({ kind, prefill = {}, onSubmit }: Props) {
   useEffect(() => {
     setForm((current) => ({
       ...current,
+      clienteId: current.clienteId || prefill.clienteId || "",
       nombreCliente: current.nombreCliente || prefill.nombre || "",
       telefono: current.telefono || prefill.telefono || "",
       documento: current.documento || prefill.documento || "",
@@ -87,7 +91,7 @@ export function PublicConsentForm({ kind, prefill = {}, onSubmit }: Props) {
       observaciones: current.observaciones || prefill.servicio || "",
     }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefill.nombre, prefill.telefono, prefill.documento, prefill.correo, prefill.direccion, prefill.sucursal, prefill.especialista, prefill.servicio])
+  }, [prefill.clienteId, prefill.nombre, prefill.telefono, prefill.documento, prefill.correo, prefill.direccion, prefill.sucursal, prefill.especialista, prefill.servicio])
 
   const update = (patch: Partial<ConsentimientoRecord>) => setForm((c) => ({ ...c, ...patch }))
 

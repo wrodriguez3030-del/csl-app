@@ -209,40 +209,68 @@ async function ensureCliente(
     .upsert(insertRow, { onConflict: "cliente_id" })
 
   if (insertErr) {
+    console.warn("[ensureCliente] insert/upsert failed, attempting recovery", {
+      code: (insertErr as { code?: string }).code,
+      message: insertErr.message,
+      documento,
+      docDigits,
+      telefono,
+    })
     // 23505 = unique_violation. El único índice unique conocido en esta
     // tabla es csl_cosmiatria_clientes_documento_uidx (sobre
     // documento_identidad, GLOBAL). Si chocó, el cliente con ese doc
-    // existe — recuperamos su cliente_id por búsqueda global y lo usamos.
-    // SIN filtrar por business_id (el unique es global, y filtrar lo
-    // perdería si el legacy tiene business_id distinto).
-    if (documento || docDigits) {
-      const orParts: string[] = []
-      if (documento) orParts.push(`documento_identidad.eq.${documento}`)
-      if (docDigits && docDigits !== documento) orParts.push(`documento_identidad.eq.${docDigits}`)
-      const { data: existing } = await supabase
-        .from("csl_cosmiatria_clientes")
-        .select("cliente_id")
-        .or(orParts.join(","))
-        .limit(1)
-        .maybeSingle()
-      if (existing?.cliente_id) return String(existing.cliente_id)
+    // existe — recuperamos su cliente_id por búsqueda global.
+    // Probamos múltiples variantes de matching para tolerar formatos.
+    const tryFindByDoc = async (value: string): Promise<string | null> => {
+      try {
+        const { data } = await supabase
+          .from("csl_cosmiatria_clientes")
+          .select("cliente_id")
+          .eq("documento_identidad", value)
+          .limit(1)
+          .maybeSingle()
+        return data?.cliente_id ? String(data.cliente_id) : null
+      } catch { return null }
     }
-    if (telefono || telDigits) {
-      const orParts: string[] = []
-      if (telefono) orParts.push(`telefono.eq.${telefono}`)
-      if (telDigits && telDigits !== telefono) orParts.push(`telefono.eq.${telDigits}`)
-      const { data: existing } = await supabase
-        .from("csl_cosmiatria_clientes")
-        .select("cliente_id")
-        .or(orParts.join(","))
-        .limit(1)
-        .maybeSingle()
-      if (existing?.cliente_id) return String(existing.cliente_id)
+    const tryFindByTel = async (value: string): Promise<string | null> => {
+      try {
+        const { data } = await supabase
+          .from("csl_cosmiatria_clientes")
+          .select("cliente_id")
+          .eq("telefono", value)
+          .limit(1)
+          .maybeSingle()
+        return data?.cliente_id ? String(data.cliente_id) : null
+      } catch { return null }
     }
-    // Si no es duplicate o no encontramos el existente, propagar el error
-    // para que el catch de afuera devuelva mensaje amigable + no consuma
-    // el token.
-    throw insertErr
+
+    // Probar TODAS las variantes posibles del documento: tal cual, sin
+    // espacios, solo dígitos, con guiones canónicos.
+    const docVariants = Array.from(new Set([
+      documento,
+      documento.replace(/\s+/g, ""),
+      docDigits,
+      docDigits ? `${docDigits.slice(0, 3)}-${docDigits.slice(3, 10)}-${docDigits.slice(10)}` : "",
+    ].filter(Boolean)))
+    for (const v of docVariants) {
+      const found = await tryFindByDoc(v)
+      if (found) return found
+    }
+    const telVariants = Array.from(new Set([telefono, telDigits].filter(Boolean)))
+    for (const v of telVariants) {
+      const found = await tryFindByTel(v)
+      if (found) return found
+    }
+    // Último recurso: NO lanzamos — guardamos la ficha sin cliente_id
+    // vinculado. Mejor que perder el envío del cliente. El operador
+    // puede vincular el cliente manualmente después desde el sistema
+    // interno. Logueamos para auditoría.
+    console.error("[ensureCliente] could not recover cliente — saving ficha without cliente_id link", {
+      documento, docDigits, telefono, businessId,
+      insertErrorCode: (insertErr as { code?: string }).code,
+      insertErrorMessage: insertErr.message,
+    })
+    return ""
   }
   return newClienteId
 }

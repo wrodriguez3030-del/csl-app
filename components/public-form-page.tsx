@@ -13,6 +13,7 @@ type FormType =
 type LinkStatus = "valido" | "usado" | "expirado" | "cancelado" | "invalido" | "loading" | "error"
 
 interface PrefillPayload {
+  clienteId?: string
   nombre?: string
   telefono?: string
   documento?: string
@@ -193,6 +194,7 @@ export function PublicFormPage({ token }: { token: string }) {
       <main className="min-h-screen bg-background">
         <PublicFichaConsentForm
           prefill={{
+            clienteId: pf.clienteId || "",
             nombre: pf.nombre || linkState.clienteNombre || "",
             telefono: pf.telefono || linkState.clienteTelefono || "",
             documento: pf.documento || "",
@@ -216,6 +218,7 @@ export function PublicFormPage({ token }: { token: string }) {
       <PublicConsentForm
         kind={kind}
         prefill={{
+          clienteId: pf.clienteId || "",
           nombre: pf.nombre || linkState.clienteNombre || "",
           telefono: pf.telefono || linkState.clienteTelefono || "",
           documento: pf.documento || "",

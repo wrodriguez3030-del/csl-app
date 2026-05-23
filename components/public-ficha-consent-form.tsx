@@ -22,6 +22,7 @@ function ReadOnlyField({ label, value, className }: { label: string; value?: str
 }
 
 export interface PublicFichaPrefill {
+  clienteId?: string
   nombre?: string
   telefono?: string
   documento?: string
@@ -197,6 +198,7 @@ function buildPrintHtml(args: {
 
 export function PublicFichaConsentForm({ prefill = {}, onSubmit }: Props) {
   const cliente: Required<PublicFichaPrefill> = {
+    clienteId: prefill.clienteId || "",
     nombre: prefill.nombre || "",
     telefono: prefill.telefono || "",
     documento: prefill.documento || "",
@@ -228,6 +230,11 @@ export function PublicFichaConsentForm({ prefill = {}, onSubmit }: Props) {
       const id = `dermo_${Date.now()}`
       const payload = {
         id,
+        // clienteId del prefill — clave para que ensureCliente lo encuentre
+        // por PK y NO intente insertar uno nuevo (evita el duplicate-key
+        // sobre documento_identidad si el cliente ya existe).
+        clienteId: cliente.clienteId,
+        cliente_id: cliente.clienteId,
         fecha: new Date().toISOString().slice(0, 10),
         sucursal: cliente.sucursal,
         operadora: cliente.especialista,
