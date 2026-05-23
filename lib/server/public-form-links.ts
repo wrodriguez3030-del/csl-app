@@ -188,6 +188,26 @@ export async function createPublicFormLink(
     : null
   const hasPrefill = cleanedPrefill && Object.keys(cleanedPrefill).length > 0
 
+  // Auto-cancelar links previos del mismo cliente + form_type que sigan
+  // vivos (no usados, no cancelados, no expirados). Resuelve el caso
+  // "el cliente no abrió el primer link, mando otro" sin dejar dos URLs
+  // válidas circulando. Solo aplica cuando hay clienteId identificable.
+  const clienteIdToCancel = cleanedPrefill?.clienteId
+  if (clienteIdToCancel) {
+    try {
+      await supabase
+        .from("csl_public_form_links")
+        .update({ cancelado: true })
+        .eq("business_id", params.businessId)
+        .eq("form_type", params.formType)
+        .eq("usado", false)
+        .eq("cancelado", false)
+        .filter("prefill_payload->>clienteId", "eq", clienteIdToCancel)
+    } catch {
+      // No bloqueamos la creación del link nuevo si la limpieza falla.
+    }
+  }
+
   const { data, error } = await supabase
     .from("csl_public_form_links")
     .insert({

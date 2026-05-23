@@ -43,6 +43,8 @@ interface NavItem {
   label: string
   icon: React.ReactNode
   badge?: "NEW"
+  /** Cantidad opcional a mostrar como contador (ej. pendientes de revisión). */
+  count?: number
 }
 
 const CORE_GROUPS: { label: string; items: NavItem[] }[] = [
@@ -117,7 +119,7 @@ const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
 ]
 
 export function Sidebar() {
-  const { activeTab, setActiveTab, sidebarOpen, setSidebarOpen, pulsosSectionOpen, setPulsosSectionOpen } = useAppStore()
+  const { activeTab, setActiveTab, sidebarOpen, setSidebarOpen, pulsosSectionOpen, setPulsosSectionOpen, db } = useAppStore()
   const user = useSessionUser()
   // Multi-tenant: branding dinámico según el business del usuario logueado.
   // Pre-migración (user sin businessSlug) cae a CSL → comportamiento idéntico.
@@ -126,6 +128,19 @@ export function Sidebar() {
   const visiblePulse = useMemo(() => PULSE_ITEMS.filter((item) => canAccessMenu(user, item.id)), [user])
   const isPulseActive = visiblePulse.some((item) => item.id === activeTab)
   const isPulseOpen = pulsosSectionOpen || isPulseActive
+
+  // Contadores de "Pendiente de revisión" para badges del menú —
+  // consents vienen ya cargados en el db global (getAllData los incluye).
+  // Para Ficha Dermatológica no hay snapshot global, así que su badge se
+  // omite acá (sigue mostrándose dentro del módulo cuando se entra).
+  const pendientesConsentsMasajes = useMemo(() => {
+    const arr = (db as unknown as { consentMasajes?: Array<{ estado?: string }> }).consentMasajes || []
+    return arr.filter((r) => String(r?.estado) === "Pendiente de revisión").length
+  }, [db])
+  const pendientesConsentsTatuajes = useMemo(() => {
+    const arr = (db as unknown as { consentTatuajesCejas?: Array<{ estado?: string }> }).consentTatuajesCejas || []
+    return arr.filter((r) => String(r?.estado) === "Pendiente de revisión").length
+  }, [db])
 
   const handleNavClick = (id: TabId) => {
     setActiveTab(id)
@@ -204,7 +219,23 @@ export function Sidebar() {
           ) : null}
 
           {EXTRA_GROUPS.map((group) => (
-            <NavGroup key={group.label} label={group.label} items={group.items.filter((item) => canAccessMenu(user, item.id))} activeTab={activeTab} onSelect={handleNavClick} />
+            <NavGroup
+              key={group.label}
+              label={group.label}
+              items={group.items
+                .filter((item) => canAccessMenu(user, item.id))
+                .map((item) => {
+                  if (item.id === "consent-masajes" && pendientesConsentsMasajes > 0) {
+                    return { ...item, count: pendientesConsentsMasajes }
+                  }
+                  if (item.id === "consent-tatuajes-cejas" && pendientesConsentsTatuajes > 0) {
+                    return { ...item, count: pendientesConsentsTatuajes }
+                  }
+                  return item
+                })}
+              activeTab={activeTab}
+              onSelect={handleNavClick}
+            />
           ))}
         </nav>
 
@@ -265,6 +296,14 @@ function NavBtn({ item, active, onClick }: { item: NavItem; active: boolean; onC
         {item.icon}
       </span>
       <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      {item.count && item.count > 0 ? (
+        <span
+          className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-sm"
+          title={`${item.count} pendiente(s) de revisión`}
+        >
+          {item.count}
+        </span>
+      ) : null}
       {item.badge ? <span className="csl-new-badge">{item.badge}</span> : null}
     </button>
   )

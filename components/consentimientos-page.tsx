@@ -767,6 +767,7 @@ function printConsent(record: ConsentimientoRecord, kind: ConsentKind) {
       </style>
     </head>
     <body>
+      ${record.estado === "Pendiente de revisión" || record.estado === "Pendiente" ? `<div style="background:#fef3c7;border:2px solid #f59e0b;color:#92400e;padding:10px 14px;margin:0 0 14px;text-align:center;font-weight:800;font-size:12px;border-radius:8px;">⚠ ${record.estado === "Pendiente de revisión" ? "PENDIENTE DE REVISIÓN POR ESPECIALISTA" : "PENDIENTE — falta completar"} · Este consentimiento NO está finalizado.</div>` : ""}
       <div class="header">
         <img class="logo" src="${window.location.origin}/cibao-spa-laser-logo.jpeg" alt="Cibao Spa Laser" />
         <div>
@@ -783,11 +784,9 @@ function printConsent(record: ConsentimientoRecord, kind: ConsentKind) {
         <div class="section-title">Datos del cliente</div>
         <div class="grid">
           <div class="field"><b>Nombre:</b><span>${escapeHtml(record.nombreCliente)}</span></div>
-          <div class="field"><b>Cédula / Documento:</b><span>${escapeHtml(record.documento || "-")}</span></div>
           <div class="field"><b>Teléfono:</b><span>${escapeHtml(record.telefono || "-")}</span></div>
+          <div class="field"><b>Cédula / Documento:</b><span>${escapeHtml(record.documento || "-")}</span></div>
           <div class="field"><b>Correo:</b><span>${escapeHtml(record.correo || "-")}</span></div>
-          <div class="field"><b>Fecha nacimiento:</b><span>${formatDate(record.fechaNacimiento)}</span></div>
-          <div class="field"><b>Edad:</b><span>${escapeHtml(record.edad || "-")}</span></div>
           <div class="field full"><b>Dirección:</b><span>${escapeHtml(record.direccion || "-")}</span></div>
         </div>
       </div>
@@ -822,6 +821,7 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
   const [records, setRecords] = useState<ConsentimientoRecord[]>([])
   const [clientes, setClientes] = useState<ClienteCosmiatria[]>([])
   const [query, setQuery] = useState("")
+  const [onlyPendientes, setOnlyPendientes] = useState(false)
   const [filterSucursal, setFilterSucursal] = useState("todas")
   const [filterFecha, setFilterFecha] = useState("")
   const [formOpen, setFormOpen] = useState(false)
@@ -909,6 +909,7 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
     const needle = query.trim().toLowerCase()
     return records
       .filter((record) => {
+        if (onlyPendientes && record.estado !== "Pendiente de revisión") return false
         const matchesQuery =
           !needle ||
           [record.nombreCliente, record.documento, record.telefono, record.correo, record.id]
@@ -920,10 +921,11 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
         return matchesQuery && matchesSucursal && matchesFecha
       })
       .sort((a, b) => `${b.fecha}${b.fechaRegistro}`.localeCompare(`${a.fecha}${a.fechaRegistro}`))
-  }, [filterFecha, filterSucursal, query, records])
+  }, [filterFecha, filterSucursal, query, records, onlyPendientes])
 
   const signed = records.filter((record) => record.estado === "Firmado").length
   const pending = records.filter((record) => record.estado === "Pendiente").length
+  const pendientesRevision = records.filter((record) => record.estado === "Pendiente de revisión").length
 
   const update = (patch: Partial<ConsentimientoRecord>) => {
     setSaveError("") // cualquier edición despeja el banner de error
@@ -1201,7 +1203,7 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
         <CardHeader>
           <CardTitle>Filtros y búsqueda</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-3 lg:grid-cols-[1fr_240px_200px]">
+        <CardContent className="grid gap-3 lg:grid-cols-[1fr_220px_180px_auto]">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por cliente, documento, teléfono, correo o ID..." className="pl-10" />
@@ -1214,6 +1216,19 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
             </SelectContent>
           </Select>
           <Input type="date" value={filterFecha} onChange={(event) => setFilterFecha(event.target.value)} />
+          <Button
+            type="button"
+            variant={onlyPendientes ? "default" : "outline"}
+            onClick={() => setOnlyPendientes((v) => !v)}
+            className={`gap-2 ${onlyPendientes ? "" : "border-blue-200 text-blue-700 hover:bg-blue-50"}`}
+          >
+            {onlyPendientes ? "✓ " : ""}Pendientes de revisión
+            {pendientesRevision > 0 ? (
+              <Badge variant="secondary" className={onlyPendientes ? "bg-white/30 text-white" : "bg-blue-100 text-blue-800"}>
+                {pendientesRevision}
+              </Badge>
+            ) : null}
+          </Button>
         </CardContent>
       </Card>
 

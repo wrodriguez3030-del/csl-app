@@ -115,6 +115,10 @@ function printTable(title: string, headers: string[], rows: unknown[][]) {
 }
 
 function buildFichaPrintHtml(ficha: FichaDermoCosmiatrica) {
+  const isPendiente = ficha.estado === "Pendiente de revisión" || ficha.estado === "Pendiente"
+  const watermarkBanner = isPendiente
+    ? `<div style="background:#fef3c7;border:2px solid #f59e0b;color:#92400e;padding:8px 12px;margin:0 0 8px;text-align:center;font-weight:bold;font-size:11px;border-radius:6px;">⚠ ${ficha.estado === "Pendiente de revisión" ? "PENDIENTE DE REVISIÓN POR ESPECIALISTA" : "PENDIENTE — falta completar"} · Esta ficha NO está finalizada.</div>`
+    : ""
   return `<!doctype html><html><head><meta charset="utf-8" /><title>Ficha Dermatología - ${escapeHtml(ficha.nombre || ficha.id)}</title><style>
 @page{size:letter;margin:8mm;}
 *{box-sizing:border-box;}
@@ -143,7 +147,7 @@ td{border:1px solid #ccc;padding:2px 3px;vertical-align:top;}
 .meta{margin-top:4px;color:#374151;font-size:8px;}
 @media print{button{display:none}.page-break{break-before:page;page-break-before:always;}}
 </style></head><body>
-<div class="header"><div class="logo">CIBAO SPA LASER</div><h1>FICHA DERMATOLÓGICA / DERMO-COSMIÁTRICA</h1><p class="subtitle">Documento generado desde el sistema CSL</p></div>
+${watermarkBanner}<div class="header"><div class="logo">CIBAO SPA LASER</div><h1>FICHA DERMATOLÓGICA / DERMO-COSMIÁTRICA</h1><p class="subtitle">Documento generado desde el sistema CSL</p></div>
 ${printRow(printField("Fecha", ficha.fecha), printField("Estado", ficha.estado))}
 ${printRow(printField("Sucursal", ficha.sucursal), printField("Operadora", ficha.operadora), printField("Especialista", ficha.nombreEspecialista || ficha.especialista))}
 <h2>Datos del cliente</h2>
@@ -225,6 +229,7 @@ export function CosmiatriaFichaPage() {
   const [operatorOptions, setOperatorOptions] = useState<string[]>([])
   const [clientes, setClientes] = useState<ClienteCosmiatria[]>([])
   const [search, setSearch] = useState("")
+  const [onlyPendientes, setOnlyPendientes] = useState(false)
   const [sortKey, setSortKey] = useState<SortKey>("fecha")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
   // Dialog "Generar link para cliente" — link único, un uso, 12h, WhatsApp.
@@ -354,6 +359,7 @@ export function CosmiatriaFichaPage() {
     const query = search.trim().toLowerCase()
     return records
       .filter((record) => {
+        if (onlyPendientes && record.estado !== "Pendiente de revisión") return false
         if (!query) return true
         return [
           record.nombre,
@@ -369,7 +375,12 @@ export function CosmiatriaFichaPage() {
         ].join(" ").toLowerCase().includes(query)
       })
       .sort((a, b) => sortValue(a, sortKey).localeCompare(sortValue(b, sortKey), "es", { numeric: true }) * (sortDir === "asc" ? 1 : -1))
-  }, [records, search, sortKey, sortDir])
+  }, [records, search, sortKey, sortDir, onlyPendientes])
+
+  const pendientesCount = useMemo(
+    () => records.filter((r) => r.estado === "Pendiente de revisión").length,
+    [records]
+  )
 
   const setSort = (key: SortKey) => {
     if (sortKey === key) setSortDir((current) => current === "asc" ? "desc" : "asc")
@@ -455,18 +466,35 @@ export function CosmiatriaFichaPage() {
         <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Operadoras</p><p className="text-3xl font-bold">{operadoras.length}</p></CardContent></Card>
       </div>
 
-      {/* Filtros: dejamos solo el buscador. Sucursal/Operadora/Ordenar por
-          (dropdowns) eran ruido — el orden y el filtro por columna siguen
-          disponibles haciendo click en los headers clickeables de la tabla. */}
+      {/* Filtros: buscador + chip "Pendientes de revisión" (cuando viene
+          de link público y la especialista debe finalizar). El orden y
+          filtros por columna están en los headers clickeables. */}
       <Card>
         <CardContent className="pt-4">
-          <Label>Buscar</Label>
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Cliente, teléfono, cédula, correo, motivo..."
-            className="mt-1"
-          />
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div className="flex-1">
+              <Label>Buscar</Label>
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Cliente, teléfono, cédula, correo, motivo..."
+                className="mt-1"
+              />
+            </div>
+            <Button
+              type="button"
+              variant={onlyPendientes ? "default" : "outline"}
+              onClick={() => setOnlyPendientes((v) => !v)}
+              className={`shrink-0 gap-2 ${onlyPendientes ? "" : "border-blue-200 text-blue-700 hover:bg-blue-50"}`}
+            >
+              {onlyPendientes ? "✓ " : ""}Pendientes de revisión
+              {pendientesCount > 0 ? (
+                <Badge variant="secondary" className={onlyPendientes ? "bg-white/30 text-white" : "bg-blue-100 text-blue-800"}>
+                  {pendientesCount}
+                </Badge>
+              ) : null}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
