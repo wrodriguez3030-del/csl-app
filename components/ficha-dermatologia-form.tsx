@@ -90,6 +90,20 @@ function clienteSearchText(cliente: ClienteCosmiatria) {
   ].join(" ").toLowerCase()
 }
 
+// Display read-only para modo público: muestra label + valor como texto,
+// no como Input. El cliente NO puede editar — los datos vienen pre-cargados
+// por el operador al generar el link.
+function ReadOnlyDisplay({ label, value, className }: { label: string; value: string; className?: string }) {
+  return (
+    <div className={className}>
+      <Label className="text-xs font-bold text-muted-foreground">{label}</Label>
+      <div className="mt-1 min-h-[40px] rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
+        {value && value.trim() ? value : <span className="text-muted-foreground">—</span>}
+      </div>
+    </div>
+  )
+}
+
 function CheckboxGroup({ label, options, value, onChange }: { label: string; options: string[]; value: string[]; onChange: (value: string[]) => void }) {
   return (
     <div className="space-y-2">
@@ -516,11 +530,27 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
           </CardTitle>
           {isPublic ? (
             <p className="text-xs text-muted-foreground">
-              Revise que sus datos estén correctos antes de enviar.
+              Estos datos fueron cargados por el personal. Si algún dato es
+              incorrecto, comuníquese con recepción.
             </p>
           ) : null}
         </CardHeader>
         <CardContent className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,220px),1fr))] gap-4">
+          {isPublic ? (
+            <>
+              <ReadOnlyDisplay label="Nombre" value={form.nombre} />
+              <ReadOnlyDisplay label="Teléfono" value={form.telefono} />
+              <ReadOnlyDisplay label="Cédula / Documento" value={form.cedula || form.documento} />
+              <ReadOnlyDisplay label="Correo" value={form.email} />
+              <ReadOnlyDisplay label="Dirección" value={form.direccion} className="col-span-full" />
+              <ReadOnlyDisplay label="Sucursal" value={form.sucursal} />
+              <ReadOnlyDisplay
+                label="Motivo de la consulta"
+                value={form.motivoConsulta}
+                className="col-span-full"
+              />
+            </>
+          ) : (<>
           <div><Label>Nombre *</Label><Input value={form.nombre} onChange={(event) => update({ nombre: event.target.value })} /></div>
           <div><Label>Teléfono *</Label><Input value={form.telefono} onChange={(event) => update({ telefono: formatPhone(event.target.value) })} /></div>
           <div><Label>Cédula / Documento</Label><Input value={form.cedula || form.documento} onChange={(event) => update({ cedula: event.target.value, documento: event.target.value })} /></div>
@@ -539,6 +569,7 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
               <MotivoConsultaPicker value={form.motivoConsulta} onChange={(v) => update({ motivoConsulta: v })} />
             </div>
           </div>
+          </>)}
         </CardContent>
       </Card>
 
@@ -669,14 +700,31 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
       </Card>}
 
       <Card>
-        <CardHeader><CardTitle className="flex items-center gap-2 text-base"><FileSignature className="h-4 w-4" />Declaración y firmas</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FileSignature className="h-4 w-4" />Declaración y firma
+          </CardTitle>
+        </CardHeader>
         <CardContent className="space-y-3">
           <div className="rounded-2xl border bg-primary/5 p-4 text-sm leading-relaxed text-muted-foreground">
-            Declaro que la información suministrada en esta ficha dermatológica es verdadera y completa. Entiendo que Cibao Spa Láser y su personal utilizarán esta información para evaluar mi piel, mis antecedentes y las condiciones necesarias antes de realizar cualquier procedimiento estético o dermatológico. Entiendo que omitir información puede afectar la seguridad y los resultados del tratamiento.
+            <p>
+              Declaro que la información suministrada en esta ficha dermatológica
+              es verdadera y completa. Entiendo que Cibao Spa Laser y su personal
+              utilizarán esta información para evaluar mi piel, mis antecedentes y
+              las condiciones necesarias antes de realizar cualquier procedimiento
+              estético o dermatológico. Entiendo que omitir información puede
+              afectar la seguridad y los resultados del tratamiento.
+            </p>
+            <p className="mt-2 font-semibold text-foreground">
+              Autorizo a Cibao Spa Laser y a su personal a realizar el procedimiento descrito.
+            </p>
           </div>
           <label className="flex items-start gap-3 rounded-2xl border bg-white p-3 text-sm">
             <Checkbox checked={form.declaracionAceptada} onCheckedChange={(checked) => update({ declaracionAceptada: checked === true })} />
-            <span>Declaro que la información suministrada es verdadera y completa.</span>
+            <span>
+              Declaro que la información suministrada es verdadera y completa,
+              y autorizo el procedimiento descrito.
+            </span>
           </label>
           <div className={isPublic ? "" : "grid gap-4 md:grid-cols-2"}>
             <SignaturePad label="Firma del cliente" value={form.firma} onChange={(value) => update({ firma: value })} />

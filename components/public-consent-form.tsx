@@ -3,15 +3,26 @@
 import { useEffect, useState } from "react"
 import { CheckCircle2, FileSignature, Loader2, Send } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SignaturePad } from "@/components/signature-pad"
+
+// Read-only display de un campo cliente (modo público — no editable).
+function ReadOnlyField({ label, value, className }: { label: string; value?: string; className?: string }) {
+  return (
+    <div className={className}>
+      <Label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</Label>
+      <div className="mt-1 min-h-[40px] rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
+        {value && value.trim() ? value : <span className="text-muted-foreground">—</span>}
+      </div>
+    </div>
+  )
+}
 // REUTILIZAMOS las MISMAS secciones que el formulario interno — para que el
 // cliente vía WhatsApp llene EXACTAMENTE el mismo cuestionario que el equipo
 // llenaría adentro. Ver consentimientos-page.tsx para el contenido.
 import {
-  Field,
   MasajesTemplateSections,
   TatuajesTemplateSections,
   emptyRecord,
@@ -24,10 +35,6 @@ const TITLE: Record<ConsentKind, string> = {
   tatuajes: "Consentimiento — Eliminación de Tatuajes y Cejas",
 }
 
-// Sucursales habituales — el form interno las trae del db.sucursales, pero
-// el público no tiene sesión; usamos un fallback razonable. El operador
-// puede ajustar la sucursal después si hace falta desde el módulo interno.
-const SUCURSALES_FALLBACK = ["Rafael Vidal", "Los Jardines", "Villa Olga", "La Vega"]
 
 export interface PublicConsentPrefill {
   nombre?: string
@@ -84,12 +91,28 @@ export function PublicConsentForm({ kind, prefill = {}, onSubmit }: Props) {
 
   const update = (patch: Partial<ConsentimientoRecord>) => setForm((c) => ({ ...c, ...patch }))
 
+  // Estado unificado de la declaración final. Al togglearlo, sincronizamos
+  // TODOS los campos de aceptación legacy del shape ConsentimientoRecord para
+  // que el backend (consentToDb) reciba lo mismo que recibiría desde el form
+  // interno. El cliente acepta UNA sola vez, pero internamente queda cumplido
+  // el contrato legal multi-acceptance.
+  const [declaracionUnificada, setDeclaracionUnificada] = useState(false)
+  const handleDeclaracionUnificada = (checked: boolean) => {
+    setDeclaracionUnificada(checked)
+    update({
+      declaracionAceptada: checked,
+      autorizacionAceptada: checked,
+      declaracionResultadosAceptada: checked,
+      autorizacionFotograficaAceptada: checked,
+      autorizacionProcedimientoAceptada: checked,
+    })
+  }
+
   const submit = async () => {
     setError("")
-    if (!form.nombreCliente.trim()) return setError("Tu nombre es obligatorio.")
-    if (!form.telefono.trim()) return setError("Tu teléfono es obligatorio.")
-    if (!form.sucursal) return setError("Selecciona la sucursal donde se realizará el procedimiento.")
-    if (!form.firmaCliente) return setError("Debes firmar antes de enviar.")
+    if (!form.nombreCliente.trim()) return setError("Falta el nombre del cliente. Comuníquese con recepción.")
+    if (!form.telefono.trim()) return setError("Falta el teléfono. Comuníquese con recepción.")
+    if (!form.sucursal) return setError("Falta la sucursal. Comuníquese con recepción.")
     // Bloqueo clínico (mismo criterio que el form interno).
     if (kind === "masajes" && form.embarazo === "Sí") {
       return setError("No podemos continuar con el tratamiento durante el embarazo. Por favor consulte con el personal antes de enviar este formulario.")
@@ -97,16 +120,11 @@ export function PublicConsentForm({ kind, prefill = {}, onSubmit }: Props) {
     if (kind === "tatuajes" && form.embarazoLactanciaSiNo === "Sí") {
       return setError("No podemos continuar con el tratamiento durante el embarazo o lactancia. Por favor consulte con el personal antes de enviar este formulario.")
     }
-    // Validaciones específicas por tipo: las mismas que aplica el form interno.
-    if (kind === "tatuajes") {
-      if (!form.declaracionResultadosAceptada || !form.autorizacionFotograficaAceptada || !form.autorizacionProcedimientoAceptada) {
-        return setError("Debes aceptar las declaraciones del consentimiento para enviar.")
-      }
-    } else if (kind === "masajes") {
-      if (!form.declaracionAceptada || !form.autorizacionAceptada) {
-        return setError("Debes aceptar las declaraciones del consentimiento para enviar.")
-      }
+    // Declaración unificada — reemplaza las múltiples checks anteriores.
+    if (!declaracionUnificada) {
+      return setError("Debes aceptar la declaración antes de firmar y enviar.")
     }
+    if (!form.firmaCliente) return setError("Debes firmar antes de enviar.")
     setSubmitting(true)
     try {
       // El payload es la ConsentimientoRecord completa. El endpoint público
@@ -142,50 +160,30 @@ export function PublicConsentForm({ kind, prefill = {}, onSubmit }: Props) {
 
       {/* Datos generales mínimos: fecha (auto), sucursal (obligatoria para
           que el registro quede correctamente asignado). ID y Estado se
-          ocultan — son administrativos. */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Datos generales</CardTitle></CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2">
-          <Field label="Fecha">
-            <Input type="date" value={form.fecha} onChange={(e) => update({ fecha: e.target.value })} />
-          </Field>
-          <Field label="Sucursal *">
-            <Select value={form.sucursal} onValueChange={(value) => update({ sucursal: value })}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-              <SelectContent>
-                {SUCURSALES_FALLBACK.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </Field>
-        </CardContent>
-      </Card>
+          ocultan — son administrativos.
+          Card "Datos generales" REMOVIDA en público — fecha = hoy (auto),
+          sucursal = pre-cargada por el operador. El cliente las ve dentro
+          de "Cliente vinculado" como solo lectura. */}
 
-      {/* Cliente vinculado — el operador ya seleccionó al cliente y
-          pre-cargó sus datos al generar el link. Acá el cliente revisa,
-          corrige si hace falta, completa lo que falta y firma. */}
+      {/* Cliente vinculado — el operador ya seleccionó al cliente y pre-cargó
+          sus datos al generar el link. SOLO LECTURA en público: el cliente
+          NO puede editar; si algo está mal, llama a recepción. */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Cliente vinculado</CardTitle>
           <p className="text-xs text-muted-foreground">
-            Revise que sus datos estén correctos antes de enviar.
+            Estos datos fueron cargados por el personal. Si algún dato es
+            incorrecto, comuníquese con recepción.
           </p>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2">
-          <Field label="Nombre completo *">
-            <Input value={form.nombreCliente} onChange={(e) => update({ nombreCliente: e.target.value })} />
-          </Field>
-          <Field label="Teléfono *">
-            <Input value={form.telefono} onChange={(e) => update({ telefono: e.target.value })} />
-          </Field>
-          <Field label="Cédula / Documento">
-            <Input value={form.documento} onChange={(e) => update({ documento: e.target.value })} />
-          </Field>
-          <Field label="Correo">
-            <Input type="email" value={form.correo} onChange={(e) => update({ correo: e.target.value })} />
-          </Field>
-          <Field label="Dirección" className="sm:col-span-2">
-            <Input value={form.direccion} onChange={(e) => update({ direccion: e.target.value })} />
-          </Field>
+          <ReadOnlyField label="Nombre completo" value={form.nombreCliente} />
+          <ReadOnlyField label="Teléfono" value={form.telefono} />
+          <ReadOnlyField label="Cédula / Documento" value={form.documento} />
+          <ReadOnlyField label="Correo" value={form.correo} />
+          <ReadOnlyField label="Dirección" value={form.direccion} className="sm:col-span-2" />
+          {form.sucursal ? <ReadOnlyField label="Sucursal" value={form.sucursal} /> : null}
+          {form.nombreEspecialista ? <ReadOnlyField label="Especialista" value={form.nombreEspecialista} /> : null}
         </CardContent>
       </Card>
 
@@ -196,11 +194,35 @@ export function PublicConsentForm({ kind, prefill = {}, onSubmit }: Props) {
         <TatuajesTemplateSections form={form} onUpdate={update} />
       )}
 
-      {/* Firmas — la del especialista queda en blanco; la completa el
-          personal después desde el sistema interno. */}
+      {/* Declaración y firma — unificada: una sola autorización + un solo
+          checkbox que cubre todas las aceptaciones legacy (declaración,
+          autorización fotográfica, políticas, autorización final). El cliente
+          solo firma; la firma del especialista la completa el personal. */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Firma del cliente</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FileSignature className="h-4 w-4" />
+            Declaración y firma
+          </CardTitle>
+        </CardHeader>
         <CardContent className="space-y-3">
+          <div className="rounded-2xl border bg-primary/5 p-4 text-sm leading-relaxed text-muted-foreground">
+            <p>
+              {kind === "masajes"
+                ? "Declaro que la información suministrada es verdadera y completa. Confirmo que he leído y comprendido este consentimiento, y que se me han explicado los beneficios, posibles molestias y cuidados antes y después del procedimiento de masaje."
+                : "Declaro que la información suministrada es verdadera y completa. Confirmo que he leído y comprendido este consentimiento, y que se me han explicado los beneficios, riesgos (enrojecimiento, ampollas, cambios pigmentarios, cicatrices, infección, resultado parcial) y cuidados antes y después del procedimiento de eliminación de tatuajes o cejas."}
+            </p>
+            <p className="mt-2 font-semibold text-foreground">
+              Autorizo a Cibao Spa Laser y a su personal a realizar el procedimiento descrito.
+            </p>
+          </div>
+          <label className="flex cursor-pointer items-start gap-3 rounded-2xl border bg-white p-3 text-sm">
+            <Checkbox checked={declaracionUnificada} onCheckedChange={(checked) => handleDeclaracionUnificada(checked === true)} />
+            <span>
+              Declaro que la información suministrada es verdadera y completa,
+              y autorizo el procedimiento descrito.
+            </span>
+          </label>
           <SignaturePad
             label="Firma del cliente"
             value={form.firmaCliente}
@@ -221,7 +243,7 @@ export function PublicConsentForm({ kind, prefill = {}, onSubmit }: Props) {
       <div className="sticky bottom-0 -mx-3 border-t bg-white/95 px-3 py-3 backdrop-blur">
         <Button
           onClick={submit}
-          disabled={submitting || !form.firmaCliente}
+          disabled={submitting || !form.firmaCliente || !declaracionUnificada}
           className="w-full gap-2"
           size="lg"
         >
