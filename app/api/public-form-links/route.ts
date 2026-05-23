@@ -30,13 +30,27 @@ function buildPublicUrl(request: Request, token: string): string {
   return `${url.origin}/formulario-publico/${token}`
 }
 
-function buildWhatsappUrl(publicUrl: string, ttlHours: number, clienteNombre?: string): string {
+// Texto del consentimiento por tipo — espejo del title del page para que
+// el mensaje WhatsApp y la vista previa hablen el mismo idioma.
+const CONSENT_NAME_BY_TYPE: Record<FormType, string> = {
+  ficha_dermatologica: "Consentimiento de Ficha Dermatológica",
+  consentimiento_masajes: "Consentimiento de Masajes",
+  consentimiento_tatuajes_cejas: "Consentimiento de Eliminación de Tatuajes y Cejas",
+}
+
+function buildWhatsappUrl(
+  publicUrl: string,
+  ttlHours: number,
+  clienteNombre?: string,
+  formType?: FormType,
+): string {
   // Personalizamos el saludo si tenemos el nombre del cliente. Tomamos solo
   // el primer nombre para que el mensaje no quede sobre-formal.
-  const firstName = clienteNombre ? clienteNombre.trim().split(/\s+/)[0] : ""
-  const greeting = firstName ? `Hola ${firstName}, por favor complete` : "Hola, por favor complete"
+  const firstName = clienteNombre ? clienteNombre.trim().split(/\s+/)[0].toUpperCase() : ""
+  const consentName = formType ? CONSENT_NAME_BY_TYPE[formType] : "formulario"
+  const greeting = firstName ? `Hola ${firstName}, por favor` : "Hola, por favor"
   const mensaje = [
-    `${greeting} y firme su formulario en este enlace:`,
+    `${greeting} complete y firme su ${consentName} de Cibao Spa Laser en este enlace:`,
     publicUrl,
     "",
     `Este enlace es válido por ${ttlHours} horas y solo puede usarse una vez.`,
@@ -84,7 +98,12 @@ export async function POST(request: Request) {
     })
 
     const publicUrl = buildPublicUrl(request, token)
-    const whatsappUrl = buildWhatsappUrl(publicUrl, ttlHours, clienteNombre || prefillPayload?.nombre)
+    const whatsappUrl = buildWhatsappUrl(
+      publicUrl,
+      ttlHours,
+      clienteNombre || prefillPayload?.nombre,
+      formType as FormType,
+    )
 
     return json({
       ok: true,
