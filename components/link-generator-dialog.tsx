@@ -30,6 +30,31 @@ const MOTIVOS_CONSULTA = [
 
 const MOTIVO_OTRO = "__otro__"
 
+// Servicios/procedimientos por tipo de consent — espejo de lo que el
+// equipo clínico usa internamente. La opción "Otro" abre un input libre.
+const SERVICIOS_MASAJES = [
+  "Masaje relajante",
+  "Masaje terapéutico",
+  "Masaje descontracturante",
+  "Masaje reductivo",
+  "Masaje postquirúrgico",
+  "Drenaje linfático",
+  "Maderoterapia",
+  "Masaje deportivo",
+  "Masaje de espalda",
+] as const
+
+const SERVICIOS_TATUAJES = [
+  "Eliminación de tatuaje",
+  "Eliminación de cejas",
+  "Remoción parcial",
+  "Remoción completa",
+  "Retoque / seguimiento",
+  "Evaluación previa",
+] as const
+
+const SERVICIO_OTRO = "__servicio_otro__"
+
 type FormType =
   | "ficha_dermatologica"
   | "consentimiento_masajes"
@@ -157,6 +182,10 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
   // motivoSelected = "" | uno de MOTIVOS_CONSULTA | MOTIVO_OTRO
   const [motivoSelected, setMotivoSelected] = useState<string>("")
   const [motivoOtroText, setMotivoOtroText] = useState("")
+  // Servicio / procedimiento (solo consents): dropdown según el kind +
+  // "+ Otro" que abre input libre. Required para consents.
+  const [servicioSelected, setServicioSelected] = useState<string>("")
+  const [servicioOtroText, setServicioOtroText] = useState("")
 
   // ─── Generación del link ─────────────────────────────────────────────────
   const [generating, setGenerating] = useState(false)
@@ -209,6 +238,8 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       setManualMode(false)
       setMotivoSelected("")
       setMotivoOtroText("")
+      setServicioSelected("")
+      setServicioOtroText("")
       setError("")
       setResult(null)
       setCopied(false)
@@ -294,6 +325,25 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       setError("Selecciona el especialista antes de generar el link.")
       return
     }
+    // Resolver servicio final (solo consents): seleccionado de la lista o
+    // texto manual si eligió "+ Otro". Required.
+    let servicioFinal = ""
+    if (formType !== "ficha_dermatologica") {
+      if (servicioSelected === SERVICIO_OTRO) {
+        servicioFinal = servicioOtroText.trim()
+        if (!servicioFinal) {
+          setError("Escribe el servicio o procedimiento o elige uno de la lista.")
+          return
+        }
+      } else if (servicioSelected) {
+        servicioFinal = servicioSelected
+      }
+      if (!servicioFinal) {
+        setError("Selecciona el servicio o procedimiento.")
+        return
+      }
+    }
+
     // Resolver motivoConsulta final (solo ficha): seleccionado de la lista
     // o el texto manual si eligió "Otro motivo".
     let motivoConsultaFinal = ""
@@ -336,7 +386,9 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
         // Sobrescribimos motivoConsulta con el valor resuelto (lista u Otro).
         if (motivoConsultaFinal) prefillPayload.motivoConsulta = motivoConsultaFinal
       } else {
-        include("servicio")
+        // Servicio resuelto (lista u Otro) — viaja como prefill.servicio
+        // que el form público mapea a observaciones del procedimiento.
+        if (servicioFinal) prefillPayload.servicio = servicioFinal
       }
 
       const response = await fetch("/api/public-form-links", {
@@ -392,9 +444,12 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl max-h-[92vh] overflow-y-auto">
+      <DialogContent
+        className="w-[94vw] max-w-[900px] max-h-[90vh] overflow-y-auto p-5 sm:p-6"
+        style={{ width: "min(900px, 94vw)" }}
+      >
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle className="text-lg">{title}</DialogTitle>
           <DialogDescription>
             Busca el cliente en el sistema; sus datos se cargan automáticamente.
             El enlace es válido por <b>12 horas</b> y de <b>un solo uso</b>.
@@ -402,72 +457,75 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
         </DialogHeader>
 
         {!result ? (
-          <div className="space-y-3 py-2">
-            {/* 1) Picker de cliente — visible si no hay selección ni captura manual */}
+          <div className="space-y-4 py-2">
+            {/* 1) Picker de cliente — visible si no hay selección ni captura manual.
+                Layout STATIC (no dropdown absolute) para que la lista respire
+                a lo ancho del modal y no quede cortada por el contenedor. */}
             {!hasSelectedOrManual ? (
-              <div ref={pickerRef} className="relative space-y-2 rounded-xl border border-primary/25 bg-primary/5 p-3">
-                <Label className="text-xs font-bold">Buscar cliente registrado</Label>
+              <div ref={pickerRef} className="space-y-3 rounded-2xl border-2 border-primary/25 bg-primary/5 p-4">
+                <Label className="text-sm font-bold">Buscar cliente registrado</Label>
                 <div className="relative">
-                  <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={clientSearch}
                     onChange={(e) => { setClientSearch(e.target.value); setDropdownOpen(true) }}
                     onFocus={() => setDropdownOpen(true)}
                     placeholder="Buscar por nombre, teléfono, cédula o correo..."
-                    className="pl-8"
+                    className="h-[52px] pl-11 text-base"
                     autoFocus
                   />
                 </div>
                 {dropdownOpen && clientSearch.trim() ? (
-                  <div className="absolute left-3 right-3 top-[88px] z-30 max-h-72 overflow-y-auto rounded-xl border bg-popover p-1 shadow-xl">
+                  <div className="overflow-hidden rounded-xl border-2 bg-white shadow-md">
                     {loadingClientes ? (
-                      <div className="px-3 py-2 text-xs text-muted-foreground">
-                        <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> Cargando clientes...
+                      <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Cargando clientes...
                       </div>
                     ) : matchedClientes.length === 0 ? (
-                      <div className="space-y-1 p-2">
-                        <div className="rounded-lg px-2 py-1.5 text-xs text-muted-foreground">
-                          No se encontró ningún cliente con ese dato.
-                        </div>
-                        <button
-                          type="button"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={enterManualMode}
-                          className="flex w-full items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-left text-sm font-semibold text-primary hover:bg-primary/5"
-                        >
-                          <UserPlus className="h-4 w-4" />
-                          Captura manual sin vincular
-                        </button>
+                      <div className="p-4 text-center text-sm text-muted-foreground">
+                        No se encontró ningún cliente con ese dato.
                       </div>
                     ) : (
-                      <>
-                        {matchedClientes.map((c) => (
-                          <button
-                            key={c.ClienteID}
-                            type="button"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => selectCliente(c)}
-                            className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-muted focus:bg-muted focus:outline-none"
-                          >
-                            <span className="font-semibold">{clienteNombre(c)}</span>
-                            <span className="ml-2 text-xs text-muted-foreground">{c.Telefono || "Sin teléfono"}</span>
-                            <span className="block text-xs text-muted-foreground">
-                              {c.Sucursal || "Sin sucursal"} · {c.DocumentoIdentidad || c.Email || "Sin documento"}
-                            </span>
-                          </button>
-                        ))}
-                        <button
-                          type="button"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={enterManualMode}
-                          className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-xs font-semibold text-primary/80 hover:bg-primary/5"
-                        >
-                          <UserPlus className="h-3.5 w-3.5" />
-                          ¿No está? Captura manual sin vincular
-                        </button>
-                      </>
+                      <div className="max-h-[360px] divide-y overflow-y-auto">
+                        {matchedClientes.map((c) => {
+                          const direccionLine = [c.Sucursal || "Sin sucursal", c.Email].filter(Boolean).join(" · ")
+                          return (
+                            <button
+                              key={c.ClienteID}
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => selectCliente(c)}
+                              className="flex w-full min-h-[72px] flex-col justify-center gap-1 px-4 py-3 text-left transition-colors hover:bg-primary/5 focus:bg-primary/10 focus:outline-none"
+                            >
+                              <div className="text-base font-bold leading-tight text-foreground">
+                                {clienteNombre(c) || "Cliente sin nombre"}
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                {c.Telefono || "Sin teléfono"}
+                                {c.DocumentoIdentidad ? ` · ${c.DocumentoIdentidad}` : ""}
+                              </div>
+                              {direccionLine ? (
+                                <div className="truncate text-xs text-muted-foreground">{direccionLine}</div>
+                              ) : null}
+                            </button>
+                          )
+                        })}
+                      </div>
                     )}
                   </div>
+                ) : null}
+
+                {/* Opción secundaria, discreta, fuera del dropdown principal. */}
+                {dropdownOpen && clientSearch.trim() ? (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={enterManualMode}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-muted-foreground/40 bg-transparent px-3 py-2 text-xs font-semibold text-muted-foreground hover:border-primary/40 hover:text-primary"
+                  >
+                    <UserPlus className="h-3.5 w-3.5" />
+                    ¿No está? Captura manual sin vincular
+                  </button>
                 ) : null}
               </div>
             ) : null}
@@ -493,8 +551,9 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                   </Button>
                 </div>
 
-                {/* Editables (recepción puede corregir antes de enviar) */}
-                <div className="grid gap-3 sm:grid-cols-2">
+                {/* Editables (recepción puede corregir antes de enviar).
+                    3 columnas en desktop para aprovechar el modal ancho. */}
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <div>
                     <Label className="text-xs">Nombre</Label>
                     <Input value={prefill.nombre} onChange={(e) => update({ nombre: e.target.value })} className="mt-1" />
@@ -507,13 +566,9 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                     <Label className="text-xs">Cédula / Documento</Label>
                     <Input value={prefill.documento} onChange={(e) => update({ documento: e.target.value })} className="mt-1" />
                   </div>
-                  <div>
+                  <div className="lg:col-span-2">
                     <Label className="text-xs">Correo</Label>
                     <Input type="email" value={prefill.correo} onChange={(e) => update({ correo: e.target.value })} className="mt-1" />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <Label className="text-xs">Dirección</Label>
-                    <Input value={prefill.direccion} onChange={(e) => update({ direccion: e.target.value })} className="mt-1" />
                   </div>
                   <div>
                     <Label className="text-xs">Sucursal</Label>
@@ -528,6 +583,10 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                     ) : (
                       <Input value={prefill.sucursal} onChange={(e) => update({ sucursal: e.target.value })} placeholder="Opcional" className="mt-1" />
                     )}
+                  </div>
+                  <div className="sm:col-span-2 lg:col-span-2">
+                    <Label className="text-xs">Dirección</Label>
+                    <Input value={prefill.direccion} onChange={(e) => update({ direccion: e.target.value })} className="mt-1" />
                   </div>
                   <div>
                     <Label className="text-xs">
@@ -553,7 +612,7 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                     )}
                   </div>
                   {isFicha ? (
-                    <div className="sm:col-span-2">
+                    <div className="sm:col-span-2 lg:col-span-3">
                       <Label className="text-xs">Motivo de consulta *</Label>
                       <Select value={motivoSelected} onValueChange={setMotivoSelected}>
                         <SelectTrigger className="mt-1">
@@ -577,14 +636,28 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                       ) : null}
                     </div>
                   ) : (
-                    <div className="sm:col-span-2">
-                      <Label className="text-xs">Servicio / Procedimiento</Label>
-                      <Input
-                        value={prefill.servicio}
-                        onChange={(e) => update({ servicio: e.target.value })}
-                        placeholder="Tipo de masaje, eliminación de tatuaje, etc."
-                        className="mt-1"
-                      />
+                    <div className="sm:col-span-2 lg:col-span-3">
+                      <Label className="text-xs">Servicio / Procedimiento *</Label>
+                      <Select value={servicioSelected} onValueChange={setServicioSelected}>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="Seleccionar servicio" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(formType === "consentimiento_masajes" ? SERVICIOS_MASAJES : SERVICIOS_TATUAJES).map((s) => (
+                            <SelectItem key={s} value={s}>{s}</SelectItem>
+                          ))}
+                          <SelectItem value={SERVICIO_OTRO}>+ Otro</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {servicioSelected === SERVICIO_OTRO ? (
+                        <Input
+                          value={servicioOtroText}
+                          onChange={(e) => setServicioOtroText(e.target.value)}
+                          placeholder="Especificar servicio / procedimiento..."
+                          className="mt-2"
+                          autoFocus
+                        />
+                      ) : null}
                     </div>
                   )}
                 </div>
@@ -638,7 +711,12 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
               <Button variant="outline" onClick={() => onOpenChange(false)} disabled={generating}>Cancelar</Button>
               <Button
                 onClick={generate}
-                disabled={generating || !prefill.nombre.trim() || (isFicha && (!motivoSelected || !prefill.especialista.trim()))}
+                disabled={
+                  generating
+                  || !prefill.nombre.trim()
+                  || (isFicha && (!motivoSelected || !prefill.especialista.trim()))
+                  || (!isFicha && !servicioSelected)
+                }
                 className="gap-2"
               >
                 {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
