@@ -217,18 +217,18 @@ export function PublicConsentForm({ kind, prefill = {}, onSubmit }: Props) {
             </p>
           </div>
           <label
-            className={`flex cursor-pointer items-start gap-3 rounded-2xl border-2 bg-white p-3 text-sm transition-colors ${
+            className={`flex cursor-pointer items-start gap-3 rounded-2xl border-2 bg-white p-4 transition-colors ${
               declaracionUnificada
                 ? "border-emerald-300 bg-emerald-50/30"
                 : "border-rose-400 bg-rose-50/40 ring-1 ring-rose-200"
             }`}
           >
-            <Checkbox checked={declaracionUnificada} onCheckedChange={(checked) => handleDeclaracionUnificada(checked === true)} />
-            <span className="flex-1">
+            <Checkbox checked={declaracionUnificada} onCheckedChange={(checked) => handleDeclaracionUnificada(checked === true)} className="mt-1 h-5 w-5" />
+            <span className="flex-1 text-base font-bold leading-snug text-foreground">
               Declaro que la información suministrada es verdadera y completa,
               y autorizo el procedimiento descrito.
               {!declaracionUnificada ? (
-                <span className="mt-1 block text-[11px] font-semibold text-rose-600">
+                <span className="mt-1.5 block text-xs font-semibold text-rose-600">
                   Pendiente — marca esta casilla para poder enviar.
                 </span>
               ) : null}
