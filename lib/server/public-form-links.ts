@@ -50,6 +50,7 @@ export interface PrefillPayload {
   correo?: string
   direccion?: string
   sucursal?: string
+  especialista?: string
   motivoConsulta?: string
   servicio?: string
   [key: string]: string | undefined

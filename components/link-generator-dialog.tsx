@@ -56,6 +56,7 @@ interface PrefillState {
   correo: string
   direccion: string
   sucursal: string
+  especialista: string
   motivoConsulta: string
   servicio: string
 }
@@ -68,6 +69,7 @@ const emptyPrefill: PrefillState = {
   correo: "",
   direccion: "",
   sucursal: "",
+  especialista: "",
   motivoConsulta: "",
   servicio: "",
 }
@@ -140,6 +142,8 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
   // ─── Búsqueda de cliente (fuente real: csl_cosmiatria_clientes) ──────────
   const [clientes, setClientes] = useState<ClienteCosmiatria[]>([])
   const [loadingClientes, setLoadingClientes] = useState(false)
+  // ─── Especialistas/Operadoras (fuente real: csl_operadoras vía getAllPulsosData) ─
+  const [especialistas, setEspecialistas] = useState<string[]>([])
   const [clientSearch, setClientSearch] = useState("")
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
@@ -176,6 +180,26 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
     }
   }, [apiUrl])
 
+  // Carga inicial de especialistas — misma fuente que usa Cosmiatría:
+  // getAllPulsosData devuelve el array operadoras (activas). Multi-tenant
+  // resuelto en el backend.
+  const loadEspecialistas = useCallback(async () => {
+    try {
+      const result = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getAllPulsosData" })
+      const ops = (result as { operadoras?: Record<string, unknown>[] }).operadoras || []
+      const names = Array.from(
+        new Set(
+          ops
+            .map((o) => String(o.Nombre || o.nombre || "").trim())
+            .filter(Boolean),
+        ),
+      ).sort((a, b) => a.localeCompare(b, "es"))
+      setEspecialistas(names)
+    } catch {
+      // sin lista: el operador puede dejarlo vacío y rellenar después en interno
+    }
+  }, [apiUrl])
+
   // Reset + carga al abrir.
   useEffect(() => {
     if (open) {
@@ -191,6 +215,9 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       setGenerating(false)
       if (clientes.length === 0) {
         void loadClientes()
+      }
+      if (especialistas.length === 0) {
+        void loadEspecialistas()
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -261,6 +288,12 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       return
     }
 
+    // Especialista: requerido para ficha_dermatologica (recepción debe
+    // dejar definido quién atiende antes de enviar al cliente).
+    if (formType === "ficha_dermatologica" && !prefill.especialista.trim()) {
+      setError("Selecciona el especialista antes de generar el link.")
+      return
+    }
     // Resolver motivoConsulta final (solo ficha): seleccionado de la lista
     // o el texto manual si eligió "Otro motivo".
     let motivoConsultaFinal = ""
@@ -298,6 +331,7 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       include("correo")
       include("direccion")
       include("sucursal")
+      include("especialista")
       if (formType === "ficha_dermatologica") {
         // Sobrescribimos motivoConsulta con el valor resuelto (lista u Otro).
         if (motivoConsultaFinal) prefillPayload.motivoConsulta = motivoConsultaFinal
@@ -481,7 +515,7 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                     <Label className="text-xs">Dirección</Label>
                     <Input value={prefill.direccion} onChange={(e) => update({ direccion: e.target.value })} className="mt-1" />
                   </div>
-                  <div className={isFicha ? "" : "sm:col-span-2"}>
+                  <div>
                     <Label className="text-xs">Sucursal</Label>
                     {sucursalesOptions.length ? (
                       <Select value={prefill.sucursal || "_none"} onValueChange={(value) => update({ sucursal: value === "_none" ? "" : value })}>
@@ -493,6 +527,29 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                       </Select>
                     ) : (
                       <Input value={prefill.sucursal} onChange={(e) => update({ sucursal: e.target.value })} placeholder="Opcional" className="mt-1" />
+                    )}
+                  </div>
+                  <div>
+                    <Label className="text-xs">
+                      Especialista{isFicha ? " *" : ""}
+                    </Label>
+                    {especialistas.length ? (
+                      <Select value={prefill.especialista || "_none"} onValueChange={(value) => update({ especialista: value === "_none" ? "" : value })}>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder={isFicha ? "Seleccionar" : "Opcional"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {!isFicha ? <SelectItem value="_none">Sin asignar</SelectItem> : null}
+                          {especialistas.map((esp) => <SelectItem key={esp} value={esp}>{esp}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        value={prefill.especialista}
+                        onChange={(e) => update({ especialista: e.target.value })}
+                        placeholder={isFicha ? "Nombre del especialista" : "Opcional"}
+                        className="mt-1"
+                      />
                     )}
                   </div>
                   {isFicha ? (
@@ -581,7 +638,7 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
               <Button variant="outline" onClick={() => onOpenChange(false)} disabled={generating}>Cancelar</Button>
               <Button
                 onClick={generate}
-                disabled={generating || !prefill.nombre.trim() || (isFicha && !motivoSelected)}
+                disabled={generating || !prefill.nombre.trim() || (isFicha && (!motivoSelected || !prefill.especialista.trim()))}
                 className="gap-2"
               >
                 {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}

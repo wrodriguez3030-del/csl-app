@@ -20,6 +20,7 @@ interface PrefillPayload {
   correo?: string
   direccion?: string
   sucursal?: string
+  especialista?: string
   motivoConsulta?: string
   servicio?: string
 }
@@ -179,6 +180,12 @@ export function PublicFormPage({ token }: { token: string }) {
   const pf = linkState.prefillPayload || {}
 
   if (formType === "ficha_dermatologica") {
+    // El especialista viaja en prefill.especialista (seleccionado por
+    // recepción al generar el link). Se mapea a los 3 campos del shape
+    // FichaDermoCosmiatrica que tocan especialista (operadora es el
+    // storage real, nombreEspecialista/especialista lo replican para
+    // mappers y PDF).
+    const esp = pf.especialista || ""
     const initial: FichaDermoCosmiatrica = {
       ...emptyFichaDermo,
       id: `dermo_${Date.now()}`,
@@ -190,6 +197,9 @@ export function PublicFormPage({ token }: { token: string }) {
       email: pf.correo || "",
       direccion: pf.direccion || "",
       sucursal: pf.sucursal || "",
+      operadora: esp,
+      nombreEspecialista: esp,
+      especialista: esp,
       motivoConsulta: pf.motivoConsulta || "",
     }
     return (
@@ -197,8 +207,10 @@ export function PublicFormPage({ token }: { token: string }) {
         <div className="mx-auto max-w-5xl">
           <FichaDermatologiaForm
             initialValue={initial}
-            // El form requiere onSubmit, no operadoras ni clientes (no auth aquí).
-            operadoras={[]}
+            // operadoras=[esp] permite que el campo Especialista (Select)
+            // muestre el preseleccionado del link aunque no haya sesión
+            // para cargar la lista completa. El cliente NO lo cambia.
+            operadoras={esp ? [esp] : []}
             clientes={[]}
             onSubmit={async (value) => { await submit(value as unknown as Record<string, unknown>) }}
           />
@@ -219,6 +231,7 @@ export function PublicFormPage({ token }: { token: string }) {
           correo: pf.correo || "",
           direccion: pf.direccion || "",
           sucursal: pf.sucursal || "",
+          especialista: pf.especialista || "",
           servicio: pf.servicio || "",
         }}
         onSubmit={submit}

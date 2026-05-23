@@ -36,6 +36,7 @@ export interface PublicConsentPrefill {
   correo?: string
   direccion?: string
   sucursal?: string
+  especialista?: string  // recepción ya eligió quién atiende
   servicio?: string  // se mapea a observaciones del procedimiento si aplica
 }
 
@@ -56,6 +57,7 @@ export function PublicConsentForm({ kind, prefill = {}, onSubmit }: Props) {
     documento: prefill.documento || "",
     correo: prefill.correo || "",
     direccion: prefill.direccion || "",
+    nombreEspecialista: prefill.especialista || "",
     // Si vino "servicio" del operador y aplica al kind, lo pre-cargamos
     // en observaciones del procedimiento (el cliente lo puede ajustar).
     observaciones: prefill.servicio || "",
@@ -74,10 +76,11 @@ export function PublicConsentForm({ kind, prefill = {}, onSubmit }: Props) {
       correo: current.correo || prefill.correo || "",
       direccion: current.direccion || prefill.direccion || "",
       sucursal: current.sucursal || prefill.sucursal || "",
+      nombreEspecialista: current.nombreEspecialista || prefill.especialista || "",
       observaciones: current.observaciones || prefill.servicio || "",
     }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefill.nombre, prefill.telefono, prefill.documento, prefill.correo, prefill.direccion, prefill.sucursal, prefill.servicio])
+  }, [prefill.nombre, prefill.telefono, prefill.documento, prefill.correo, prefill.direccion, prefill.sucursal, prefill.especialista, prefill.servicio])
 
   const update = (patch: Partial<ConsentimientoRecord>) => setForm((c) => ({ ...c, ...patch }))
 
