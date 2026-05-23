@@ -125,36 +125,54 @@ async function ensureCliente(
   const direccion = String(body.direccion || body.Direccion || "").trim()
   const sucursal = String(body.sucursal || body.Sucursal || "").trim()
 
+  // NOTA: las búsquedas NO filtran por business_id. Razón:
+  //   - El índice único csl_cosmiatria_clientes_documento_uidx es GLOBAL
+  //     (un mismo documento_identidad solo puede existir UNA vez en toda
+  //     la tabla, sin importar tenant).
+  //   - Si filtráramos por business_id y el cliente histórico tiene
+  //     business_id distinto (legacy null o tenant cruzado), no lo
+  //     encontraríamos → intentaríamos INSERT → reventaría con el unique
+  //     global que sí lo detecta.
+  //   - Reusar el cliente_id existente es lo correcto: la ficha apunta a
+  //     ese cliente. La ficha sí lleva el business_id del link, no se
+  //     mezclan datos clínicos entre tenants.
+
   // 1) Si vino un clienteId explícito, ver si existe.
   if (explicitClienteId) {
     const { data } = await supabase
       .from("csl_cosmiatria_clientes")
       .select("cliente_id")
       .eq("cliente_id", explicitClienteId)
-      .eq("business_id", businessId)
       .maybeSingle()
     if (data?.cliente_id) return String(data.cliente_id)
   }
 
-  // 2) Buscar por documento_identidad (la columna con índice único que
-  //    causa el duplicate-key si insertamos un cliente con el mismo doc).
-  if (documento) {
+  // 2) Buscar por documento_identidad — la columna con índice único.
+  //    Comparamos tanto el documento como viene como solo-dígitos para
+  //    tolerar diferencias de formato (con/sin guiones, espacios).
+  if (documento || docDigits) {
+    const orParts: string[] = []
+    if (documento) orParts.push(`documento_identidad.eq.${documento}`)
+    if (docDigits && docDigits !== documento) orParts.push(`documento_identidad.eq.${docDigits}`)
     const { data } = await supabase
       .from("csl_cosmiatria_clientes")
-      .select("cliente_id")
-      .eq("documento_identidad", documento)
-      .eq("business_id", businessId)
+      .select("cliente_id, documento_identidad")
+      .or(orParts.join(","))
+      .limit(1)
       .maybeSingle()
     if (data?.cliente_id) return String(data.cliente_id)
   }
 
   // 3) Buscar por teléfono como último recurso de matching.
-  if (telefono) {
+  if (telefono || telDigits) {
+    const orParts: string[] = []
+    if (telefono) orParts.push(`telefono.eq.${telefono}`)
+    if (telDigits && telDigits !== telefono) orParts.push(`telefono.eq.${telDigits}`)
     const { data } = await supabase
       .from("csl_cosmiatria_clientes")
       .select("cliente_id")
-      .eq("telefono", telefono)
-      .eq("business_id", businessId)
+      .or(orParts.join(","))
+      .limit(1)
       .maybeSingle()
     if (data?.cliente_id) return String(data.cliente_id)
   }
@@ -191,29 +209,39 @@ async function ensureCliente(
     .upsert(insertRow, { onConflict: "cliente_id" })
 
   if (insertErr) {
-    // 23505 = unique_violation. Si chocó con el unique de documento_identidad,
-    // significa que un cliente con ese doc existe con OTRO cliente_id
-    // (probablemente cli_tel_xxx histórico). Re-buscamos por doc y usamos
-    // ese — no insertamos uno nuevo.
-    if (documento) {
+    // 23505 = unique_violation. El único índice unique conocido en esta
+    // tabla es csl_cosmiatria_clientes_documento_uidx (sobre
+    // documento_identidad, GLOBAL). Si chocó, el cliente con ese doc
+    // existe — recuperamos su cliente_id por búsqueda global y lo usamos.
+    // SIN filtrar por business_id (el unique es global, y filtrar lo
+    // perdería si el legacy tiene business_id distinto).
+    if (documento || docDigits) {
+      const orParts: string[] = []
+      if (documento) orParts.push(`documento_identidad.eq.${documento}`)
+      if (docDigits && docDigits !== documento) orParts.push(`documento_identidad.eq.${docDigits}`)
       const { data: existing } = await supabase
         .from("csl_cosmiatria_clientes")
         .select("cliente_id")
-        .eq("documento_identidad", documento)
-        .eq("business_id", businessId)
+        .or(orParts.join(","))
+        .limit(1)
         .maybeSingle()
       if (existing?.cliente_id) return String(existing.cliente_id)
     }
-    if (telefono) {
+    if (telefono || telDigits) {
+      const orParts: string[] = []
+      if (telefono) orParts.push(`telefono.eq.${telefono}`)
+      if (telDigits && telDigits !== telefono) orParts.push(`telefono.eq.${telDigits}`)
       const { data: existing } = await supabase
         .from("csl_cosmiatria_clientes")
         .select("cliente_id")
-        .eq("telefono", telefono)
-        .eq("business_id", businessId)
+        .or(orParts.join(","))
+        .limit(1)
         .maybeSingle()
       if (existing?.cliente_id) return String(existing.cliente_id)
     }
-    // Si no es duplicate o no encontramos el existente, propagar el error.
+    // Si no es duplicate o no encontramos el existente, propagar el error
+    // para que el catch de afuera devuelva mensaje amigable + no consuma
+    // el token.
     throw insertErr
   }
   return newClienteId
