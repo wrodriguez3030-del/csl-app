@@ -53,8 +53,6 @@ const CORE_GROUPS: { label: string; items: NavItem[] }[] = [
     label: "Gestion",
     items: [
       { id: "sucursales", label: "Sucursales", icon: <Building2 className="h-4 w-4" /> },
-      { id: "equipos", label: "Equipos", icon: <Wrench className="h-4 w-4" /> },
-      { id: "tecnicos", label: "Tecnicos", icon: <Users className="h-4 w-4" /> },
       { id: "credenciales", label: "Credenciales", icon: <KeyRound className="h-4 w-4" /> },
     ],
   },
@@ -66,6 +64,9 @@ const CORE_GROUPS: { label: string; items: NavItem[] }[] = [
       { id: "historial-equipos", label: "Historial por equipo", icon: <BarChart3 className="h-4 w-4" /> },
       { id: "inventario", label: "Inventario", icon: <Package className="h-4 w-4" /> },
       { id: "piezas-poliza", label: "Lista piezas póliza", icon: <ClipboardCheck className="h-4 w-4" /> },
+      { id: "equipos", label: "Equipos", icon: <Wrench className="h-4 w-4" /> },
+      { id: "tecnicos", label: "Tecnicos", icon: <Users className="h-4 w-4" /> },
+      { id: "errores", label: "Errores y piezas", icon: <Cog className="h-4 w-4" /> },
     ],
   },
 ]
@@ -81,7 +82,6 @@ const PULSE_ITEMS: NavItem[] = [
 ]
 
 const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
-  { label: "Catalogo tecnico", items: [{ id: "errores", label: "Errores y piezas", icon: <Cog className="h-4 w-4" /> }] },
   {
     label: "Recursos humanos",
     items: [
