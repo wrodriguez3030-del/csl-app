@@ -371,19 +371,12 @@ export function PulsosSesionesPage() {
         const opInfo = OPERADORA_EQUIPO[r.operadora]
         const equipoId = assignment?.equipoId || opInfo?.equipoId || mapEquipo(r.sucursal)
         const cabina = assignment?.cabina || opInfo?.cabina || ""
-        // Mientras no haya columnas adicionales en csl_sesiones_cliente,
-        // concatenamos los campos ricos del Excel (tratamiento, contacto,
-        // potencia, spot, archivo origen, fila origen) en `Observaciones`.
-        // Una vez aplicado el SQL para columnas dedicadas, este string se
-        // separa a campos propios (sin perder data histórica).
-        const obs = [
-          r.tratamiento ? `Tratamiento: ${r.tratamiento}` : "",
-          r.contacto ? `Contacto: ${r.contacto}` : "",
-          r.potencia ? `Potencia: ${r.potencia}` : "",
-          r.spot ? `Spot: ${r.spot}` : "",
-          r.disparosRaw && r.disparosRaw !== String(r.disparos) ? `Disparos Excel: ${r.disparosRaw}` : "",
-          `Origen: ${importPreview.fileName} fila ${r.filaOrigen}`,
-        ].filter(Boolean).join(" · ")
+        // Si la celda I traía coma (ej. "120,150"), guardamos el original en
+        // Observaciones para auditoría humana. Sino, Observaciones queda
+        // vacío — los campos ricos van en sus columnas dedicadas.
+        const observaciones = r.disparosRaw && r.disparosRaw !== String(r.disparos)
+          ? `Disparos Excel: ${r.disparosRaw}`
+          : ""
         return {
           SesionID: "ses_" + ts + "_" + idx,
           Fecha: r.fecha,
@@ -395,13 +388,43 @@ export function PulsosSesionesPage() {
           AreaTrabajada: r.tratamiento.replace(/^depilaci[oó]n\s*-\s*/i, "").trim(),
           DisparosReportados: r.disparos,
           Duracion: undefined,
-          Observaciones: obs,
+          Observaciones: observaciones,
+          // Columnas agregadas por 009_pulse_import_richer.sql. El backend
+          // las persiste en su columna real y usa ImportHash en el UNIQUE
+          // parcial para rechazar duplicados.
+          ContactoCliente: r.contacto || undefined,
+          Tratamiento: r.tratamiento || undefined,
+          Potencia: r.potencia || undefined,
+          Spot: r.spot || undefined,
+          ArchivoOrigen: importPreview.fileName,
+          FilaOrigen: r.filaOrigen,
+          ImportHash: r.hash || undefined,
         }
       })
-      setDbPulsos({ ...dbPulsos, sesionesCliente: [...dbPulsos.sesionesCliente, ...nuevas] })
-      await Promise.all(nuevas.map((sesion) => syncApi({ action: "saveSesion", data: JSON.stringify(sesion) })))
-      const totalDisparos = validRows.reduce((sum, r) => sum + r.disparos, 0)
-      showToast(`${nuevas.length} sesiones importadas (${totalDisparos.toLocaleString("es-DO")} disparos)`, "success")
+      // Persistimos en serie para contar duplicados detectados por el DB
+      // UNIQUE parcial (segunda línea de defensa, después del dedupe
+      // in-memory). El handler devuelve `{ok:true, duplicate:true}` cuando
+      // el hash ya existía — esa fila no se agrega al store local.
+      let inserted = 0
+      let dupOnDb = 0
+      const insertedLocal: SesionCliente[] = []
+      for (const sesion of nuevas) {
+        const result = await apiJsonp(normalizeApiUrl(apiUrl), { action: "saveSesion", data: JSON.stringify(sesion) }) as { ok?: boolean; duplicate?: boolean }
+        if (result?.duplicate) {
+          dupOnDb += 1
+        } else if (result?.ok) {
+          inserted += 1
+          insertedLocal.push(sesion)
+        }
+      }
+      if (insertedLocal.length) {
+        setDbPulsos({ ...dbPulsos, sesionesCliente: [...dbPulsos.sesionesCliente, ...insertedLocal] })
+      }
+      const totalDisparos = insertedLocal.reduce((s, x) => s + x.DisparosReportados, 0)
+      const msg = dupOnDb > 0
+        ? `${inserted} sesiones importadas (${totalDisparos.toLocaleString("es-DO")} disparos) · ${dupOnDb} omitidas por dedupe DB`
+        : `${inserted} sesiones importadas (${totalDisparos.toLocaleString("es-DO")} disparos)`
+      showToast(msg, "success")
       setImportPreview(null)
       setShowImport(false)
     } catch (err) {

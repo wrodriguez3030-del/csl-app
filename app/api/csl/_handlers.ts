@@ -625,8 +625,45 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "updateSesion":
     case "saveSesion": {
       const record = parsePayload(params)
-      const row = { sesion_id: String(record.SesionID ?? params.id ?? `ses_${Date.now()}`), fecha: dateValue(record.Fecha), sucursal: record.Sucursal ?? "", cabina: record.Cabina ?? "", operadora_id: record.OperadoraID ?? "", cliente: record.Cliente ?? "", area_trabajada: record.AreaTrabajada ?? "", disparos_reportados: numberFrom(record, "DisparosReportados"), duracion: record.Duracion ? Number(record.Duracion) : null, equipo_id: record.EquipoID ?? "", observaciones: record.Observaciones ?? "" }
-      await upsertRow("sesiones_cliente", row)
+      // Campos del Excel AgendaPro (opcionales — solo vienen en imports).
+      const importHash = typeof record.ImportHash === "string" && record.ImportHash.trim() ? record.ImportHash.trim() : null
+      const row = {
+        sesion_id: String(record.SesionID ?? params.id ?? `ses_${Date.now()}`),
+        fecha: dateValue(record.Fecha),
+        sucursal: record.Sucursal ?? "",
+        cabina: record.Cabina ?? "",
+        operadora_id: record.OperadoraID ?? "",
+        cliente: record.Cliente ?? "",
+        area_trabajada: record.AreaTrabajada ?? "",
+        disparos_reportados: numberFrom(record, "DisparosReportados"),
+        duracion: record.Duracion ? Number(record.Duracion) : null,
+        equipo_id: record.EquipoID ?? "",
+        observaciones: record.Observaciones ?? "",
+        // Columnas agregadas por 009_pulse_import_richer.sql. Las vacías
+        // se mandan como null para que la DB respete los defaults.
+        contacto_cliente: typeof record.ContactoCliente === "string" && record.ContactoCliente ? record.ContactoCliente : null,
+        tratamiento: typeof record.Tratamiento === "string" && record.Tratamiento ? record.Tratamiento : null,
+        potencia: typeof record.Potencia === "string" && record.Potencia ? record.Potencia : null,
+        spot: typeof record.Spot === "string" && record.Spot ? record.Spot : null,
+        archivo_origen: typeof record.ArchivoOrigen === "string" && record.ArchivoOrigen ? record.ArchivoOrigen : null,
+        fila_origen: typeof record.FilaOrigen === "number" ? record.FilaOrigen : null,
+        import_hash: importHash,
+      }
+      try {
+        await upsertRow("sesiones_cliente", row)
+      } catch (err) {
+        // El UNIQUE parcial csl_sesiones_cliente_import_hash_uidx dispara
+        // 23505 cuando el mismo Excel se sube dos veces. Esto NO es error
+        // — es la dedupe robusta funcionando. Devolvemos OK con flag
+        // `duplicate: true` para que el frontend lo cuente.
+        const code = (err as { code?: string }).code
+        const message = (err as { message?: string }).message || ""
+        const isUniqueDup = code === "23505" || /duplicate key|import_hash/i.test(message)
+        if (isUniqueDup && importHash) {
+          return { ok: true, duplicate: true }
+        }
+        throw err
+      }
       return { ok: true, record: fromDb("sesiones_cliente", row) }
     }
     case "deleteSesion":

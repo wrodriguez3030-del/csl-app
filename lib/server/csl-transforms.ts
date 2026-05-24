@@ -42,7 +42,17 @@ export function fromDb(entity: string, row: Row): Row {
     case "lecturas_semanales":
       return { LecturaID: row.lectura_id, FechaSemana: row.fecha_semana, EquipoID: row.equipo_id, Sucursal: row.sucursal, Cabina: row.cabina, OperadoraID: row.operadora_id, LecturaInicial: row.lectura_inicial, LecturaFinal: row.lectura_final, DiferenciaReal: row.diferencia_real, Observaciones: row.observaciones }
     case "sesiones_cliente":
-      return { SesionID: row.sesion_id, Fecha: row.fecha, Sucursal: row.sucursal, Cabina: row.cabina, OperadoraID: row.operadora_id, Cliente: row.cliente, AreaTrabajada: row.area_trabajada, DisparosReportados: row.disparos_reportados, Duracion: row.duracion, EquipoID: row.equipo_id, Observaciones: row.observaciones }
+      return {
+        SesionID: row.sesion_id, Fecha: row.fecha, Sucursal: row.sucursal, Cabina: row.cabina,
+        OperadoraID: row.operadora_id, Cliente: row.cliente, AreaTrabajada: row.area_trabajada,
+        DisparosReportados: row.disparos_reportados, Duracion: row.duracion, EquipoID: row.equipo_id,
+        Observaciones: row.observaciones,
+        // Campos del Excel AgendaPro (009_pulse_import_richer.sql).
+        ContactoCliente: row.contacto_cliente, Tratamiento: row.tratamiento,
+        Potencia: row.potencia, Spot: row.spot,
+        ArchivoOrigen: row.archivo_origen, FilaOrigen: row.fila_origen,
+        ImportHash: row.import_hash,
+      }
     case "auditorias_semanales":
       return { AuditoriaID: row.auditoria_id, FechaSemana: row.fecha_semana, EquipoID: row.equipo_id, Sucursal: row.sucursal, PulsosReales: row.pulsos_reales, PulsosReportados: row.pulsos_reportados, Diferencia: row.diferencia, PorcentajeDesviacion: row.porcentaje_desviacion, Alerta: row.alerta, Observaciones: row.observaciones }
     case "credenciales":

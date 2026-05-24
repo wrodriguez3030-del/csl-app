@@ -226,6 +226,16 @@ export interface SesionCliente {
   Duracion?: number         // minutos
   EquipoID: string
   Observaciones?: string
+  // Campos del Excel AgendaPro (009_pulse_import_richer.sql). Opcionales:
+  // las sesiones manuales no los traen, los importados sí.
+  ContactoCliente?: string
+  Tratamiento?: string
+  Potencia?: string
+  Spot?: string
+  ArchivoOrigen?: string
+  FilaOrigen?: number
+  /** SHA-256 determinístico para deduplicación en DB (UNIQUE parcial). */
+  ImportHash?: string
 }
 
 export interface AuditoriaSemanal {
