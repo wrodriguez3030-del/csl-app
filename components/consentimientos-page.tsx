@@ -19,6 +19,7 @@ import { SignaturePad } from "@/components/signature-pad"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
 import type { ClienteCosmiatria } from "@/lib/types"
+import { searchClients } from "@/lib/cliente-search"
 import { SEQ_HEADER_CLASS, SeqBadge } from "@/components/seq-badge"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 
@@ -464,10 +465,6 @@ export function emptyRecord(kind: ConsentKind, sucursal = ""): ConsentimientoRec
     autorizacionFotograficaAceptada: false,
     autorizacionProcedimientoAceptada: false,
   }
-}
-
-function onlyDigits(value: unknown) {
-  return String(value ?? "").replace(/\D/g, "")
 }
 
 function clienteFullName(cliente: ClienteCosmiatria) {
@@ -2506,34 +2503,12 @@ function ClientePicker({
 }) {
   const [query, setQuery] = useState("")
 
+  // Búsqueda en vivo — usa el helper único `searchClients` (lib/cliente-search).
+  // Empty query → muestra los primeros 8 clientes (ayuda al operador a ver
+  // que hay datos cargados). Con query → top 12 matches.
   const matches = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    if (!needle) return clientes.slice(0, 8)
-    const needleDigits = onlyDigits(needle)
-    return clientes
-      .filter((c) => {
-        const haystack = [
-          c.Nombre,
-          c.Apellido,
-          clienteFullName(c),
-          c.DocumentoIdentidad,
-          c.Telefono,
-          c.Telefono2,
-          c.Email,
-          c.NumeroCliente,
-        ]
-          .join(" ")
-          .toLowerCase()
-        if (haystack.includes(needle)) return true
-        if (needleDigits) {
-          const digits = [c.DocumentoIdentidad, c.Telefono, c.Telefono2]
-            .map((value) => onlyDigits(value))
-            .join(" ")
-          if (digits.includes(needleDigits)) return true
-        }
-        return false
-      })
-      .slice(0, 12)
+    if (!query.trim()) return clientes.slice(0, 8)
+    return searchClients(clientes, query, { limit: 12 })
   }, [query, clientes])
 
   return (

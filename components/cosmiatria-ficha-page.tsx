@@ -15,6 +15,7 @@ import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
 import type { ClienteCosmiatria } from "@/lib/types"
 import type { FichaDermoCosmiatrica } from "@/lib/dermo-cosmiatria"
+import { normalizeSearchText, normalizeDigits } from "@/lib/cliente-search"
 
 type SortKey = "fecha" | "nombre" | "sucursal" | "operadora" | "estado"
 
@@ -355,23 +356,36 @@ export function CosmiatriaFichaPage() {
   )
 
   const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase()
+    // Búsqueda sobre fichas — reusa los normalizadores del helper de clientes
+    // (tolera acentos, mayúsculas y formato de teléfono/cédula). Los campos
+    // específicos de ficha (motivoConsulta, ocupacion, operadora) se concatenan
+    // al haystack.
+    const needle = normalizeSearchText(search)
+    const needleDigits = normalizeDigits(search)
     return records
       .filter((record) => {
         if (onlyPendientes && record.estado !== "Pendiente de revisión") return false
-        if (!query) return true
-        return [
-          record.nombre,
-          record.telefono,
-          record.cedula,
-          record.email,
-          record.ciudad,
-          record.ocupacion,
-          record.motivoConsulta,
-          record.operadora,
-          record.sucursal,
-          record.estado,
-        ].join(" ").toLowerCase().includes(query)
+        if (!needle) return true
+        const text = normalizeSearchText(
+          [
+            record.nombre,
+            record.email,
+            record.ciudad,
+            record.ocupacion,
+            record.motivoConsulta,
+            record.operadora,
+            record.sucursal,
+            record.estado,
+          ]
+            .filter(Boolean)
+            .join(" "),
+        )
+        if (text.includes(needle)) return true
+        if (needleDigits) {
+          const digits = normalizeDigits([record.telefono, record.cedula].filter(Boolean).join(" "))
+          if (digits.includes(needleDigits)) return true
+        }
+        return false
       })
       .sort((a, b) => sortValue(a, sortKey).localeCompare(sortValue(b, sortKey), "es", { numeric: true }) * (sortDir === "asc" ? 1 : -1))
   }, [records, search, sortKey, sortDir, onlyPendientes])

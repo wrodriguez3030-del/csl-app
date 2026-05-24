@@ -34,6 +34,7 @@ import {
   type FichaDermoCosmiatrica,
 } from "@/lib/dermo-cosmiatria"
 import type { ClienteCosmiatria } from "@/lib/types"
+import { searchClients } from "@/lib/cliente-search"
 import { SignaturePad } from "@/components/signature-pad"
 import { SiNoButtons, SiNoConDetalle, EMBARAZO_WARNING_MESSAGE } from "@/components/si-no-buttons"
 
@@ -77,17 +78,6 @@ function clienteNombre(cliente: ClienteCosmiatria) {
 
 function clienteDireccion(cliente: ClienteCosmiatria) {
   return [cliente.Direccion, cliente.Localidad, cliente.Ciudad, cliente.Region].map((value) => String(value || "").trim()).filter(Boolean).join(", ")
-}
-
-function clienteSearchText(cliente: ClienteCosmiatria) {
-  return [
-    clienteNombre(cliente),
-    cliente.Telefono,
-    cliente.Telefono2,
-    cliente.DocumentoIdentidad,
-    cliente.Email,
-    cliente.Sucursal,
-  ].join(" ").toLowerCase()
 }
 
 // Display read-only para modo público: muestra label + valor como texto,
@@ -289,14 +279,15 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
     return Math.round((required.filter(Boolean).length / required.length) * 100)
   }, [form])
 
-  const matchedClientes = useMemo(() => {
-    const query = clientSearch.trim().toLowerCase()
-    if (!query) return []
-    return clientes
-      .filter((cliente) => cliente.Estado !== "Inactivo")
-      .filter((cliente) => clienteSearchText(cliente).includes(query) || onlyDigits(clienteSearchText(cliente)).includes(onlyDigits(query)))
-      .slice(0, 8)
-  }, [clientes, clientSearch])
+  // Búsqueda en vivo — usa el helper único `searchClients` (lib/cliente-search).
+  const matchedClientes = useMemo(
+    () =>
+      searchClients(clientes, clientSearch, {
+        limit: 8,
+        filter: (cliente) => cliente.Estado !== "Inactivo",
+      }),
+    [clientes, clientSearch],
+  )
 
   // Cerrar dropdown al hacer click fuera (la lista flota absoluta y antes
   // tapaba la "tarjeta de cliente vinculado", dando la falsa sensación de

@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SeqBadge } from "@/components/seq-badge"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { normalizeAddress } from "@/lib/address"
+import { clientMatchesSearch } from "@/lib/cliente-search"
 
 interface HistorialPayload {
   fichas: Array<{ id: string; fecha: string; sucursal: string; operadora: string; estado: string; motivoConsulta?: string }>
@@ -230,19 +231,15 @@ export function CosmiatriaClientesPage() {
   }, [clientes, fichas])
 
   const filtered = useMemo(() => {
-    const search = query.trim().toLowerCase()
+    // Búsqueda en vivo — usa el helper único `clientMatchesSearch`
+    // (lib/cliente-search). Match tolera acentos, mayúsculas, formato de
+    // teléfono y cédula. El filtro de sucursal se combina aparte.
+    const search = query.trim()
     return enriched
       .filter((cliente) => {
-        const haystack = [
-          cliente.Nombre,
-          cliente.Apellido,
-          cliente.Telefono,
-          cliente.Telefono2,
-          cliente.DocumentoIdentidad,
-          cliente.Email,
-          cliente.Sucursal,
-        ].join(" ").toLowerCase()
-        return (!search || haystack.includes(search)) && (filterSucursal === "todas" || cliente.Sucursal === filterSucursal)
+        const matchesQuery = !search || clientMatchesSearch(cliente, search)
+        const matchesSucursal = filterSucursal === "todas" || cliente.Sucursal === filterSucursal
+        return matchesQuery && matchesSucursal
       })
       .sort((a, b) => {
         const va = a[sortKey]

@@ -12,6 +12,7 @@ import { supabaseBrowser } from "@/lib/supabase-client"
 import { normalizeAddress } from "@/lib/address"
 import type { ClienteCosmiatria } from "@/lib/types"
 import { MASSAGE_SPECIALISTS } from "@/components/consentimientos-page"
+import { searchClients } from "@/lib/cliente-search"
 
 // 10 motivos canónicos para Ficha Dermatológica. Espejo de
 // MOTIVOS_CONSULTA_PREDEFINIDOS en ficha-dermatologia-form.tsx — mantener
@@ -115,22 +116,6 @@ function clienteDireccion(cliente: ClienteCosmiatria) {
   return normalizeAddress(raw)
 }
 
-function onlyDigits(value: string) {
-  return value.replace(/\D/g, "")
-}
-
-function clienteSearchText(cliente: ClienteCosmiatria) {
-  return [
-    clienteNombre(cliente),
-    cliente.Telefono,
-    cliente.Telefono2,
-    cliente.DocumentoIdentidad,
-    cliente.Email,
-    cliente.Sucursal,
-  ]
-    .join(" ")
-    .toLowerCase()
-}
 
 function normalizeCliente(raw: Record<string, unknown>): ClienteCosmiatria {
   return {
@@ -268,17 +253,18 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
     return () => document.removeEventListener("pointerdown", onDocPointerDown)
   }, [dropdownOpen])
 
-  const matchedClientes = useMemo(() => {
-    const query = clientSearch.trim().toLowerCase()
-    if (!query) return []
-    return clientes
-      .filter((c) => c.Estado !== "Inactivo")
-      .filter((c) => {
-        const text = clienteSearchText(c)
-        return text.includes(query) || onlyDigits(text).includes(onlyDigits(query))
-      })
-      .slice(0, 10)
-  }, [clientes, clientSearch])
+  // Búsqueda en vivo — usa el helper único `searchClients` (lib/cliente-search).
+  // Matching tolera acentos, mayúsculas, guiones, espacios, formato de
+  // teléfono y de cédula. Excluye inactivos. Empty → lista vacía (el modal
+  // no muestra resultados hasta que el operador escribe).
+  const matchedClientes = useMemo(
+    () =>
+      searchClients(clientes, clientSearch, {
+        limit: 10,
+        filter: (c) => c.Estado !== "Inactivo",
+      }),
+    [clientes, clientSearch],
+  )
 
   const selectCliente = (cliente: ClienteCosmiatria) => {
     setPrefill((current) => ({
