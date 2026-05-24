@@ -11,6 +11,7 @@ import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
 import { supabaseBrowser } from "@/lib/supabase-client"
 import { normalizeAddress } from "@/lib/address"
 import type { ClienteCosmiatria } from "@/lib/types"
+import { MASSAGE_SPECIALISTS } from "@/components/consentimientos-page"
 
 // 10 motivos canónicos para Ficha Dermatológica. Espejo de
 // MOTIVOS_CONSULTA_PREDEFINIDOS en ficha-dermatologia-form.tsx — mantener
@@ -319,10 +320,14 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       return
     }
 
-    // Especialista: requerido para ficha_dermatologica (recepción debe
-    // dejar definido quién atiende antes de enviar al cliente).
-    if (formType === "ficha_dermatologica" && !prefill.especialista.trim()) {
-      setError("Selecciona el especialista antes de generar el link.")
+    // Especialista: requerido para ficha_dermatologica + masajes (recepción
+    // debe dejar definido quién atiende antes de enviar al cliente).
+    if (especialistaRequerido && !prefill.especialista.trim()) {
+      setError(
+        isMasajes
+          ? "Selecciona la especialista en masajes antes de generar el link."
+          : "Selecciona el especialista antes de generar el link.",
+      )
       return
     }
     // Resolver servicio final (solo consents): seleccionado de la lista o
@@ -441,6 +446,13 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
   }
 
   const isFicha = formType === "ficha_dermatologica"
+  const isMasajes = formType === "consentimiento_masajes"
+  // Masajes usa lista canónica cerrada (DAYHANA / Benita) — ignora
+  // csl_operadoras que mezcla operadoras de otros servicios. Para los demás
+  // tipos seguimos usando la lista del backend.
+  const especialistasOptions: string[] = isMasajes ? [...MASSAGE_SPECIALISTS] : especialistas
+  // Especialista obligatorio para ficha + masajes; opcional para tatuajes/cejas.
+  const especialistaRequerido = isFicha || isMasajes
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -590,23 +602,25 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                   </div>
                   <div>
                     <Label className="text-xs">
-                      Especialista{isFicha ? " *" : ""}
+                      {isMasajes ? "Especialista en masajes" : "Especialista"}{especialistaRequerido ? " *" : ""}
                     </Label>
-                    {especialistas.length ? (
+                    {especialistasOptions.length ? (
                       <Select value={prefill.especialista || "_none"} onValueChange={(value) => update({ especialista: value === "_none" ? "" : value })}>
                         <SelectTrigger className="mt-1">
-                          <SelectValue placeholder={isFicha ? "Seleccionar" : "Opcional"} />
+                          <SelectValue placeholder={especialistaRequerido ? "Seleccionar especialista" : "Opcional"} />
                         </SelectTrigger>
                         <SelectContent>
-                          {!isFicha ? <SelectItem value="_none">Sin asignar</SelectItem> : null}
-                          {especialistas.map((esp) => <SelectItem key={esp} value={esp}>{esp}</SelectItem>)}
+                          {/* "Sin asignar" solo aparece cuando el campo es opcional
+                              (tatuajes/cejas). Ficha y masajes lo requieren. */}
+                          {!especialistaRequerido ? <SelectItem value="_none">Sin asignar</SelectItem> : null}
+                          {especialistasOptions.map((esp) => <SelectItem key={esp} value={esp}>{esp}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     ) : (
                       <Input
                         value={prefill.especialista}
                         onChange={(e) => update({ especialista: e.target.value })}
-                        placeholder={isFicha ? "Nombre del especialista" : "Opcional"}
+                        placeholder={especialistaRequerido ? "Nombre del especialista" : "Opcional"}
                         className="mt-1"
                       />
                     )}
@@ -714,8 +728,9 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                 disabled={
                   generating
                   || !prefill.nombre.trim()
-                  || (isFicha && (!motivoSelected || !prefill.especialista.trim()))
+                  || (isFicha && !motivoSelected)
                   || (!isFicha && !servicioSelected)
+                  || (especialistaRequerido && !prefill.especialista.trim())
                 }
                 className="gap-2"
               >

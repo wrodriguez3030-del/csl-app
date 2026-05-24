@@ -195,8 +195,15 @@ const ZONAS_MASAJE: ReadonlyArray<string> = [
   "Otro",
 ]
 
+/** Especialistas canónicas de masajes. Lista cerrada: el módulo de masajes
+ *  no usa csl_operadoras (esa tabla mezcla operadoras de láser / ficha /
+ *  otros servicios). Exportado para que LinkGeneratorDialog lo reutilice y
+ *  no haya drift entre el modal de generar link y el form interno. */
+export const MASSAGE_SPECIALISTS = ["DAYHANA", "Benita"] as const
+
 /** Especialista por defecto que se autocompleta al elegir sucursal. Se puede
- *  editar manualmente en el formulario. */
+ *  editar manualmente en el formulario. Solo aplica a masajes (las dos
+ *  sucursales con servicio de masajes tienen una especialista fija). */
 const ESPECIALISTAS_POR_SUCURSAL: Record<string, string> = {
   "Los Jardines": "Benita",
   "Villa Olga": "DAYHANA",
@@ -1837,12 +1844,18 @@ export function MasajesTemplateSections({
               />
             ) : null}
           </Field>
-          <Field label="Nombre del especialista" className="md:col-span-2">
-            <Input
-              value={form.nombreEspecialista}
-              onChange={(e) => onUpdate({ nombreEspecialista: e.target.value })}
-              placeholder="Se autocompleta según la sucursal"
-            />
+          <Field label="Especialista en masajes *" className="md:col-span-2">
+            <Select
+              value={form.nombreEspecialista || ""}
+              onValueChange={(value) => onUpdate({ nombreEspecialista: value })}
+            >
+              <SelectTrigger className="w-full"><SelectValue placeholder="Seleccionar especialista" /></SelectTrigger>
+              <SelectContent>
+                {MASSAGE_SPECIALISTS.map((esp) => (
+                  <SelectItem key={esp} value={esp}>{esp}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
         </div>
       </section>

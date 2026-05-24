@@ -109,7 +109,7 @@ function buildPrintHtml(args: {
   <div class="field"><b>Correo:</b> ${escapeHtml(cliente.correo || "—")}</div>
   <div class="field" style="grid-column: 1 / -1"><b>Dirección:</b> ${escapeHtml(cliente.direccion || "—")}</div>
   <div class="field"><b>Sucursal:</b> ${escapeHtml(cliente.sucursal || "—")}</div>
-  <div class="field"><b>Especialista:</b> ${escapeHtml(cliente.especialista || "—")}</div>
+  <div class="field"><b>Especialista en masajes:</b> ${escapeHtml(cliente.especialista || "—")}</div>
 </div>
 
 <h2>Procedimiento</h2>
@@ -333,7 +333,7 @@ export function PublicMasajesConsentForm({ prefill = {}, onSubmit }: Props) {
           <ReadOnlyField label="Correo" value={cliente.correo} />
           <ReadOnlyField label="Dirección" value={cliente.direccion} className="sm:col-span-2" />
           <ReadOnlyField label="Sucursal" value={cliente.sucursal} />
-          {cliente.especialista ? <ReadOnlyField label="Especialista" value={cliente.especialista} /> : null}
+          {cliente.especialista ? <ReadOnlyField label="Especialista en masajes" value={cliente.especialista} /> : null}
           {cliente.servicio ? (
             <ReadOnlyField label="Servicio" value={cliente.servicio} className="sm:col-span-2" />
           ) : null}
