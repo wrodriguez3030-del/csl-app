@@ -1,9 +1,10 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { AlertCircle, CheckCircle2, Clock, Loader2 } from "lucide-react"
-import { PublicConsentForm, PublicConsentSuccess } from "@/components/public-consent-form"
+import { AlertCircle, Clock, Loader2 } from "lucide-react"
 import { PublicFichaConsentForm } from "@/components/public-ficha-consent-form"
+import { PublicMasajesConsentForm } from "@/components/public-masajes-consent-form"
+import { PublicTatuajesConsentForm } from "@/components/public-tatuajes-consent-form"
 
 type FormType =
   | "ficha_dermatologica"
@@ -65,7 +66,6 @@ function StatusCard({
 export function PublicFormPage({ token }: { token: string }) {
   const [linkState, setLinkState] = useState<VerifyResponse | null>(null)
   const [status, setStatus] = useState<LinkStatus>("loading")
-  const [success, setSuccess] = useState<{ formType: FormType } | null>(null)
 
   useEffect(() => {
     let active = true
@@ -102,12 +102,9 @@ export function PublicFormPage({ token }: { token: string }) {
     if (!response.ok || !result.ok) {
       throw new Error(result.error || `Error ${response.status}`)
     }
-    // Para consents, la página renderiza pantalla de éxito globalmente.
-    // Para ficha_dermatologica, el PublicFichaConsentForm maneja su propio
-    // success (muestra botón Descargar PDF formal).
-    if (result.formType && result.formType !== "ficha_dermatologica") {
-      setSuccess({ formType: result.formType })
-    }
+    // Los tres forms (ficha + masajes + tatuajes) manejan su propio success
+    // localmente — muestran botón "Descargar PDF formal". La página NO
+    // intercepta success aquí.
     return { recordId: result.recordId }
   }, [token])
 
@@ -117,22 +114,6 @@ export function PublicFormPage({ token }: { token: string }) {
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </main>
     )
-  }
-
-  if (success) {
-    if (success.formType === "ficha_dermatologica") {
-      return (
-        <main className="min-h-screen bg-background px-4 py-10">
-          <div className="mx-auto max-w-md rounded-2xl border bg-card p-8 text-center shadow-sm">
-            <CheckCircle2 className="mx-auto mb-4 h-14 w-14 text-green-500" />
-            <h1 className="text-2xl font-bold">Ficha enviada correctamente</h1>
-            <p className="mt-2 text-muted-foreground">Gracias. Cibao Spa Laser recibió tu ficha dermo-cosmiátrica firmada.</p>
-          </div>
-        </main>
-      )
-    }
-    const kind = success.formType === "consentimiento_masajes" ? "masajes" : "tatuajes"
-    return <PublicConsentSuccess kind={kind} />
   }
 
   if (status === "usado") {
@@ -212,24 +193,30 @@ export function PublicFormPage({ token }: { token: string }) {
     )
   }
 
-  const kind = formType === "consentimiento_masajes" ? "masajes" : "tatuajes"
+  // Consentimientos (masajes + tatuajes/cejas): mismo modelo "sólo documento
+  // formal + firma" que la ficha. El cliente NO ve formularios clínicos —
+  // los completa el especialista internamente.
+  const commonPrefill = {
+    clienteId: pf.clienteId || "",
+    nombre: pf.nombre || linkState.clienteNombre || "",
+    telefono: pf.telefono || linkState.clienteTelefono || "",
+    documento: pf.documento || "",
+    correo: pf.correo || "",
+    direccion: pf.direccion || "",
+    sucursal: pf.sucursal || "",
+    especialista: pf.especialista || "",
+    servicio: pf.servicio || "",
+  }
+  if (formType === "consentimiento_masajes") {
+    return (
+      <main className="min-h-screen bg-background">
+        <PublicMasajesConsentForm prefill={commonPrefill} onSubmit={async (value) => { await submit(value) }} />
+      </main>
+    )
+  }
   return (
     <main className="min-h-screen bg-background">
-      <PublicConsentForm
-        kind={kind}
-        prefill={{
-          clienteId: pf.clienteId || "",
-          nombre: pf.nombre || linkState.clienteNombre || "",
-          telefono: pf.telefono || linkState.clienteTelefono || "",
-          documento: pf.documento || "",
-          correo: pf.correo || "",
-          direccion: pf.direccion || "",
-          sucursal: pf.sucursal || "",
-          especialista: pf.especialista || "",
-          servicio: pf.servicio || "",
-        }}
-        onSubmit={async (value) => { await submit(value) }}
-      />
+      <PublicTatuajesConsentForm prefill={commonPrefill} onSubmit={async (value) => { await submit(value) }} />
     </main>
   )
 }
