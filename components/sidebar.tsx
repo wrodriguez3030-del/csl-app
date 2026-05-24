@@ -48,7 +48,6 @@ interface NavItem {
 }
 
 const CORE_GROUPS: { label: string; items: NavItem[] }[] = [
-  { label: "Inicio", items: [{ id: "panel", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> }] },
   {
     label: "Gestion",
     items: [
@@ -59,6 +58,7 @@ const CORE_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Mantenimiento",
     items: [
+      { id: "panel", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
       { id: "reporte", label: "Nuevo reporte", icon: <FileText className="h-4 w-4" /> },
       { id: "reportes", label: "Lista de reportes", icon: <ClipboardList className="h-4 w-4" /> },
       { id: "historial-equipos", label: "Historial por equipo", icon: <BarChart3 className="h-4 w-4" /> },

@@ -19,9 +19,9 @@ export interface MenuOption {
 }
 
 export const MENU_OPTIONS: MenuOption[] = [
-  { id: "panel", label: "Dashboard", section: "Sistema" },
   { id: "sucursales", label: "Sucursales", section: "Gestión" },
   { id: "credenciales", label: "Sistema de Credenciales", section: "Gestión" },
+  { id: "panel", label: "Dashboard Ejecutivo", section: "Mantenimiento" },
   { id: "reporte", label: "Nuevo Reporte", section: "Mantenimiento" },
   { id: "reportes", label: "Lista de Reportes", section: "Mantenimiento" },
   { id: "historial-equipos", label: "Historial por equipo", section: "Mantenimiento" },
