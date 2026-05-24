@@ -17,8 +17,14 @@ import {
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
-import { Plus, Save, X, Zap, Upload } from "lucide-react"
+import { AlertTriangle, CheckCircle2, FileSpreadsheet, Plus, Save, X, Zap, Upload } from "lucide-react"
 import type { ClienteCosmiatria, LecturaSemanal, SesionCliente } from "@/lib/types"
+import {
+  markDuplicatesAgainstExisting,
+  parseAgendaProWorkbook,
+  type ParsedDisparoRow,
+  type ParseAgendaProResult,
+} from "@/lib/agendapro-parser"
 
 const today = new Date().toISOString().split("T")[0]
 
@@ -302,14 +308,24 @@ export function PulsosSesionesPage() {
     await syncApi({ action: "deleteSesion", id: s.SesionID })
   }
 
+  // Estado del wizard de importación: parsea → vista previa → confirma.
+  // Mantenemos la lógica fuera del onChange para poder reusar el preview
+  // dialog y dejar al usuario revisar antes de tocar la DB.
+  const [importPreview, setImportPreview] = useState<null | {
+    fileName: string
+    parsed: ParseAgendaProResult
+    rows: ParsedDisparoRow[]   // ya con dedupe marcada
+  }>(null)
+  const [importing, setImporting] = useState(false)
+
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    let XLSX: any
+    let XLSX: { read: (data: ArrayBuffer | string, opts: { type: string }) => unknown; utils: { sheet_to_json: (ws: unknown, opts: { header: 1; defval: string }) => unknown[][] } }
     try {
-      XLSX = await loadXLSX()
-    } catch (err) {
+      XLSX = await loadXLSX() as typeof XLSX
+    } catch {
       showToast("No se pudo cargar la librería XLSX. Revisa tu conexión.", "error")
       e.target.value = ""
       return
@@ -318,84 +334,81 @@ export function PulsosSesionesPage() {
     const reader = new FileReader()
     reader.onload = async (ev) => {
       try {
-        const wb = XLSX.read(ev.target?.result, { type: "binary" })
-        const ws = wb.Sheets[wb.SheetNames[0]]
-        const raw: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" })
-
-        let headerRow = -1
-        let formato = "agendapro"
-
-        for (let i = 0; i < raw.length; i++) {
-          const first = String(raw[i][0]).toLowerCase()
-          if (first.includes("secuencial")) { headerRow = i; formato = "agendapro"; break }
-          if (first === "fecha") { headerRow = i; formato = "sesiones"; break }
-        }
-        if (headerRow === -1) {
-          showToast("No se reconoce el formato. Usa el Excel de AgendaPro o Sesiones_CSL.xlsx", "error")
+        const wb = XLSX.read(ev.target?.result as ArrayBuffer, { type: "binary" }) as { SheetNames: string[]; Sheets: Record<string, unknown> }
+        const parsed = await parseAgendaProWorkbook(wb, XLSX)
+        if (!parsed.rows.length) {
+          showToast(parsed.warnings[0] || "El archivo no contiene filas.", "error")
           return
         }
-
-        const nuevas: SesionCliente[] = []
-        for (let i = headerRow + 1; i < raw.length; i++) {
-          const row = raw[i]
-          const seq = String(row[0] || "").replace(",", "").trim()
-          if (!seq || isNaN(parseInt(seq))) continue
-          let op = "", suc = "", eq = "", cabina = "", fecha: any = "", disparos = 0, area = "", cliente = ""
-
-          if (formato === "agendapro") {
-            op = String(row[4] || "").trim()
-            if (!op || op === "Sistema") continue
-            suc = mapSucursal(String(row[5] || ""))
-            const opInfo = OPERADORA_EQUIPO[op]
-            eq = opInfo ? opInfo.equipoId : mapEquipo(suc)
-            cabina = opInfo ? opInfo.cabina : ""
-            fecha = row[9]
-            if (fecha instanceof Date) fecha = fecha.toISOString().split("T")[0]
-            else if (typeof fecha === "number") fecha = new Date((fecha - 25569) * 86400000).toISOString().split("T")[0]
-            else fecha = String(fecha || "").split("T")[0]
-            const dispRaw = String(row[8] || "0").trim()
-            disparos = dispRaw.includes(",")
-              ? dispRaw.split(",").reduce((s: number, v: string) => s + (parseInt(v.trim()) || 0), 0)
-              : parseInt(dispRaw) || 0
-            area = String(row[3] || "").replace("Depilación - ", "").trim()
-            cliente = String(row[1] || "").trim()
-          } else {
-            // Formato Sesiones_CSL: Fecha,EquipoID,Sucursal,Cabina,OperadoraID,Cliente,AreaTrabajada,DisparosReportados
-            fecha = String(row[0] || "").split("T")[0]
-            eq = String(row[1] || "").trim()
-            suc = String(row[2] || "").trim()
-            cabina = String(row[3] || "").trim()
-            op = String(row[4] || "").trim()
-            cliente = String(row[5] || "").trim()
-            area = String(row[6] || "").trim()
-            disparos = parseInt(String(row[7] || "0").replace(/,/g, "")) || 0
-            if (!op || !fecha) continue
-          }
-          const assignment = findWeeklyAssignment(dbPulsos.lecturasSemanales, fecha, suc, op)
-          if (assignment?.equipoId) eq = assignment.equipoId
-          if (assignment?.cabina) cabina = assignment.cabina
-          nuevas.push({
-            SesionID: "ses_" + Date.now() + "_" + i,
-            Fecha: fecha, EquipoID: eq, Sucursal: suc, Cabina: cabina,
-            OperadoraID: op, Cliente: cliente, AreaTrabajada: area,
-            DisparosReportados: disparos, Duracion: undefined, Observaciones: "",
-          })
-        }
-
-        if (nuevas.length > 0) {
-          setDbPulsos({ ...dbPulsos, sesionesCliente: [...dbPulsos.sesionesCliente, ...nuevas] })
-          await Promise.all(nuevas.map(sesion => syncApi({ action: "saveSesion", data: JSON.stringify(sesion) })))
-          showToast(nuevas.length + " sesiones importadas correctamente", "success")
-          setShowImport(false)
-        } else {
-          showToast("No se encontraron datos válidos en el archivo", "error")
-        }
-      } catch(err) {
-        showToast("Error al leer el Excel: " + String(err), "error")
+        // Marcamos duplicadas contra las sesiones ya cargadas en el store
+        // (vienen de getAllPulsosData → ya filtradas por tenant). Hasta que
+        // se apruebe el SQL de `import_hash`, este es el filtro principal.
+        const withDedupe = markDuplicatesAgainstExisting(parsed.rows, dbPulsos.sesionesCliente)
+        setImportPreview({ fileName: file.name, parsed, rows: withDedupe })
+      } catch (err) {
+        showToast("Error al leer el Excel: " + String(err instanceof Error ? err.message : err), "error")
       }
     }
     reader.readAsBinaryString(file)
     e.target.value = ""
+  }
+
+  const confirmImport = async () => {
+    if (!importPreview) return
+    const validRows = importPreview.rows.filter((r) => r.status === "valid")
+    if (!validRows.length) {
+      showToast("No hay filas válidas para importar.", "error")
+      return
+    }
+    setImporting(true)
+    try {
+      const ts = Date.now()
+      const nuevas: SesionCliente[] = validRows.map((r, idx) => {
+        // Asignación equipo/cabina: si hay lectura semanal previa para
+        // (semana, sucursal, operadora), usamos esa. Sino, el mapa hardcoded
+        // OPERADORA_EQUIPO. Sino, el fallback genérico por sucursal.
+        const assignment = findWeeklyAssignment(dbPulsos.lecturasSemanales, r.fecha, r.sucursal, r.operadora)
+        const opInfo = OPERADORA_EQUIPO[r.operadora]
+        const equipoId = assignment?.equipoId || opInfo?.equipoId || mapEquipo(r.sucursal)
+        const cabina = assignment?.cabina || opInfo?.cabina || ""
+        // Mientras no haya columnas adicionales en csl_sesiones_cliente,
+        // concatenamos los campos ricos del Excel (tratamiento, contacto,
+        // potencia, spot, archivo origen, fila origen) en `Observaciones`.
+        // Una vez aplicado el SQL para columnas dedicadas, este string se
+        // separa a campos propios (sin perder data histórica).
+        const obs = [
+          r.tratamiento ? `Tratamiento: ${r.tratamiento}` : "",
+          r.contacto ? `Contacto: ${r.contacto}` : "",
+          r.potencia ? `Potencia: ${r.potencia}` : "",
+          r.spot ? `Spot: ${r.spot}` : "",
+          r.disparosRaw && r.disparosRaw !== String(r.disparos) ? `Disparos Excel: ${r.disparosRaw}` : "",
+          `Origen: ${importPreview.fileName} fila ${r.filaOrigen}`,
+        ].filter(Boolean).join(" · ")
+        return {
+          SesionID: "ses_" + ts + "_" + idx,
+          Fecha: r.fecha,
+          EquipoID: equipoId,
+          Sucursal: r.sucursal,
+          Cabina: cabina,
+          OperadoraID: r.operadora,
+          Cliente: r.cliente || "Sin cliente",
+          AreaTrabajada: r.tratamiento.replace(/^depilaci[oó]n\s*-\s*/i, "").trim(),
+          DisparosReportados: r.disparos,
+          Duracion: undefined,
+          Observaciones: obs,
+        }
+      })
+      setDbPulsos({ ...dbPulsos, sesionesCliente: [...dbPulsos.sesionesCliente, ...nuevas] })
+      await Promise.all(nuevas.map((sesion) => syncApi({ action: "saveSesion", data: JSON.stringify(sesion) })))
+      const totalDisparos = validRows.reduce((sum, r) => sum + r.disparos, 0)
+      showToast(`${nuevas.length} sesiones importadas (${totalDisparos.toLocaleString("es-DO")} disparos)`, "success")
+      setImportPreview(null)
+      setShowImport(false)
+    } catch (err) {
+      showToast("Error guardando sesiones: " + String(err instanceof Error ? err.message : err), "error")
+    } finally {
+      setImporting(false)
+    }
   }
 
   const filtered = useMemo(() => {
@@ -823,6 +836,170 @@ export function PulsosSesionesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Vista previa del import — se abre tras parsear el Excel.
+          El usuario revisa contadores + tabla, y confirma. Solo entonces
+          tocamos la DB (in-memory dedupe + saveSesion por fila). */}
+      <Dialog open={!!importPreview} onOpenChange={(open) => { if (!open) setImportPreview(null) }}>
+        <DialogContent className="w-[94vw] max-w-[1100px] max-h-[88vh] overflow-y-auto p-5 sm:p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <FileSpreadsheet className="h-5 w-5 text-primary" />
+              Vista previa de importación
+            </DialogTitle>
+          </DialogHeader>
+          {importPreview ? (
+            <div className="space-y-4 py-2">
+              <div className="rounded-xl border bg-slate-50/60 p-3 text-xs text-slate-600">
+                <div className="flex flex-wrap gap-x-6 gap-y-1">
+                  <span><b>Archivo:</b> {importPreview.fileName}</span>
+                  <span><b>Hoja:</b> {importPreview.parsed.sheet}</span>
+                  <span><b>Encabezados en fila:</b> {importPreview.parsed.headerRow}</span>
+                  {importPreview.parsed.fileDateRange ? <span><b>Rango:</b> {importPreview.parsed.fileDateRange}</span> : null}
+                </div>
+              </div>
+
+              {/* Contadores */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                <PreviewStat label="Leídas" value={importPreview.rows.length} />
+                <PreviewStat
+                  label="Válidas"
+                  value={importPreview.rows.filter((r) => r.status === "valid").length}
+                  tone="ok"
+                />
+                <PreviewStat
+                  label="Duplicadas"
+                  value={importPreview.rows.filter((r) => r.status === "duplicate").length}
+                  tone="warn"
+                />
+                <PreviewStat
+                  label="Con error"
+                  value={importPreview.rows.filter((r) => r.status === "error").length}
+                  tone="error"
+                />
+                <PreviewStat
+                  label="Disparos a importar"
+                  value={importPreview.rows.filter((r) => r.status === "valid").reduce((s, r) => s + r.disparos, 0)}
+                  tone="ok"
+                />
+              </div>
+
+              {/* Detección */}
+              <div className="grid gap-2 rounded-xl border bg-white p-3 text-xs sm:grid-cols-2 md:grid-cols-3">
+                <div>
+                  <div className="font-bold uppercase tracking-wide text-muted-foreground">Operadoras detectadas</div>
+                  <div className="mt-1 text-foreground">
+                    {Array.from(new Set(importPreview.rows.map((r) => r.operadora).filter(Boolean))).join(", ") || "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="font-bold uppercase tracking-wide text-muted-foreground">Sucursales detectadas</div>
+                  <div className="mt-1 text-foreground">
+                    {Array.from(new Set(importPreview.rows.map((r) => r.sucursal).filter(Boolean))).join(", ") || "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="font-bold uppercase tracking-wide text-muted-foreground">Rango de fechas en filas</div>
+                  <div className="mt-1 text-foreground">
+                    {(() => {
+                      const fechas = importPreview.rows.map((r) => r.fecha).filter(Boolean).sort()
+                      return fechas.length ? `${fechas[0]} → ${fechas[fechas.length - 1]}` : "—"
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              {/* Tabla preview */}
+              <div className="rounded-xl border overflow-hidden">
+                <div className="max-h-[40vh] overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Estado</TableHead>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Operadora</TableHead>
+                        <TableHead>Sucursal</TableHead>
+                        <TableHead>Tratamiento</TableHead>
+                        <TableHead className="text-right">Disp. originales</TableHead>
+                        <TableHead className="text-right">Disp. calculados</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {importPreview.rows.slice(0, 50).map((r) => (
+                        <TableRow key={r.filaOrigen}>
+                          <TableCell>
+                            {r.status === "valid" ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                                <CheckCircle2 className="h-3 w-3" /> OK
+                              </span>
+                            ) : r.status === "duplicate" ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700" title={r.message || ""}>
+                                <AlertTriangle className="h-3 w-3" /> Dup
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700" title={r.message || ""}>
+                                <X className="h-3 w-3" /> Error
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs">{r.fecha || "—"}</TableCell>
+                          <TableCell className="text-xs">{r.cliente || "—"}</TableCell>
+                          <TableCell className="text-xs">{r.operadora || "—"}</TableCell>
+                          <TableCell className="text-xs">{r.sucursal || "—"}</TableCell>
+                          <TableCell className="text-xs">{r.tratamiento || "—"}</TableCell>
+                          <TableCell className="text-right text-xs font-mono">{r.disparosRaw}</TableCell>
+                          <TableCell className="text-right text-xs font-bold">{r.disparos.toLocaleString("es-DO")}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                {importPreview.rows.length > 50 ? (
+                  <div className="border-t bg-slate-50/60 px-3 py-2 text-center text-xs text-muted-foreground">
+                    Mostrando primeras 50 de {importPreview.rows.length} filas
+                  </div>
+                ) : null}
+              </div>
+
+              {importPreview.parsed.warnings.length ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                  {importPreview.parsed.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportPreview(null)} disabled={importing}>Cancelar</Button>
+            <Button
+              onClick={confirmImport}
+              disabled={importing || !importPreview || importPreview.rows.filter((r) => r.status === "valid").length === 0}
+              className="gap-2"
+            >
+              {importing ? <Save className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {importing
+                ? "Guardando..."
+                : `Importar ${importPreview ? importPreview.rows.filter((r) => r.status === "valid").length : 0} filas válidas`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+function PreviewStat({ label, value, tone }: { label: string; value: number; tone?: "ok" | "warn" | "error" }) {
+  const cls = tone === "ok"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+    : tone === "warn"
+      ? "border-amber-200 bg-amber-50 text-amber-800"
+      : tone === "error"
+        ? "border-rose-200 bg-rose-50 text-rose-800"
+        : "border-slate-200 bg-white text-slate-800"
+  return (
+    <div className={`rounded-xl border p-3 text-center ${cls}`}>
+      <div className="font-heading text-xl font-black tracking-tight">{value.toLocaleString("es-DO")}</div>
+      <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.16em]">{label}</div>
     </div>
   )
 }
