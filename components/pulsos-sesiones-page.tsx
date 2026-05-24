@@ -17,7 +17,7 @@ import {
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
-import { AlertTriangle, CheckCircle2, FileSpreadsheet, Plus, Save, X, Zap, Upload } from "lucide-react"
+import { AlertTriangle, CheckCircle2, FileSpreadsheet, Plus, Save, Search, ChevronRight, X, Zap, Upload } from "lucide-react"
 import type { ClienteCosmiatria, LecturaSemanal, SesionCliente } from "@/lib/types"
 import {
   markDuplicatesAgainstExisting,
@@ -177,7 +177,20 @@ export function PulsosSesionesPage() {
   const [filterSemana, setFilterSemana] = useState("todas")
   const [filterOp, setFilterOp] = useState("todas")
   const [filterSuc, setFilterSuc] = useState("todas")
+  // Búsqueda libre: matchea cliente / contacto / tratamiento / archivo origen.
+  // Vivimos un solo input para no saturar el toolbar — los selectors de
+  // operadora/sucursal/semana ya cubren los filtros estructurados.
+  const [filterText, setFilterText] = useState("")
   const [showImport, setShowImport] = useState(false)
+  // Detalle de grupo del resumen: al hacer clic en una fila se abre un modal
+  // con las sesiones individuales que componen ese grupo (con campos ricos).
+  const [detailGroup, setDetailGroup] = useState<null | {
+    semana: string
+    sucursal: string
+    cabina: string
+    equipoId: string
+    operadoraId: string
+  }>(null)
   const [sortCol, setSortCol] = useState<string>("")
   const [sortDir, setSortDir] = useState<"asc"|"desc">("asc")
   const handleSort = (col: string) => {
@@ -435,18 +448,26 @@ export function PulsosSesionesPage() {
   }
 
   const filtered = useMemo(() => {
+    const needle = filterText.trim().toLowerCase()
     return dbPulsos.sesionesCliente.filter(s => {
       if (filterDesde && s.Fecha < filterDesde) return false
       if (filterHasta && s.Fecha > filterHasta) return false
       if (filterSemana !== "todas" && weekStartIso(s.Fecha) !== filterSemana) return false
       if (filterOp !== "todas" && s.OperadoraID !== filterOp) return false
       if (filterSuc !== "todas" && s.Sucursal !== filterSuc) return false
+      if (needle) {
+        const haystack = [
+          s.Cliente, s.ContactoCliente, s.Tratamiento, s.AreaTrabajada,
+          s.ArchivoOrigen, s.OperadoraID, s.Sucursal,
+        ].filter(Boolean).join(" ").toLowerCase()
+        if (!haystack.includes(needle)) return false
+      }
       return true
     })
-  }, [dbPulsos.sesionesCliente, filterDesde, filterHasta, filterSemana, filterOp, filterSuc])
+  }, [dbPulsos.sesionesCliente, filterDesde, filterHasta, filterSemana, filterOp, filterSuc, filterText])
 
   const resumenSemanal = useMemo(() => {
-    const map = new Map<string, { Semana: string; Sucursal: string; Cabina: string; EquipoID: string; OperadoraID: string; DisparosReportados: number; Sesiones: number }>()
+    const map = new Map<string, { Semana: string; Sucursal: string; Cabina: string; EquipoID: string; OperadoraID: string; DisparosReportados: number; Sesiones: number; Importadas: number; Manuales: number }>()
     filtered.forEach(s => {
       const semana = weekStartIso(s.Fecha)
       const operadora = s.OperadoraID || "Sin asignar"
@@ -459,9 +480,14 @@ export function PulsosSesionesPage() {
         OperadoraID: operadora,
         DisparosReportados: 0,
         Sesiones: 0,
+        Importadas: 0,
+        Manuales: 0,
       }
       current.DisparosReportados += Number(s.DisparosReportados) || 0
       current.Sesiones += 1
+      // Sesión "Importada" si trae ArchivoOrigen o ImportHash; "Manual" sino.
+      if (s.ArchivoOrigen || s.ImportHash) current.Importadas += 1
+      else current.Manuales += 1
       map.set(key, current)
     })
 
@@ -510,6 +536,22 @@ export function PulsosSesionesPage() {
   const resolveAssignment = (fecha: string, sucursal: string, operadora: string) => (
     findWeeklyAssignment(dbPulsos.lecturasSemanales, fecha, sucursal, operadora) || getEquipoByOp(operadora)
   )
+
+  // Sesiones individuales del grupo activo en el modal de detalle. Filtran
+  // por la misma llave que arma `resumenSemanal` (semana+sucursal+cabina+
+  // equipo+operadora). Mantengo el filtro de texto activo para que el
+  // modal respete la búsqueda del toolbar.
+  const detailSesiones = useMemo(() => {
+    if (!detailGroup) return []
+    const targetCabina = normalizeCabina(detailGroup.cabina)
+    return filtered
+      .filter(s => weekStartIso(s.Fecha) === detailGroup.semana
+        && (s.Sucursal || "") === detailGroup.sucursal
+        && normalizeCabina(s.Cabina) === targetCabina
+        && (s.EquipoID || "") === detailGroup.equipoId
+        && (s.OperadoraID || "Sin asignar") === detailGroup.operadoraId)
+      .sort((a, b) => String(a.Fecha).localeCompare(String(b.Fecha)))
+  }, [filtered, detailGroup])
 
   return (
     <div className="space-y-4">
@@ -617,8 +659,20 @@ export function PulsosSesionesPage() {
             </SelectContent>
           </Select>
         </div>
-        {(filterDesde || filterHasta || filterSemana !== "todas" || filterOp !== "todas" || filterSuc !== "todas") && (
-          <Button variant="ghost" size="sm" onClick={() => { setFilterDesde(""); setFilterHasta(""); setFilterSemana("todas"); setFilterOp("todas"); setFilterSuc("todas") }}>
+        <div className="flex items-center gap-2">
+          <Label className="text-sm">Buscar:</Label>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              placeholder="Cliente, contacto, tratamiento, archivo..."
+              className="h-9 w-64 pl-8 text-sm"
+            />
+          </div>
+        </div>
+        {(filterDesde || filterHasta || filterSemana !== "todas" || filterOp !== "todas" || filterSuc !== "todas" || filterText) && (
+          <Button variant="ghost" size="sm" onClick={() => { setFilterDesde(""); setFilterHasta(""); setFilterSemana("todas"); setFilterOp("todas"); setFilterSuc("todas"); setFilterText("") }}>
             Limpiar
           </Button>
         )}
@@ -643,12 +697,14 @@ export function PulsosSesionesPage() {
                     <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("OperadoraID")}>Operadora{sortIcon("OperadoraID")}</TableHead>
                     <TableHead className="text-right cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Sesiones")}>Sesiones{sortIcon("Sesiones")}</TableHead>
                     <TableHead className="text-right cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("DisparosReportados")}>Cantidad de disparos{sortIcon("DisparosReportados")}</TableHead>
+                    <TableHead>Origen</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {resumenSemanal.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-muted-foreground py-12">
+                      <TableCell colSpan={10} className="text-center text-muted-foreground py-12">
                         Sin sesiones. Importa el Excel de AgendaPro o registra manualmente.
                       </TableCell>
                     </TableRow>
@@ -662,6 +718,39 @@ export function PulsosSesionesPage() {
                       <TableCell className="text-sm font-semibold">{row.OperadoraID}</TableCell>
                       <TableCell className="text-right font-mono text-sm">{row.Sesiones.toLocaleString()}</TableCell>
                       <TableCell className="text-right font-mono font-semibold">{row.DisparosReportados.toLocaleString()}</TableCell>
+                      <TableCell>
+                        {/* Mezcla en el grupo: mostramos ambos badges con
+                            sus conteos. Si solo hay uno, sale uno solo. */}
+                        <div className="flex flex-wrap gap-1">
+                          {row.Importadas > 0 ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-cyan-700">
+                              <Upload className="h-2.5 w-2.5" />
+                              Importado {row.Manuales > 0 ? `· ${row.Importadas}` : ""}
+                            </span>
+                          ) : null}
+                          {row.Manuales > 0 ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-700">
+                              Manual {row.Importadas > 0 ? `· ${row.Manuales}` : ""}
+                            </span>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1 text-xs"
+                          onClick={() => setDetailGroup({
+                            semana: row.Semana,
+                            sucursal: row.Sucursal,
+                            cabina: row.Cabina,
+                            equipoId: row.EquipoID,
+                            operadoraId: row.OperadoraID,
+                          })}
+                        >
+                          Ver detalle <ChevronRight className="h-3 w-3" />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -856,6 +945,98 @@ export function PulsosSesionesPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowImport(false)}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Detalle del grupo del resumen — sesiones individuales con todos
+          los campos ricos importados del Excel AgendaPro. */}
+      <Dialog open={!!detailGroup} onOpenChange={(open) => { if (!open) setDetailGroup(null) }}>
+        <DialogContent className="w-[94vw] max-w-[1100px] max-h-[88vh] overflow-y-auto p-5 sm:p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <FileSpreadsheet className="h-5 w-5 text-primary" />
+              Detalle de sesiones
+            </DialogTitle>
+          </DialogHeader>
+          {detailGroup ? (
+            <div className="space-y-3 py-2">
+              <div className="rounded-xl border bg-slate-50/60 p-3 text-xs text-slate-700">
+                <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2 md:grid-cols-3">
+                  <span><b>Semana:</b> {fmtSemana(detailGroup.semana)}</span>
+                  <span><b>Sucursal:</b> {detailGroup.sucursal || "—"}</span>
+                  <span><b>Cabina:</b> {detailGroup.cabina || "—"}</span>
+                  <span><b>Equipo:</b> {detailGroup.equipoId || "—"}</span>
+                  <span><b>Operadora:</b> {detailGroup.operadoraId}</span>
+                  <span><b>Sesiones:</b> {detailSesiones.length} ({detailSesiones.reduce((s, x) => s + (Number(x.DisparosReportados) || 0), 0).toLocaleString("es-DO")} disparos)</span>
+                </div>
+              </div>
+              <div className="rounded-xl border overflow-hidden">
+                <div className="max-h-[55vh] overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Origen</TableHead>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Contacto</TableHead>
+                        <TableHead>Tratamiento</TableHead>
+                        <TableHead className="text-right">Potencia</TableHead>
+                        <TableHead className="text-right">Spot</TableHead>
+                        <TableHead className="text-right">Disparos</TableHead>
+                        <TableHead>Archivo · fila</TableHead>
+                        <TableHead className="text-right">ID import</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {detailSesiones.map((s) => {
+                        const importado = Boolean(s.ArchivoOrigen || s.ImportHash)
+                        return (
+                          <TableRow key={s.SesionID}>
+                            <TableCell>
+                              {importado ? (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-cyan-700">
+                                  <Upload className="h-2.5 w-2.5" /> Importado
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-700">
+                                  Manual
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-xs">{s.Fecha || "—"}</TableCell>
+                            <TableCell className="text-xs font-semibold">{s.Cliente || "—"}</TableCell>
+                            <TableCell className="text-xs">{s.ContactoCliente || "—"}</TableCell>
+                            <TableCell className="text-xs">{s.Tratamiento || s.AreaTrabajada || "—"}</TableCell>
+                            <TableCell className="text-right text-xs">{s.Potencia || "—"}</TableCell>
+                            <TableCell className="text-right text-xs">{s.Spot || "—"}</TableCell>
+                            <TableCell className="text-right font-mono text-xs font-bold">{(Number(s.DisparosReportados) || 0).toLocaleString("es-DO")}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {s.ArchivoOrigen
+                                ? <span title={s.ArchivoOrigen}>{s.ArchivoOrigen.length > 22 ? `…${s.ArchivoOrigen.slice(-22)}` : s.ArchivoOrigen}{s.FilaOrigen ? ` · ${s.FilaOrigen}` : ""}</span>
+                                : "—"}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-[10px] text-muted-foreground" title={s.ImportHash || ""}>
+                              {s.ImportHash ? s.ImportHash.slice(0, 10) : "—"}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                      {detailSesiones.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={10} className="py-8 text-center text-muted-foreground">
+                            Sin sesiones individuales para este grupo (puede deberse a un filtro activo).
+                          </TableCell>
+                        </TableRow>
+                      ) : null}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailGroup(null)}>Cerrar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
