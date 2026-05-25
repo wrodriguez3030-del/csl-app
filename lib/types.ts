@@ -241,15 +241,26 @@ export interface SesionCliente {
 export interface AuditoriaSemanal {
   _rowNum?: string
   AuditoriaID: string
-  FechaSemana: string
+  FechaSemana: string         // semana_inicio (lunes ISO)
   EquipoID: string
   Sucursal: string
-  PulsosReales: number      // de LecturaSemanal.DiferenciaReal
-  PulsosReportados: number  // suma de SesionCliente.DisparosReportados
-  Diferencia: number        // PulsosReales - PulsosReportados
+  PulsosReales: number        // disparos_laser = LecturaFinal - LecturaInicial
+  PulsosReportados: number    // suma de SesionCliente.DisparosReportados
+  Diferencia: number          // PulsosReportados - PulsosReales
   PorcentajeDesviacion: number
   Alerta: "OK" | "Advertencia" | "Critico"
   Observaciones?: string
+  // Campos agregados por 010_pulse_cuadre_semanal_auditoria.sql
+  Cabina?: string
+  SemanaFin?: string
+  LecturaInicial?: number
+  LecturaFinal?: number
+  CreadoPor?: string           // uuid auth.users(id)
+  /** Lista de archivos AgendaPro usados: [{ filename, hash?, rows? }] */
+  ArchivoExcel?: Array<Record<string, unknown>>
+  FotosCount?: number
+  /** Origen del registro: "wizard_cuadre_semanal" cuando proviene del wizard. */
+  Fuente?: string
 }
 
 export interface DatabasePulsos {
@@ -340,6 +351,7 @@ export type TabId =
   | "pulsos-sesiones"
   | "pulsos-auditoria"
   | "pulsos-operadoras"
+  | "pulsos-cuadre"
   // Módulo Recursos Humanos
   | "rrhh-solicitudes"
   | "rrhh-empleados"

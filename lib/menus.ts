@@ -36,6 +36,7 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "pulsos-lecturas", label: "Lecturas pantalla equipos", section: "Pulsos" },
   { id: "pulsos-sesiones", label: "Disparos operadoras", section: "Pulsos" },
   { id: "pulsos-auditoria", label: "Auditoría PULSE", section: "Pulsos" },
+  { id: "pulsos-cuadre", label: "Cuadre semanal", section: "Pulsos" },
   { id: "pulse-mantenimiento", label: "Mantenimiento", section: "PulseControl CSL" },
   { id: "rrhh-solicitudes", label: "Solicitudes de empleo", section: "Recursos Humanos" },
   { id: "rrhh-empleados", label: "Empleados", section: "Recursos Humanos" },

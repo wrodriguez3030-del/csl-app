@@ -30,6 +30,7 @@ const pageMeta: Partial<Record<TabId, { title: string; description: string; eyeb
   "pulsos-lecturas": { title: "Lecturas semanales", description: "Lecturas de pantalla por equipo y semana", eyebrow: "PulseControl" },
   "pulsos-sesiones": { title: "Registro de servicios", description: "Disparos reportados por operadora", eyebrow: "PulseControl" },
   "pulsos-auditoria": { title: "Auditoría / IA", description: "Comparativo Disp. Láser vs Disp. Operador", eyebrow: "PulseControl" },
+  "pulsos-cuadre": { title: "Cuadre semanal", description: "Asistente para subir Excel AgendaPro + fotos de pantalla y persistir el snapshot de la semana", eyebrow: "PulseControl" },
   "pulse-mantenimiento": { title: "Mantenimiento Pulse", description: "Resumen de intervenciones relacionadas a equipos láser", eyebrow: "PulseControl" },
   "rrhh-solicitudes": { title: "Solicitudes de empleo", description: "Formulario y seguimiento de candidatos", eyebrow: "Recursos humanos" },
   "rrhh-empleados": { title: "Empleados", description: "Empleados generados desde solicitudes aprobadas", eyebrow: "Recursos humanos" },

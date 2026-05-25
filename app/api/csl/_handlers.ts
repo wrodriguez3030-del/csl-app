@@ -669,6 +669,61 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "deleteSesion":
       await deleteRow("sesiones_cliente", textValue(params, "id"))
       return { ok: true }
+    case "addAuditoria":
+    case "updateAuditoria":
+    case "saveAuditoria": {
+      const record = parsePayload(params)
+      const archivoExcel = (() => {
+        const v = record.ArchivoExcel
+        if (Array.isArray(v)) return v
+        if (typeof v === "string" && v.trim()) {
+          try { const p = JSON.parse(v); return Array.isArray(p) ? p : [] } catch { return [] }
+        }
+        return []
+      })()
+      const row: Record<string, unknown> = {
+        auditoria_id: String(record.AuditoriaID ?? params.id ?? `aud_${Date.now()}`),
+        fecha_semana: dateValue(record.FechaSemana),
+        equipo_id: record.EquipoID ?? "",
+        sucursal: record.Sucursal ?? "",
+        pulsos_reales: numberFrom(record, "PulsosReales"),
+        pulsos_reportados: numberFrom(record, "PulsosReportados"),
+        diferencia: numberFrom(record, "Diferencia"),
+        porcentaje_desviacion: numberFrom(record, "PorcentajeDesviacion"),
+        alerta: record.Alerta ?? "OK",
+        observaciones: record.Observaciones ?? "",
+        // Columnas agregadas por 010_pulse_cuadre_semanal_auditoria.sql
+        cabina: typeof record.Cabina === "string" && record.Cabina ? record.Cabina : null,
+        semana_fin: record.SemanaFin ? dateValue(record.SemanaFin) : null,
+        lectura_inicial: record.LecturaInicial !== undefined && record.LecturaInicial !== null && record.LecturaInicial !== ""
+          ? numberFrom(record, "LecturaInicial") : null,
+        lectura_final: record.LecturaFinal !== undefined && record.LecturaFinal !== null && record.LecturaFinal !== ""
+          ? numberFrom(record, "LecturaFinal") : null,
+        creado_por: typeof record.CreadoPor === "string" && record.CreadoPor ? record.CreadoPor : null,
+        archivo_excel: archivoExcel,
+        fotos_count: typeof record.FotosCount === "number" ? record.FotosCount : 0,
+        fuente: typeof record.Fuente === "string" && record.Fuente ? record.Fuente : null,
+      }
+      // Upsert via PK (auditoria_id). El UNIQUE parcial sobre
+      // (business_id, fecha_semana, equipo_id, sucursal, coalesce(cabina,''))
+      // garantiza que re-correr el cuadre de la misma semana+equipo+cabina
+      // colisione si el auditoria_id es nuevo — el wizard ya envía un id
+      // determinístico para evitarlo.
+      try {
+        await upsertRow("auditorias_semanales", row)
+      } catch (err) {
+        const code = (err as { code?: string }).code
+        const message = (err as { message?: string }).message || ""
+        if (code === "23505" || /semana_equipo|duplicate key/i.test(message)) {
+          return { ok: false, error: "Ya existe un cuadre para esta semana/equipo/cabina. Reemplázalo desde el wizard si quieres regenerarlo." }
+        }
+        throw err
+      }
+      return { ok: true, record: fromDb("auditorias_semanales", row) }
+    }
+    case "deleteAuditoria":
+      await deleteRow("auditorias_semanales", textValue(params, "id"))
+      return { ok: true }
     default:
       return { ok: false, error: `Accion no soportada: ${action}` }
   }

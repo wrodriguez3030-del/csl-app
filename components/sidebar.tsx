@@ -78,6 +78,7 @@ const PULSE_ITEMS: NavItem[] = [
   { id: "pulsos-lecturas", label: "Lecturas semanales", icon: <BookOpen className="h-3.5 w-3.5" /> },
   { id: "pulsos-sesiones", label: "Registro de servicios", icon: <Zap className="h-3.5 w-3.5" /> },
   { id: "pulsos-auditoria", label: "Auditoria / IA", icon: <BarChart3 className="h-3.5 w-3.5" /> },
+  { id: "pulsos-cuadre", label: "Cuadre semanal", icon: <ClipboardCheck className="h-3.5 w-3.5" /> },
   { id: "pulse-mantenimiento", label: "Mantenimiento", icon: <Stethoscope className="h-3.5 w-3.5" /> },
 ]
 

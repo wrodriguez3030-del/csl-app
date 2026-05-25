@@ -24,6 +24,7 @@ import { PulsosOperadorasPage } from "@/components/pulsos-operadoras-page"
 import { PulsosLecturasPage } from "@/components/pulsos-lecturas-page"
 import { PulsosSesionesPage } from "@/components/pulsos-sesiones-page"
 import { PulsosAuditoriaPage } from "@/components/pulsos-auditoria-page"
+import { PulsosCuadreSemanalPage } from "@/components/pulsos-cuadre-semanal-page"
 import { PulseControlDashboardPage } from "@/components/pulse-control-dashboard-page"
 import { PulsosEquiposPage } from "@/components/pulsos-equipos-page"
 import { PulsosMantenimientoPage } from "@/components/pulsos-mantenimiento-page"
@@ -230,6 +231,8 @@ export default function HomePage() {
         return <PulsosSesionesPage />
       case "pulsos-auditoria":
         return <PulsosAuditoriaPage />
+      case "pulsos-cuadre":
+        return <PulsosCuadreSemanalPage />
       case "cosmiatria-clientes":
         return <CosmiatriaClientesPage />
       case "cosmiatria-ficha":

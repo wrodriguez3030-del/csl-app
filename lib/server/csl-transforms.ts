@@ -54,7 +54,18 @@ export function fromDb(entity: string, row: Row): Row {
         ImportHash: row.import_hash,
       }
     case "auditorias_semanales":
-      return { AuditoriaID: row.auditoria_id, FechaSemana: row.fecha_semana, EquipoID: row.equipo_id, Sucursal: row.sucursal, PulsosReales: row.pulsos_reales, PulsosReportados: row.pulsos_reportados, Diferencia: row.diferencia, PorcentajeDesviacion: row.porcentaje_desviacion, Alerta: row.alerta, Observaciones: row.observaciones }
+      return {
+        AuditoriaID: row.auditoria_id, FechaSemana: row.fecha_semana,
+        EquipoID: row.equipo_id, Sucursal: row.sucursal,
+        PulsosReales: row.pulsos_reales, PulsosReportados: row.pulsos_reportados,
+        Diferencia: row.diferencia, PorcentajeDesviacion: row.porcentaje_desviacion,
+        Alerta: row.alerta, Observaciones: row.observaciones,
+        // Campos agregados por 010_pulse_cuadre_semanal_auditoria.sql
+        Cabina: row.cabina, SemanaFin: row.semana_fin,
+        LecturaInicial: row.lectura_inicial, LecturaFinal: row.lectura_final,
+        CreadoPor: row.creado_por, ArchivoExcel: row.archivo_excel,
+        FotosCount: row.fotos_count, Fuente: row.fuente,
+      }
     case "credenciales":
       return { CredencialID: row.credencial_id, Sucursal: row.sucursal, Area: row.area, Equipo: row.equipo, Sistema: row.sistema, Usuario: row.usuario, Contrasena: row.contrasena, PIN: row.pin, URL: row.url, Correo: row.correo }
     case "solicitudes_empleo":
