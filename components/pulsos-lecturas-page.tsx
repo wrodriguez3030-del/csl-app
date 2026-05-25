@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
 import { loadXLSX } from "@/lib/load-xlsx"
 import { scanPulseScreen } from "@/lib/pulse-vision"
@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
-import { Plus, Save, X, BookOpen, Camera, Loader2, Upload, FileSpreadsheet } from "lucide-react"
+import { Plus, Save, X, BookOpen, Camera, ChevronDown, ChevronRight, Loader2, Upload, FileSpreadsheet } from "lucide-react"
 import { RecordActions } from "@/components/record-actions"
 import type { LecturaSemanal } from "@/lib/types"
 
@@ -250,6 +250,52 @@ export function PulsosLecturasPage() {
 
   const sorted = [...dbPulsos.lecturasSemanales].sort((a, b) => b.FechaSemana.localeCompare(a.FechaSemana))
 
+  // Agrupación por semana (FechaSemana ya es el lunes ISO). Cada bloque
+  // calcula su propio resumen: lecturas, equipos, sucursales únicas,
+  // total diferencia, mayor diferencia con equipo. Orden: semana más
+  // reciente arriba; dentro de cada semana ordena por sucursal → cabina → equipo.
+  const semanasAgrupadas = useMemo(() => {
+    const map = new Map<string, typeof sorted>()
+    for (const l of sorted) {
+      const key = String(l.FechaSemana || "").slice(0, 10) || "sin-fecha"
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(l)
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([fechaSemana, lecturas]) => {
+        const ordered = [...lecturas].sort((a, b) => {
+          const cmpSuc = String(a.Sucursal || "").localeCompare(String(b.Sucursal || ""), "es")
+          if (cmpSuc !== 0) return cmpSuc
+          const cmpCab = String(a.Cabina || "").localeCompare(String(b.Cabina || ""), "es")
+          if (cmpCab !== 0) return cmpCab
+          return Number(a.EquipoID || 0) - Number(b.EquipoID || 0)
+        })
+        const sucursales = Array.from(new Set(lecturas.map((l) => l.Sucursal).filter(Boolean)))
+        const totalDif = lecturas.reduce((s, l) => s + (Number(l.DiferenciaReal) || 0), 0)
+        const peor = [...lecturas].sort((a, b) => Number(b.DiferenciaReal || 0) - Number(a.DiferenciaReal || 0))[0]
+        return { fechaSemana, lecturas: ordered, sucursales, totalDif, peor, equiposCount: lecturas.length }
+      })
+  }, [sorted])
+
+  // Estado de bloques colapsados — por default todas las semanas EXCEPTO
+  // la más reciente están contraídas. El usuario puede expandir las que quiera.
+  const [collapsedWeeks, setCollapsedWeeks] = useState<Set<string>>(() => new Set())
+  const toggleWeek = (key: string) => setCollapsedWeeks((current) => {
+    const next = new Set(current)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    return next
+  })
+  // La primera semana en la lista (más reciente) por convención está expandida
+  // a menos que el usuario explícitamente la cierre. Las otras: contraídas
+  // por default. Implementamos "isCollapsed" como: collapsedWeeks.has(key)
+  // para la primera, !collapsedWeeks.has(key) para las demás — invertimos
+  // así el default queda correcto sin pre-poblar el Set con todas las keys.
+  const isWeekExpanded = (key: string, idx: number) => idx === 0
+    ? !collapsedWeeks.has(key)
+    : collapsedWeeks.has(key)
+
   const sortedLecturas = [...dbPulsos.lecturasSemanales].sort((a, b) => {
     if (!sortCol) return 0
     let va: any, vb: any
@@ -290,57 +336,107 @@ export function PulsosLecturasPage() {
         </div>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className={SEQ_HEADER_CLASS}>#</TableHead>
-                <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("FechaSemana")}>Semana{sortIcon("FechaSemana")}</TableHead>
-                <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("EquipoID")}>Equipo{sortIcon("EquipoID")}</TableHead>
-                <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Sucursal")}>Sucursal / Cabina{sortIcon("Sucursal")}</TableHead>
-                <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("OperadoraID")}>Operadora{sortIcon("OperadoraID")}</TableHead>
-                <TableHead className="text-right cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("LecturaInicial")}>Inicial{sortIcon("LecturaInicial")}</TableHead>
-                <TableHead className="text-right cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("LecturaFinal")}>Final{sortIcon("LecturaFinal")}</TableHead>
-                <TableHead className="text-right cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("DiferenciaReal")}>Diferencia{sortIcon("DiferenciaReal")}</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sorted.length === 0 ? (
-                <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-12">
-                  Sin lecturas. Registra la primera lectura semanal del equipo.
-                </TableCell></TableRow>
-              ) : sorted.map((l, i) => (
-                <TableRow key={l.LecturaID}>
-                  <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
-                  <TableCell className="font-medium">{fmtSemanaRango(l.FechaSemana)}</TableCell>
-                  <TableCell className="font-mono text-sm">{l.EquipoID}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{l.Sucursal}{l.Cabina ? ` / ${l.Cabina}` : ""}</TableCell>
-                  <TableCell className="text-sm">{dbPulsos.operadoras.find(o => o.OperadoraID === l.OperadoraID)?.Nombre || l.OperadoraID || "-"}</TableCell>
-                  <TableCell className="text-right font-mono text-sm">{Number(l.LecturaInicial).toLocaleString()}</TableCell>
-                  <TableCell className="text-right font-mono text-sm">{Number(l.LecturaFinal).toLocaleString()}</TableCell>
-                  <TableCell className="text-right">
-                    <Badge variant="outline" className="font-mono text-green-400 border-green-500/30">
-                      +{Number(l.DiferenciaReal).toLocaleString()}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex gap-1 justify-end">
-                      <RecordActions
-                        title={`Lectura: ${l.EquipoID} ${fmtSemanaRango(l.FechaSemana)}`}
-                        record={l as unknown as Record<string, unknown>}
-                        onEdit={() => openEdit(l)}
-                        onDelete={() => handleDelete(l)}
-                      />
+      {/* Bloques por semana — cada semana es una Card independiente con
+          header expandible. La más reciente queda abierta por default. */}
+      {semanasAgrupadas.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-sm text-muted-foreground">
+            Sin lecturas. Registra la primera lectura semanal del equipo.
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {semanasAgrupadas.map((bloque, idx) => {
+            const expanded = isWeekExpanded(bloque.fechaSemana, idx)
+            return (
+              <Card key={bloque.fechaSemana} className="overflow-hidden">
+                <CardHeader
+                  className="cursor-pointer border-b border-slate-100 bg-slate-50/70 py-4 transition-colors hover:bg-slate-100/70"
+                  onClick={() => toggleWeek(bloque.fechaSemana)}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                      </div>
+                      <div className="min-w-0">
+                        <CardTitle className="text-base font-bold">
+                          {fmtSemanaRango(bloque.fechaSemana)}
+                        </CardTitle>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {bloque.equiposCount} {bloque.equiposCount === 1 ? "lectura" : "lecturas"}
+                          {bloque.sucursales.length > 0 ? (
+                            <> · {bloque.sucursales.length} {bloque.sucursales.length === 1 ? "sucursal" : "sucursales"} ({bloque.sucursales.join(", ")})</>
+                          ) : null}
+                          {" "}· Total diferencia <span className="font-bold text-foreground">+{bloque.totalDif.toLocaleString("es-DO")}</span>
+                        </p>
+                      </div>
                     </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                    {bloque.peor ? (
+                      <div className="hidden shrink-0 text-right text-xs text-muted-foreground sm:block">
+                        <div className="font-bold uppercase tracking-wide text-[10px]">Mayor diferencia</div>
+                        <div className="mt-0.5">
+                          Equipo {bloque.peor.EquipoID}
+                          <span className="ml-2 font-mono text-emerald-600">
+                            +{Number(bloque.peor.DiferenciaReal || 0).toLocaleString("es-DO")}
+                          </span>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </CardHeader>
+                {expanded ? (
+                  <CardContent className="p-0">
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className={SEQ_HEADER_CLASS}>#</TableHead>
+                            <TableHead>Equipo</TableHead>
+                            <TableHead>Sucursal / Cabina</TableHead>
+                            <TableHead>Operadora</TableHead>
+                            <TableHead className="text-right">Inicial</TableHead>
+                            <TableHead className="text-right">Final</TableHead>
+                            <TableHead className="text-right">Diferencia</TableHead>
+                            <TableHead className="text-right">Acciones</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {bloque.lecturas.map((l, i) => (
+                            <TableRow key={l.LecturaID}>
+                              <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
+                              <TableCell className="font-mono text-sm">{l.EquipoID}</TableCell>
+                              <TableCell className="text-sm text-muted-foreground">{l.Sucursal}{l.Cabina ? ` / ${l.Cabina}` : ""}</TableCell>
+                              <TableCell className="text-sm">{dbPulsos.operadoras.find(o => o.OperadoraID === l.OperadoraID)?.Nombre || l.OperadoraID || "-"}</TableCell>
+                              <TableCell className="text-right font-mono text-sm">{Number(l.LecturaInicial).toLocaleString("es-DO")}</TableCell>
+                              <TableCell className="text-right font-mono text-sm">{Number(l.LecturaFinal).toLocaleString("es-DO")}</TableCell>
+                              <TableCell className="text-right">
+                                <Badge variant="outline" className="font-mono text-green-400 border-green-500/30">
+                                  +{Number(l.DiferenciaReal).toLocaleString("es-DO")}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex gap-1 justify-end">
+                                  <RecordActions
+                                    title={`Lectura: ${l.EquipoID} ${fmtSemanaRango(l.FechaSemana)}`}
+                                    record={l as unknown as Record<string, unknown>}
+                                    onEdit={() => openEdit(l)}
+                                    onDelete={() => handleDelete(l)}
+                                  />
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                ) : null}
+              </Card>
+            )
+          })}
+        </div>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg">
