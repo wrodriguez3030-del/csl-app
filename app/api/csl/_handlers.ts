@@ -124,16 +124,27 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true, user: profile ? profileToUser(profile) : null }
     }
     case "getUsers": {
-      await requireAdmin(user.id)
-      const { data, error } = await getSupabaseAdmin()
+      // BUG CRÍTICO DE MULTI-TENANT (fix): antes este handler devolvía TODOS
+      // los usuarios sin filtrar por business_id. Un admin Depicenter veía
+      // usuarios CSL y viceversa. Ahora:
+      //   - superadmin → todos los usuarios (ambos tenants)
+      //   - admin de tenant → solo usuarios con su mismo business_id
+      const callerProfile = await requireAdmin(user.id)
+      const supabase = getSupabaseAdmin()
+      let query = supabase
         .from("csl_user_profiles")
         .select("*")
         .order("nombre", { ascending: true })
+      if (!callerProfile.is_superadmin) {
+        if (!callerProfile.business_id) throw new Error("Tu perfil no tiene business_id asignado")
+        query = query.eq("business_id", callerProfile.business_id)
+      }
+      const { data, error } = await query
       if (error) throw error
       return { ok: true, records: (data || []).map((profile) => profileToUser(profile as Row)) }
     }
     case "saveUser": {
-      await requireAdmin(user.id)
+      const callerProfile = await requireAdmin(user.id)
       const record = parsePayload(params)
       const email = textFrom(record, "username").trim().toLowerCase()
       const password = textFrom(record, "password").trim()
@@ -158,6 +169,35 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       }
 
       const supabase = getSupabaseAdmin()
+
+      // ---- aislamiento multi-tenant: admin normal solo puede tocar
+      // usuarios de su propio business_id. Superadmin puede tocar cualquiera.
+      // Si está EDITANDO, verificamos el business_id del target ANTES de
+      // cualquier mutación. Si está CREANDO, forzamos business_id =
+      // caller.business_id (no aceptamos del payload para admin normal).
+      let targetBusinessId: string | null = callerProfile.business_id as string | null
+      if (editingId && !callerProfile.is_superadmin) {
+        const { data: target, error: targetErr } = await supabase
+          .from("csl_user_profiles")
+          .select("business_id")
+          .eq("user_id", editingId)
+          .maybeSingle()
+        if (targetErr) throw targetErr
+        if (!target) throw new Error("Usuario no encontrado")
+        if (target.business_id !== callerProfile.business_id) {
+          throw new Error("No tienes permiso para administrar este usuario")
+        }
+        targetBusinessId = target.business_id as string
+      } else if (editingId && callerProfile.is_superadmin) {
+        // Superadmin editando — respetamos el business_id existente del target
+        // a menos que el payload lo cambie explícitamente.
+        const { data: target } = await supabase
+          .from("csl_user_profiles")
+          .select("business_id")
+          .eq("user_id", editingId)
+          .maybeSingle()
+        targetBusinessId = (target?.business_id as string | undefined) ?? targetBusinessId
+      }
 
       // ---- protección "último admin": si me edito a mí mismo y me quito
       // admin/me desactivo, verificar que quede al menos OTRO admin activo.
@@ -211,7 +251,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         userId = data.user.id
       }
 
-      const profile = {
+      const profile: Record<string, unknown> = {
         user_id: userId,
         nombre,
         username: email,
@@ -219,14 +259,18 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         activo,
         menus,
       }
+      // Inyectar business_id explícitamente para que no dependa del default
+      // de la columna (que era CSL para todos). Admin normal hereda su propio
+      // business_id; superadmin respeta el del target o el actual del caller.
+      if (targetBusinessId) profile.business_id = targetBusinessId
       const { error } = await supabase
         .from("csl_user_profiles")
         .upsert(profile, { onConflict: "user_id" })
       if (error) throw error
-      return { ok: true, record: profileToUser(profile) }
+      return { ok: true, record: profileToUser(profile as Row) }
     }
     case "deleteUser": {
-      await requireAdmin(user.id)
+      const callerProfile = await requireAdmin(user.id)
       const userId = textValue(params, "id")
       if (!userId) throw new Error("Falta el id del usuario")
       if (userId === user.id) throw new Error("No puedes eliminar tu propia cuenta")
@@ -236,10 +280,16 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       // No permitir borrar al último admin activo, aunque sea otro admin.
       const { data: target, error: targetError } = await supabase
         .from("csl_user_profiles")
-        .select("user_id, is_admin, activo")
+        .select("user_id, is_admin, activo, business_id")
         .eq("user_id", userId)
         .maybeSingle()
       if (targetError) throw targetError
+      // Aislamiento multi-tenant: admin normal no puede borrar usuarios de
+      // otro business_id. Superadmin sí puede borrar cross-tenant.
+      if (!callerProfile.is_superadmin
+          && target?.business_id !== callerProfile.business_id) {
+        throw new Error("No tienes permiso para eliminar este usuario")
+      }
       if (target?.is_admin && target?.activo) {
         const { count, error: adminCountError } = await supabase
           .from("csl_user_profiles")
