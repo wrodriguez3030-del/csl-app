@@ -36,9 +36,19 @@ type WizardStep = 1 | 2 | 3 | 4 | 5
 interface ExcelImportInfo {
   filename: string
   parsed: ParseAgendaProResult
-  rows: ParsedDisparoRow[]      // dedupeadas
-  totalDisparos: number
-  imported: number              // se popula al confirmar
+  /** TODAS las filas del archivo (con status valid/duplicate/error) — usadas
+   *  para mostrar contadores reales y rango de fechas detectado. */
+  rowsAll: ParsedDisparoRow[]
+  /** Subset filtrado por la semana seleccionada + sucursal. Cuando el
+   *  usuario activa "procesar todo el Excel", apuntan al mismo rowsAll. */
+  rows: ParsedDisparoRow[]
+  /** Rango real del archivo. */
+  fechaMinArchivo: string
+  fechaMaxArchivo: string
+  /** true = el usuario ignoró el filtro de semana para este archivo. */
+  procesarTodo: boolean
+  totalDisparos: number          // de rows (filtrado actual)
+  imported: number               // se popula al confirmar
   duplicatesDb: number
 }
 
@@ -122,6 +132,54 @@ export function PulsosCuadreSemanalPage() {
     if (weekStart) setWeekEnd(addDays(weekStart, 5))
   }, [weekStart])
 
+  // Recalcular `rows` y `totalDisparos` de cada excelImport cuando cambia
+  // la semana o sucursal — mantiene los excels ya cargados sincronizados.
+  // Si `procesarTodo=true` para un import, ignora el filtro de semana.
+  useEffect(() => {
+    setExcelImports((current) => current.map((imp) => {
+      const filtered = imp.procesarTodo
+        ? imp.rowsAll
+        : imp.rowsAll.filter((r) => {
+          if (r.fecha < weekStart || r.fecha > weekEnd) return false
+          if (sucursalFiltro !== "Todas" && r.sucursal !== sucursalFiltro) return false
+          return true
+        })
+      return {
+        ...imp,
+        rows: filtered,
+        totalDisparos: filtered.filter((r) => r.status === "valid").reduce((s, r) => s + r.disparos, 0),
+      }
+    }))
+  }, [weekStart, weekEnd, sucursalFiltro])
+
+  /** Cambia la semana del wizard al rango detectado en el archivo. */
+  const useFileRange = (idx: number) => {
+    const imp = excelImports[idx]
+    if (!imp?.fechaMinArchivo) return
+    setWeekStart(imp.fechaMinArchivo)
+    setWeekEnd(imp.fechaMaxArchivo || addDays(imp.fechaMinArchivo, 5))
+  }
+
+  /** Toggle "procesar todo el Excel" — ignora el filtro de semana para
+   *  este import específico. */
+  const toggleProcesarTodo = (idx: number) => {
+    setExcelImports((current) => current.map((imp, i) => {
+      if (i !== idx) return imp
+      const procesarTodo = !imp.procesarTodo
+      const filtered = procesarTodo ? imp.rowsAll : imp.rowsAll.filter((r) => {
+        if (r.fecha < weekStart || r.fecha > weekEnd) return false
+        if (sucursalFiltro !== "Todas" && r.sucursal !== sucursalFiltro) return false
+        return true
+      })
+      return {
+        ...imp,
+        procesarTodo,
+        rows: filtered,
+        totalDisparos: filtered.filter((r) => r.status === "valid").reduce((s, r) => s + r.disparos, 0),
+      }
+    }))
+  }
+
   // ── PASO 2: parse Excel y agregar a la lista ─────────────────────────────
   const handleExcelFiles = async (files: FileList | null) => {
     if (!files || !files.length) return
@@ -134,18 +192,28 @@ export function PulsosCuadreSemanalPage() {
           const buf = await file.arrayBuffer()
           const wb = XLSX.read(buf, { type: "array" }) as { SheetNames: string[]; Sheets: Record<string, unknown> }
           const parsed = await parseAgendaProWorkbook(wb, XLSX)
-          // Solo filas dentro del rango de semana + sucursal filtrada
-          const filtradas = parsed.rows.filter((r) => {
+          // Guardamos TODAS las filas del archivo + el subset filtrado por
+          // semana/sucursal. Esto permite mostrar contadores reales y
+          // ofrecer "Usar rango del archivo" / "Procesar todo el Excel"
+          // cuando el filtro deja 0 filas.
+          const rowsAll = markDuplicatesAgainstExisting(parsed.rows, dbPulsos.sesionesCliente)
+          const fechas = parsed.rows.map((r) => r.fecha).filter(Boolean).sort()
+          const fechaMinArchivo = fechas[0] || ""
+          const fechaMaxArchivo = fechas[fechas.length - 1] || ""
+          const enRango = rowsAll.filter((r) => {
             if (r.fecha < weekStart || r.fecha > weekEnd) return false
             if (sucursalFiltro !== "Todas" && r.sucursal !== sucursalFiltro) return false
             return true
           })
-          const withDedupe = markDuplicatesAgainstExisting(filtradas, dbPulsos.sesionesCliente)
           newImports.push({
             filename: file.name,
-            parsed: { ...parsed, rows: filtradas },
-            rows: withDedupe,
-            totalDisparos: withDedupe.filter((r) => r.status === "valid").reduce((s, r) => s + r.disparos, 0),
+            parsed,
+            rowsAll,
+            rows: enRango,
+            fechaMinArchivo,
+            fechaMaxArchivo,
+            procesarTodo: false,
+            totalDisparos: enRango.filter((r) => r.status === "valid").reduce((s, r) => s + r.disparos, 0),
             imported: 0,
             duplicatesDb: 0,
           })
@@ -537,9 +605,15 @@ export function PulsosCuadreSemanalPage() {
             {excelImports.length ? (
               <div className="space-y-3">
                 {excelImports.map((imp, idx) => {
+                  const totalArchivo = imp.rowsAll.length
+                  const enRango = imp.rows.length
                   const validas = imp.rows.filter((r) => r.status === "valid").length
                   const duplicadas = imp.rows.filter((r) => r.status === "duplicate").length
                   const errores = imp.rows.filter((r) => r.status === "error").length
+                  // Si el archivo tiene datos pero ninguno cae dentro del
+                  // rango de la semana actual (y NO está activo "procesar
+                  // todo"), mostramos alerta con acciones para resolverlo.
+                  const sinDatosEnRango = totalArchivo > 0 && enRango === 0 && !imp.procesarTodo
                   return (
                     <div key={idx} className="rounded-xl border p-3 text-xs">
                       <div className="flex items-center justify-between gap-2">
@@ -547,6 +621,7 @@ export function PulsosCuadreSemanalPage() {
                           <div className="truncate text-sm font-bold">{imp.filename}</div>
                           <div className="mt-0.5 text-muted-foreground">
                             Hoja: {imp.parsed.sheet} · Header fila: {imp.parsed.headerRow}
+                            {imp.fechaMinArchivo ? <> · Rango archivo: <b>{fmtFechaLocal(imp.fechaMinArchivo)} → {fmtFechaLocal(imp.fechaMaxArchivo)}</b></> : null}
                           </div>
                         </div>
                         <Button variant="ghost" size="icon" onClick={() => removeExcelImport(idx)} title="Quitar">
@@ -554,11 +629,12 @@ export function PulsosCuadreSemanalPage() {
                         </Button>
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        <Mini label="Leídas" value={imp.rows.length} />
+                        <Mini label="Filas del archivo" value={totalArchivo} />
+                        <Mini label={imp.procesarTodo ? "Procesando todo" : "Dentro del rango"} value={enRango} tone={enRango > 0 ? "ok" : "warn"} />
                         <Mini label="Válidas" value={validas} tone="ok" />
                         <Mini label="Duplicadas" value={duplicadas} tone="warn" />
                         <Mini label="Errores" value={errores} tone="error" />
-                        <Mini label="Disparos" value={imp.totalDisparos} />
+                        <Mini label="Disparos a importar" value={imp.totalDisparos} />
                         {imp.imported > 0
                           ? <Mini label="Importadas" value={imp.imported} tone="ok" />
                           : null}
@@ -566,6 +642,51 @@ export function PulsosCuadreSemanalPage() {
                           ? <Mini label="Dup DB" value={imp.duplicatesDb} tone="warn" />
                           : null}
                       </div>
+
+                      {/* Alerta cuando el archivo trae datos pero el filtro
+                          de semana los deja fuera. Ofrece 2 salidas. */}
+                      {sinDatosEnRango ? (
+                        <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+                          <div className="flex items-start gap-2">
+                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                            <div className="flex-1 space-y-1.5">
+                              <p className="text-sm font-bold text-amber-900">
+                                El archivo tiene datos, pero ninguno corresponde a la semana seleccionada.
+                              </p>
+                              <p className="text-xs text-amber-900/80">
+                                Rango del archivo: <b>{fmtFechaLocal(imp.fechaMinArchivo)} → {fmtFechaLocal(imp.fechaMaxArchivo)}</b><br/>
+                                Semana seleccionada: <b>{fmtFechaLocal(weekStart)} → {fmtFechaLocal(weekEnd)}</b>
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <Button size="sm" variant="outline" onClick={() => useFileRange(idx)} className="h-8 gap-1 text-xs">
+                                  Usar rango del archivo
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => toggleProcesarTodo(idx)} className="h-8 gap-1 text-xs">
+                                  Procesar todo el Excel
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => setStep(1)} className="h-8 gap-1 text-xs">
+                                  Cambiar semana
+                                </Button>
+                              </div>
+                              <p className="mt-1 text-[10px] text-amber-900/70">
+                                Si procesas todo el Excel, las sesiones se registran para Disparos operadoras,
+                                pero el cuadre semanal solo comparará la semana seleccionada.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {/* Si el usuario activó "Procesar todo", chip discreto
+                          que se puede revertir. */}
+                      {imp.procesarTodo ? (
+                        <div className="mt-2 flex items-center justify-between rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs text-sky-800">
+                          <span>Procesando <b>todo el Excel</b> (filtro de semana desactivado).</span>
+                          <button type="button" onClick={() => toggleProcesarTodo(idx)} className="font-bold underline">
+                            Re-aplicar filtro
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   )
                 })}
