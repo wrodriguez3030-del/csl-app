@@ -230,6 +230,91 @@ export function PulsosCuadreSemanalPage() {
 
   const removeExcelImport = (idx: number) => setExcelImports((current) => current.filter((_, i) => i !== idx))
 
+  /** Construye un payload SesionCliente desde una fila parseada. Helper
+   *  compartido entre "Importar todo", "Importar solo esta semana" e
+   *  "Importar todo el Excel". */
+  const rowToSesion = (r: ParsedDisparoRow, filename: string, ts: number, i: number): SesionCliente => {
+    const observaciones = r.disparosRaw !== String(r.disparos) ? `Disparos Excel: ${r.disparosRaw}` : ""
+    return {
+      SesionID: `ses_${ts}_${i}`,
+      Fecha: r.fecha,
+      EquipoID: "",
+      Sucursal: r.sucursal,
+      Cabina: "",
+      OperadoraID: r.operadora,
+      Cliente: r.cliente || "Sin cliente",
+      AreaTrabajada: r.tratamiento.replace(/^depilaci[oó]n\s*-\s*/i, "").trim(),
+      DisparosReportados: r.disparos,
+      Duracion: undefined,
+      Observaciones: observaciones,
+      ContactoCliente: r.contacto || undefined,
+      Tratamiento: r.tratamiento || undefined,
+      Potencia: r.potencia || undefined,
+      Spot: r.spot || undefined,
+      ArchivoOrigen: filename,
+      FilaOrigen: r.filaOrigen,
+      ImportHash: r.hash || undefined,
+    }
+  }
+
+  /** Persiste un array de filas válidas en DB. Devuelve contadores. */
+  const persistRows = async (rows: ParsedDisparoRow[], filename: string): Promise<{ imported: number; duplicatesDb: number; insertedLocal: SesionCliente[] }> => {
+    const ts = Date.now()
+    let imported = 0
+    let duplicatesDb = 0
+    const insertedLocal: SesionCliente[] = []
+    for (let i = 0; i < rows.length; i += 1) {
+      const sesion = rowToSesion(rows[i], filename, ts, i)
+      try {
+        const result = await apiJsonp(normalizeApiUrl(apiUrl), { action: "saveSesion", data: JSON.stringify(sesion) }) as { ok?: boolean; duplicate?: boolean }
+        if (result?.duplicate) duplicatesDb += 1
+        else if (result?.ok) { imported += 1; insertedLocal.push(sesion) }
+      } catch (err) {
+        console.warn("saveSesion failed", err)
+      }
+    }
+    return { imported, duplicatesDb, insertedLocal }
+  }
+
+  /** Importa SOLO las filas de una semana específica de un excelImport. */
+  const importWeekFromExcel = async (idx: number, fechaLunes: string) => {
+    const imp = excelImports[idx]
+    if (!imp) return
+    const weekEndIso = addDays(fechaLunes, 6)
+    const targetRows = imp.rowsAll.filter((r) =>
+      r.status === "valid" && r.fecha >= fechaLunes && r.fecha <= weekEndIso,
+    )
+    if (!targetRows.length) {
+      showToast("No hay filas válidas para esa semana", "error")
+      return
+    }
+    setImportingExcel(true)
+    try {
+      const { imported, duplicatesDb, insertedLocal } = await persistRows(targetRows, imp.filename)
+      if (insertedLocal.length) {
+        setDbPulsos({ ...dbPulsos, sesionesCliente: [...dbPulsos.sesionesCliente, ...insertedLocal] })
+      }
+      // Actualizar contadores acumulados del excelImport
+      setExcelImports((current) => current.map((x, i) => i === idx
+        ? { ...x, imported: x.imported + imported, duplicatesDb: x.duplicatesDb + duplicatesDb }
+        : x))
+      const total = insertedLocal.reduce((s, x) => s + x.DisparosReportados, 0)
+      showToast(`${imported} sesiones de la semana ${fmtFechaLocal(fechaLunes)} importadas${duplicatesDb > 0 ? ` · ${duplicatesDb} dup DB` : ""}`, "success")
+      if (total) {
+        // sin más
+      }
+    } finally {
+      setImportingExcel(false)
+    }
+  }
+
+  /** Cambia la semana del wizard al lunes-sábado de la semana elegida. */
+  const useWeekForCuadre = (fechaLunes: string) => {
+    setWeekStart(fechaLunes)
+    setWeekEnd(addDays(fechaLunes, 5))
+    showToast(`Semana del cuadre: ${fmtFechaLocal(fechaLunes)} → ${fmtFechaLocal(addDays(fechaLunes, 5))}`, "success")
+  }
+
   // Confirma la importación a DB de TODOS los Excel cargados — toca el
   // backend con saveSesion fila por fila (el UNIQUE parcial sobre
   // import_hash rechaza los duplicados que el dedupe in-memory dejó pasar).
@@ -687,6 +772,97 @@ export function PulsosCuadreSemanalPage() {
                           </button>
                         </div>
                       ) : null}
+
+                      {/* Semanas detectadas en el archivo — agrupamos por
+                          lunesDeSemana(fecha). Permite ver qué semanas tiene
+                          el Excel y actuar sobre una semana específica:
+                          usarla para el cuadre o importar solo esa semana. */}
+                      {(() => {
+                        const byWeek = new Map<string, ParsedDisparoRow[]>()
+                        for (const row of imp.rowsAll) {
+                          const wk = lunesDeSemana(row.fecha)
+                          if (!wk) continue
+                          if (!byWeek.has(wk)) byWeek.set(wk, [])
+                          byWeek.get(wk)!.push(row)
+                        }
+                        const semanas = Array.from(byWeek.entries())
+                          .sort((a, b) => b[0].localeCompare(a[0]))
+                          .map(([fechaLunes, rows]) => {
+                            const valid = rows.filter((r) => r.status === "valid")
+                            const dup = rows.filter((r) => r.status === "duplicate")
+                            const err = rows.filter((r) => r.status === "error")
+                            return {
+                              fechaLunes,
+                              fechaFin: addDays(fechaLunes, 5),
+                              rows,
+                              valid: valid.length,
+                              dup: dup.length,
+                              err: err.length,
+                              disparos: valid.reduce((s, r) => s + r.disparos, 0),
+                              operadoras: Array.from(new Set(rows.map((r) => r.operadora).filter(Boolean))),
+                              sucursales: Array.from(new Set(rows.map((r) => r.sucursal).filter(Boolean))),
+                            }
+                          })
+                        if (semanas.length === 0) return null
+                        return (
+                          <div className="mt-4 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                                Semanas detectadas en el archivo ({semanas.length})
+                              </h4>
+                            </div>
+                            <div className="space-y-2">
+                              {semanas.map((sem) => {
+                                const isActiveCuadre = sem.fechaLunes === weekStart
+                                return (
+                                  <div
+                                    key={sem.fechaLunes}
+                                    className={`rounded-lg border p-2.5 text-xs ${isActiveCuadre ? "border-primary/40 bg-primary/5" : "border-slate-200 bg-white"}`}
+                                  >
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <div className="font-bold">
+                                          Semana del {fmtFechaLocal(sem.fechaLunes)} al {fmtFechaLocal(sem.fechaFin)}
+                                          {isActiveCuadre ? (
+                                            <span className="ml-2 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold text-primary">
+                                              Activa para cuadre
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                        <div className="mt-1 flex flex-wrap gap-1 text-[10px] text-muted-foreground">
+                                          <span><b>{sem.rows.length}</b> filas</span>
+                                          <span>· <span className="text-emerald-700"><b>{sem.valid}</b> válidas</span></span>
+                                          {sem.dup > 0 ? <span>· <span className="text-amber-700"><b>{sem.dup}</b> dup</span></span> : null}
+                                          {sem.err > 0 ? <span>· <span className="text-rose-700"><b>{sem.err}</b> err</span></span> : null}
+                                          <span>· <b>{sem.disparos.toLocaleString("es-DO")}</b> disparos</span>
+                                          {sem.operadoras.length > 0 ? <span>· {sem.operadoras.length} {sem.operadoras.length === 1 ? "operadora" : "operadoras"}</span> : null}
+                                          {sem.sucursales.length > 0 ? <span>· {sem.sucursales.join(", ")}</span> : null}
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-wrap gap-1">
+                                        {!isActiveCuadre ? (
+                                          <Button size="sm" variant="outline" onClick={() => useWeekForCuadre(sem.fechaLunes)} className="h-7 px-2 text-[11px]">
+                                            Usar para cuadre
+                                          </Button>
+                                        ) : null}
+                                        <Button
+                                          size="sm" variant="outline"
+                                          onClick={() => importWeekFromExcel(idx, sem.fechaLunes)}
+                                          disabled={importingExcel || sem.valid === 0}
+                                          className="h-7 gap-1 px-2 text-[11px]"
+                                        >
+                                          {importingExcel ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                                          Importar {sem.valid > 0 ? `${sem.valid}` : ""}
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </div>
                   )
                 })}
