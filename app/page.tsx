@@ -271,11 +271,10 @@ export default function HomePage() {
       <Sidebar />
       <LoadingOverlay />
       <ToastNotification />
-      {/* Offset del contenido principal: solo en desktop ≥1180px (custom
-          breakpoint para que tabletas de 1180×820 entren en modo desktop).
-          En tablet/móvil (<1180px) el sidebar es drawer y NO empuja el
-          contenido — width 100% del viewport. */}
-      <div className="min-[1180px]:pl-72">
+      {/* data-csl-main: el padding-left lo controla app/globals.css con
+          media queries explícitas (< 1180px → 0; ≥ 1180px → 18rem).
+          No depende de Tailwind variants para evitar fallo en producción. */}
+      <div data-csl-main>
         <Header onRefresh={activeTab !== "config" && !String(activeTab).startsWith("pulsos-") && !String(activeTab).startsWith("pulse-") ? handleRefresh : undefined} />
         {/* Layout centrado:
               - max-w-[1480px] cap para que en pantallas muy anchas no quede infinito

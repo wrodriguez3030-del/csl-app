@@ -274,3 +274,46 @@ input:focus, textarea:focus,
 .text-blue-300 { color: #1D4ED8 !important; }
 .text-green-300 { color: #15803D !important; }
 .text-green-400 { color: #16A34A !important; }
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Layout responsive — sidebar drawer en tablet/móvil (< 1180px)
+ *
+ * Las utilidades arbitrary-variant de Tailwind v4 (`min-[1180px]:`) no
+ * siempre se generan en producción. Acá fijamos el comportamiento con
+ * CSS puro + !important para que NUNCA falle, sin importar tree-shake.
+ *
+ * Hooks en el JSX:
+ *   - <aside data-csl-sidebar data-open={sidebarOpen}>
+ *   - <div data-csl-overlay>
+ *   - <div data-csl-main>
+ *   - <button data-csl-sidebar-toggle>
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* < 1180px: sidebar oculto a la izquierda. Solo aparece si data-open=true */
+@media (max-width: 1179.98px) {
+  [data-csl-sidebar] {
+    transform: translateX(-100%) !important;
+  }
+  [data-csl-sidebar][data-open="true"] {
+    transform: translateX(0) !important;
+  }
+  [data-csl-main] {
+    padding-left: 0 !important;
+  }
+}
+
+/* ≥ 1180px: sidebar fijo visible siempre. Contenido con margen 18rem */
+@media (min-width: 1180px) {
+  [data-csl-sidebar] {
+    transform: translateX(0) !important;
+  }
+  [data-csl-overlay] {
+    display: none !important;
+  }
+  [data-csl-sidebar-toggle] {
+    display: none !important;
+  }
+  [data-csl-main] {
+    padding-left: 18rem !important;
+  }
+}

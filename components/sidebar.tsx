@@ -168,12 +168,15 @@ export function Sidebar() {
           porque el usuario reportó tabletas de 1180×820 donde xl: aún no
           activaba el sidebar fijo. Tailwind v4 acepta arbitrary variants
           tipo `min-[1180px]:`. */}
-      {sidebarOpen ? <div className="fixed inset-0 z-40 bg-slate-900/35 backdrop-blur-sm min-[1180px]:hidden" onClick={() => setSidebarOpen(false)} /> : null}
+      {sidebarOpen ? <div data-csl-overlay className="fixed inset-0 z-40 bg-slate-900/35 backdrop-blur-sm" onClick={() => setSidebarOpen(false)} /> : null}
+      {/* data-csl-sidebar + data-open consumidos por app/globals.css media
+          queries (< 1180px = drawer; ≥ 1180px = fijo). El CSS explícito
+          garantiza el comportamiento sin depender de Tailwind v4 variants. */}
       <aside
-        className={cn(
-          "fixed left-0 top-0 z-50 flex h-full max-h-dvh w-72 max-w-[82vw] flex-col overflow-hidden border-r border-[color:var(--brand-border)] bg-white shadow-[1px_0_0_rgba(15,45,68,.04)] transition-transform duration-300 min-[1180px]:translate-x-0",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        )}
+        data-csl-sidebar
+        data-open={sidebarOpen ? "true" : "false"}
+        className="fixed left-0 top-0 z-50 flex h-full max-h-dvh w-72 max-w-[82vw] flex-col overflow-hidden border-r border-[color:var(--brand-border)] bg-white shadow-[1px_0_0_rgba(15,45,68,.04)] transition-transform duration-300"
+        style={{ transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)" }}
       >
         <div className="relative border-b border-[color:var(--brand-border)] px-5 py-5">
           <div className="flex items-center justify-between gap-3">
@@ -187,7 +190,7 @@ export function Sidebar() {
                 <p className="mt-0.5 text-[11px] font-medium text-slate-500">Sistema Integral {business.shortName}</p>
               </div>
             </div>
-            <Button variant="ghost" size="icon" className="min-[1180px]:hidden" onClick={() => setSidebarOpen(false)}>
+            <Button data-csl-sidebar-toggle variant="ghost" size="icon" onClick={() => setSidebarOpen(false)}>
               <X className="h-4 w-4" />
             </Button>
           </div>
