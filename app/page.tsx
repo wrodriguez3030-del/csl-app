@@ -271,9 +271,11 @@ export default function HomePage() {
       <Sidebar />
       <LoadingOverlay />
       <ToastNotification />
-      {/* Offset del contenido principal: solo en desktop ≥1280px (xl:).
-          En tablet el sidebar es drawer y NO debe empujar el contenido. */}
-      <div className="xl:pl-72">
+      {/* Offset del contenido principal: solo en desktop ≥1180px (custom
+          breakpoint para que tabletas de 1180×820 entren en modo desktop).
+          En tablet/móvil (<1180px) el sidebar es drawer y NO empuja el
+          contenido — width 100% del viewport. */}
+      <div className="min-[1180px]:pl-72">
         <Header onRefresh={activeTab !== "config" && !String(activeTab).startsWith("pulsos-") && !String(activeTab).startsWith("pulse-") ? handleRefresh : undefined} />
         {/* Layout centrado:
               - max-w-[1480px] cap para que en pantallas muy anchas no quede infinito

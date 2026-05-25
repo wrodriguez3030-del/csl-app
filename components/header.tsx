@@ -81,7 +81,7 @@ export function Header({ onRefresh }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-[color:var(--brand-border)] bg-white/85 backdrop-blur-xl">
       <div className="flex min-h-[78px] items-center gap-4 px-4 py-3 lg:px-7">
-        <Button variant="ghost" size="icon" className="xl:hidden" onClick={() => setSidebarOpen(true)}>
+        <Button variant="ghost" size="icon" className="min-[1180px]:hidden h-11 w-11" onClick={() => setSidebarOpen(true)}>
           <Menu className="h-5 w-5" />
           <span className="sr-only">Abrir menú</span>
         </Button>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useEffect, useMemo } from "react"
 import { cn } from "@/lib/utils"
 import { useAppStore } from "@/lib/store"
 import type { TabId } from "@/lib/types"
@@ -148,15 +148,30 @@ export function Sidebar() {
     setSidebarOpen(false)
   }
 
+  // Auto-cerrar el sidebar al cargar / cambiar viewport a tablet (< 1180px).
+  // El usuario reportó que la tableta lo veía abierto encima del formulario;
+  // este efecto lo cierra en cualquier viewport menor al breakpoint de
+  // desktop, sin afectar al usuario desktop que controla el sidebar por
+  // su cuenta. Listener de resize para cubrir rotación tablet (vertical→horizontal).
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const mql = window.matchMedia("(max-width: 1179px)")
+    const closeIfMobile = () => { if (mql.matches) setSidebarOpen(false) }
+    closeIfMobile()
+    mql.addEventListener("change", closeIfMobile)
+    return () => mql.removeEventListener("change", closeIfMobile)
+  }, [setSidebarOpen])
+
   return (
     <>
-      {/* Breakpoint xl: (1280px) en vez de lg: (1024px). Tablets de 768-1180px
-          ahora ven el sidebar como drawer con overlay + cierre auto en
-          handleNavClick. Solo en desktop verdadero (≥1280px) queda fijo. */}
-      {sidebarOpen ? <div className="fixed inset-0 z-40 bg-slate-900/35 backdrop-blur-sm xl:hidden" onClick={() => setSidebarOpen(false)} /> : null}
+      {/* Breakpoint custom 1180px (no xl:=1280px de Tailwind por defecto)
+          porque el usuario reportó tabletas de 1180×820 donde xl: aún no
+          activaba el sidebar fijo. Tailwind v4 acepta arbitrary variants
+          tipo `min-[1180px]:`. */}
+      {sidebarOpen ? <div className="fixed inset-0 z-40 bg-slate-900/35 backdrop-blur-sm min-[1180px]:hidden" onClick={() => setSidebarOpen(false)} /> : null}
       <aside
         className={cn(
-          "fixed left-0 top-0 z-50 flex h-full max-h-dvh w-72 max-w-[85vw] flex-col overflow-hidden border-r border-[color:var(--brand-border)] bg-white shadow-[1px_0_0_rgba(15,45,68,.04)] transition-transform duration-300 xl:translate-x-0",
+          "fixed left-0 top-0 z-50 flex h-full max-h-dvh w-72 max-w-[82vw] flex-col overflow-hidden border-r border-[color:var(--brand-border)] bg-white shadow-[1px_0_0_rgba(15,45,68,.04)] transition-transform duration-300 min-[1180px]:translate-x-0",
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -172,7 +187,7 @@ export function Sidebar() {
                 <p className="mt-0.5 text-[11px] font-medium text-slate-500">Sistema Integral {business.shortName}</p>
               </div>
             </div>
-            <Button variant="ghost" size="icon" className="xl:hidden" onClick={() => setSidebarOpen(false)}>
+            <Button variant="ghost" size="icon" className="min-[1180px]:hidden" onClick={() => setSidebarOpen(false)}>
               <X className="h-4 w-4" />
             </Button>
           </div>
