@@ -315,6 +315,17 @@ export function PulsosCuadreSemanalPage() {
     showToast(`Semana del cuadre: ${fmtFechaLocal(fechaLunes)} → ${fmtFechaLocal(addDays(fechaLunes, 5))}`, "success")
   }
 
+  // Cuando cambia la semana, recalcular lecturaInicialAuto de las fotos ya
+  // cargadas (la lectura inicial depende de weekStart: buscamos la última
+  // lectura final con fecha_semana < weekStart para mismo equipo/sucursal/cabina).
+  useEffect(() => {
+    setFotos((current) => current.map((f) => ({
+      ...f,
+      lecturaInicialAuto: lookupLecturaPrevia(f.equipoId, f.sucursal, f.cabina, weekStart),
+    })))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekStart])
+
   // Confirma la importación a DB de TODOS los Excel cargados — toca el
   // backend con saveSesion fila por fila (el UNIQUE parcial sobre
   // import_hash rechaza los duplicados que el dedupe in-memory dejó pasar).
@@ -887,7 +898,28 @@ export function PulsosCuadreSemanalPage() {
       ) : null}
 
       {/* PASO 3 — Fotos */}
-      {step === 3 ? (
+      {step === 3 ? (() => {
+        // Semanas detectadas en TODOS los Excel cargados (deduplicado por
+        // lunes ISO). Permite al usuario clic-to-asignar la semana de las
+        // fotos sin volver al paso 1.
+        const semanasDelExcel = new Map<string, { fechaLunes: string; fechaFin: string; sesiones: number; disparos: number }>()
+        for (const imp of excelImports) {
+          for (const r of imp.rowsAll) {
+            if (r.status !== "valid") continue
+            const wk = lunesDeSemana(r.fecha)
+            if (!wk) continue
+            const cur = semanasDelExcel.get(wk) || { fechaLunes: wk, fechaFin: addDays(wk, 5), sesiones: 0, disparos: 0 }
+            cur.sesiones += 1
+            cur.disparos += r.disparos
+            semanasDelExcel.set(wk, cur)
+          }
+        }
+        const semanasOpts = Array.from(semanasDelExcel.values()).sort((a, b) => b.fechaLunes.localeCompare(a.fechaLunes))
+        // ¿Hay sesiones del Excel para la semana activa?
+        const sesionesEnSemana = semanasDelExcel.get(weekStart)
+        const semanaTieneDatos = !!sesionesEnSemana && sesionesEnSemana.sesiones > 0
+
+        return (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -895,11 +927,84 @@ export function PulsosCuadreSemanalPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Banner de SEMANA DE LAS FOTOS — clave del cuadre */}
+            <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-primary">Semana de las fotos *</div>
+                  <div className="mt-1 text-base font-bold">
+                    Del {fmtFechaLocal(weekStart)} al {fmtFechaLocal(weekEnd)}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Las lecturas de estas fotos se compararán contra los disparos del Excel de esta misma semana.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs text-muted-foreground">Cambiar:</Label>
+                  <Input
+                    type="date"
+                    value={weekStart}
+                    onChange={(e) => setWeekStart(lunesDeSemana(e.target.value))}
+                    className="h-9 w-44 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Quick-select de semanas detectadas del Excel */}
+              {semanasOpts.length > 0 ? (
+                <div className="mt-3">
+                  <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                    Semanas detectadas en el Excel ({semanasOpts.length})
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {semanasOpts.map((sem) => {
+                      const active = sem.fechaLunes === weekStart
+                      return (
+                        <button
+                          key={sem.fechaLunes}
+                          type="button"
+                          onClick={() => useWeekForCuadre(sem.fechaLunes)}
+                          className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                            active
+                              ? "border-primary bg-primary text-white"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-primary/50 hover:text-primary"
+                          }`}
+                          title={`${sem.sesiones} sesiones · ${sem.disparos.toLocaleString("es-DO")} disparos`}
+                        >
+                          {fmtFechaLocal(sem.fechaLunes)} → {fmtFechaLocal(sem.fechaFin)}
+                          <span className="ml-1.5 opacity-75">({sem.sesiones})</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Alerta si la semana activa no tiene sesiones del Excel */}
+              {excelImports.length > 0 && !semanaTieneDatos ? (
+                <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                    <div className="flex-1">
+                      <p className="font-bold text-amber-900">
+                        El Excel fue leído correctamente, pero no contiene disparos para la semana seleccionada de las fotos.
+                      </p>
+                      <p className="mt-1 text-amber-900/80">
+                        Semana de las fotos: <b>{fmtFechaLocal(weekStart)} → {fmtFechaLocal(weekEnd)}</b>
+                        {semanasOpts.length > 0 ? <> · Disponibles en el Excel: <b>{semanasOpts.length}</b> (toca un chip arriba para elegir otra).</> : null}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
             <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 p-6 text-center">
               <Camera className="mx-auto mb-2 h-8 w-8 text-primary" />
               <p className="text-sm font-semibold">Arrastra las fotos o selecciona</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Una foto por equipo (pantalla del GentleYAG). El número de pulsos se ingresa manualmente por ahora — OCR/IA queda preparado en próxima iteración.
+                Una foto por equipo (pantalla del GentleYAG). Cada foto se asigna automáticamente
+                a la semana del cuadre. Lectura final por OCR/IA o manual.
               </p>
               <input
                 ref={fotosInputRef} type="file" accept="image/*" multiple className="hidden"
@@ -934,7 +1039,8 @@ export function PulsosCuadreSemanalPage() {
             />
           </CardContent>
         </Card>
-      ) : null}
+        )
+      })() : null}
 
       {/* PASO 4 — Revisión */}
       {step === 4 ? (
