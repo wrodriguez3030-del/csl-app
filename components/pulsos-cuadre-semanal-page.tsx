@@ -26,6 +26,7 @@ import {
 } from "@/lib/pulse-audit"
 import { printCuadre, type CuadreEquipoRow, type CuadreSnapshot } from "@/lib/pulse-cuadre-pdf"
 import { exportCuadreXlsx } from "@/lib/pulse-cuadre-xlsx"
+import { scanPulseScreen } from "@/lib/pulse-vision"
 import type { SesionCliente, AuditoriaSemanal } from "@/lib/types"
 
 // ─── Tipos locales del wizard ────────────────────────────────────────────────
@@ -44,6 +45,8 @@ interface ExcelImportInfo {
 interface FotoEntry {
   id: string
   filename: string
+  /** File original — necesario para re-escanear con Vision sin perder bytes. */
+  file: File | null
   dataUrl: string               // base64 para preview (no se sube al server)
   equipoId: string
   sucursal: string
@@ -51,6 +54,10 @@ interface FotoEntry {
   lecturaFinal: number | null
   lecturaInicialAuto: number | null   // se autocompleta desde lectura anterior
   observaciones: string
+  /** Estado del OCR: "idle" | "scanning" | "ok" | "fail". */
+  scanStatus: "idle" | "scanning" | "ok" | "fail"
+  /** Serial detectado por Vision (informativo, no usado en cálculo). */
+  serialDetectado?: string
 }
 
 interface EquipoCuadre extends CuadreEquipoRow {
@@ -230,6 +237,7 @@ export function PulsosCuadreSemanalPage() {
         nuevas.push({
           id: newRowId(),
           filename: file.name,
+          file,
           dataUrl,
           equipoId: "",
           sucursal: sucursalFiltro !== "Todas" ? sucursalFiltro : "",
@@ -237,13 +245,39 @@ export function PulsosCuadreSemanalPage() {
           lecturaFinal: null,
           lecturaInicialAuto: null,
           observaciones: "",
+          scanStatus: "idle",
         })
-      } catch (err) {
+      } catch {
         showToast(`No se pudo cargar ${file.name}`, "error")
       }
     }
     setFotos((current) => [...current, ...nuevas])
     if (fotosInputRef.current) fotosInputRef.current.value = ""
+  }
+
+  /** OCR de una foto con Claude Vision. Auto-popula lecturaFinal + serial. */
+  const scanFoto = async (id: string) => {
+    const foto = fotos.find((f) => f.id === id)
+    if (!foto?.file) return
+    setFotos((current) => current.map((f) => f.id === id ? { ...f, scanStatus: "scanning" } : f))
+    try {
+      const reading = await scanPulseScreen(foto.file)
+      setFotos((current) => current.map((f) => {
+        if (f.id !== id) return f
+        if (reading.totalPulses !== null) {
+          return { ...f, scanStatus: "ok", lecturaFinal: reading.totalPulses, serialDetectado: reading.serial || undefined }
+        }
+        return { ...f, scanStatus: "fail" }
+      }))
+      if (reading.totalPulses !== null) {
+        showToast(`✓ Pulsos: ${reading.totalPulses.toLocaleString("es-DO")}${reading.serial ? ` · Serial ${reading.serial}` : ""}`, "success")
+      } else {
+        showToast(`No se pudo leer ${foto.filename}. Ingresa el número manualmente.`, "error")
+      }
+    } catch (err) {
+      setFotos((current) => current.map((f) => f.id === id ? { ...f, scanStatus: "fail" } : f))
+      showToast(`Error escaneando ${foto.filename}: ${err instanceof Error ? err.message : String(err)}`, "error")
+    }
   }
 
   const removeFoto = (id: string) => setFotos((current) => current.filter((f) => f.id !== id))
@@ -589,6 +623,7 @@ export function PulsosCuadreSemanalPage() {
                     sucursales={sucursalesOptions.filter((s) => s !== "Todas")}
                     onUpdate={(patch) => updateFoto(foto.id, patch)}
                     onRemove={() => removeFoto(foto.id)}
+                    onScan={() => scanFoto(foto.id)}
                   />
                 ))}
               </div>
@@ -770,13 +805,15 @@ function Mini({ label, value, tone }: { label: string; value: number; tone?: "ok
   )
 }
 
-function FotoCard({ foto, equipos, sucursales, onUpdate, onRemove }: {
+function FotoCard({ foto, equipos, sucursales, onUpdate, onRemove, onScan }: {
   foto: FotoEntry
   equipos: Array<{ EquipoID: string; Sucursal: string; Modelo: string }>
   sucursales: string[]
   onUpdate: (patch: Partial<FotoEntry>) => void
   onRemove: () => void
+  onScan: () => void
 }) {
+  const scanning = foto.scanStatus === "scanning"
   return (
     <div className="rounded-xl border bg-white p-3">
       <div className="flex items-start gap-3">
@@ -786,7 +823,12 @@ function FotoCard({ foto, equipos, sucursales, onUpdate, onRemove }: {
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <div className="truncate text-xs font-bold">{foto.filename}</div>
-              <div className="text-[10px] text-muted-foreground">{foto.lecturaInicialAuto !== null ? `Lect. inicial auto: ${foto.lecturaInicialAuto.toLocaleString("es-DO")}` : "Sin lectura previa para autocompletar"}</div>
+              <div className="text-[10px] text-muted-foreground">
+                {foto.lecturaInicialAuto !== null
+                  ? `Lect. inicial auto: ${foto.lecturaInicialAuto.toLocaleString("es-DO")}`
+                  : "Sin lectura previa para autocompletar"}
+                {foto.serialDetectado ? ` · Serial: ${foto.serialDetectado}` : ""}
+              </div>
             </div>
             <Button variant="ghost" size="icon" onClick={onRemove}><X className="h-3.5 w-3.5" /></Button>
           </div>
@@ -814,6 +856,28 @@ function FotoCard({ foto, equipos, sucursales, onUpdate, onRemove }: {
               onChange={(e) => onUpdate({ lecturaFinal: e.target.value === "" ? null : Number(e.target.value) })}
               className="h-8 text-xs"
             />
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline" size="sm" onClick={onScan}
+              disabled={scanning || !foto.file}
+              className="h-8 gap-1 text-xs"
+            >
+              {scanning
+                ? <Loader2 className="h-3 w-3 animate-spin" />
+                : <Camera className="h-3 w-3" />}
+              {scanning ? "Escaneando…" : foto.scanStatus === "ok" ? "Re-escanear con IA" : "Escanear con IA"}
+            </Button>
+            {foto.scanStatus === "ok" ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-emerald-700">
+                <CheckCircle2 className="h-2.5 w-2.5" /> Detectado
+              </span>
+            ) : null}
+            {foto.scanStatus === "fail" ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-rose-700">
+                <AlertTriangle className="h-2.5 w-2.5" /> No leído
+              </span>
+            ) : null}
           </div>
           <Input
             type="text" placeholder="Observaciones"

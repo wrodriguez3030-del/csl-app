@@ -264,6 +264,56 @@ export function DashboardPage() {
   const pulseReal = dbPulsos.lecturasSemanales.reduce((sum, item) => sum + Number(item.DiferenciaReal || 0), 0)
   const pulseReportado = dbPulsos.sesionesCliente.reduce((sum, item) => sum + Number(item.DisparosReportados || 0), 0)
 
+  // ─── Cuadres semanales (csl_auditorias_semanales) ──────────────────────────
+  // El wizard "Cuadre semanal" persiste un snapshot por equipo/semana/cabina.
+  // Acá leemos lo que está en el store (dbPulsos.auditoriasSemanales viene
+  // de getAllPulsosData ya filtrado por tenant) y lo cruzamos con los filtros
+  // del dashboard (sucursal + rango fecha).
+  const auditoriasFiltradas = useMemo(() => {
+    return (dbPulsos.auditoriasSemanales || []).filter((a) => {
+      const date = String(a.FechaSemana || "").slice(0, 10)
+      if (date && date < fromDate) return false
+      if (sucursalFilter !== "Todas" && a.Sucursal !== sucursalFilter) return false
+      return true
+    })
+  }, [dbPulsos.auditoriasSemanales, fromDate, sucursalFilter])
+
+  const cuadresOK = auditoriasFiltradas.filter((a) => a.Alerta === "OK").length
+  const cuadresAdv = auditoriasFiltradas.filter((a) => a.Alerta === "Advertencia").length
+  const cuadresCrit = auditoriasFiltradas.filter((a) => a.Alerta === "Critico").length
+  const cuadresDisparosLaser = auditoriasFiltradas.reduce((s, a) => s + Number(a.PulsosReales || 0), 0)
+  const cuadresDisparosOperador = auditoriasFiltradas.reduce((s, a) => s + Number(a.PulsosReportados || 0), 0)
+  const cuadresDifTotal = cuadresDisparosOperador - cuadresDisparosLaser
+
+  // Ranking de equipos con mayor desviación absoluta en el rango.
+  const equiposMayorDesviacion = useMemo(() => {
+    return [...auditoriasFiltradas]
+      .sort((a, b) => Math.abs(Number(b.Diferencia || 0)) - Math.abs(Number(a.Diferencia || 0)))
+      .slice(0, 6)
+  }, [auditoriasFiltradas])
+
+  // Tendencia por semana: agrupa auditorías por FechaSemana, suma reales +
+  // reportados, devuelve las últimas 8 semanas ordenadas.
+  const tendenciaSemanal = useMemo(() => {
+    const map = new Map<string, { semana: string; laser: number; operador: number; alertas: number }>()
+    for (const a of auditoriasFiltradas) {
+      const semana = String(a.FechaSemana || "").slice(0, 10)
+      if (!semana) continue
+      const acc = map.get(semana) || { semana, laser: 0, operador: 0, alertas: 0 }
+      acc.laser += Number(a.PulsosReales || 0)
+      acc.operador += Number(a.PulsosReportados || 0)
+      if (a.Alerta && a.Alerta !== "OK") acc.alertas += 1
+      map.set(semana, acc)
+    }
+    return Array.from(map.values())
+      .sort((a, b) => b.semana.localeCompare(a.semana))
+      .slice(0, 8)
+      .reverse()
+  }, [auditoriasFiltradas])
+
+  // Pico para el mini-chart (escala el ancho de las barras).
+  const tendenciaMax = Math.max(1, ...tendenciaSemanal.flatMap((t) => [t.laser, t.operador]))
+
   return (
     <div className="csl-page-shell">
       {/* Hero ejecutivo */}
@@ -661,6 +711,113 @@ export function DashboardPage() {
               )}
             </TableBody>
           </Table>
+        </CardContent>
+      </Card>
+
+      {/* Cuadres semanales PulseControl — snapshot persistido por el wizard
+          en csl_auditorias_semanales. Si no hay auditorías guardadas en el
+          rango, muestra estado vacío. */}
+      <Card className="overflow-hidden py-0">
+        <CardHeader className="border-b border-slate-100 bg-slate-50/70 py-5">
+          <CardTitle className="flex items-center gap-2 text-xl">
+            <Activity className="h-5 w-5 text-primary" />
+            Cuadres semanales PulseControl
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 p-5">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <KpiCard title="Cuadres en rango" value={auditoriasFiltradas.length} icon={ClipboardCheck} variant="primary"
+              description={`${cuadresOK} OK · ${cuadresAdv} adv · ${cuadresCrit} crit`} />
+            <KpiCard title="Disp. láser" value={cuadresDisparosLaser} icon={Activity} variant="success" description="Reales (lectura del equipo)" />
+            <KpiCard title="Disp. operador" value={cuadresDisparosOperador} icon={BarChart3} variant="success" description="Reportados por operadora" />
+            <KpiCard title="Diferencia total" value={cuadresDifTotal} icon={AlertTriangle}
+              variant={cuadresDifTotal === 0 ? "primary" : cuadresCrit > 0 ? "destructive" : "warning"}
+              description={cuadresDifTotal > 0 ? "Operador reportó de más" : cuadresDifTotal < 0 ? "Operador reportó de menos" : "Cuadrado"} />
+            <KpiCard title="Críticos" value={cuadresCrit} icon={AlertTriangle}
+              variant={cuadresCrit > 0 ? "destructive" : "success"}
+              description="Equipos con >15% de desviación" />
+          </div>
+
+          {auditoriasFiltradas.length === 0 ? (
+            <div className="rounded-xl border border-dashed bg-slate-50/60 p-6 text-center text-sm text-muted-foreground">
+              Sin cuadres semanales guardados para este rango y sucursal. Usa el wizard <b>PulseControl → Cuadre semanal</b> para registrar uno.
+            </div>
+          ) : (
+            <div className="grid gap-4 xl:grid-cols-[1.1fr_.9fr]">
+              {/* Tendencia por semana (mini-chart de barras horizontales) */}
+              <div className="rounded-xl border bg-white p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h4 className="text-sm font-bold">Tendencia disp. láser vs reportado</h4>
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{tendenciaSemanal.length} semanas</span>
+                </div>
+                {tendenciaSemanal.length ? (
+                  <div className="space-y-2">
+                    {tendenciaSemanal.map((t) => (
+                      <div key={t.semana} className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-mono text-muted-foreground">{formatDate(t.semana)}</span>
+                          <span>
+                            <span className="text-cyan-700 font-bold">{t.laser.toLocaleString("es-DO")}</span>
+                            <span className="text-muted-foreground"> vs </span>
+                            <span className="text-violet-700 font-bold">{t.operador.toLocaleString("es-DO")}</span>
+                            {t.alertas > 0 ? <span className="ml-2 inline-flex rounded-full bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold text-rose-700">{t.alertas} alertas</span> : null}
+                          </span>
+                        </div>
+                        <div className="flex gap-1">
+                          <div className="h-2 rounded-full bg-cyan-200" style={{ width: `${(t.laser / tendenciaMax) * 100}%` }} title={`Láser: ${t.laser.toLocaleString("es-DO")}`} />
+                          <div className="h-2 rounded-full bg-violet-300" style={{ width: `${(t.operador / tendenciaMax) * 100}%` }} title={`Operador: ${t.operador.toLocaleString("es-DO")}`} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="py-6 text-center text-xs text-muted-foreground">Sin datos para graficar.</p>
+                )}
+              </div>
+
+              {/* Equipos con mayor desviación */}
+              <div className="rounded-xl border bg-white p-0 overflow-hidden">
+                <div className="border-b bg-slate-50/60 px-4 py-2.5">
+                  <h4 className="text-sm font-bold">Equipos con mayor desviación</h4>
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Equipo</TableHead>
+                      <TableHead>Semana</TableHead>
+                      <TableHead className="text-right">Diferencia</TableHead>
+                      <TableHead className="text-right">%</TableHead>
+                      <TableHead>Alerta</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {equiposMayorDesviacion.map((a) => (
+                      <TableRow key={a.AuditoriaID}>
+                        <TableCell>
+                          <div className="font-bold text-xs">{a.EquipoID}</div>
+                          <div className="text-[10px] text-muted-foreground">{a.Sucursal}{a.Cabina ? ` · ${a.Cabina}` : ""}</div>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{formatDate(a.FechaSemana)}</TableCell>
+                        <TableCell className={`text-right font-mono text-xs ${Number(a.Diferencia) > 0 ? "text-rose-600" : Number(a.Diferencia) < 0 ? "text-sky-600" : ""}`}>
+                          {Number(a.Diferencia) > 0 ? "+" : ""}{Number(a.Diferencia || 0).toLocaleString("es-DO")}
+                        </TableCell>
+                        <TableCell className="text-right text-xs">{Number(a.PorcentajeDesviacion || 0).toFixed(1)}%</TableCell>
+                        <TableCell>
+                          <Badge className={
+                            a.Alerta === "OK"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : a.Alerta === "Advertencia"
+                                ? "border-amber-200 bg-amber-50 text-amber-700"
+                                : "border-rose-200 bg-rose-50 text-rose-700"
+                          }>{a.Alerta}</Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
 import { loadXLSX } from "@/lib/load-xlsx"
+import { scanPulseScreen } from "@/lib/pulse-vision"
 import { SEQ_HEADER_CLASS, SeqBadge } from "@/components/seq-badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -103,47 +104,21 @@ export function PulsosLecturasPage() {
     if (!file) return
     setScanning(true)
     try {
-      const reader = new FileReader()
-      reader.onload = async (ev) => {
-        const base64 = (ev.target?.result as string).split(",")[1]
-        try {
-          const resp = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: "claude-sonnet-4-20250514",
-              max_tokens: 300,
-              messages: [{
-                role: "user",
-                content: [
-                  { type: "image", source: { type: "base64", media_type: file.type as any, data: base64 } },
-                  { type: "text", text: "Esta es la pantalla de un equipo laser Candela GentleYAG. Extrae SOLO estos datos en formato JSON: {serial, totalPulses, lastFaults}. El campo totalPulses es el numero despues de Total Treatment Pulses=. Responde SOLO con el JSON, sin texto adicional." }
-                ]
-              }]
-            })
-          })
-          const data = await resp.json()
-          const text = data.content?.[0]?.text || ""
-          const clean = text.replace(/```json|```/g, "").trim()
-          const parsed = JSON.parse(clean)
-          if (parsed.totalPulses) {
-            setForm(prev => ({
-              ...prev,
-              LecturaFinal: Number(String(parsed.totalPulses).replace(/,/g, "")),
-            }))
-            showToast(`✓ Pulsos extraídos: ${Number(parsed.totalPulses).toLocaleString()} — Serial: ${parsed.serial || ""}`, "success")
-          }
-        } catch (err) {
-          showToast("No se pudo leer la pantalla. Ingresa el número manualmente.", "error")
-        }
-        setScanning(false)
+      // OCR centralizado en lib/pulse-vision.ts — mismo helper que usa el
+      // wizard "Cuadre semanal".
+      const reading = await scanPulseScreen(file)
+      if (reading.totalPulses !== null) {
+        setForm((prev) => ({ ...prev, LecturaFinal: reading.totalPulses as number }))
+        showToast(`✓ Pulsos extraídos: ${reading.totalPulses.toLocaleString("es-DO")}${reading.serial ? ` — Serial: ${reading.serial}` : ""}`, "success")
+      } else {
+        showToast("No se pudo leer la pantalla. Ingresa el número manualmente.", "error")
       }
-      reader.readAsDataURL(file)
     } catch {
-      setScanning(false)
       showToast("Error al procesar la imagen", "error")
+    } finally {
+      setScanning(false)
+      e.target.value = ""
     }
-    e.target.value = ""
   }
 
   const openNew = () => { setForm({ ...empty }); setIsEditing(false); setOpen(true) }
