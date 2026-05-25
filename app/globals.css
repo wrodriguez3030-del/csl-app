@@ -317,3 +317,35 @@ input:focus, textarea:focus,
     padding-left: 18rem !important;
   }
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Modales (Radix Dialog) en tablet/móvil
+ *
+ * (1) FORZAR el ancho responsivo del DialogContent. Aunque cada modal
+ *     declare max-w-5xl, max-w-4xl, etc., en tablet/móvil el cap real
+ *     debe ser calc(100vw - 1.5rem) para que nunca exceda el viewport.
+ *     Sin esto, modales con max-w-5xl se ven cortados a la derecha en
+ *     tabletas <1024px.
+ *
+ * (2) Cuando hay un Dialog abierto, ocultar el sidebar drawer en tablet
+ *     para que el modal quede visualmente centrado al área completa
+ *     del viewport (no tapado por el sidebar abierto detrás).
+ *     `:has()` está soportado en Chrome 105+ / Safari 15.4+ / Firefox 121+
+ *     — fallback en JS vía useEffect en sidebar.tsx.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 1179.98px) {
+  /* (1) Cap forzado del DialogContent al viewport menos un padding seguro */
+  [role="dialog"][data-state="open"][data-slot="dialog-content"] {
+    max-width: calc(100vw - 1.5rem) !important;
+    width: calc(100vw - 1.5rem) !important;
+  }
+
+  /* (2) Ocultar sidebar drawer cuando hay un dialog abierto en body */
+  body:has([role="dialog"][data-state="open"]) [data-csl-sidebar] {
+    transform: translateX(-100%) !important;
+  }
+  body:has([role="dialog"][data-state="open"]) [data-csl-overlay] {
+    display: none !important;
+  }
+}
