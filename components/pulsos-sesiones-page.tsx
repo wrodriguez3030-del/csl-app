@@ -331,6 +331,123 @@ export function PulsosSesionesPage() {
   }>(null)
   const [importing, setImporting] = useState(false)
 
+  // ─── Estado del modal de Vista previa: tabs, filtros, paginación ────────
+  const [previewTab, setPreviewTab] = useState<"resumen" | "valid" | "duplicate" | "error" | "totales">("resumen")
+  const [previewSearch, setPreviewSearch] = useState("")
+  const [previewOpFilter, setPreviewOpFilter] = useState("todas")
+  const [previewSucFilter, setPreviewSucFilter] = useState("todas")
+  const [previewPageSize, setPreviewPageSize] = useState(50)
+  const [previewPage, setPreviewPage] = useState(1)
+  const [confirmStep, setConfirmStep] = useState(false)
+  const [importResult, setImportResult] = useState<null | { inserted: number; dupOnDb: number; totalDisparos: number }>(null)
+
+  // Reset al abrir un nuevo preview.
+  useEffect(() => {
+    if (importPreview) {
+      setPreviewTab("resumen")
+      setPreviewSearch("")
+      setPreviewOpFilter("todas")
+      setPreviewSucFilter("todas")
+      setPreviewPage(1)
+      setConfirmStep(false)
+      setImportResult(null)
+    }
+  }, [importPreview])
+
+  // Reset paginación cuando cambia el tab / filtros.
+  useEffect(() => { setPreviewPage(1) }, [previewTab, previewSearch, previewOpFilter, previewSucFilter, previewPageSize])
+
+  // ─── Stats agregados del preview ──────────────────────────────────────────
+  const previewStats = useMemo(() => {
+    if (!importPreview) return null
+    const rows = importPreview.rows
+    const valid = rows.filter((r) => r.status === "valid")
+    const duplicate = rows.filter((r) => r.status === "duplicate")
+    const error = rows.filter((r) => r.status === "error")
+    const fechas = rows.map((r) => r.fecha).filter(Boolean).sort()
+    const fechaMin = fechas[0] || ""
+    const fechaMax = fechas[fechas.length - 1] || ""
+    const totalDisparosValidos = valid.reduce((s, r) => s + r.disparos, 0)
+    const operadoras = Array.from(new Set(rows.map((r) => r.operadora).filter(Boolean))).sort()
+    const sucursales = Array.from(new Set(rows.map((r) => r.sucursal).filter(Boolean))).sort()
+    const tratamientos = Array.from(new Set(rows.map((r) => r.tratamiento).filter(Boolean))).sort()
+    return { rows, valid, duplicate, error, fechaMin, fechaMax, totalDisparosValidos, operadoras, sucursales, tratamientos }
+  }, [importPreview])
+
+  // Totales por dimensión (solo cuenta filas válidas — son las que se importan).
+  const previewTotales = useMemo(() => {
+    if (!previewStats) return null
+    const agg = (key: (r: ParsedDisparoRow) => string) => {
+      const m = new Map<string, { sesiones: number; disparos: number }>()
+      for (const r of previewStats.valid) {
+        const k = key(r) || "—"
+        const cur = m.get(k) || { sesiones: 0, disparos: 0 }
+        cur.sesiones += 1
+        cur.disparos += r.disparos
+        m.set(k, cur)
+      }
+      return Array.from(m.entries())
+        .map(([nombre, v]) => ({ nombre, ...v }))
+        .sort((a, b) => b.disparos - a.disparos)
+    }
+    return {
+      porOperadora: agg((r) => r.operadora),
+      porSucursal: agg((r) => r.sucursal),
+      porTratamiento: agg((r) => r.tratamiento),
+      porFecha: agg((r) => r.fecha),
+    }
+  }, [previewStats])
+
+  // Filas filtradas según tab + filtros + búsqueda.
+  const previewFilteredRows = useMemo(() => {
+    if (!previewStats) return [] as ParsedDisparoRow[]
+    const base = previewTab === "valid"
+      ? previewStats.valid
+      : previewTab === "duplicate"
+        ? previewStats.duplicate
+        : previewTab === "error"
+          ? previewStats.error
+          : previewStats.rows
+    const needle = previewSearch.trim().toLowerCase()
+    return base.filter((r) => {
+      if (previewOpFilter !== "todas" && r.operadora !== previewOpFilter) return false
+      if (previewSucFilter !== "todas" && r.sucursal !== previewSucFilter) return false
+      if (needle) {
+        const text = [r.cliente, r.contacto, r.tratamiento, r.operadora, r.sucursal].join(" ").toLowerCase()
+        if (!text.includes(needle)) return false
+      }
+      return true
+    })
+  }, [previewStats, previewTab, previewSearch, previewOpFilter, previewSucFilter])
+
+  const previewPageCount = Math.max(1, Math.ceil(previewFilteredRows.length / previewPageSize))
+  const previewPageRows = useMemo(
+    () => previewFilteredRows.slice((previewPage - 1) * previewPageSize, previewPage * previewPageSize),
+    [previewFilteredRows, previewPage, previewPageSize],
+  )
+
+  // Descarga de errores como CSV.
+  const downloadErrorsCsv = () => {
+    if (!previewStats) return
+    const headers = ["Fila", "Fecha", "Cliente", "Contacto", "Operadora", "Sucursal", "Tratamiento", "Disparos originales", "Error"]
+    const rows = previewStats.error.map((r) => [
+      r.filaOrigen, r.fecha, r.cliente, r.contacto, r.operadora, r.sucursal, r.tratamiento, r.disparosRaw, r.message || "",
+    ])
+    const escape = (v: unknown) => {
+      const s = String(v ?? "")
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+    }
+    const csv = [headers.map(escape).join(","), ...rows.map((row) => row.map(escape).join(","))].join("\n")
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    const safe = (importPreview?.fileName || "import").replace(/\.[^/.]+$/, "")
+    a.download = `errores-${safe}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -438,7 +555,11 @@ export function PulsosSesionesPage() {
         ? `${inserted} sesiones importadas (${totalDisparos.toLocaleString("es-DO")} disparos) · ${dupOnDb} omitidas por dedupe DB`
         : `${inserted} sesiones importadas (${totalDisparos.toLocaleString("es-DO")} disparos)`
       showToast(msg, "success")
-      setImportPreview(null)
+      // Pasamos a la pantalla "Importación completada" dentro del mismo modal
+      // en vez de cerrarlo. El usuario puede revisar el resultado, ver disparos
+      // importados, o cerrar.
+      setImportResult({ inserted, dupOnDb, totalDisparos })
+      setConfirmStep(false)
       setShowImport(false)
     } catch (err) {
       showToast("Error guardando sesiones: " + String(err instanceof Error ? err.message : err), "error")
@@ -1041,153 +1162,388 @@ export function PulsosSesionesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Vista previa del import — se abre tras parsear el Excel.
-          El usuario revisa contadores + tabla, y confirma. Solo entonces
-          tocamos la DB (in-memory dedupe + saveSesion por fila). */}
+      {/* Vista previa del import — modal ampliado con tabs, filtros,
+          paginación y totales. El flujo es:
+            (1) Parseo del Excel → setImportPreview()
+            (2) Usuario revisa por tabs (Resumen / Válidas / Duplicadas /
+                Errores / Totales) y filtra
+            (3) Click "Importar válidas" → confirmStep=true → confirma
+            (4) confirmImport() persiste sesiones, setea importResult
+            (5) Pantalla final "Importación completada" con botones cerrar
+                o ver disparos. */}
       <Dialog open={!!importPreview} onOpenChange={(open) => { if (!open) setImportPreview(null) }}>
-        <DialogContent className="w-[94vw] max-w-[1100px] max-h-[88vh] overflow-y-auto p-5 sm:p-6">
+        <DialogContent className="w-[94vw] max-w-[1200px] max-h-[92dvh] overflow-y-auto p-5 sm:p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-lg">
               <FileSpreadsheet className="h-5 w-5 text-primary" />
-              Vista previa de importación
+              {importResult ? "Importación completada" : "Vista previa de importación AgendaPro"}
             </DialogTitle>
           </DialogHeader>
-          {importPreview ? (
-            <div className="space-y-4 py-2">
-              <div className="rounded-xl border bg-slate-50/60 p-3 text-xs text-slate-600">
-                <div className="flex flex-wrap gap-x-6 gap-y-1">
-                  <span><b>Archivo:</b> {importPreview.fileName}</span>
-                  <span><b>Hoja:</b> {importPreview.parsed.sheet}</span>
-                  <span><b>Encabezados en fila:</b> {importPreview.parsed.headerRow}</span>
-                  {importPreview.parsed.fileDateRange ? <span><b>Rango:</b> {importPreview.parsed.fileDateRange}</span> : null}
-                </div>
-              </div>
 
-              {/* Contadores */}
+          {/* PANTALLA FINAL — post-import */}
+          {importResult && importPreview && previewStats ? (
+            <div className="space-y-4 py-2">
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-6 text-center">
+                <CheckCircle2 className="mx-auto mb-2 h-10 w-10 text-emerald-500" />
+                <p className="text-sm text-emerald-900">Las sesiones se importaron correctamente.</p>
+              </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
                 <PreviewStat label="Leídas" value={importPreview.rows.length} />
-                <PreviewStat
-                  label="Válidas"
-                  value={importPreview.rows.filter((r) => r.status === "valid").length}
-                  tone="ok"
-                />
-                <PreviewStat
-                  label="Duplicadas"
-                  value={importPreview.rows.filter((r) => r.status === "duplicate").length}
-                  tone="warn"
-                />
-                <PreviewStat
-                  label="Con error"
-                  value={importPreview.rows.filter((r) => r.status === "error").length}
-                  tone="error"
-                />
-                <PreviewStat
-                  label="Disparos a importar"
-                  value={importPreview.rows.filter((r) => r.status === "valid").reduce((s, r) => s + r.disparos, 0)}
-                  tone="ok"
-                />
+                <PreviewStat label="Importadas" value={importResult.inserted} tone="ok" />
+                <PreviewStat label="Duplicadas omitidas" value={previewStats.duplicate.length + importResult.dupOnDb} tone="warn" />
+                <PreviewStat label="Con error" value={previewStats.error.length} tone="error" />
+                <PreviewStat label="Disparos importados" value={importResult.totalDisparos} tone="ok" />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setImportPreview(null)}>Cerrar</Button>
+              </DialogFooter>
+            </div>
+          ) : null}
+
+          {/* PASO DE CONFIRMACIÓN */}
+          {!importResult && confirmStep && previewStats ? (
+            <div className="space-y-4 py-2">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5">
+                <h3 className="text-base font-bold text-amber-900">Confirmar importación</h3>
+                <p className="mt-2 text-sm text-amber-900/80">
+                  Se importarán <b>{previewStats.valid.length.toLocaleString("es-DO")}</b> filas válidas
+                  ({previewStats.totalDisparosValidos.toLocaleString("es-DO")} disparos).
+                  {previewStats.duplicate.length > 0 ? <> Se omitirán <b>{previewStats.duplicate.length.toLocaleString("es-DO")}</b> duplicadas.</> : null}
+                  {previewStats.error.length > 0 ? <> Se omitirán <b>{previewStats.error.length.toLocaleString("es-DO")}</b> con error.</> : null}
+                </p>
+                <p className="mt-2 text-xs text-amber-900/70">¿Deseas continuar?</p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setConfirmStep(false)} disabled={importing}>Volver</Button>
+                <Button onClick={confirmImport} disabled={importing} className="gap-2">
+                  {importing ? <Save className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {importing ? "Guardando..." : `Sí, importar ${previewStats.valid.length.toLocaleString("es-DO")} filas`}
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : null}
+
+          {/* PREVIEW NORMAL */}
+          {!importResult && !confirmStep && importPreview && previewStats && previewTotales ? (
+            <div className="space-y-4 py-2">
+              <p className="text-xs text-muted-foreground">Revisa los datos antes de confirmar la importación.</p>
+
+              {/* Información del archivo */}
+              <div className="rounded-xl border bg-slate-50/60 p-3 text-xs text-slate-700">
+                <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2 md:grid-cols-4">
+                  <span><b>Archivo:</b> {importPreview.fileName}</span>
+                  <span><b>Hoja:</b> {importPreview.parsed.sheet}</span>
+                  <span><b>Header fila:</b> {importPreview.parsed.headerRow}</span>
+                  {importPreview.parsed.fileDateRange ? <span><b>Reporte:</b> {importPreview.parsed.fileDateRange}</span> : null}
+                </div>
               </div>
 
-              {/* Detección */}
-              <div className="grid gap-2 rounded-xl border bg-white p-3 text-xs sm:grid-cols-2 md:grid-cols-3">
-                <div>
-                  <div className="font-bold uppercase tracking-wide text-muted-foreground">Operadoras detectadas</div>
-                  <div className="mt-1 text-foreground">
-                    {Array.from(new Set(importPreview.rows.map((r) => r.operadora).filter(Boolean))).join(", ") || "—"}
+              {/* 6 KPIs principales */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                <PreviewStat label="Leídas" value={previewStats.rows.length} />
+                <PreviewStat label="Válidas" value={previewStats.valid.length} tone="ok" />
+                <PreviewStat label="Duplicadas" value={previewStats.duplicate.length} tone="warn" />
+                <PreviewStat label="Con error" value={previewStats.error.length} tone="error" />
+                <PreviewStat label="Total disparos" value={previewStats.totalDisparosValidos} tone="ok" />
+                <div className="col-span-2 sm:col-span-1 rounded-xl border border-slate-200 bg-white p-3 text-center">
+                  <div className="font-mono text-xs font-bold tracking-tight">
+                    {previewStats.fechaMin || "—"}{previewStats.fechaMin && previewStats.fechaMax ? " →" : ""}
                   </div>
-                </div>
-                <div>
-                  <div className="font-bold uppercase tracking-wide text-muted-foreground">Sucursales detectadas</div>
-                  <div className="mt-1 text-foreground">
-                    {Array.from(new Set(importPreview.rows.map((r) => r.sucursal).filter(Boolean))).join(", ") || "—"}
-                  </div>
-                </div>
-                <div>
-                  <div className="font-bold uppercase tracking-wide text-muted-foreground">Rango de fechas en filas</div>
-                  <div className="mt-1 text-foreground">
-                    {(() => {
-                      const fechas = importPreview.rows.map((r) => r.fecha).filter(Boolean).sort()
-                      return fechas.length ? `${fechas[0]} → ${fechas[fechas.length - 1]}` : "—"
-                    })()}
-                  </div>
+                  <div className="font-mono text-xs font-bold tracking-tight">{previewStats.fechaMax || "—"}</div>
+                  <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-700">Rango fechas</div>
                 </div>
               </div>
 
-              {/* Tabla preview */}
-              <div className="rounded-xl border overflow-hidden">
-                <div className="max-h-[40vh] overflow-y-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Estado</TableHead>
-                        <TableHead>Fecha</TableHead>
-                        <TableHead>Cliente</TableHead>
-                        <TableHead>Operadora</TableHead>
-                        <TableHead>Sucursal</TableHead>
-                        <TableHead>Tratamiento</TableHead>
-                        <TableHead className="text-right">Disp. originales</TableHead>
-                        <TableHead className="text-right">Disp. calculados</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {importPreview.rows.slice(0, 50).map((r) => (
-                        <TableRow key={r.filaOrigen}>
-                          <TableCell>
-                            {r.status === "valid" ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                                <CheckCircle2 className="h-3 w-3" /> OK
-                              </span>
-                            ) : r.status === "duplicate" ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700" title={r.message || ""}>
-                                <AlertTriangle className="h-3 w-3" /> Dup
-                              </span>
+              {/* Tabs */}
+              <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
+                {[
+                  { id: "resumen", label: "Resumen" },
+                  { id: "valid", label: `Válidas (${previewStats.valid.length})` },
+                  { id: "duplicate", label: `Duplicadas (${previewStats.duplicate.length})` },
+                  { id: "error", label: `Errores (${previewStats.error.length})` },
+                  { id: "totales", label: "Totales" },
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setPreviewTab(t.id as typeof previewTab)}
+                    className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
+                      previewTab === t.id
+                        ? "bg-white text-foreground shadow-sm ring-1 ring-slate-200"
+                        : "text-slate-500 hover:text-foreground"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* TAB RESUMEN */}
+              {previewTab === "resumen" ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <DetectionList title="Operadoras detectadas" items={previewStats.operadoras} />
+                  <DetectionList title="Sucursales detectadas" items={previewStats.sucursales} />
+                  <DetectionList title="Tratamientos detectados" items={previewStats.tratamientos} className="md:col-span-2" />
+                </div>
+              ) : null}
+
+              {/* TABS VALID / DUPLICATE / ERROR — tabla filtrable */}
+              {previewTab !== "resumen" && previewTab !== "totales" ? (
+                <>
+                  {/* Filtros */}
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto_auto]">
+                    <Input
+                      placeholder="Buscar cliente / contacto / tratamiento..."
+                      value={previewSearch}
+                      onChange={(e) => setPreviewSearch(e.target.value)}
+                      className="h-9 text-xs"
+                    />
+                    <Select value={previewOpFilter} onValueChange={setPreviewOpFilter}>
+                      <SelectTrigger className="h-9 w-[160px] text-xs"><SelectValue placeholder="Operadora" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todas">Todas operadoras</SelectItem>
+                        {previewStats.operadoras.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Select value={previewSucFilter} onValueChange={setPreviewSucFilter}>
+                      <SelectTrigger className="h-9 w-[160px] text-xs"><SelectValue placeholder="Sucursal" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todas">Todas sucursales</SelectItem>
+                        {previewStats.sucursales.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Select value={String(previewPageSize)} onValueChange={(v) => setPreviewPageSize(Number(v))}>
+                      <SelectTrigger className="h-9 w-[110px] text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="50">50 / pág</SelectItem>
+                        <SelectItem value="100">100 / pág</SelectItem>
+                        <SelectItem value="250">250 / pág</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Botón descargar errores */}
+                  {previewTab === "error" && previewStats.error.length > 0 ? (
+                    <div className="flex justify-end">
+                      <Button variant="outline" size="sm" onClick={downloadErrorsCsv} className="gap-1">
+                        <FileSpreadsheet className="h-3.5 w-3.5" /> Descargar errores CSV
+                      </Button>
+                    </div>
+                  ) : null}
+
+                  {/* Tabla */}
+                  <div className="rounded-xl border overflow-hidden">
+                    <div className="max-h-[44vh] overflow-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            {previewTab === "error" ? (
+                              <>
+                                <TableHead>Fila</TableHead>
+                                <TableHead>Fecha</TableHead>
+                                <TableHead>Cliente</TableHead>
+                                <TableHead>Operadora</TableHead>
+                                <TableHead>Sucursal</TableHead>
+                                <TableHead>Tratamiento</TableHead>
+                                <TableHead className="text-right">Disp. orig.</TableHead>
+                                <TableHead>Error</TableHead>
+                              </>
+                            ) : previewTab === "duplicate" ? (
+                              <>
+                                <TableHead>Fila</TableHead>
+                                <TableHead>Fecha</TableHead>
+                                <TableHead>Cliente</TableHead>
+                                <TableHead>Operadora</TableHead>
+                                <TableHead>Sucursal</TableHead>
+                                <TableHead>Tratamiento</TableHead>
+                                <TableHead className="text-right">Disparos</TableHead>
+                                <TableHead>Motivo</TableHead>
+                              </>
                             ) : (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700" title={r.message || ""}>
-                                <X className="h-3 w-3" /> Error
-                              </span>
+                              <>
+                                <TableHead>Fila</TableHead>
+                                <TableHead>Fecha</TableHead>
+                                <TableHead>Cliente</TableHead>
+                                <TableHead>Contacto</TableHead>
+                                <TableHead>Operadora</TableHead>
+                                <TableHead>Sucursal</TableHead>
+                                <TableHead>Tratamiento</TableHead>
+                                <TableHead className="text-right">Pot.</TableHead>
+                                <TableHead className="text-right">Spot</TableHead>
+                                <TableHead className="text-right">Disp. orig.</TableHead>
+                                <TableHead className="text-right">Disp. calc.</TableHead>
+                              </>
                             )}
-                          </TableCell>
-                          <TableCell className="text-xs">{r.fecha || "—"}</TableCell>
-                          <TableCell className="text-xs">{r.cliente || "—"}</TableCell>
-                          <TableCell className="text-xs">{r.operadora || "—"}</TableCell>
-                          <TableCell className="text-xs">{r.sucursal || "—"}</TableCell>
-                          <TableCell className="text-xs">{r.tratamiento || "—"}</TableCell>
-                          <TableCell className="text-right text-xs font-mono">{r.disparosRaw}</TableCell>
-                          <TableCell className="text-right text-xs font-bold">{r.disparos.toLocaleString("es-DO")}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-                {importPreview.rows.length > 50 ? (
-                  <div className="border-t bg-slate-50/60 px-3 py-2 text-center text-xs text-muted-foreground">
-                    Mostrando primeras 50 de {importPreview.rows.length} filas
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {previewPageRows.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={previewTab === "valid" ? 11 : 8} className="py-10 text-center text-xs text-muted-foreground">
+                                Sin filas en esta categoría con los filtros actuales.
+                              </TableCell>
+                            </TableRow>
+                          ) : previewPageRows.map((r) => (
+                            <TableRow key={`${r.filaOrigen}-${previewTab}`}>
+                              {previewTab === "valid" ? (
+                                <>
+                                  <TableCell className="text-[10px] text-muted-foreground">{r.filaOrigen}</TableCell>
+                                  <TableCell className="text-xs">{r.fecha || "—"}</TableCell>
+                                  <TableCell className="text-xs">{r.cliente || "—"}</TableCell>
+                                  <TableCell className="text-xs">{r.contacto || "—"}</TableCell>
+                                  <TableCell className="text-xs">{r.operadora || "—"}</TableCell>
+                                  <TableCell className="text-xs">{r.sucursal || "—"}</TableCell>
+                                  <TableCell className="text-xs">{r.tratamiento || "—"}</TableCell>
+                                  <TableCell className="text-right text-xs">{r.potencia || "—"}</TableCell>
+                                  <TableCell className="text-right text-xs">{r.spot || "—"}</TableCell>
+                                  <TableCell className="text-right text-xs font-mono">{r.disparosRaw}</TableCell>
+                                  <TableCell className="text-right text-xs font-bold">{r.disparos.toLocaleString("es-DO")}</TableCell>
+                                </>
+                              ) : previewTab === "duplicate" ? (
+                                <>
+                                  <TableCell className="text-[10px] text-muted-foreground">{r.filaOrigen}</TableCell>
+                                  <TableCell className="text-xs">{r.fecha || "—"}</TableCell>
+                                  <TableCell className="text-xs">{r.cliente || "—"}</TableCell>
+                                  <TableCell className="text-xs">{r.operadora || "—"}</TableCell>
+                                  <TableCell className="text-xs">{r.sucursal || "—"}</TableCell>
+                                  <TableCell className="text-xs">{r.tratamiento || "—"}</TableCell>
+                                  <TableCell className="text-right text-xs font-mono">{r.disparos.toLocaleString("es-DO")}</TableCell>
+                                  <TableCell className="text-xs text-amber-800">{r.message || "Duplicada"}</TableCell>
+                                </>
+                              ) : (
+                                <>
+                                  <TableCell className="text-[10px] text-muted-foreground">{r.filaOrigen}</TableCell>
+                                  <TableCell className="text-xs">{r.fecha || "—"}</TableCell>
+                                  <TableCell className="text-xs">{r.cliente || "—"}</TableCell>
+                                  <TableCell className="text-xs">{r.operadora || "—"}</TableCell>
+                                  <TableCell className="text-xs">{r.sucursal || "—"}</TableCell>
+                                  <TableCell className="text-xs">{r.tratamiento || "—"}</TableCell>
+                                  <TableCell className="text-right text-xs font-mono">{r.disparosRaw || "—"}</TableCell>
+                                  <TableCell className="text-xs text-rose-700">{r.message || "Error"}</TableCell>
+                                </>
+                              )}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    {/* Footer tabla — paginación */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50/60 px-3 py-2 text-xs text-muted-foreground">
+                      <span>
+                        Mostrando <b>{previewPageRows.length}</b> de <b>{previewFilteredRows.length}</b> filas
+                        {previewFilteredRows.length !== previewStats.rows.length ? ` (filtradas de ${previewStats.rows.length})` : ""}
+                      </span>
+                      {previewPageCount > 1 ? (
+                        <div className="flex items-center gap-1">
+                          <Button variant="outline" size="sm" disabled={previewPage <= 1} onClick={() => setPreviewPage((p) => Math.max(1, p - 1))} className="h-7 px-2 text-xs">‹ Atrás</Button>
+                          <span className="px-2 font-bold">{previewPage} / {previewPageCount}</span>
+                          <Button variant="outline" size="sm" disabled={previewPage >= previewPageCount} onClick={() => setPreviewPage((p) => Math.min(previewPageCount, p + 1))} className="h-7 px-2 text-xs">Siguiente ›</Button>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
-                ) : null}
-              </div>
+                </>
+              ) : null}
 
+              {/* TAB TOTALES */}
+              {previewTab === "totales" ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <TotalesTable title="Total por operadora" rows={previewTotales.porOperadora} />
+                  <TotalesTable title="Total por sucursal" rows={previewTotales.porSucursal} />
+                  <TotalesTable title="Total por tratamiento (top 15)" rows={previewTotales.porTratamiento.slice(0, 15)} />
+                  <TotalesTable title="Total por fecha" rows={previewTotales.porFecha} />
+                </div>
+              ) : null}
+
+              {/* Warnings del parser */}
               {importPreview.parsed.warnings.length ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                   {importPreview.parsed.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
                 </div>
               ) : null}
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setImportPreview(null)} disabled={importing}>Cancelar</Button>
+                {previewStats.error.length > 0 ? (
+                  <Button variant="outline" onClick={downloadErrorsCsv} className="gap-1">
+                    <FileSpreadsheet className="h-3.5 w-3.5" /> Descargar errores
+                  </Button>
+                ) : null}
+                <Button
+                  onClick={() => {
+                    // Pasamos a confirmación si hay duplicadas/errores significativos,
+                    // o directo a confirmImport si todo limpio.
+                    if (previewStats.duplicate.length > 0 || previewStats.error.length > 0) {
+                      setConfirmStep(true)
+                    } else {
+                      confirmImport()
+                    }
+                  }}
+                  disabled={importing || previewStats.valid.length === 0}
+                  className="gap-2"
+                >
+                  <Save className="h-4 w-4" />
+                  {previewStats.valid.length === 0
+                    ? "No hay filas válidas para importar"
+                    : `Importar ${previewStats.valid.length.toLocaleString("es-DO")} filas válidas`}
+                </Button>
+              </DialogFooter>
             </div>
           ) : null}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setImportPreview(null)} disabled={importing}>Cancelar</Button>
-            <Button
-              onClick={confirmImport}
-              disabled={importing || !importPreview || importPreview.rows.filter((r) => r.status === "valid").length === 0}
-              className="gap-2"
-            >
-              {importing ? <Save className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {importing
-                ? "Guardando..."
-                : `Importar ${importPreview ? importPreview.rows.filter((r) => r.status === "valid").length : 0} filas válidas`}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+function DetectionList({ title, items, className }: { title: string; items: string[]; className?: string }) {
+  return (
+    <div className={`rounded-xl border bg-white p-3 ${className || ""}`}>
+      <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{title}</div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {items.length === 0 ? (
+          <span className="text-xs text-muted-foreground">—</span>
+        ) : items.map((item) => (
+          <span key={item} className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+            {item}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function TotalesTable({ title, rows }: { title: string; rows: Array<{ nombre: string; sesiones: number; disparos: number }> }) {
+  const totalDisparos = rows.reduce((s, r) => s + r.disparos, 0)
+  return (
+    <div className="rounded-xl border overflow-hidden">
+      <div className="border-b bg-slate-50/60 px-3 py-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+        {title}
+      </div>
+      <div className="max-h-[44vh] overflow-y-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nombre</TableHead>
+              <TableHead className="text-right">Sesiones</TableHead>
+              <TableHead className="text-right">Disparos</TableHead>
+              <TableHead className="text-right">%</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.length === 0 ? (
+              <TableRow><TableCell colSpan={4} className="py-6 text-center text-xs text-muted-foreground">Sin datos</TableCell></TableRow>
+            ) : rows.map((r) => (
+              <TableRow key={r.nombre}>
+                <TableCell className="text-xs font-semibold">{r.nombre}</TableCell>
+                <TableCell className="text-right text-xs font-mono">{r.sesiones.toLocaleString("es-DO")}</TableCell>
+                <TableCell className="text-right text-xs font-mono font-bold">{r.disparos.toLocaleString("es-DO")}</TableCell>
+                <TableCell className="text-right text-[10px] text-muted-foreground">{totalDisparos > 0 ? ((r.disparos / totalDisparos) * 100).toFixed(1) : "—"}%</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   )
 }
