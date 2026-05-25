@@ -1421,7 +1421,7 @@ function ConsentFormDialog({
   const showPendingBanner = form.estado === "Pendiente de revisión"
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-[1120px]">
+      <DialogContent className="w-[94vw] max-h-[92dvh] overflow-y-auto sm:max-w-[1120px]">
         <DialogHeader>
           <DialogTitle>{form.id.startsWith(config.idPrefix) ? "Nuevo consentimiento" : "Editar consentimiento"}</DialogTitle>
           <DialogDescription>{config.title} · complete los datos, firme y guarde.</DialogDescription>
@@ -1611,7 +1611,7 @@ function DetailDialog({ record, kind, clientes, onClose, onPrint, onEdit }: { re
 
   return (
     <Dialog open={Boolean(record)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[920px]">
+      <DialogContent className="w-[94vw] max-h-[90dvh] overflow-y-auto sm:max-w-[920px]">
         <DialogHeader>
           <DialogTitle>{headerName}</DialogTitle>
           <DialogDescription>

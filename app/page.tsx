@@ -267,16 +267,19 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
+    <div className="min-h-dvh overflow-x-hidden bg-background text-foreground">
       <Sidebar />
       <LoadingOverlay />
       <ToastNotification />
-      <div className="lg:pl-72">
+      {/* Offset del contenido principal: solo en desktop ≥1280px (xl:).
+          En tablet el sidebar es drawer y NO debe empujar el contenido. */}
+      <div className="xl:pl-72">
         <Header onRefresh={activeTab !== "config" && !String(activeTab).startsWith("pulsos-") && !String(activeTab).startsWith("pulse-") ? handleRefresh : undefined} />
         {/* Layout centrado:
-              - max-w-[1480px] como cap general para que en pantallas muy anchas el contenido no quede infinito
-              - min-w-0 para que las tablas hijas no fuercen overflow horizontal del shell */}
-        <main className="mx-auto min-w-0 max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8 xl:px-10">
+              - max-w-[1480px] cap para que en pantallas muy anchas no quede infinito
+              - min-w-0 para que las tablas hijas no fuercen overflow del shell
+              - padding progresivo: cómodo en mobile, generoso en xl */}
+        <main className="mx-auto min-w-0 max-w-[1480px] px-3 py-5 sm:px-5 sm:py-6 lg:px-7 xl:px-10 xl:py-8">
           {renderPage()}
         </main>
       </div>

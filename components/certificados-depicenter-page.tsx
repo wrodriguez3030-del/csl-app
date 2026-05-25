@@ -1051,7 +1051,7 @@ export function CertificadosDepicenterPage() {
 
       {/* Formulario */}
       <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm() }}>
-        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-[1000px]">
+        <DialogContent className="w-[94vw] max-h-[92dvh] overflow-y-auto sm:max-w-[1000px]">
           <DialogHeader>
             <DialogTitle>{editingCode ? "Editar certificado Depicenter" : "Nuevo certificado Depicenter"}</DialogTitle>
             <DialogDescription>
@@ -1159,7 +1159,7 @@ export function CertificadosDepicenterPage() {
 
       {/* Vista de detalle / preview */}
       <Dialog open={!!viewing} onOpenChange={(v) => !v && setViewing(null)}>
-        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-[900px]">
+        <DialogContent className="w-[94vw] max-h-[92dvh] overflow-y-auto sm:max-w-[900px]">
           <DialogHeader>
             <DialogTitle>{viewing?.otorgadoA || "Certificado Depicenter"}</DialogTitle>
             <DialogDescription>

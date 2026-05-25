@@ -150,10 +150,13 @@ export function Sidebar() {
 
   return (
     <>
-      {sidebarOpen ? <div className="fixed inset-0 z-40 bg-slate-900/35 backdrop-blur-sm lg:hidden" onClick={() => setSidebarOpen(false)} /> : null}
+      {/* Breakpoint xl: (1280px) en vez de lg: (1024px). Tablets de 768-1180px
+          ahora ven el sidebar como drawer con overlay + cierre auto en
+          handleNavClick. Solo en desktop verdadero (≥1280px) queda fijo. */}
+      {sidebarOpen ? <div className="fixed inset-0 z-40 bg-slate-900/35 backdrop-blur-sm xl:hidden" onClick={() => setSidebarOpen(false)} /> : null}
       <aside
         className={cn(
-          "fixed left-0 top-0 z-50 flex h-full w-72 flex-col overflow-hidden border-r border-[color:var(--brand-border)] bg-white shadow-[1px_0_0_rgba(15,45,68,.04)] transition-transform duration-300 lg:translate-x-0",
+          "fixed left-0 top-0 z-50 flex h-full max-h-dvh w-72 max-w-[85vw] flex-col overflow-hidden border-r border-[color:var(--brand-border)] bg-white shadow-[1px_0_0_rgba(15,45,68,.04)] transition-transform duration-300 xl:translate-x-0",
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -169,7 +172,7 @@ export function Sidebar() {
                 <p className="mt-0.5 text-[11px] font-medium text-slate-500">Sistema Integral {business.shortName}</p>
               </div>
             </div>
-            <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setSidebarOpen(false)}>
+            <Button variant="ghost" size="icon" className="xl:hidden" onClick={() => setSidebarOpen(false)}>
               <X className="h-4 w-4" />
             </Button>
           </div>
