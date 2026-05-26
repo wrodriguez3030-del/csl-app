@@ -341,6 +341,7 @@ export function CosmiatriaClientesPage() {
       })
       const data = await res.json() as {
         ok?: boolean; code?: string; error?: string;
+        pagesRead?: number; diagnostic?: { ignoredPagination?: boolean };
         totalAgendaPro?: number; created?: number; updated?: number;
         skipped?: number; duplicates?: number; errors?: number;
       }
@@ -348,9 +349,11 @@ export function CosmiatriaClientesPage() {
         showToast(data?.error || `Error al sincronizar AgendaPro (${res.status})`, "error")
         return
       }
+      const pagesMsg = data.pagesRead ? `${data.pagesRead} ${data.pagesRead === 1 ? "página leída" : "páginas leídas"} · ` : ""
+      const warnPag = data.diagnostic?.ignoredPagination ? " ⚠ AgendaPro ignoró ?page — devolvió siempre los mismos clientes." : ""
       showToast(
-        `Sync OK: ${data.totalAgendaPro || 0} leídos · ${data.created || 0} creados · ${data.updated || 0} actualizados · ${data.skipped || 0} omitidos · ${data.duplicates || 0} duplicados · ${data.errors || 0} errores`,
-        "success",
+        `Sync OK: ${pagesMsg}${data.totalAgendaPro || 0} leídos · ${data.created || 0} creados · ${data.updated || 0} actualizados · ${data.duplicates || 0} duplicados · ${data.errors || 0} errores.${warnPag}`,
+        data.diagnostic?.ignoredPagination ? "info" : "success",
       )
       await loadData()
     } catch (syncErr) {

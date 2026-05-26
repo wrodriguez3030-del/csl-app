@@ -14,6 +14,7 @@ import { getProfile, loadBusinessContext } from "@/lib/server/csl-crud"
 import { runWithBusinessContext } from "@/lib/server/business-context"
 import {
   fetchAgendaProClients,
+  fetchAllAgendaProClients,
   getAgendaProConfig,
   syncAgendaProClients,
   validateAgendaProConfig,
@@ -68,8 +69,7 @@ export async function POST(request: Request) {
 
     try {
       // Aceptar body opcional con { search: "..." } para sync por término.
-      // Si no llega search, intentamos GET /clients (puede que AgendaPro
-      // requiera search explícito — la función lo señala con requiresSearch).
+      // Si no llega search, intentamos LISTADO COMPLETO con paginación.
       let body: { search?: string } = {}
       try {
         const raw = await request.text()
@@ -77,21 +77,42 @@ export async function POST(request: Request) {
       } catch { body = {} }
       const search = (body.search || "").trim()
 
-      const fetchResult = await fetchAgendaProClients(cfg, search ? { search } : {})
-      if (!fetchResult.ok) {
-        if (fetchResult.requiresSearch) {
-          return json({
-            ok: false,
-            code: "requires_search",
-            error: fetchResult.error || "AgendaPro requiere búsqueda por cliente.",
-          }, 400)
+      let clients: Array<Record<string, unknown>> = []
+      let pagesRead = 0
+      let diagnostic: Record<string, unknown> = {}
+
+      if (search) {
+        // Búsqueda puntual — una sola página, AgendaPro devuelve coincidencias
+        const fetchResult = await fetchAgendaProClients(cfg, { search })
+        if (!fetchResult.ok) {
+          if (fetchResult.requiresSearch) {
+            return json({ ok: false, code: "requires_search", error: fetchResult.error || "AgendaPro requiere búsqueda por cliente." }, 400)
+          }
+          throw new Error(fetchResult.error || `Error AgendaPro status ${fetchResult.status}`)
         }
-        throw new Error(fetchResult.error || `Error AgendaPro status ${fetchResult.status}`)
+        clients = fetchResult.clients as Array<Record<string, unknown>>
+        pagesRead = 1
+      } else {
+        // Listado completo paginado
+        const pagedResult = await fetchAllAgendaProClients(cfg)
+        pagesRead = pagedResult.pagesRead
+        diagnostic = pagedResult.diagnostic as unknown as Record<string, unknown>
+        if (!pagedResult.ok) {
+          if (pagedResult.requiresSearch) {
+            return json({ ok: false, code: "requires_search", error: pagedResult.error || "AgendaPro requiere búsqueda por cliente.", pagesRead, diagnostic }, 400)
+          }
+          throw new Error(pagedResult.error || "Error paginando AgendaPro")
+        }
+        clients = pagedResult.clients as Array<Record<string, unknown>>
       }
 
-      const summary = await syncAgendaProClients({ clients: fetchResult.clients, businessId })
+      const summary = await syncAgendaProClients({ clients, businessId })
 
       if (syncId) {
+        const errorDetails: Array<Record<string, unknown>> = [...summary.errorDetails]
+        if (pagesRead > 0 || Object.keys(diagnostic).length > 0) {
+          errorDetails.push({ kind: "pagination_info", pagesRead, diagnostic, search })
+        }
         await supabase
           .from("csl_agendapro_sync_logs")
           .update({
@@ -102,7 +123,7 @@ export async function POST(request: Request) {
             skipped: summary.skipped,
             duplicates: summary.duplicates,
             errors: summary.errors,
-            error_details: summary.errorDetails.length > 0 ? summary.errorDetails : null,
+            error_details: errorDetails.length > 0 ? errorDetails : null,
             status: summary.errors === 0 ? "ok" : "ok_with_errors",
           })
           .eq("sync_id", syncId)
@@ -110,6 +131,8 @@ export async function POST(request: Request) {
 
       return json({
         ok: true,
+        pagesRead,
+        diagnostic,
         totalAgendaPro: summary.total,
         created: summary.created,
         updated: summary.updated,

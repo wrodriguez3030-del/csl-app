@@ -195,8 +195,9 @@ export function mapAgendaProClientToCslClient(raw: AgendaProClientRaw): MappedCl
   }
 }
 
-/** Fetch a AgendaPro con Basic Auth. Devuelve raw response + parse JSON. */
-async function callAgendaPro(cfg: AgendaProConfig, path: string, init: RequestInit = {}): Promise<{ ok: boolean; status: number; data: unknown; error?: string }> {
+/** Fetch a AgendaPro con Basic Auth. Devuelve body + headers (para metadata
+ *  de paginación tipo X-Total-Count o Link). NO loguea credenciales. */
+async function callAgendaPro(cfg: AgendaProConfig, path: string, init: RequestInit = {}): Promise<{ ok: boolean; status: number; data: unknown; headers: Record<string, string>; error?: string }> {
   const url = `${cfg.baseUrl}${path.startsWith("/") ? "" : "/"}${path}`
   const auth = Buffer.from(`${cfg.user}:${cfg.password}`).toString("base64")
   try {
@@ -212,12 +213,14 @@ async function callAgendaPro(cfg: AgendaProConfig, path: string, init: RequestIn
     const text = await res.text()
     let data: unknown = null
     try { data = text ? JSON.parse(text) : null } catch { data = text }
+    const headers: Record<string, string> = {}
+    res.headers.forEach((value, key) => { headers[key.toLowerCase()] = value })
     if (!res.ok) {
-      return { ok: false, status: res.status, data, error: `AgendaPro ${res.status}: ${typeof data === "string" ? data.slice(0, 200) : "respuesta no JSON"}` }
+      return { ok: false, status: res.status, data, headers, error: `AgendaPro ${res.status}: ${typeof data === "string" ? data.slice(0, 200) : "respuesta no JSON"}` }
     }
-    return { ok: true, status: res.status, data }
+    return { ok: true, status: res.status, data, headers }
   } catch (fetchError) {
-    return { ok: false, status: 0, data: null, error: fetchError instanceof Error ? fetchError.message : "Network error" }
+    return { ok: false, status: 0, data: null, headers: {}, error: fetchError instanceof Error ? fetchError.message : "Network error" }
   }
 }
 
@@ -237,17 +240,67 @@ export async function testAgendaProConnection(cfg: AgendaProConfig): Promise<{ o
  *   - Si no, intenta `GET /clients` plano. Si AgendaPro requiere search,
  *     el caller recibe `requiresSearch: true` + mensaje claro.
  */
-export async function fetchAgendaProClients(cfg: AgendaProConfig, options: { search?: string; page?: number; perPage?: number } = {}): Promise<{ ok: boolean; clients: AgendaProClientRaw[]; nextPage?: number; error?: string; status?: number; requiresSearch?: boolean }> {
+/** Extrae el array de clientes de un body en cualquiera de las formas que
+ *  hemos visto: array directo, { clients: [...] }, { data: [...] }, etc. */
+function extractClientsArray(data: unknown): AgendaProClientRaw[] {
+  if (Array.isArray(data)) return data as AgendaProClientRaw[]
+  if (data && typeof data === "object") {
+    const obj = data as Record<string, unknown>
+    if (Array.isArray(obj.clients)) return obj.clients as AgendaProClientRaw[]
+    if (Array.isArray(obj.data)) return obj.data as AgendaProClientRaw[]
+    if (Array.isArray(obj.records)) return obj.records as AgendaProClientRaw[]
+    if (Array.isArray(obj.items)) return obj.items as AgendaProClientRaw[]
+    if (Array.isArray(obj.results)) return obj.results as AgendaProClientRaw[]
+    if (obj.id || obj.first_name || obj.email) return [obj as AgendaProClientRaw]
+  }
+  return []
+}
+
+/** Mira un body por metadata de paginación (total_pages, next_page, links.next, etc.). */
+function detectPaginationMeta(data: unknown, headers: Record<string, string>): { totalPages?: number; currentPage?: number; nextPage?: number; total?: number; hasNext?: boolean } {
+  const out: { totalPages?: number; currentPage?: number; nextPage?: number; total?: number; hasNext?: boolean } = {}
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    const obj = data as Record<string, unknown>
+    const meta = (obj.meta || obj.pagination || obj.page_info || {}) as Record<string, unknown>
+    const links = (obj.links || {}) as Record<string, unknown>
+    const tp = Number(meta.total_pages ?? obj.total_pages)
+    const cp = Number(meta.current_page ?? obj.current_page ?? meta.page ?? obj.page)
+    const np = Number(meta.next_page ?? obj.next_page)
+    const total = Number(meta.total ?? obj.total ?? meta.total_count ?? obj.total_count)
+    if (Number.isFinite(tp) && tp > 0) out.totalPages = tp
+    if (Number.isFinite(cp) && cp > 0) out.currentPage = cp
+    if (Number.isFinite(np) && np > 0) out.nextPage = np
+    if (Number.isFinite(total) && total > 0) out.total = total
+    if (links.next) out.hasNext = true
+  }
+  // RFC 5988 Link header: <...>; rel="next"
+  const linkHeader = headers["link"] || headers["Link"]
+  if (linkHeader && /rel="?next"?/i.test(linkHeader)) out.hasNext = true
+  // X-Total-Count común
+  const xTotal = Number(headers["x-total-count"])
+  if (Number.isFinite(xTotal) && xTotal > 0 && !out.total) out.total = xTotal
+  return out
+}
+
+/**
+ * Una sola llamada — para búsqueda (search) y para que el caller arme su
+ * propio loop si lo necesita. Acepta page/perPage para que el caller pueda
+ * paginar manualmente.
+ */
+export async function fetchAgendaProClients(cfg: AgendaProConfig, options: { search?: string; page?: number; perPage?: number } = {}): Promise<{ ok: boolean; clients: AgendaProClientRaw[]; meta?: ReturnType<typeof detectPaginationMeta>; nextPage?: number; error?: string; status?: number; requiresSearch?: boolean }> {
   const search = (options.search || "").trim()
   let path = cfg.clientsPath
-  if (search) {
+  const params: string[] = []
+  if (search) params.push(`search=${encodeURIComponent(search)}`)
+  if (typeof options.page === "number") params.push(`page=${options.page}`)
+  if (typeof options.perPage === "number") params.push(`per_page=${options.perPage}`)
+  if (params.length > 0) {
     const sep = path.includes("?") ? "&" : "?"
-    path = `${path}${sep}search=${encodeURIComponent(search)}`
+    path = `${path}${sep}${params.join("&")}`
   }
   const result = await callAgendaPro(cfg, path, { method: "GET" })
 
   if (!result.ok) {
-    // Si AgendaPro requiere search explícito y obtenemos 400/422, lo señalamos.
     if (!search && (result.status === 400 || result.status === 422)) {
       return {
         ok: false,
@@ -260,22 +313,98 @@ export async function fetchAgendaProClients(cfg: AgendaProConfig, options: { sea
     return { ok: false, clients: [], error: result.error, status: result.status }
   }
 
-  // Tolerar varios shapes: { clients: [...] } | { data: [...] } | { records: [...] } | [...] | { ...singleClient }
-  const data = result.data as unknown
-  let arr: AgendaProClientRaw[] = []
-  if (Array.isArray(data)) arr = data as AgendaProClientRaw[]
-  else if (data && typeof data === "object") {
-    const obj = data as Record<string, unknown>
-    if (Array.isArray(obj.clients)) arr = obj.clients as AgendaProClientRaw[]
-    else if (Array.isArray(obj.data)) arr = obj.data as AgendaProClientRaw[]
-    else if (Array.isArray(obj.records)) arr = obj.records as AgendaProClientRaw[]
-    else if (obj.id || obj.first_name || obj.email) {
-      // AgendaPro a veces devuelve UN cliente directo (cuando search coincide con 1)
-      arr = [obj as AgendaProClientRaw]
+  const arr = extractClientsArray(result.data)
+  const meta = detectPaginationMeta(result.data, result.headers)
+  return { ok: true, clients: arr, meta }
+}
+
+/**
+ * Pagina TODOS los clientes hasta llegar al final. Estrategia:
+ *   1. Llama con ?page=N&per_page=PER_PAGE.
+ *   2. Si la response trae metadata (total_pages, next_page, links.next,
+ *      X-Total-Count) la usa.
+ *   3. Si no, detecta fin cuando:
+ *      - array vacío,
+ *      - tamaño < per_page,
+ *      - O todos los IDs ya fueron vistos en páginas anteriores (señal
+ *        clara de que AgendaPro ignora el param ?page y devuelve siempre
+ *        los mismos N clientes).
+ *   4. Salvaguarda: maxPages = 500.
+ */
+export async function fetchAllAgendaProClients(cfg: AgendaProConfig, options: { perPage?: number; maxPages?: number } = {}): Promise<{
+  ok: boolean
+  clients: AgendaProClientRaw[]
+  pagesRead: number
+  error?: string
+  requiresSearch?: boolean
+  diagnostic: { perPage: number; lastMeta?: ReturnType<typeof detectPaginationMeta>; ignoredPagination?: boolean }
+}> {
+  const perPage = options.perPage ?? Number(process.env.AGENDAPRO_API_PER_PAGE || 100)
+  const maxPages = options.maxPages ?? 500
+  const seen = new Set<string>()
+  const all: AgendaProClientRaw[] = []
+  let pagesRead = 0
+  let lastMeta: ReturnType<typeof detectPaginationMeta> | undefined
+  let ignoredPagination = false
+
+  for (let page = 1; page <= maxPages; page++) {
+    const res = await fetchAgendaProClients(cfg, { page, perPage })
+    pagesRead++
+    if (!res.ok) {
+      if (res.requiresSearch) {
+        return {
+          ok: false,
+          clients: all,
+          pagesRead,
+          requiresSearch: true,
+          error: res.error,
+          diagnostic: { perPage, lastMeta, ignoredPagination },
+        }
+      }
+      return {
+        ok: false,
+        clients: all,
+        pagesRead,
+        error: res.error || "Error desconocido al paginar",
+        diagnostic: { perPage, lastMeta, ignoredPagination },
+      }
     }
+    lastMeta = res.meta
+    const batch = res.clients
+    if (batch.length === 0) break
+
+    // Detectar si AgendaPro ignora ?page (todos los IDs ya estaban vistos)
+    let newIds = 0
+    for (const c of batch) {
+      const id = String(c.id ?? c.client_id ?? c.uuid ?? "")
+      if (id && !seen.has(id)) {
+        seen.add(id)
+        newIds++
+        all.push(c)
+      } else if (!id) {
+        // Sin ID confiable — agregamos igual; el dedupe en DB ya resuelve.
+        all.push(c)
+      }
+    }
+    if (page > 1 && newIds === 0) {
+      ignoredPagination = true
+      break
+    }
+
+    // Condiciones explícitas de fin via metadata
+    if (lastMeta?.totalPages && page >= lastMeta.totalPages) break
+    if (lastMeta?.currentPage && lastMeta?.totalPages && lastMeta.currentPage >= lastMeta.totalPages) break
+    if (lastMeta?.hasNext === false) break
+    // Si no hay metadata y la batch vino corta, asumimos fin
+    if (batch.length < perPage && !lastMeta?.hasNext && !lastMeta?.totalPages) break
   }
 
-  return { ok: true, clients: arr }
+  return {
+    ok: true,
+    clients: all,
+    pagesRead,
+    diagnostic: { perPage, lastMeta, ignoredPagination },
+  }
 }
 
 export interface SyncSummary {
