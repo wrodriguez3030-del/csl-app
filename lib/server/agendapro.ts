@@ -42,13 +42,37 @@ export function getAgendaProConfig(): AgendaProConfig {
   }
 }
 
+/** Detecta placeholders ("pendiente_confirmar", "todo", "tbd", strings que
+ *  no parecen una URL real). Útil mientras la integración está pre-aprobación. */
+function isPlaceholderValue(value: string): boolean {
+  const v = value.toLowerCase().trim()
+  if (!v) return true
+  if (v.includes("pendiente")) return true
+  if (v.includes("placeholder")) return true
+  if (v.includes("todo")) return true
+  if (v.includes("tbd")) return true
+  if (v.startsWith("valor_") || v.startsWith("token_")) return true
+  return false
+}
+
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const u = new URL(value)
+    return u.protocol === "http:" || u.protocol === "https:"
+  } catch { return false }
+}
+
 /** Validación previa — devuelve mensaje si falta algo crítico. */
 export function validateAgendaProConfig(cfg: AgendaProConfig, requireWebhook = false): string | null {
   if (!cfg.enabled) return "AgendaPro sync deshabilitado (AGENDAPRO_SYNC_ENABLED no es 'true')."
-  if (!cfg.baseUrl) return "Falta AGENDAPRO_API_BASE_URL."
-  if (!cfg.user) return "Falta AGENDAPRO_API_USER."
-  if (!cfg.password) return "Falta AGENDAPRO_API_PASSWORD."
-  if (requireWebhook && !cfg.webhookSecret) return "Falta AGENDAPRO_WEBHOOK_SECRET."
+  if (!cfg.baseUrl || isPlaceholderValue(cfg.baseUrl) || !isValidHttpUrl(cfg.baseUrl)) {
+    return "Falta configurar endpoint oficial de clientes de AgendaPro."
+  }
+  if (!cfg.user || isPlaceholderValue(cfg.user)) return "Falta AGENDAPRO_API_USER."
+  if (!cfg.password || isPlaceholderValue(cfg.password)) return "Falta AGENDAPRO_API_PASSWORD."
+  if (requireWebhook && (!cfg.webhookSecret || isPlaceholderValue(cfg.webhookSecret))) {
+    return "Falta AGENDAPRO_WEBHOOK_SECRET."
+  }
   return null
 }
 

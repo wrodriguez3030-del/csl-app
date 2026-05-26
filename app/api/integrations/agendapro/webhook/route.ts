@@ -123,10 +123,13 @@ export async function POST(request: Request) {
 /** Permitir GET para health-check (responde info segura, sin secrets). */
 export async function GET() {
   const cfg = getAgendaProConfig()
+  const configError = validateAgendaProConfig(cfg)
   return json({
     ok: true,
     endpoint: "/api/integrations/agendapro/webhook",
     enabled: cfg.enabled,
-    webhookConfigured: Boolean(cfg.webhookSecret),
+    webhookConfigured: Boolean(cfg.webhookSecret) && cfg.webhookSecret.length >= 16,
+    ready: configError === null,
+    pending: configError,
   })
 }
