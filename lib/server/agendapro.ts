@@ -337,8 +337,16 @@ export async function fetchAllAgendaProClients(cfg: AgendaProConfig, options: { 
   pagesRead: number
   error?: string
   requiresSearch?: boolean
-  diagnostic: { perPage: number; lastMeta?: ReturnType<typeof detectPaginationMeta>; ignoredPagination?: boolean }
+  diagnostic: { perPage: number; pageSizeObserved?: number; lastMeta?: ReturnType<typeof detectPaginationMeta>; ignoredPagination?: boolean }
 }> {
+  // AgendaPro Public API v1 ignora ?per_page y devuelve 30 fijo. Mantenemos
+  // perPage como hint pero NO lo usamos para detectar fin (el batch siempre
+  // viene en su tamaño nativo). Las únicas condiciones de fin son:
+  //   1. batch vacío
+  //   2. todos los IDs del batch ya fueron vistos (AgendaPro empezó a
+  //      wrappear / ignoró ?page)
+  //   3. metadata explícita (rara en AgendaPro v1)
+  //   4. maxPages safety
   const perPage = options.perPage ?? Number(process.env.AGENDAPRO_API_PER_PAGE || 100)
   const maxPages = options.maxPages ?? 500
   const seen = new Set<string>()
@@ -346,6 +354,7 @@ export async function fetchAllAgendaProClients(cfg: AgendaProConfig, options: { 
   let pagesRead = 0
   let lastMeta: ReturnType<typeof detectPaginationMeta> | undefined
   let ignoredPagination = false
+  let pageSizeObserved: number | undefined
 
   for (let page = 1; page <= maxPages; page++) {
     const res = await fetchAgendaProClients(cfg, { page, perPage })
@@ -358,7 +367,7 @@ export async function fetchAllAgendaProClients(cfg: AgendaProConfig, options: { 
           pagesRead,
           requiresSearch: true,
           error: res.error,
-          diagnostic: { perPage, lastMeta, ignoredPagination },
+          diagnostic: { perPage, pageSizeObserved, lastMeta, ignoredPagination },
         }
       }
       return {
@@ -366,14 +375,15 @@ export async function fetchAllAgendaProClients(cfg: AgendaProConfig, options: { 
         clients: all,
         pagesRead,
         error: res.error || "Error desconocido al paginar",
-        diagnostic: { perPage, lastMeta, ignoredPagination },
+        diagnostic: { perPage, pageSizeObserved, lastMeta, ignoredPagination },
       }
     }
     lastMeta = res.meta
     const batch = res.clients
+    if (pageSizeObserved === undefined && batch.length > 0) pageSizeObserved = batch.length
     if (batch.length === 0) break
 
-    // Detectar si AgendaPro ignora ?page (todos los IDs ya estaban vistos)
+    // Contar IDs nuevos vs ya vistos.
     let newIds = 0
     for (const c of batch) {
       const id = String(c.id ?? c.client_id ?? c.uuid ?? "")
@@ -387,23 +397,24 @@ export async function fetchAllAgendaProClients(cfg: AgendaProConfig, options: { 
       }
     }
     if (page > 1 && newIds === 0) {
+      // AgendaPro está repitiendo IDs (ignora ?page o ya wrap-around). Fin.
       ignoredPagination = true
       break
     }
 
-    // Condiciones explícitas de fin via metadata
+    // Condiciones explícitas de fin via metadata (raro en AgendaPro v1)
     if (lastMeta?.totalPages && page >= lastMeta.totalPages) break
     if (lastMeta?.currentPage && lastMeta?.totalPages && lastMeta.currentPage >= lastMeta.totalPages) break
     if (lastMeta?.hasNext === false) break
-    // Si no hay metadata y la batch vino corta, asumimos fin
-    if (batch.length < perPage && !lastMeta?.hasNext && !lastMeta?.totalPages) break
+    // NO usamos "batch.length < perPage" como condición de fin porque
+    // AgendaPro ignora ?per_page — siempre devuelve su tamaño nativo (30).
   }
 
   return {
     ok: true,
     clients: all,
     pagesRead,
-    diagnostic: { perPage, lastMeta, ignoredPagination },
+    diagnostic: { perPage, pageSizeObserved, lastMeta, ignoredPagination },
   }
 }
 
