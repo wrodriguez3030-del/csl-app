@@ -317,6 +317,16 @@ export function CosmiatriaClientesPage() {
   }
 
   const handleAgendaProSync = async () => {
+    // AgendaPro Public API v1 expone GET /clients?search=...
+    // El operador escribe un término (teléfono, cédula, nombre, email)
+    // y el backend hace la query a AgendaPro y upsertea cada resultado.
+    const search = typeof window !== "undefined"
+      ? window.prompt(
+          "Sincronizar AgendaPro\n\nEscribe un término de búsqueda (teléfono, cédula, nombre o email).\n\nDeja vacío para intentar listado completo (puede que AgendaPro lo requiera obligatorio).",
+          "",
+        )
+      : null
+    if (search === null) return // cancelado
     setAgendaProSyncing(true)
     try {
       const { data: { session } } = await import("@/lib/supabase-client").then((m) => m.supabaseBrowser.auth.getSession())
@@ -327,9 +337,10 @@ export function CosmiatriaClientesPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
+        body: JSON.stringify({ search: search.trim() }),
       })
       const data = await res.json() as {
-        ok?: boolean; error?: string;
+        ok?: boolean; code?: string; error?: string;
         totalAgendaPro?: number; created?: number; updated?: number;
         skipped?: number; duplicates?: number; errors?: number;
       }
@@ -338,7 +349,7 @@ export function CosmiatriaClientesPage() {
         return
       }
       showToast(
-        `Sync OK: ${data.totalAgendaPro || 0} leídos · ${data.created || 0} creados · ${data.updated || 0} actualizados · ${data.skipped || 0} omitidos · ${data.errors || 0} errores`,
+        `Sync OK: ${data.totalAgendaPro || 0} leídos · ${data.created || 0} creados · ${data.updated || 0} actualizados · ${data.skipped || 0} omitidos · ${data.duplicates || 0} duplicados · ${data.errors || 0} errores`,
         "success",
       )
       await loadData()

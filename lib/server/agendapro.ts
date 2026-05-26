@@ -116,51 +116,78 @@ export interface MappedCliente {
   Nombre: string
   Apellido: string
   Telefono: string
+  Telefono2: string
   DocumentoIdentidad: string
   Email: string
   Direccion: string
   Ciudad: string
   FechaNacimiento: string
+  Genero: string
   Sucursal: string
   agendapro_client_id: string
   origen: string
   Estado: "Activo"
 }
 
+/** Componer fecha YYYY-MM-DD desde birth_day / birth_month / birth_year si vienen separados. */
+function composeBirthDate(raw: AgendaProClientRaw): string {
+  const d = raw.birth_day || (raw as Record<string, unknown>).day
+  const m = raw.birth_month || (raw as Record<string, unknown>).month
+  const y = raw.birth_year || (raw as Record<string, unknown>).year
+  if (d && m && y) {
+    const dd = String(d).padStart(2, "0")
+    const mm = String(m).padStart(2, "0")
+    const yyyy = String(y).padStart(4, "0")
+    return `${yyyy}-${mm}-${dd}`
+  }
+  return String(raw.birth_date || raw.birthday || raw.fecha_nacimiento || "").trim()
+}
+
 /**
  * Convierte un raw de AgendaPro al shape interno que entiende
  * csl_cosmiatria_clientes (vía clienteCosmiatriaToDb).
- * Robusto a variaciones del JSON real porque no tenemos doc confirmada.
+ *
+ * Campos confirmados de AgendaPro Public API v1:
+ *   id, first_name, last_name, phone, second_phone, email, gender,
+ *   birth_day, birth_month, birth_year, identification_number
+ *
+ * Mantiene fallbacks por si AgendaPro varía formato.
  */
 export function mapAgendaProClientToCslClient(raw: AgendaProClientRaw): MappedCliente {
   const agendaproId = String(raw.id ?? raw.client_id ?? raw.uuid ?? "").trim()
-  const full = String(raw.full_name || raw.name || raw.nombre || "").trim()
   let nombre = String(raw.first_name || raw.nombre || "").trim()
   let apellido = String(raw.last_name || raw.apellido || "").trim()
-  if (!nombre && full) {
-    const parts = full.split(/\s+/)
-    nombre = parts[0] || ""
-    apellido = parts.slice(1).join(" ")
+  if (!nombre && !apellido) {
+    const full = String(raw.full_name || raw.name || "").trim()
+    if (full) {
+      const parts = full.split(/\s+/)
+      nombre = parts[0] || ""
+      apellido = parts.slice(1).join(" ")
+    }
   }
   const telefono = String(raw.phone || raw.mobile || raw.telefono || "").trim()
+  const telefono2 = String((raw as Record<string, unknown>).second_phone || raw.telefono || "").trim()
   const email = String(raw.email || raw.correo || "").trim()
   const documento = String(
-    raw.document_number || raw.identification_number || raw.document || raw.dni || raw.cedula || raw.documento || "",
+    raw.identification_number || raw.document_number || raw.document || raw.dni || raw.cedula || raw.documento || "",
   ).trim()
   const direccion = String(raw.address || raw.direccion || "").trim()
   const ciudad = String(raw.city || raw.ciudad || "").trim()
-  const fechaNac = String(raw.birth_date || raw.birthday || raw.fecha_nacimiento || "").trim()
+  const fechaNac = composeBirthDate(raw)
+  const genero = String((raw as Record<string, unknown>).gender || "").trim()
   const sucursal = String(raw.location_name || raw.branch || raw.sucursal || "").trim()
   return {
     ClienteID: "", // dejamos vacío para que resolveClienteId arme cli_doc_/cli_tel_/etc.
     Nombre: nombre,
     Apellido: apellido,
     Telefono: telefono,
+    Telefono2: telefono2 !== telefono ? telefono2 : "",
     DocumentoIdentidad: documento,
     Email: email,
     Direccion: direccion,
     Ciudad: ciudad,
     FechaNacimiento: fechaNac,
+    Genero: genero,
     Sucursal: sucursal,
     agendapro_client_id: agendaproId,
     origen: "AgendaPro",
@@ -201,19 +228,39 @@ export async function testAgendaProConnection(cfg: AgendaProConfig): Promise<{ o
 }
 
 /**
- * Lee clientes de AgendaPro. Por defecto pagina via `?page=N&per_page=200`
- * (formato común — ajustable cuando confirmemos doc oficial). Si AgendaPro
- * usa cursor o token, este wrapper se reescribe sin tocar callers.
+ * Lee clientes de AgendaPro. La Public API v1 confirmó:
+ *   GET /clients?search={query}   (búsqueda por término)
+ *   GET /clients                  (listado completo — comportamiento NO confirmado)
+ *
+ * Estrategia:
+ *   - Si llega `search`, usa `?search=...` (path confirmado).
+ *   - Si no, intenta `GET /clients` plano. Si AgendaPro requiere search,
+ *     el caller recibe `requiresSearch: true` + mensaje claro.
  */
-export async function fetchAgendaProClients(cfg: AgendaProConfig, options: { page?: number; perPage?: number } = {}): Promise<{ ok: boolean; clients: AgendaProClientRaw[]; nextPage?: number; error?: string; status?: number }> {
-  const page = options.page ?? 1
-  const perPage = options.perPage ?? 200
-  const sep = cfg.clientsPath.includes("?") ? "&" : "?"
-  const path = `${cfg.clientsPath}${sep}page=${page}&per_page=${perPage}`
+export async function fetchAgendaProClients(cfg: AgendaProConfig, options: { search?: string; page?: number; perPage?: number } = {}): Promise<{ ok: boolean; clients: AgendaProClientRaw[]; nextPage?: number; error?: string; status?: number; requiresSearch?: boolean }> {
+  const search = (options.search || "").trim()
+  let path = cfg.clientsPath
+  if (search) {
+    const sep = path.includes("?") ? "&" : "?"
+    path = `${path}${sep}search=${encodeURIComponent(search)}`
+  }
   const result = await callAgendaPro(cfg, path, { method: "GET" })
-  if (!result.ok) return { ok: false, clients: [], error: result.error, status: result.status }
 
-  // Tolerar varios shapes: { clients: [...] } | { data: [...] } | [...]
+  if (!result.ok) {
+    // Si AgendaPro requiere search explícito y obtenemos 400/422, lo señalamos.
+    if (!search && (result.status === 400 || result.status === 422)) {
+      return {
+        ok: false,
+        clients: [],
+        status: result.status,
+        requiresSearch: true,
+        error: "AgendaPro requiere búsqueda por cliente. Falta confirmar endpoint de listado completo.",
+      }
+    }
+    return { ok: false, clients: [], error: result.error, status: result.status }
+  }
+
+  // Tolerar varios shapes: { clients: [...] } | { data: [...] } | { records: [...] } | [...] | { ...singleClient }
   const data = result.data as unknown
   let arr: AgendaProClientRaw[] = []
   if (Array.isArray(data)) arr = data as AgendaProClientRaw[]
@@ -222,11 +269,13 @@ export async function fetchAgendaProClients(cfg: AgendaProConfig, options: { pag
     if (Array.isArray(obj.clients)) arr = obj.clients as AgendaProClientRaw[]
     else if (Array.isArray(obj.data)) arr = obj.data as AgendaProClientRaw[]
     else if (Array.isArray(obj.records)) arr = obj.records as AgendaProClientRaw[]
+    else if (obj.id || obj.first_name || obj.email) {
+      // AgendaPro a veces devuelve UN cliente directo (cuando search coincide con 1)
+      arr = [obj as AgendaProClientRaw]
+    }
   }
-  // Paginación: si vino "lleno" suponemos hay más página. Mejor heurística
-  // cuando confirmemos doc oficial.
-  const nextPage = arr.length === perPage ? page + 1 : undefined
-  return { ok: true, clients: arr, nextPage }
+
+  return { ok: true, clients: arr }
 }
 
 export interface SyncSummary {

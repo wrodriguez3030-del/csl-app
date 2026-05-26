@@ -67,20 +67,29 @@ export async function POST(request: Request) {
     const syncId = (logInsert.data as { sync_id?: string } | null)?.sync_id || null
 
     try {
-      // Paginar — máximo 20 páginas como salvaguarda contra loop infinito.
-      const allClients: Array<Record<string, unknown>> = []
-      let page = 1
-      for (let i = 0; i < 20; i++) {
-        const fetchResult = await fetchAgendaProClients(cfg, { page })
-        if (!fetchResult.ok) {
-          throw new Error(fetchResult.error || `Error AgendaPro status ${fetchResult.status}`)
+      // Aceptar body opcional con { search: "..." } para sync por término.
+      // Si no llega search, intentamos GET /clients (puede que AgendaPro
+      // requiera search explícito — la función lo señala con requiresSearch).
+      let body: { search?: string } = {}
+      try {
+        const raw = await request.text()
+        body = raw ? JSON.parse(raw) : {}
+      } catch { body = {} }
+      const search = (body.search || "").trim()
+
+      const fetchResult = await fetchAgendaProClients(cfg, search ? { search } : {})
+      if (!fetchResult.ok) {
+        if (fetchResult.requiresSearch) {
+          return json({
+            ok: false,
+            code: "requires_search",
+            error: fetchResult.error || "AgendaPro requiere búsqueda por cliente.",
+          }, 400)
         }
-        allClients.push(...fetchResult.clients)
-        if (!fetchResult.nextPage) break
-        page = fetchResult.nextPage
+        throw new Error(fetchResult.error || `Error AgendaPro status ${fetchResult.status}`)
       }
 
-      const summary = await syncAgendaProClients({ clients: allClients, businessId })
+      const summary = await syncAgendaProClients({ clients: fetchResult.clients, businessId })
 
       if (syncId) {
         await supabase
