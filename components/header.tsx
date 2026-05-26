@@ -21,7 +21,7 @@ const pageMeta: Partial<Record<TabId, { title: string; description: string; eyeb
   reporte: { title: "Nuevo Reporte", description: "Registro de intervención, piezas y cierre técnico", eyebrow: "Mantenimiento" },
   reportes: { title: "Lista de Reportes", description: "Historial técnico, búsqueda, edición e impresión", eyebrow: "Mantenimiento" },
   "historial-equipos": { title: "Historial por equipo", description: "Resumen de mantenimientos, piezas y frecuencia por equipo", eyebrow: "Mantenimiento" },
-  errores: { title: "Errores", description: "Catálogo técnico de errores", eyebrow: "Mantenimiento" },
+  errores: { title: "Consulta código errores", description: "Consulta rápida de códigos de error y soluciones técnicas", eyebrow: "Mantenimiento" },
   inventario: { title: "Inventario y piezas", description: "Control de inventario, piezas y repuestos", eyebrow: "Mantenimiento" },
   "piezas-poliza": { title: "Lista piezas póliza", description: "Piezas pendientes y recibidas por suplidor", eyebrow: "Mantenimiento" },
   "pulse-dashboard": { title: "PulseControl CSL", description: "Panel integrado de control de pulsos GentleYAG", eyebrow: "Láser" },

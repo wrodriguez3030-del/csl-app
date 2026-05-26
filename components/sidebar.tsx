@@ -66,7 +66,7 @@ const CORE_GROUPS: { label: string; items: NavItem[] }[] = [
       { id: "piezas-poliza", label: "Lista piezas póliza", icon: <ClipboardCheck className="h-4 w-4" /> },
       { id: "equipos", label: "Equipos", icon: <Wrench className="h-4 w-4" /> },
       { id: "tecnicos", label: "Tecnicos", icon: <Users className="h-4 w-4" /> },
-      { id: "errores", label: "Errores", icon: <Cog className="h-4 w-4" /> },
+      { id: "errores", label: "Consulta código errores", icon: <Cog className="h-4 w-4" /> },
     ],
   },
 ]
