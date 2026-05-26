@@ -22,6 +22,7 @@ import {
 import { RecordActions } from "@/components/record-actions"
 import { RecordViewDialog } from "@/components/record-view-dialog"
 import type { InventarioItem, PiezaCatalogo } from "@/lib/types"
+import { CATEGORIAS_TECNICAS, normalizeCategoria } from "@/lib/categorias"
 
 const emptyPiezaCatalogo: PiezaCatalogo = {
   Pieza: "", Categoria: "", Prioridad: "Media", Tipo: "Consumible",
@@ -66,19 +67,11 @@ export function InventarioPage() {
   const [savingNuevaPieza, setSavingNuevaPieza] = useState(false)
   // Vista de detalle (clic en fila) — usa el dialog genérico.
   const [viewItem, setViewItem] = useState<InventarioItem | null>(null)
-  // Cuando el usuario elige "+ Nueva categoría" en el select, mostramos input
-  // libre para escribirla. También entra en este modo si la categoría
-  // pre-cargada del form principal no existe aún en el catálogo.
-  const [nuevaPiezaCustomCat, setNuevaPiezaCustomCat] = useState(false)
-
   const inventario = db.inventario || []
 
-  const categorias = useMemo(() => {
-    const set = new Set<string>()
-    inventario.forEach(i => { if (i.Categoria) set.add(i.Categoria) })
-    db.piezas.forEach(p => { if (p.Categoria) set.add(p.Categoria) })
-    return Array.from(set).sort()
-  }, [inventario, db.piezas])
+  // Lista oficial canónica — viene de lib/categorias.ts. Evita duplicados
+  // como "ENERGIA" vs "Energía" que aparecían cuando se construía dinamicamente.
+  const categorias = useMemo(() => [...CATEGORIAS_TECNICAS], [])
 
   const stockTotal = (i: InventarioItem) =>
     (Number(i.StockRafaelVidal)||0) + (Number(i.StockLosJardines)||0) +
@@ -95,7 +88,7 @@ export function InventarioPage() {
   const filtered = useMemo(() => {
     return inventario.filter(i => {
       if (filterEstado !== "todos" && i.Estado !== filterEstado) return false
-      if (filterCat !== "todas" && i.Categoria !== filterCat) return false
+      if (filterCat !== "todas" && normalizeCategoria(i.Categoria) !== filterCat) return false
       const stock = filterSuc === "todas" ? stockTotal(i) : stockBySuc(i, filterSuc)
       if (filterAlerta === "bajo" && stock > (i.StockMinimo||0)) return false
       if (filterAlerta === "agotado" && stock > 0) return false
@@ -210,7 +203,6 @@ export function InventarioPage() {
     setSavingNuevaPieza(false)
     setShowNuevaPieza(false)
     setNuevaPiezaForm(emptyPiezaCatalogo)
-    setNuevaPiezaCustomCat(false)
   }
 
   const guardarEnSupabase = async (item: InventarioItem, action = "updateInventario") => {
@@ -262,7 +254,7 @@ export function InventarioPage() {
         ItemID: "inv_cat_" + Date.now() + "_" + idx,
         CodigoBarras: "",
         Pieza: p.Pieza,
-        Categoria: p.Categoria || "Sin categoría",
+        Categoria: normalizeCategoria(p.Categoria),
         Marca: "", Modelo: "", NumeroParte: "",
         PrecioCompra: 0, PrecioCompraMercado: 0, PrecioVenta: 0,
         StockRafaelVidal: 0, StockLosJardines: 0, StockVillaOlga: 0, StockLaVega: 0,
@@ -299,7 +291,7 @@ export function InventarioPage() {
           ItemID: "inv_xl_" + Date.now() + "_" + i,
           CodigoBarras: String(r.CodigoBarras || r["Codigo de barras"] || r.Codigo || ""),
           Pieza: String(r.Pieza || r.Nombre || "").trim(),
-          Categoria: String(r.Categoria || r.Categoría || "Sin categoría"),
+          Categoria: normalizeCategoria(r.Categoria || r.Categoría || ""),
           Marca: String(r.Marca || ""),
           Modelo: String(r.Modelo || ""),
           NumeroParte: String(r.NumeroParte || r["Numero de parte"] || r["Número de parte"] || ""),
@@ -510,7 +502,7 @@ export function InventarioPage() {
                     <td className="px-3 py-2 text-center"><SeqBadge n={seqIndex + 1} /></td>
                     <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{i.CodigoBarras || "-"}</td>
                     <td className="px-3 py-2 font-semibold">{i.Pieza}</td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground">{i.Categoria}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">{normalizeCategoria(i.Categoria)}</td>
                     <td className="px-3 py-2 text-xs">{i.Marca || "-"}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs">{i.PrecioVenta ? money(i.PrecioVenta) : "-"}</td>
                     <td className="px-3 py-2 text-right font-mono font-bold">{fmt(stock)}</td>
@@ -568,12 +560,9 @@ export function InventarioPage() {
                       size="sm"
                       className="h-7 self-start gap-1 text-xs sm:self-auto"
                       onClick={() => {
-                        // Pre-cargar categoría si el usuario ya escribió una en el form principal.
-                        const preCat = form.Categoria || ""
+                        // Pre-cargar categoría normalizada si el usuario ya escribió una en el form principal.
+                        const preCat = normalizeCategoria(form.Categoria)
                         setNuevaPiezaForm({ ...emptyPiezaCatalogo, Categoria: preCat })
-                        // Si la categoría pre-cargada no existe en el catálogo, abrir
-                        // el modo de input libre directamente.
-                        setNuevaPiezaCustomCat(Boolean(preCat) && !categorias.includes(preCat))
                         setShowNuevaPieza(true)
                       }}
                     >
@@ -620,7 +609,15 @@ export function InventarioPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>Categoría</Label>
-                  <Input value={form.Categoria} onChange={e => setForm({...form, Categoria: e.target.value})} placeholder="Auto-rellena según pieza" readOnly={!!db.piezas.find(p => p.Pieza === form.Pieza)} />
+                  <Select
+                    value={normalizeCategoria(form.Categoria)}
+                    onValueChange={(v) => setForm({ ...form, Categoria: v })}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Seleccionar categoría" /></SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIAS_TECNICAS.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1.5">
                   <Label>Marca</Label>
@@ -730,7 +727,6 @@ export function InventarioPage() {
           if (!v) {
             // Al cerrar (cancelar o click fuera) reseteamos el sub-form.
             setNuevaPiezaForm(emptyPiezaCatalogo)
-            setNuevaPiezaCustomCat(false)
           }
         }}
       >
@@ -753,63 +749,17 @@ export function InventarioPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Categoría</Label>
-              {categorias.length === 0 ? (
-                <>
-                  <div className="rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                    No hay categorías disponibles. Escribe una nueva.
-                  </div>
-                  <Input
-                    value={nuevaPiezaForm.Categoria}
-                    onChange={e => setNuevaPiezaForm({ ...nuevaPiezaForm, Categoria: e.target.value })}
-                    placeholder="Nombre de la categoría"
-                  />
-                </>
-              ) : nuevaPiezaCustomCat ? (
-                <div className="flex w-full gap-2">
-                  <Input
-                    value={nuevaPiezaForm.Categoria}
-                    onChange={e => setNuevaPiezaForm({ ...nuevaPiezaForm, Categoria: e.target.value })}
-                    placeholder="Nombre de la nueva categoría"
-                    autoFocus
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-9 flex-shrink-0 text-xs"
-                    onClick={() => {
-                      setNuevaPiezaCustomCat(false)
-                      setNuevaPiezaForm({ ...nuevaPiezaForm, Categoria: "" })
-                    }}
-                  >
-                    ← Lista
-                  </Button>
-                </div>
-              ) : (
-                <Select
-                  value={nuevaPiezaForm.Categoria || undefined}
-                  onValueChange={(v) => {
-                    if (v === "__custom__") {
-                      setNuevaPiezaCustomCat(true)
-                      setNuevaPiezaForm({ ...nuevaPiezaForm, Categoria: "" })
-                    } else {
-                      setNuevaPiezaForm({ ...nuevaPiezaForm, Categoria: v })
-                    }
-                  }}
-                >
-                  <SelectTrigger><SelectValue placeholder="Selecciona una categoría" /></SelectTrigger>
-                  <SelectContent className="max-h-[260px]">
-                    {categorias.map(c => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
-                    ))}
-                    <SelectItem value="__custom__">
-                      <span className="flex items-center gap-1 text-primary">
-                        <Plus className="h-3 w-3" /> Nueva categoría
-                      </span>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
+              <Select
+                value={normalizeCategoria(nuevaPiezaForm.Categoria)}
+                onValueChange={(v) => setNuevaPiezaForm({ ...nuevaPiezaForm, Categoria: v })}
+              >
+                <SelectTrigger><SelectValue placeholder="Selecciona una categoría" /></SelectTrigger>
+                <SelectContent className="max-h-[260px]">
+                  {CATEGORIAS_TECNICAS.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">

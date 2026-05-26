@@ -22,6 +22,7 @@ import type { PiezaPolizaLista, PiezaCatalogo } from "@/lib/types"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { useSessionUser } from "@/hooks/use-session-user"
 import { printPiezasPoliza } from "@/lib/piezas-poliza-pdf"
+import { CATEGORIAS_TECNICAS, normalizeCategoria } from "@/lib/categorias"
 
 type FormState = {
   id?: string
@@ -640,12 +641,15 @@ export function PiezasPolizaPage() {
             </div>
             <div>
               <Label className="text-xs">Categoría</Label>
-              <Input
-                value={nuevaPiezaForm.Categoria}
-                onChange={(e) => setNuevaPiezaForm({ ...nuevaPiezaForm, Categoria: e.target.value })}
-                placeholder="Ej. Óptica, Hidráulica..."
-                className="mt-1"
-              />
+              <Select
+                value={normalizeCategoria(nuevaPiezaForm.Categoria)}
+                onValueChange={(v) => setNuevaPiezaForm({ ...nuevaPiezaForm, Categoria: v })}
+              >
+                <SelectTrigger className="mt-1"><SelectValue placeholder="Seleccionar categoría" /></SelectTrigger>
+                <SelectContent>
+                  {CATEGORIAS_TECNICAS.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>

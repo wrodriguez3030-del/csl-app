@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog"
 import { Search, Save, Trash2, Plus, X, ChevronDown, ChevronRight, AlertCircle, Wrench } from "lucide-react"
 import type { PiezaCatalogo, Database } from "@/lib/types"
+import { CATEGORIAS_TECNICAS, normalizeCategoria } from "@/lib/categorias"
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -100,19 +101,21 @@ export function CatalogoPage() {
   const [deleteErrorDialog, setDeleteErrorDialog] = useState<CodigoError | null>(null)
 
   // Piezas filtradas
-  const categorias = useMemo(() => [...new Set(db.piezas.map((p) => p.Categoria).filter(Boolean))].sort(), [db.piezas])
+  // Lista oficial canónica — viene de lib/categorias.ts. Antes se construía
+  // dinámicamente desde db.piezas y aparecían duplicados (ENERGIA/Energía, etc.).
+  const categorias = useMemo(() => [...CATEGORIAS_TECNICAS], [])
   const filteredPiezas = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
     return db.piezas.filter((p) => {
       const mQ = !q || [p.Pieza, p.Categoria, p.Prioridad, p.Tipo, p.FallasComunes, p.Funcion].some((v) => (v || "").toLowerCase().includes(q))
-      const mC = filterCategoria === "todas" || p.Categoria === filterCategoria
+      const mC = filterCategoria === "todas" || normalizeCategoria(p.Categoria) === filterCategoria
       const mP = filterPrioridad === "todas" || p.Prioridad === filterPrioridad
       return mQ && mC && mP
     }).sort((a, b) => String((a as any)[piezaSort] || "").localeCompare(String((b as any)[piezaSort] || ""), "es", { numeric: true }))
   }, [db.piezas, searchQuery, filterCategoria, filterPrioridad, piezaSort])
   const grouped = useMemo(() => {
     const map: Record<string, PiezaCatalogo[]> = {}
-    filteredPiezas.forEach((p) => { const c = p.Categoria || "Sin categoría"; if (!map[c]) map[c] = []; map[c].push(p) })
+    filteredPiezas.forEach((p) => { const c = normalizeCategoria(p.Categoria); if (!map[c]) map[c] = []; map[c].push(p) })
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
   }, [filteredPiezas])
   const selectedPiezaData = useMemo(() => db.piezas.find((p) => p.Pieza === selectedPieza) || null, [db.piezas, selectedPieza])
@@ -309,7 +312,15 @@ export function CatalogoPage() {
                     </div>
                     <div className="space-y-1.5">
                       <Label>Categoría</Label>
-                      <Input value={formData.Categoria} onChange={(e) => setFormData({...formData, Categoria: e.target.value})} placeholder="Ej: Consumibles principales" />
+                      <Select
+                        value={normalizeCategoria(formData.Categoria)}
+                        onValueChange={(v) => setFormData({ ...formData, Categoria: v })}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Seleccionar categoría" /></SelectTrigger>
+                        <SelectContent>
+                          {CATEGORIAS_TECNICAS.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
@@ -358,7 +369,7 @@ export function CatalogoPage() {
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <h3 className="font-semibold text-lg">{selectedPiezaData.Pieza}</h3>
-                        <p className="text-sm text-muted-foreground">{selectedPiezaData.Categoria}</p>
+                        <p className="text-sm text-muted-foreground">{normalizeCategoria(selectedPiezaData.Categoria)}</p>
                       </div>
                       <div className="flex gap-1">
                         <Button size="icon" variant="ghost" onClick={() => { setFormData(selectedPiezaData); setShowForm(true) }}><Wrench className="h-4 w-4" /></Button>
