@@ -62,11 +62,11 @@ const CORE_GROUPS: { label: string; items: NavItem[] }[] = [
       { id: "reporte", label: "Nuevo reporte", icon: <FileText className="h-4 w-4" /> },
       { id: "reportes", label: "Lista de reportes", icon: <ClipboardList className="h-4 w-4" /> },
       { id: "historial-equipos", label: "Historial por equipo", icon: <BarChart3 className="h-4 w-4" /> },
-      { id: "inventario", label: "Inventario", icon: <Package className="h-4 w-4" /> },
+      { id: "inventario", label: "Inventario y piezas", icon: <Package className="h-4 w-4" /> },
       { id: "piezas-poliza", label: "Lista piezas póliza", icon: <ClipboardCheck className="h-4 w-4" /> },
       { id: "equipos", label: "Equipos", icon: <Wrench className="h-4 w-4" /> },
       { id: "tecnicos", label: "Tecnicos", icon: <Users className="h-4 w-4" /> },
-      { id: "errores", label: "Errores y piezas", icon: <Cog className="h-4 w-4" /> },
+      { id: "errores", label: "Errores", icon: <Cog className="h-4 w-4" /> },
     ],
   },
 ]
