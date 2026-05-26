@@ -316,6 +316,29 @@ export function CosmiatriaClientesPage() {
     }
   }
 
+  const handleAgendaProProbe = async () => {
+    try {
+      const { data: { session } } = await import("@/lib/supabase-client").then((m) => m.supabaseBrowser.auth.getSession())
+      if (!session?.access_token) throw new Error("Sesión no válida — vuelve a iniciar sesión")
+      const res = await fetch("/api/integrations/agendapro/health?probe=1", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+      const data = await res.json()
+      const text = JSON.stringify(data, null, 2)
+      try {
+        await navigator.clipboard.writeText(text)
+        showToast("Diagnóstico copiado al portapapeles. Pégalo en chat.", "success")
+      } catch {
+        // Fallback: log a consola si clipboard no disponible
+        // eslint-disable-next-line no-console
+        console.log("AgendaPro probe:", text)
+        showToast("Diagnóstico impreso en consola del navegador (F12 → Console).", "info")
+      }
+    } catch (probeErr) {
+      showToast(probeErr instanceof Error ? probeErr.message : "Error en diagnóstico", "error")
+    }
+  }
+
   const handleAgendaProSync = async () => {
     // AgendaPro Public API v1 expone GET /clients?search=...
     // El operador escribe un término (teléfono, cédula, nombre, email)
@@ -430,12 +453,17 @@ export function CosmiatriaClientesPage() {
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={exportCsv}><Download className="mr-2 h-4 w-4" />Descargar datos</Button>
           {canSyncAgendaPro ? (
-            <Button variant="outline" onClick={handleAgendaProSync} disabled={agendaProSyncing}>
-              {agendaProSyncing
-                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                : <RefreshCw className="mr-2 h-4 w-4" />}
-              {agendaProSyncing ? "Sincronizando…" : "Sincronizar AgendaPro"}
-            </Button>
+            <>
+              <Button variant="outline" onClick={handleAgendaProProbe} title="Diagnostica si AgendaPro pagina o devuelve siempre los mismos clientes">
+                Diagnosticar AgendaPro
+              </Button>
+              <Button variant="outline" onClick={handleAgendaProSync} disabled={agendaProSyncing}>
+                {agendaProSyncing
+                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  : <RefreshCw className="mr-2 h-4 w-4" />}
+                {agendaProSyncing ? "Sincronizando…" : "Sincronizar AgendaPro"}
+              </Button>
+            </>
           ) : null}
           {canMerge ? (
             <Button variant="outline" onClick={() => setMergeOpen(true)}>

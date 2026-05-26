@@ -25,3 +25,4 @@ supabase/.temp/
 # Datos privados (PII de clientes)
 *.csv
 !public/**/*.csv
+.env.agendapro.tmp
