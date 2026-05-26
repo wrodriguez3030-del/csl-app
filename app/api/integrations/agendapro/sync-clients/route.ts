@@ -22,6 +22,12 @@ import {
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
+// Vercel Function: sync puede tardar varios minutos si hay cientos/miles de
+// clientes (cada pagina AgendaPro = ~1s + upsert por cliente). Subimos a 300s
+// (Pro plan permite 300s; Hobby lo clampea a 60s — si es Hobby, considerar
+// chunked-sync por frontend).
+export const maxDuration = 300
+export const runtime = "nodejs"
 
 function json(data: Record<string, unknown>, status = 200) {
   return NextResponse.json(data, { status })

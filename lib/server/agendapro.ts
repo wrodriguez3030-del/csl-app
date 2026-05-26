@@ -357,8 +357,12 @@ export async function fetchAllAgendaProClients(cfg: AgendaProConfig, options: { 
   let pageSizeObserved: number | undefined
 
   for (let page = 1; page <= maxPages; page++) {
+    const t0 = Date.now()
     const res = await fetchAgendaProClients(cfg, { page, perPage })
     pagesRead++
+    // Log progresivo a Vercel function logs (no incluye PII ni credenciales)
+    // eslint-disable-next-line no-console
+    console.log(`[agendapro-sync] page=${page} count=${res.clients?.length ?? 0} ok=${res.ok} ms=${Date.now() - t0}`)
     if (!res.ok) {
       if (res.requiresSearch) {
         return {
