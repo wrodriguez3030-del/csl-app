@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { CalendarDays, Download, FileSignature, FileText, History, Plus, Search, UserRound, Users, Zap } from "lucide-react"
+import { CalendarDays, Download, FileSignature, FileText, History, Loader2, Plus, RefreshCw, Search, UserRound, Users, Zap } from "lucide-react"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
 import type { ClienteCosmiatria } from "@/lib/types"
 import type { FichaDermoCosmiatrica } from "@/lib/dermo-cosmiatria"
@@ -124,7 +124,9 @@ export function CosmiatriaClientesPage() {
   const { apiUrl, db, showToast, setIsLoading, setLoadingMessage, incrementFormOpen, decrementFormOpen } = useAppStore()
   const sessionUser = useSessionUser()
   const canMerge = !!sessionUser && (sessionUser.isAdmin || sessionUser.isSuperadmin)
+  const canSyncAgendaPro = canMerge
   const [mergeOpen, setMergeOpen] = useState(false)
+  const [agendaProSyncing, setAgendaProSyncing] = useState(false)
   const [clientes, setClientes] = useState<ClienteCosmiatria[]>([])
   const [fichas, setFichas] = useState<FichaDermoCosmiatrica[]>([])
   const [query, setQuery] = useState("")
@@ -314,6 +316,39 @@ export function CosmiatriaClientesPage() {
     }
   }
 
+  const handleAgendaProSync = async () => {
+    setAgendaProSyncing(true)
+    try {
+      const { data: { session } } = await import("@/lib/supabase-client").then((m) => m.supabaseBrowser.auth.getSession())
+      if (!session?.access_token) throw new Error("Sesión no válida — vuelve a iniciar sesión")
+      const res = await fetch("/api/integrations/agendapro/sync-clients", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      })
+      const data = await res.json() as {
+        ok?: boolean; error?: string;
+        totalAgendaPro?: number; created?: number; updated?: number;
+        skipped?: number; duplicates?: number; errors?: number;
+      }
+      if (!data?.ok) {
+        showToast(data?.error || `Error al sincronizar AgendaPro (${res.status})`, "error")
+        return
+      }
+      showToast(
+        `Sync OK: ${data.totalAgendaPro || 0} leídos · ${data.created || 0} creados · ${data.updated || 0} actualizados · ${data.skipped || 0} omitidos · ${data.errors || 0} errores`,
+        "success",
+      )
+      await loadData()
+    } catch (syncErr) {
+      showToast(syncErr instanceof Error ? syncErr.message : "Error al sincronizar AgendaPro", "error")
+    } finally {
+      setAgendaProSyncing(false)
+    }
+  }
+
   const deleteCliente = async (cliente: ClienteCosmiatria) => {
     if (!confirm(`¿Eliminar cliente ${cliente.Nombre} ${cliente.Apellido}?`)) return
     try {
@@ -378,8 +413,16 @@ export function CosmiatriaClientesPage() {
           <h2 className="text-xl font-bold">Clientes de Cosmiatría</h2>
           <p className="text-sm text-muted-foreground">Base de datos relacionada con fichas dermatológicas.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={exportCsv}><Download className="mr-2 h-4 w-4" />Descargar datos</Button>
+          {canSyncAgendaPro ? (
+            <Button variant="outline" onClick={handleAgendaProSync} disabled={agendaProSyncing}>
+              {agendaProSyncing
+                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                : <RefreshCw className="mr-2 h-4 w-4" />}
+              {agendaProSyncing ? "Sincronizando…" : "Sincronizar AgendaPro"}
+            </Button>
+          ) : null}
           {canMerge ? (
             <Button variant="outline" onClick={() => setMergeOpen(true)}>
               <Users className="mr-2 h-4 w-4" />Unificar clientes
