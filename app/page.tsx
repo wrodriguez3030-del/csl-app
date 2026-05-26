@@ -39,7 +39,7 @@ import { CertificadosRegaloTalonarioPage } from "@/components/certificados-regal
 import { CertificadosRegaloValidezPage } from "@/components/certificados-regalo-validez-page"
 import { LoginPage } from "@/components/login-page"
 import { AdminUsersPage } from "@/components/admin-users-page"
-import { canAccessMenu, clearLocalSession, getSessionUser, type SystemUser } from "@/lib/security"
+import { canAccessMenu, clearLocalSession, getFirstAllowedMenu, getSessionUser, type SystemUser } from "@/lib/security"
 import { supabaseBrowser } from "@/lib/supabase-client"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
@@ -108,6 +108,18 @@ export default function HomePage() {
       window.removeEventListener("csl-auth-changed", sync as EventListener)
     }
   }, [])
+
+  // Si el usuario está logueado pero el activeTab actual no es accesible
+  // (caso típico: el store default es "panel" pero este usuario no tiene
+  // Dashboard), redirige al primer menú permitido. Evita mostrar la
+  // pantalla de "Acceso denegado" cuando hay otras opciones disponibles.
+  useEffect(() => {
+    if (!user) return
+    if (!canAccessMenu(user, activeTab)) {
+      const first = getFirstAllowedMenu(user)
+      if (first && first !== activeTab) setActiveTab(first)
+    }
+  }, [user, activeTab, setActiveTab])
 
   /**
    * Refresca el snapshot global del sistema.
@@ -178,11 +190,22 @@ export default function HomePage() {
     if (!user) return null
 
     if (!canAccessMenu(user, activeTab)) {
+      // Si hay otro menú permitido, el useEffect superior ya está redirigiendo —
+      // mostramos un loading discreto en vez del bloqueo. Solo bloqueamos cuando
+      // el usuario no tiene NINGÚN menú asignado.
+      const fallback = getFirstAllowedMenu(user)
+      if (fallback) {
+        return (
+          <div className="rounded-xl border p-6 text-sm text-muted-foreground">
+            Redirigiendo a tu primer menú permitido…
+          </div>
+        )
+      }
       return (
         <div className="rounded-xl border p-6">
-          <div className="text-lg font-semibold">Acceso denegado</div>
+          <div className="text-lg font-semibold">No tienes menús asignados</div>
           <div className="text-sm text-muted-foreground mt-2">
-            Tu usuario no tiene permiso para entrar a este menú.
+            Contacta al administrador para que te asigne acceso a los módulos.
           </div>
         </div>
       )
@@ -263,7 +286,13 @@ export default function HomePage() {
   if (!isReady) return null
 
   if (!user) {
-    return <LoginPage onLogin={(logged) => { setUser(logged); setActiveTab("panel") }} />
+    return <LoginPage onLogin={(logged) => {
+      setUser(logged)
+      // Default tab tras login: primer menú permitido (no asumir "panel"
+      // porque muchos usuarios no tienen acceso al Dashboard Ejecutivo).
+      const first = getFirstAllowedMenu(logged)
+      if (first) setActiveTab(first)
+    }} />
   }
 
   return (

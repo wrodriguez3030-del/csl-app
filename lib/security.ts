@@ -217,3 +217,20 @@ export function canAccessMenu(user: SystemUser | null, tab: TabId): boolean {
   }
   return Array.isArray(user.menus) && user.menus.includes(tab)
 }
+
+/**
+ * Devuelve el primer menú al que el usuario tiene acceso, siguiendo el orden
+ * canónico de `MENU_OPTIONS` (que coincide con el orden visible del sidebar).
+ *
+ * Uso: post-login y al detectar que `activeTab` no está permitido — para
+ * evitar la pantalla de "Acceso denegado" cuando el usuario sí tiene otros
+ * menús habilitados. Si no encuentra ninguno permitido, devuelve null
+ * (significa "este usuario no tiene menús asignados").
+ */
+export function getFirstAllowedMenu(user: SystemUser | null): TabId | null {
+  if (!user) return null
+  for (const option of MENU_OPTIONS) {
+    if (canAccessMenu(user, option.id)) return option.id
+  }
+  return null
+}
