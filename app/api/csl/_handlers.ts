@@ -492,6 +492,140 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "deleteClienteCosmiatria":
       await deleteRow("cosmiatria_clientes", textValue(params, "id"))
       return { ok: true }
+    case "mergeClientes": {
+      // Unificación de clientes duplicados. Solo admin/superadmin.
+      // Migración requerida: 202605260009_cliente_merge_audit.sql.
+      const profile = await getProfile(user.id)
+      if (!profile?.is_admin && !profile?.is_superadmin) {
+        return { ok: false, code: "forbidden", error: "No tienes permiso para unificar clientes." }
+      }
+      const primary = textValue(params, "primaryClienteId")
+      const duplicate = textValue(params, "duplicateClienteId")
+      const note = textValue(params, "note") || null
+      const finalFieldsRaw = parsePayload(params).finalFields
+      const finalFields = (finalFieldsRaw && typeof finalFieldsRaw === "object" ? finalFieldsRaw : {}) as Row
+      if (!primary || !duplicate) {
+        return { ok: false, error: "Faltan IDs de cliente principal o duplicado." }
+      }
+      if (primary === duplicate) {
+        return { ok: false, error: "No puedes unificar un cliente consigo mismo." }
+      }
+
+      const supabase = getSupabaseAdmin()
+      const [primRes, dupRes] = await Promise.all([
+        supabase.from("csl_cosmiatria_clientes").select("*").eq("cliente_id", primary).maybeSingle(),
+        supabase.from("csl_cosmiatria_clientes").select("*").eq("cliente_id", duplicate).maybeSingle(),
+      ])
+      if (primRes.error || !primRes.data) {
+        return { ok: false, error: "Cliente principal no encontrado." }
+      }
+      if (dupRes.error || !dupRes.data) {
+        return { ok: false, error: "Cliente duplicado no encontrado." }
+      }
+      const primRow = primRes.data as Row
+      const dupRow = dupRes.data as Row
+      if (String(primRow.business_id) !== String(dupRow.business_id)) {
+        return { ok: false, error: "No se pueden unificar clientes de negocios diferentes." }
+      }
+      // Superadmin puede mover cross-tenant; admin normal solo dentro de su business.
+      if (!profile.is_superadmin && String(primRow.business_id) !== String(profile.business_id)) {
+        return { ok: false, code: "forbidden", error: "Solo puedes unificar clientes de tu propio negocio." }
+      }
+      if (dupRow.merged_into_cliente_id) {
+        return { ok: false, error: "El cliente duplicado ya fue fusionado previamente." }
+      }
+      if (primRow.merged_into_cliente_id) {
+        return { ok: false, error: "El cliente principal ya estaba fusionado en otro. Elige uno activo." }
+      }
+
+      // 1) Aplicar campos finales al primary (solo whitelist segura).
+      const allowedFinal: Array<keyof Row> = [
+        "nombre", "apellido", "telefono", "telefono2", "documento_identidad",
+        "email", "direccion", "localidad", "ciudad", "region", "sucursal", "genero",
+      ]
+      const updatePrimary: Row = {}
+      for (const key of allowedFinal) {
+        if (Object.prototype.hasOwnProperty.call(finalFields, key)) {
+          updatePrimary[key] = finalFields[key]
+        }
+      }
+      updatePrimary.updated_at = new Date().toISOString()
+      const updRes = await supabase
+        .from("csl_cosmiatria_clientes")
+        .update(updatePrimary)
+        .eq("cliente_id", primary)
+        .select("*")
+        .maybeSingle()
+      if (updRes.error || !updRes.data) {
+        return { ok: false, error: `No se pudo actualizar el cliente principal: ${updRes.error?.message || ""}`.trim() }
+      }
+      const finalRow = updRes.data as Row
+
+      // 2) Reasignar registros relacionados (cliente_id en las 3 tablas hijas).
+      const counts = { fichas: 0, masajes: 0, tatuajes: 0, links: 0 }
+      const reassign = async (table: string, key: keyof typeof counts) => {
+        const res = await supabase
+          .from(table)
+          .update({ cliente_id: primary })
+          .eq("cliente_id", duplicate)
+          .select("cliente_id")
+        if (res.error) throw new Error(`Error reasignando ${table}: ${res.error.message}`)
+        counts[key] = Array.isArray(res.data) ? res.data.length : 0
+      }
+      try {
+        await reassign("csl_ficha_dermatologica", "fichas")
+        await reassign("csl_consent_masajes", "masajes")
+        await reassign("csl_consent_tatuajes_cejas", "tatuajes")
+      } catch (transferError) {
+        return { ok: false, error: transferError instanceof Error ? transferError.message : "Error transfiriendo registros." }
+      }
+      // csl_public_form_links no tiene cliente_id (solo nombre/telefono snapshot)
+      // — no se modifica. counts.links queda en 0 intencionalmente.
+
+      // 3) Marcar duplicate como fusionado.
+      const dupUpdate = await supabase
+        .from("csl_cosmiatria_clientes")
+        .update({
+          estado: "Fusionado",
+          merged_into_cliente_id: primary,
+          merged_at: new Date().toISOString(),
+          merged_by: user.id,
+          merge_note: note,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("cliente_id", duplicate)
+      if (dupUpdate.error) {
+        return { ok: false, error: `No se pudo marcar el duplicado: ${dupUpdate.error.message}` }
+      }
+
+      // 4) Auditoría (append-only).
+      const auditInsert = await supabase.from("csl_cliente_merge_audit").insert({
+        business_id: primRow.business_id,
+        primary_cliente_id: primary,
+        duplicate_cliente_id: duplicate,
+        primary_snapshot: primRow,
+        duplicate_snapshot: dupRow,
+        final_snapshot: finalRow,
+        affected_counts: counts,
+        merged_by: user.id,
+        note,
+      })
+      if (auditInsert.error) {
+        // Audit fallida no revierte el merge — pero lo reportamos como warning.
+        return {
+          ok: true,
+          counts,
+          primary: fromDb("cosmiatria_clientes", finalRow),
+          warning: `Merge completado pero falló la auditoría: ${auditInsert.error.message}`,
+        }
+      }
+
+      return {
+        ok: true,
+        counts,
+        primary: fromDb("cosmiatria_clientes", finalRow),
+      }
+    }
     case "saveFichaDermatologia": {
       const payload = parsePayload(params)
       const clienteId = await resolveClienteId(payload)

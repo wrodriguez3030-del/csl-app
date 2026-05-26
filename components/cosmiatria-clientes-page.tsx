@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { CalendarDays, Download, FileSignature, FileText, History, Plus, Search, UserRound, Zap } from "lucide-react"
+import { CalendarDays, Download, FileSignature, FileText, History, Plus, Search, UserRound, Users, Zap } from "lucide-react"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
 import type { ClienteCosmiatria } from "@/lib/types"
 import type { FichaDermoCosmiatrica } from "@/lib/dermo-cosmiatria"
@@ -19,6 +19,8 @@ import { normalizeAddress } from "@/lib/address"
 import { clientMatchesSearch } from "@/lib/cliente-search"
 import { digitsOnly as onlyDigits, formatPhone, formatCedula, displayPhone, displayDocumento } from "@/lib/formatters"
 import { findExistingClienteMatch } from "@/lib/cliente-dedupe"
+import { useSessionUser } from "@/hooks/use-session-user"
+import { MergeClientesDialog } from "@/components/merge-clientes-dialog"
 
 interface HistorialPayload {
   fichas: Array<{ id: string; fecha: string; sucursal: string; operadora: string; estado: string; motivoConsulta?: string }>
@@ -120,6 +122,9 @@ function clienteRecord(cliente: ClienteCosmiatria) {
 
 export function CosmiatriaClientesPage() {
   const { apiUrl, db, showToast, setIsLoading, setLoadingMessage, incrementFormOpen, decrementFormOpen } = useAppStore()
+  const sessionUser = useSessionUser()
+  const canMerge = !!sessionUser && (sessionUser.isAdmin || sessionUser.isSuperadmin)
+  const [mergeOpen, setMergeOpen] = useState(false)
   const [clientes, setClientes] = useState<ClienteCosmiatria[]>([])
   const [fichas, setFichas] = useState<FichaDermoCosmiatrica[]>([])
   const [query, setQuery] = useState("")
@@ -375,9 +380,21 @@ export function CosmiatriaClientesPage() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={exportCsv}><Download className="mr-2 h-4 w-4" />Descargar datos</Button>
+          {canMerge ? (
+            <Button variant="outline" onClick={() => setMergeOpen(true)}>
+              <Users className="mr-2 h-4 w-4" />Unificar clientes
+            </Button>
+          ) : null}
           <Button onClick={openNew}><Plus className="mr-2 h-4 w-4" />Nuevo cliente</Button>
         </div>
       </div>
+
+      <MergeClientesDialog
+        open={mergeOpen}
+        onOpenChange={setMergeOpen}
+        clientes={clientes}
+        onMerged={() => { void loadData() }}
+      />
 
       <div className="grid gap-3 md:grid-cols-4">
         <Card><CardContent className="pt-5"><div className="text-sm text-muted-foreground">Clientes</div><div className="text-3xl font-bold">{clientes.length}</div></CardContent></Card>
