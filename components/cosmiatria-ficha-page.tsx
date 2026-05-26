@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SeqBadge } from "@/components/seq-badge"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
+import { useSessionUser } from "@/hooks/use-session-user"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
 import type { ClienteCosmiatria } from "@/lib/types"
 import type { FichaDermoCosmiatrica } from "@/lib/dermo-cosmiatria"
@@ -222,6 +223,8 @@ ${printRow(printField("Declaración aceptada", ficha.declaracionAceptada ? "Sí"
 
 export function CosmiatriaFichaPage() {
   const { apiUrl, dbPulsos, showToast, setIsLoading, setLoadingMessage, incrementFormOpen, decrementFormOpen } = useAppStore()
+  const sessionUser = useSessionUser()
+  const isUsuario = !!sessionUser && !sessionUser.isAdmin && !sessionUser.isSuperadmin
   const [records, setRecords] = useState<FichaDermoCosmiatrica[]>([])
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<FichaDermoCosmiatrica | null>(null)
@@ -464,7 +467,7 @@ export function CosmiatriaFichaPage() {
         </div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:flex md:flex-wrap">
           <Button variant="outline" onClick={() => setLinkDialogOpen(true)}><MessageCircle className="mr-2 h-4 w-4" />Generar link para cliente</Button>
-          <Button onClick={startNew}><Plus className="mr-2 h-4 w-4" />Nueva ficha</Button>
+          {!isUsuario && <Button onClick={startNew}><Plus className="mr-2 h-4 w-4" />Nueva ficha</Button>}
         </div>
       </div>
 

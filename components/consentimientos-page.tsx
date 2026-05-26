@@ -22,6 +22,7 @@ import type { ClienteCosmiatria } from "@/lib/types"
 import { searchClients } from "@/lib/cliente-search"
 import { SEQ_HEADER_CLASS, SeqBadge } from "@/components/seq-badge"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
+import { useSessionUser } from "@/hooks/use-session-user"
 
 export type ConsentKind = "masajes" | "tatuajes"
 export type ConsentStatus = "Pendiente" | "Pendiente de revisión" | "Firmado" | "Anulado"
@@ -821,6 +822,8 @@ function printConsent(record: ConsentimientoRecord, kind: ConsentKind) {
 export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
   const config = KIND_CONFIG[kind]
   const { apiUrl, db, showToast, setIsLoading, setLoadingMessage, incrementFormOpen, decrementFormOpen } = useAppStore()
+  const sessionUser = useSessionUser()
+  const isUsuario = !!sessionUser && !sessionUser.isAdmin && !sessionUser.isSuperadmin
   const sucursales = useMemo(() => db.sucursales.filter((s) => s.Estado !== "Inactiva").map((s) => s.Nombre).filter(Boolean), [db.sucursales])
   const [records, setRecords] = useState<ConsentimientoRecord[]>([])
   const [clientes, setClientes] = useState<ClienteCosmiatria[]>([])
@@ -1190,7 +1193,9 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
               <Button variant="outline" onClick={() => setLinkDialogOpen(true)} className="gap-2 rounded-full">
                 <MessageCircle className="h-4 w-4" /> Generar link para cliente
               </Button>
-              <Button onClick={startCreate} className="gap-2 rounded-full"><FileSignature className="h-4 w-4" /> Nuevo consentimiento</Button>
+              {!isUsuario && (
+                <Button onClick={startCreate} className="gap-2 rounded-full"><FileSignature className="h-4 w-4" /> Nuevo consentimiento</Button>
+              )}
             </div>
           </div>
         </CardContent>
