@@ -127,6 +127,7 @@ export function CosmiatriaClientesPage() {
   const canSyncAgendaPro = canMerge
   const [mergeOpen, setMergeOpen] = useState(false)
   const [agendaProSyncing, setAgendaProSyncing] = useState(false)
+  const [agendaProAutoSync, setAgendaProAutoSync] = useState(false)
   const [clientes, setClientes] = useState<ClienteCosmiatria[]>([])
   const [fichas, setFichas] = useState<FichaDermoCosmiatrica[]>([])
   const [query, setQuery] = useState("")
@@ -343,17 +344,7 @@ export function CosmiatriaClientesPage() {
     }
   }
 
-  const handleAgendaProSync = async () => {
-    // AgendaPro Public API v1 expone GET /clients?search=...
-    // El operador escribe un término (teléfono, cédula, nombre, email)
-    // y el backend hace la query a AgendaPro y upsertea cada resultado.
-    const search = typeof window !== "undefined"
-      ? window.prompt(
-          "Sincronizar AgendaPro\n\nEscribe un término de búsqueda (teléfono, cédula, nombre o email).\n\nDeja vacío para intentar listado completo (puede que AgendaPro lo requiera obligatorio).",
-          "",
-        )
-      : null
-    if (search === null) return // cancelado
+  const runAgendaProSync = async (search: string) => {
     setAgendaProSyncing(true)
     try {
       const { data: { session } } = await import("@/lib/supabase-client").then((m) => m.supabaseBrowser.auth.getSession())
@@ -389,6 +380,31 @@ export function CosmiatriaClientesPage() {
       setAgendaProSyncing(false)
     }
   }
+
+  const handleAgendaProSync = async () => {
+    const search = typeof window !== "undefined"
+      ? window.prompt(
+          "Sincronizar AgendaPro\n\nEscribe un término de búsqueda (teléfono, cédula, nombre o email).\n\nDeja vacío para intentar listado completo (puede que AgendaPro lo requiera obligatorio).",
+          "",
+        )
+      : null
+    if (search === null) return
+    await runAgendaProSync(search.trim())
+  }
+
+  // Auto-sync: cuando el toggle está ON, dispara runAgendaProSync("")
+  // cada 30 segundos. Skip si ya hay uno corriendo. Para apagarlo, el
+  // usuario vuelve a clickear el botón.
+  useEffect(() => {
+    if (!agendaProAutoSync) return
+    // Lanzar uno inmediato (el usuario espera resultado al activar el toggle)
+    if (!agendaProSyncing) void runAgendaProSync("")
+    const interval = setInterval(() => {
+      if (!agendaProSyncing) void runAgendaProSync("")
+    }, 30000)
+    return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agendaProAutoSync])
 
   const deleteCliente = async (cliente: ClienteCosmiatria) => {
     if (!confirm(`¿Eliminar cliente ${cliente.Nombre} ${cliente.Apellido}?`)) return
@@ -461,11 +477,21 @@ export function CosmiatriaClientesPage() {
               <Button variant="outline" onClick={handleAgendaProProbe} title="Diagnostica si AgendaPro pagina o devuelve siempre los mismos clientes">
                 Diagnosticar AgendaPro
               </Button>
-              <Button variant="outline" onClick={handleAgendaProSync} disabled={agendaProSyncing}>
+              <Button variant="outline" onClick={handleAgendaProSync} disabled={agendaProSyncing || agendaProAutoSync}>
                 {agendaProSyncing
                   ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   : <RefreshCw className="mr-2 h-4 w-4" />}
                 {agendaProSyncing ? "Sincronizando…" : "Sincronizar AgendaPro"}
+              </Button>
+              <Button
+                variant={agendaProAutoSync ? "default" : "outline"}
+                onClick={() => setAgendaProAutoSync((v) => !v)}
+                title="Activa/desactiva sincronización automática cada 30 segundos"
+              >
+                {agendaProAutoSync
+                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  : <RefreshCw className="mr-2 h-4 w-4" />}
+                {agendaProAutoSync ? "Auto-sync ON (30s)" : "Auto-sync OFF"}
               </Button>
             </>
           ) : null}
