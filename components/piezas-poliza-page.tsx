@@ -16,9 +16,12 @@ import {
 } from "@/components/ui/dialog"
 import {
   ListChecks, Plus, Search, Trash2, Pencil, RotateCcw, ChevronDown, ChevronRight,
-  PackageCheck, Circle, CheckCircle2, X, Save,
+  PackageCheck, Circle, CheckCircle2, X, Save, Printer,
 } from "lucide-react"
 import type { PiezaPolizaLista, PiezaCatalogo } from "@/lib/types"
+import { useCurrentBusiness } from "@/hooks/use-current-business"
+import { useSessionUser } from "@/hooks/use-session-user"
+import { printPiezasPoliza } from "@/lib/piezas-poliza-pdf"
 
 type FormState = {
   id?: string
@@ -56,6 +59,8 @@ const prioBadge: Record<string, string> = {
 
 export function PiezasPolizaPage() {
   const { db, setDb, apiUrl, showToast, incrementFormOpen, decrementFormOpen } = useAppStore()
+  const business = useCurrentBusiness()
+  const sessionUser = useSessionUser()
 
   const [items, setItems] = useState<PiezaPolizaLista[]>([])
   const [loading, setLoading] = useState(true)
@@ -172,6 +177,24 @@ export function PiezasPolizaPage() {
 
   const pendientes = filtered.filter((i) => i.Estado === "pendiente")
   const recibidas = filtered.filter((i) => i.Estado === "recibida")
+
+  const handlePrintPdf = () => {
+    printPiezasPoliza({
+      business,
+      pendientes,
+      recibidas,
+      filtros: {
+        busqueda: search,
+        estado: filterEstado,
+        prioridad: filterPrioridad,
+        suplidor: filterSuplidor,
+        sucursal: filterSucursal,
+      },
+      generadoEn: new Date().toLocaleString("es-DO", { dateStyle: "long", timeStyle: "short" }),
+      generadoPor: sessionUser?.nombre || sessionUser?.username || undefined,
+      origin: window.location.origin,
+    })
+  }
 
   // ─── Save/delete/toggle handlers ───────────────────────────────────────
 
@@ -360,10 +383,16 @@ export function PiezasPolizaPage() {
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={openNew} className="h-9 shrink-0">
-              <Plus className="mr-1.5 h-4 w-4" />
-              Agregar pieza
-            </Button>
+            <div className="flex shrink-0 gap-2">
+              <Button onClick={handlePrintPdf} variant="outline" className="h-9">
+                <Printer className="mr-1.5 h-4 w-4" />
+                Imprimir PDF
+              </Button>
+              <Button onClick={openNew} className="h-9">
+                <Plus className="mr-1.5 h-4 w-4" />
+                Agregar pieza
+              </Button>
+            </div>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1.5"><Circle className="h-3 w-3" /> Pendientes: <b className="text-foreground">{items.filter((i) => i.Estado === "pendiente").length}</b></span>
