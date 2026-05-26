@@ -462,7 +462,28 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     }
     case "saveClienteCosmiatria": {
       const payload = parsePayload(params)
+      const explicitClienteId = String(payload.ClienteID ?? payload.clienteId ?? payload.cliente_id ?? "").trim()
       const clienteId = await resolveClienteId(payload)
+      // Dedupe explícito en backend: si NO viene ClienteID en payload
+      // (caso CREATE) pero el resolved ID ya corresponde a un cliente
+      // existente, devolvemos error controlado en vez de silenciosamente
+      // mergear sobre el registro existente. Multi-tenant: select va
+      // filtrado por business_id vía AsyncLocalStorage en runWithBusinessContext.
+      if (!explicitClienteId) {
+        const existing = await getSupabaseAdmin()
+          .from("csl_cosmiatria_clientes")
+          .select("*")
+          .eq("cliente_id", clienteId)
+          .maybeSingle()
+        if (existing.data) {
+          return {
+            ok: false,
+            code: "duplicate",
+            error: "Este cliente ya existe en el sistema.",
+            record: fromDb("cosmiatria_clientes", existing.data as Row),
+          }
+        }
+      }
       const row = clienteCosmiatriaToDb({ ...payload, ClienteID: clienteId })
       const cliente = await upsertClienteCosmiatriaPreserving(row)
       await syncFichasCliente(cliente)

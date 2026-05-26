@@ -14,6 +14,7 @@ import type { ClienteCosmiatria } from "@/lib/types"
 import { MASSAGE_SPECIALISTS } from "@/components/consentimientos-page"
 import { searchClients } from "@/lib/cliente-search"
 import { formatPhone, formatCedula, displayPhone, displayDocumento } from "@/lib/formatters"
+import { findExistingClienteMatch } from "@/lib/cliente-dedupe"
 
 // 10 motivos canónicos para Ficha Dermatológica. Espejo de
 // MOTIVOS_CONSULTA_PREDEFINIDOS en ficha-dermatologia-form.tsx — mantener
@@ -328,13 +329,28 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       setError("Necesitas al menos teléfono o documento para guardar el cliente.")
       return
     }
+    // Separamos nombre completo en Nombre + Apellido (1ª palabra vs resto)
+    // para coincidir con el esquema de csl_cosmiatria_clientes.
+    const parts = prefill.nombre.trim().split(/\s+/)
+    const Nombre = parts[0] || ""
+    const Apellido = parts.slice(1).join(" ")
+
+    // Dedupe check antes de guardar: si ya existe un cliente con mismo
+    // telefono/documento/nombre dentro del business actual, autoseleccionamos
+    // el existente y mostramos aviso en vez de crear duplicado.
+    const match = findExistingClienteMatch(
+      { Nombre, Apellido, Telefono: prefill.telefono, DocumentoIdentidad: prefill.documento },
+      clientes,
+      prefill.clienteId || undefined,
+    )
+    if (match && !prefill.clienteId) {
+      selectCliente(match.cliente)
+      setClienteNotice("Este cliente ya existe en el sistema. Se cargó el registro existente — puedes generar el link directamente.")
+      return
+    }
+
     setSavingCliente(true)
     try {
-      // Separamos nombre completo en Nombre + Apellido (1ª palabra vs resto)
-      // para coincidir con el esquema de csl_cosmiatria_clientes.
-      const parts = prefill.nombre.trim().split(/\s+/)
-      const Nombre = parts[0] || ""
-      const Apellido = parts.slice(1).join(" ")
       const data: Record<string, string> = {
         ClienteID: prefill.clienteId || "",
         Nombre,
@@ -350,8 +366,17 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
         action: "saveClienteCosmiatria",
         data: JSON.stringify(data),
       })
-      if (!result?.ok) throw new Error(String((result as { error?: string })?.error || "No se pudo guardar el cliente"))
-      const saved = normalizeCliente((result as { record?: Record<string, unknown> }).record || {})
+      const typed = result as { ok?: boolean; code?: string; error?: string; record?: Record<string, unknown> }
+      // Caso "duplicate" del backend (mismo cli_doc_/cli_tel_ que un cliente ya
+      // registrado): cargamos el cliente existente en el modal y avisamos.
+      if (typed && typed.ok === false && typed.code === "duplicate" && typed.record) {
+        const existing = normalizeCliente(typed.record)
+        selectCliente(existing)
+        setClienteNotice("Este cliente ya existe en el sistema. Se cargó el registro existente.")
+        return
+      }
+      if (!typed?.ok) throw new Error(String(typed?.error || "No se pudo guardar el cliente"))
+      const saved = normalizeCliente(typed.record || {})
       const wasNew = !prefill.clienteId
       const alreadyExists = wasNew && saved.ClienteID && clientes.some((c) => c.ClienteID === saved.ClienteID)
       setPrefill((current) => ({

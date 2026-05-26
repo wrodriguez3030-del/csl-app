@@ -18,6 +18,7 @@ import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { normalizeAddress } from "@/lib/address"
 import { clientMatchesSearch } from "@/lib/cliente-search"
 import { digitsOnly as onlyDigits, formatPhone, formatCedula, displayPhone, displayDocumento } from "@/lib/formatters"
+import { findExistingClienteMatch } from "@/lib/cliente-dedupe"
 
 interface HistorialPayload {
   fichas: Array<{ id: string; fecha: string; sucursal: string; operadora: string; estado: string; motivoConsulta?: string }>
@@ -261,22 +262,23 @@ export function CosmiatriaClientesPage() {
       showToast("Nombre, teléfono y sucursal son obligatorios", "error")
       return
     }
-    // Dedupe check (solo en CREATE): si ya existe un cliente con el mismo
-    // teléfono o documento, avisamos en vez de duplicar. El backend
-    // (resolveClienteId) además mergea por cli_doc_/cli_tel_ pero la
-    // detección temprana evita confusión visual.
-    if (!editing) {
-      const phoneDigits = String(form.Telefono).replace(/\D/g, "")
-      const docDigits = String(form.DocumentoIdentidad || "").replace(/\D/g, "")
-      const dup = clientes.find((c) => {
-        const cPhone = String(c.Telefono || "").replace(/\D/g, "")
-        const cDoc = String(c.DocumentoIdentidad || "").replace(/\D/g, "")
-        return (phoneDigits && cPhone === phoneDigits) || (docDigits && cDoc === docDigits)
-      })
-      if (dup) {
-        showToast(`Ya existe un cliente con ese teléfono/cédula: ${dup.Nombre} ${dup.Apellido || ""}`.trim(), "error")
-        return
-      }
+    // Dedupe check: si ya existe un cliente con el mismo teléfono,
+    // documento o nombre, bloqueamos en vez de duplicar. En edición
+    // excluimos el propio cliente por ClienteID (un cliente no es
+    // duplicado de sí mismo). Multi-tenant: `clientes` viene filtrado
+    // por business_id desde el backend (AsyncLocalStorage).
+    const match = findExistingClienteMatch(
+      { Nombre: form.Nombre, Apellido: form.Apellido, Telefono: form.Telefono, DocumentoIdentidad: form.DocumentoIdentidad },
+      clientes,
+      editing ? form.ClienteID : undefined,
+    )
+    if (match) {
+      const existente = `${match.cliente.Nombre} ${match.cliente.Apellido || ""}`.trim()
+      const detalle = [displayPhone(match.cliente.Telefono), displayDocumento(match.cliente.DocumentoIdentidad), match.cliente.Sucursal]
+        .filter(Boolean)
+        .join(" · ")
+      showToast(`${match.message} Cliente existente: ${existente}${detalle ? " (" + detalle + ")" : ""}`, "error")
+      return
     }
     // Limpiar dirección antes de persistir — evita guardar
     // "santiago, santiago, santaigo" en el catálogo.
@@ -292,7 +294,13 @@ export function CosmiatriaClientesPage() {
         action: "saveClienteCosmiatria",
         data: JSON.stringify(payload),
       })
-      if (!result?.ok) throw new Error(String((result as { error?: string }).error || "No se pudo guardar"))
+      const typed = result as { ok?: boolean; code?: string; error?: string }
+      if (typed?.ok === false && typed.code === "duplicate") {
+        showToast(typed.error || "Este cliente ya existe en el sistema.", "error")
+        await loadData()
+        return
+      }
+      if (!typed?.ok) throw new Error(String(typed?.error || "No se pudo guardar"))
       await loadData()
       setOpen(false)
       showToast(editing ? "Cliente actualizado" : "Cliente creado correctamente", "success")
