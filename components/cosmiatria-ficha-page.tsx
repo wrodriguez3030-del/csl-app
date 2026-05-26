@@ -13,8 +13,9 @@ import { Label } from "@/components/ui/label"
 import { SeqBadge } from "@/components/seq-badge"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { useSessionUser } from "@/hooks/use-session-user"
+import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
-import type { ClienteCosmiatria } from "@/lib/types"
+import type { Business, ClienteCosmiatria } from "@/lib/types"
 import type { FichaDermoCosmiatrica } from "@/lib/dermo-cosmiatria"
 import { normalizeSearchText, normalizeDigits } from "@/lib/cliente-search"
 
@@ -116,40 +117,46 @@ function printTable(title: string, headers: string[], rows: unknown[][]) {
   }</tbody></table>`
 }
 
-function buildFichaPrintHtml(ficha: FichaDermoCosmiatrica) {
+function buildFichaPrintHtml(ficha: FichaDermoCosmiatrica, business?: Business) {
   const isPendiente = ficha.estado === "Pendiente de revisión" || ficha.estado === "Pendiente"
   const watermarkBanner = isPendiente
     ? `<div style="background:#fef3c7;border:2px solid #f59e0b;color:#92400e;padding:8px 12px;margin:0 0 8px;text-align:center;font-weight:bold;font-size:11px;border-radius:6px;">⚠ ${ficha.estado === "Pendiente de revisión" ? "PENDIENTE DE REVISIÓN POR ESPECIALISTA" : "PENDIENTE — falta completar"} · Esta ficha NO está finalizada.</div>`
     : ""
+  const brandName = business?.name || "Cibao Spa Laser"
+  const brandColor = business?.primaryColor || "#00897b"
+  const logoSrc = business?.logoUrl && typeof window !== "undefined" ? `${window.location.origin}${business.logoUrl}` : ""
   return `<!doctype html><html><head><meta charset="utf-8" /><title>Ficha Dermatología - ${escapeHtml(ficha.nombre || ficha.id)}</title><style>
-@page{size:letter;margin:8mm;}
+@page{size:letter;margin:10mm;}
 *{box-sizing:border-box;}
 body{font-family:Arial,Helvetica,sans-serif;margin:0;font-size:9px;color:#111827;background:white;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-.header{text-align:center;margin-bottom:8px;border-bottom:2px solid #00897b;padding-bottom:5px;}
-.logo{font-size:16px;font-weight:bold;color:#00897b;}
-h1{font-size:12px;margin:4px 0 0;}
-h2{background:#00897b;color:white;padding:4px 6px;font-size:9.5px;margin:7px 0 4px;text-transform:uppercase;}
+.header{display:flex;align-items:center;gap:10px;margin-bottom:8px;border-bottom:2px solid ${brandColor};padding-bottom:5px;}
+.header img{height:42px;width:auto;object-fit:contain;}
+.header-text{flex:1;text-align:left;}
+.logo{font-size:14px;font-weight:bold;color:${brandColor};}
+h1{font-size:11px;margin:2px 0 0;}
+h2{background:${brandColor};color:white;padding:4px 6px;font-size:9.5px;margin:7px 0 4px;text-transform:uppercase;break-after:avoid;page-break-after:avoid;}
 .subtitle{margin:2px 0 0;color:#4b5563;font-size:8.5px;}
-.row{display:flex;gap:7px;margin:2px 0;}
+.row{display:flex;gap:7px;margin:2px 0;break-inside:avoid;page-break-inside:avoid;}
 .f{flex:1;min-height:13px;padding:2px;border-bottom:1px dotted #999;}
 .f b{color:#555;}
-table{width:100%;border-collapse:collapse;margin:4px 0;font-size:8.4px;}
-th{background:#00897b;color:white;padding:3px;text-align:left;}
+table{width:100%;border-collapse:collapse;margin:4px 0;font-size:8.4px;break-inside:auto;page-break-inside:auto;}
+tr{break-inside:avoid;page-break-inside:avoid;}
+th{background:${brandColor};color:white;padding:3px;text-align:left;}
 td{border:1px solid #ccc;padding:2px 3px;vertical-align:top;}
+.consent{margin-top:10px;break-inside:auto;page-break-inside:auto;}
 .consent h2{margin-top:0;}
 .consent p{margin:4px 0;line-height:1.25;text-align:justify;font-size:8.6px;}
-.consent .consent-title{font-weight:bold;color:#00897b;text-align:center;font-size:10.5px;margin:5px 0;}
+.consent .consent-title{font-weight:bold;color:${brandColor};text-align:center;font-size:10.5px;margin:5px 0;break-after:avoid;page-break-after:avoid;}
 .empty{color:#9ca3af;}
-.page-break{break-before:page;page-break-before:always;}
-.signature{margin-top:24px;border-top:1px solid #111827;padding-top:5px;text-align:center;break-inside:avoid;page-break-inside:avoid;}
+.signature{margin-top:14px;border-top:1px solid #111827;padding-top:5px;text-align:center;break-inside:avoid;page-break-inside:avoid;}
 .signature h2{margin:0 0 5px;text-align:left;}
-.firma-box{margin:3px auto 0;width:360px;max-width:100%;padding-top:3px;}
+.firma-box{margin:3px auto 0;width:360px;max-width:100%;padding-top:3px;break-inside:avoid;page-break-inside:avoid;}
 .firma-box img{display:block;margin:0 auto 4px;max-width:300px;max-height:82px;border:1px solid #ccc;background:white;padding:5px;}
 .firma-box p{margin:2px 0;font-size:8.5px;}
 .meta{margin-top:4px;color:#374151;font-size:8px;}
-@media print{button{display:none}.page-break{break-before:page;page-break-before:always;}}
+@media print{button{display:none}}
 </style></head><body>
-${watermarkBanner}<div class="header"><div class="logo">CIBAO SPA LASER</div><h1>FICHA DERMATOLÓGICA / DERMO-COSMIÁTRICA</h1><p class="subtitle">Documento generado desde el sistema CSL</p></div>
+${watermarkBanner}<div class="header">${logoSrc ? `<img src="${escapeHtml(logoSrc)}" alt="${escapeHtml(brandName)}" onerror="this.style.display='none'" />` : ""}<div class="header-text"><div class="logo">${escapeHtml(brandName.toUpperCase())}</div><h1>FICHA DERMATOLÓGICA / DERMO-COSMIÁTRICA</h1><p class="subtitle">Documento generado desde el sistema CSL</p></div></div>
 ${printRow(printField("Fecha", ficha.fecha), printField("Estado", ficha.estado))}
 ${printRow(printField("Sucursal", ficha.sucursal), printField("Operadora", ficha.operadora), printField("Especialista", ficha.nombreEspecialista || ficha.especialista))}
 <h2>Datos del cliente</h2>
@@ -197,7 +204,7 @@ ${printRow(printField("Recomendaciones", ficha.recomendaciones))}
 ${printRow(printField("Cuidados sugeridos", ficha.cuidadosSugeridos), printField("Recomienda procedimiento", ficha.recomiendaProcedimiento), printField("Próxima evaluación", ficha.proximaEvaluacion))}
 <h2>Declaración del cliente</h2>
 ${printRow(printField("Declaración aceptada", ficha.declaracionAceptada ? "Sí" : "No"))}
-<div class="consent page-break">
+<div class="consent">
   <h2>Consentimiento informado</h2>
   ${consentimientoCosmiatria.map((line, index) => index < 2 ? `<p class="consent-title">${escapeHtml(line)}</p>` : `<p>${escapeHtml(line)}</p>`).join("")}
   <div class="signature">
@@ -225,6 +232,7 @@ export function CosmiatriaFichaPage() {
   const { apiUrl, dbPulsos, showToast, setIsLoading, setLoadingMessage, incrementFormOpen, decrementFormOpen } = useAppStore()
   const sessionUser = useSessionUser()
   const isUsuario = !!sessionUser && !sessionUser.isAdmin && !sessionUser.isSuperadmin
+  const business = useCurrentBusiness()
   const [records, setRecords] = useState<FichaDermoCosmiatrica[]>([])
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<FichaDermoCosmiatrica | null>(null)
@@ -448,7 +456,7 @@ export function CosmiatriaFichaPage() {
       showToast("El navegador bloqueó la ventana de impresión", "error")
       return
     }
-    printWindow.document.write(buildFichaPrintHtml(record))
+    printWindow.document.write(buildFichaPrintHtml(record, business))
     printWindow.document.close()
     setTimeout(() => {
       printWindow.focus()

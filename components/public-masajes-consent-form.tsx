@@ -81,14 +81,14 @@ function buildPrintHtml(args: {
   .center { text-align: center; }
   .meta { color: #475569; font-size: 10px; margin-top: 2px; }
   h1 { font-size: 14px; margin: 6px 0 2px; }
-  h2 { font-size: 11.5px; background: #00897b; color: white; padding: 5px 8px; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: .03em; border-radius: 4px; }
-  p { margin: 4px 0; line-height: 1.45; text-align: justify; }
-  ul, ol { margin: 4px 0 4px 18px; line-height: 1.5; }
-  li { margin: 2px 0; }
+  h2 { font-size: 11.5px; background: #00897b; color: white; padding: 5px 8px; margin: 10px 0 5px; text-transform: uppercase; letter-spacing: .03em; border-radius: 4px; break-after: avoid; page-break-after: avoid; }
+  p { margin: 3px 0; line-height: 1.4; text-align: justify; }
+  ul, ol { margin: 3px 0 3px 18px; line-height: 1.45; break-inside: auto; page-break-inside: auto; }
+  li { margin: 2px 0; break-inside: avoid; page-break-inside: avoid; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin: 4px 0; }
   .field { padding: 3px 0; border-bottom: 1px dotted #aab6c5; }
   .field b { color: #0f172a; min-width: 100px; display: inline-block; }
-  .sign-box { margin-top: 16px; border: 1px solid #d7dee8; border-radius: 6px; padding: 12px; }
+  .sign-box { margin-top: 12px; border: 1px solid #d7dee8; border-radius: 6px; padding: 10px; break-inside: avoid; page-break-inside: avoid; }
   .sign-img { max-width: 320px; max-height: 110px; object-fit: contain; display: block; margin: 6px auto; border-bottom: 1px solid #111827; }
   .sign-cap { text-align: center; font-weight: 700; font-size: 10px; color: #334155; }
   .footer { margin-top: 16px; padding-top: 8px; border-top: 1px solid #e5e7eb; color: #64748b; font-size: 9px; text-align: center; }

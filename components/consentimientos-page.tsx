@@ -23,6 +23,8 @@ import { searchClients } from "@/lib/cliente-search"
 import { SEQ_HEADER_CLASS, SeqBadge } from "@/components/seq-badge"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { useSessionUser } from "@/hooks/use-session-user"
+import { useCurrentBusiness } from "@/hooks/use-current-business"
+import type { Business } from "@/lib/types"
 
 export type ConsentKind = "masajes" | "tatuajes"
 export type ConsentStatus = "Pendiente" | "Pendiente de revisión" | "Firmado" | "Anulado"
@@ -622,8 +624,11 @@ function tatuajesDisplay(record: ConsentimientoRecord) {
   return { tipo, zona, tipoPigmento, colores, embarazo, alergias, medicamentos, exposicion, queloides, sesionesPrev }
 }
 
-function printConsent(record: ConsentimientoRecord, kind: ConsentKind) {
+function printConsent(record: ConsentimientoRecord, kind: ConsentKind, business?: Business) {
   const config = KIND_CONFIG[kind]
+  const brandName = business?.name || "Cibao Spa Laser"
+  const brandColor = business?.primaryColor || "#008d81"
+  const brandLogo = business?.logoUrl || "/cibao-spa-laser-logo.jpeg"
   const display = kind === "masajes" ? masajesDisplay(record) : null
   const tDisplay = kind === "tatuajes" ? tatuajesDisplay(record) : null
   const fields =
@@ -734,38 +739,38 @@ function printConsent(record: ConsentimientoRecord, kind: ConsentKind) {
       <meta charset="utf-8" />
       <title>${escapeHtml(config.title)} - ${escapeHtml(record.nombreCliente)}</title>
       <style>
-        @page { size: A4; margin: 14mm; }
+        @page { size: A4; margin: 12mm; }
         * { box-sizing: border-box; }
         body { margin: 0; color: #111827; font-family: Arial, Helvetica, sans-serif; font-size: 12px; }
-        .header { display: flex; align-items: center; gap: 16px; border-bottom: 3px solid #008d81; padding-bottom: 12px; margin-bottom: 14px; }
-        .logo { width: 118px; height: 64px; object-fit: contain; }
-        h1 { margin: 0; color: #007f78; font-size: 20px; letter-spacing: .02em; text-transform: uppercase; }
+        .header { display: flex; align-items: center; gap: 16px; border-bottom: 3px solid ${brandColor}; padding-bottom: 10px; margin-bottom: 12px; break-after: avoid; page-break-after: avoid; }
+        .logo { width: 110px; height: 58px; object-fit: contain; }
+        h1 { margin: 0; color: ${brandColor}; font-size: 18px; letter-spacing: .02em; text-transform: uppercase; }
         .sub { margin-top: 4px; color: #475569; font-weight: 700; }
         .meta { margin-left: auto; text-align: right; color: #334155; font-size: 11px; }
-        .section { margin-top: 12px; border: 1px solid #d7dee8; border-radius: 10px; overflow: hidden; break-inside: avoid; }
-        .section-title { background: #008d81; color: white; padding: 7px 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+        .section { margin-top: 10px; border: 1px solid #d7dee8; border-radius: 10px; overflow: hidden; break-inside: auto; page-break-inside: auto; }
+        .section-title { background: ${brandColor}; color: white; padding: 6px 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; break-after: avoid; page-break-after: avoid; }
         .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0; }
-        .field { min-height: 29px; border-bottom: 1px dotted #aab6c5; padding: 7px 10px; display: flex; gap: 8px; }
+        .field { min-height: 26px; border-bottom: 1px dotted #aab6c5; padding: 5px 10px; display: flex; gap: 8px; break-inside: avoid; page-break-inside: avoid; }
         .field b { min-width: 145px; color: #0f172a; }
         .field span { flex: 1; }
         .full { grid-column: 1 / -1; }
-        .text { padding: 11px 12px; line-height: 1.6; text-align: justify; }
-        .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 18px 14px 10px; }
-        .signature { text-align: center; min-height: 150px; }
-        .sig-title { font-weight: 800; color: #0f172a; margin-bottom: 8px; }
+        .text { padding: 8px 12px; line-height: 1.5; text-align: justify; }
+        .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 14px 14px 10px; break-inside: avoid; page-break-inside: avoid; }
+        .signature { text-align: center; break-inside: avoid; page-break-inside: avoid; }
+        .sig-title { font-weight: 800; color: #0f172a; margin-bottom: 6px; }
         .signature img { width: 260px; height: 88px; object-fit: contain; border: 1px solid #d7dee8; background: white; }
         .sig-empty { height: 88px; }
-        .sig-line { border-top: 1px solid #111827; margin: 10px 24px 4px; }
+        .sig-line { border-top: 1px solid #111827; margin: 8px 24px 4px; }
         .sig-name { font-weight: 700; color: #334155; }
-        .footer { margin-top: 16px; color: #64748b; font-size: 10px; text-align: center; }
-        .checklist, .bullet { margin: 0; padding: 8px 14px 8px 22px; list-style: none; }
-        .checklist li { padding: 3px 0; display: flex; align-items: flex-start; gap: 8px; line-height: 1.45; break-inside: avoid; }
+        .footer { margin-top: 14px; color: #64748b; font-size: 10px; text-align: center; }
+        .checklist, .bullet { margin: 0; padding: 6px 14px 6px 22px; list-style: none; }
+        .checklist li { padding: 2px 0; display: flex; align-items: flex-start; gap: 8px; line-height: 1.4; break-inside: avoid; page-break-inside: avoid; }
         .checklist .mark { display: inline-block; width: 14px; color: #0f172a; font-weight: 800; }
         .checklist .ck-on { color: #0f172a; }
         .checklist .ck-off { color: #94a3b8; }
-        .bullet { list-style: disc outside; padding-left: 28px; line-height: 1.55; }
-        .bullet li { margin: 4px 0; break-inside: avoid; }
-        .accept { padding: 8px 14px; font-weight: 700; font-size: 11px; }
+        .bullet { list-style: disc outside; padding-left: 28px; line-height: 1.5; }
+        .bullet li { margin: 3px 0; break-inside: avoid; page-break-inside: avoid; }
+        .accept { padding: 6px 14px; font-weight: 700; font-size: 11px; }
         .accept.ok { color: #047857; background: #ecfdf5; }
         .accept.no { color: #b45309; background: #fffbeb; }
         @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
@@ -774,10 +779,10 @@ function printConsent(record: ConsentimientoRecord, kind: ConsentKind) {
     <body>
       ${record.estado === "Pendiente de revisión" || record.estado === "Pendiente" ? `<div style="background:#fef3c7;border:2px solid #f59e0b;color:#92400e;padding:10px 14px;margin:0 0 14px;text-align:center;font-weight:800;font-size:12px;border-radius:8px;">⚠ ${record.estado === "Pendiente de revisión" ? "PENDIENTE DE REVISIÓN POR ESPECIALISTA" : "PENDIENTE — falta completar"} · Este consentimiento NO está finalizado.</div>` : ""}
       <div class="header">
-        <img class="logo" src="${window.location.origin}/cibao-spa-laser-logo.jpeg" alt="Cibao Spa Laser" />
+        <img class="logo" src="${window.location.origin}${brandLogo}" alt="${escapeHtml(brandName)}" onerror="this.style.display='none'" />
         <div>
           <h1>${escapeHtml(config.title)}</h1>
-          <div class="sub">Cibao Spa Laser · Consentimiento informado</div>
+          <div class="sub">${escapeHtml(brandName)} · Consentimiento informado</div>
         </div>
         <div class="meta">
           <b>ID:</b> ${escapeHtml(record.id)}<br/>
@@ -808,7 +813,7 @@ function printConsent(record: ConsentimientoRecord, kind: ConsentKind) {
           ${signatureBlock("Firma del especialista", record.firmaEspecialista, record.nombreEspecialista)}
         </div>
       </div>
-      <div class="footer">Documento generado por Sistema Integral CSL · ${new Date().toLocaleString("es-DO")}</div>
+      <div class="footer">${escapeHtml(brandName)} · Documento generado por Sistema Integral CSL · ${new Date().toLocaleString("es-DO")}</div>
       <script>setTimeout(() => window.print(), 450)</script>
     </body>
   </html>`
@@ -824,6 +829,7 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
   const { apiUrl, db, showToast, setIsLoading, setLoadingMessage, incrementFormOpen, decrementFormOpen } = useAppStore()
   const sessionUser = useSessionUser()
   const isUsuario = !!sessionUser && !sessionUser.isAdmin && !sessionUser.isSuperadmin
+  const business = useCurrentBusiness()
   const sucursales = useMemo(() => db.sucursales.filter((s) => s.Estado !== "Inactiva").map((s) => s.Nombre).filter(Boolean), [db.sucursales])
   const [records, setRecords] = useState<ConsentimientoRecord[]>([])
   const [clientes, setClientes] = useState<ClienteCosmiatria[]>([])
@@ -1299,7 +1305,7 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon" onClick={() => setDetail(record)} title="Ver"><Eye className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => printConsent(record, kind)} title="Imprimir PDF"><Printer className="h-4 w-4 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => printConsent(record, kind, business)} title="Imprimir PDF"><Printer className="h-4 w-4 text-primary" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => startEdit(record)} title="Editar"><Pencil className="h-4 w-4" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => void handleDelete(record)} title="Eliminar"><Trash2 className="h-4 w-4 text-destructive" /></Button>
                       </div>
@@ -1332,7 +1338,7 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
         onLinkFicha={linkFicha}
       />
 
-      <DetailDialog record={detail} kind={kind} clientes={clientes} onClose={() => setDetail(null)} onPrint={(record) => printConsent(record, kind)} onEdit={(record) => { setDetail(null); startEdit(record) }} />
+      <DetailDialog record={detail} kind={kind} clientes={clientes} onClose={() => setDetail(null)} onPrint={(record) => printConsent(record, kind, business)} onEdit={(record) => { setDetail(null); startEdit(record) }} />
 
       <LinkGeneratorDialog
         open={linkDialogOpen}

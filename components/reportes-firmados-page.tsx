@@ -26,6 +26,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { SEQ_HEADER_CLASS, SeqBadge } from "@/components/seq-badge"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
+import { useCurrentBusiness } from "@/hooks/use-current-business"
+import type { Business } from "@/lib/types"
 
 /**
  * Vista centralizada de documentos firmados / pendientes:
@@ -151,6 +153,7 @@ function consentToUnified(rows: Record<string, unknown>[], tipo: "masajes" | "ta
 
 export function ReportesFirmadosPage() {
   const { apiUrl, setActiveTab, showToast, setIsLoading, setLoadingMessage } = useAppStore()
+  const business = useCurrentBusiness()
   const [items, setItems] = useState<ReporteUnificado[]>([])
   const [loading, setLoading] = useState(false)
   const [detalle, setDetalle] = useState<ReporteUnificado | null>(null)
@@ -252,7 +255,7 @@ export function ReportesFirmadosPage() {
   }
 
   const handlePrint = (record: ReporteUnificado) => {
-    const html = buildPrintHtml(record)
+    const html = buildPrintHtml(record, business)
     const popup = window.open("", "_blank", "width=1000,height=900")
     if (!popup) {
       showToast("El navegador bloqueó la ventana de impresión", "error")
@@ -620,44 +623,47 @@ function FirmaPreview({ label, value }: { label: string; value: string }) {
  * Para impresión avanzada con todos los campos, los módulos originales
  * tienen sus propios renderers; éste sirve como vista resumida unificada.
  */
-function buildPrintHtml(record: ReporteUnificado) {
+function buildPrintHtml(record: ReporteUnificado, business?: Business) {
   const tipo = TIPO_LABEL[record.tipo]
+  const brandName = business?.name || "Cibao Spa Laser"
+  const brandColor = business?.primaryColor || "#14B7B0"
+  const brandLogo = business?.logoUrl || "/cibao-spa-laser-logo.jpeg"
   return `<!doctype html>
   <html>
     <head>
       <meta charset="utf-8" />
       <title>${escapeHtml(tipo)} - ${escapeHtml(record.cliente)}</title>
       <style>
-        @page { size: A4; margin: 14mm; }
+        @page { size: A4; margin: 12mm; }
         body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #102A3A; font-size: 12px; }
-        .header { display: flex; align-items: center; gap: 16px; border-bottom: 3px solid #14B7B0; padding-bottom: 12px; margin-bottom: 14px; }
+        .header { display: flex; align-items: center; gap: 16px; border-bottom: 3px solid ${brandColor}; padding-bottom: 10px; margin-bottom: 12px; break-after: avoid; page-break-after: avoid; }
         .logo { width: 110px; height: 60px; object-fit: contain; }
-        h1 { margin: 0; color: #14B7B0; font-size: 20px; text-transform: uppercase; }
+        h1 { margin: 0; color: ${brandColor}; font-size: 18px; text-transform: uppercase; }
         .sub { color: #475569; font-weight: 700; margin-top: 4px; }
         .meta { margin-left: auto; font-size: 11px; color: #334155; text-align: right; }
-        .section { margin-top: 14px; border: 1px solid #E1ECF2; border-radius: 10px; overflow: hidden; }
-        .section-title { background: #14B7B0; color: white; padding: 7px 10px; font-weight: 800; text-transform: uppercase; }
+        .section { margin-top: 10px; border: 1px solid #E1ECF2; border-radius: 10px; overflow: hidden; break-inside: auto; page-break-inside: auto; }
+        .section-title { background: ${brandColor}; color: white; padding: 6px 10px; font-weight: 800; text-transform: uppercase; break-after: avoid; page-break-after: avoid; }
         .grid { display: grid; grid-template-columns: repeat(2, 1fr); }
-        .field { min-height: 28px; border-bottom: 1px dotted #C7D7E0; padding: 7px 10px; display: flex; gap: 8px; }
+        .field { min-height: 26px; border-bottom: 1px dotted #C7D7E0; padding: 5px 10px; display: flex; gap: 8px; break-inside: avoid; page-break-inside: avoid; }
         .field b { min-width: 145px; color: #0B3442; }
         .field span { flex: 1; }
         .full { grid-column: 1 / -1; }
-        .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 18px 14px 10px; }
-        .sig { text-align: center; }
+        .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 14px 14px 10px; break-inside: avoid; page-break-inside: avoid; }
+        .sig { text-align: center; break-inside: avoid; page-break-inside: avoid; }
         .sig img { width: 240px; height: 80px; object-fit: contain; border: 1px solid #E1ECF2; background: #fff; }
         .sig-empty { height: 80px; }
-        .sig-line { border-top: 1px solid #102A3A; margin: 10px 24px 4px; }
+        .sig-line { border-top: 1px solid #102A3A; margin: 8px 24px 4px; }
         .sig-name { font-weight: 700; color: #334155; }
-        .footer { margin-top: 16px; color: #64748B; font-size: 10px; text-align: center; }
+        .footer { margin-top: 14px; color: #64748B; font-size: 10px; text-align: center; }
         @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
       </style>
     </head>
     <body>
       <div class="header">
-        <img class="logo" src="${window.location.origin}/cibao-spa-laser-logo.jpeg" alt="Cibao Spa Laser" />
+        <img class="logo" src="${window.location.origin}${brandLogo}" alt="${escapeHtml(brandName)}" onerror="this.style.display='none'" />
         <div>
           <h1>${escapeHtml(tipo)}</h1>
-          <div class="sub">Cibao Spa Laser · Documento firmado</div>
+          <div class="sub">${escapeHtml(brandName)} · Documento firmado</div>
         </div>
         <div class="meta">
           <b>ID:</b> ${escapeHtml(record.id)}<br/>
