@@ -325,15 +325,19 @@ export function CosmiatriaClientesPage() {
       })
       const data = await res.json()
       const text = JSON.stringify(data, null, 2)
-      try {
-        await navigator.clipboard.writeText(text)
-        showToast("Diagnóstico copiado al portapapeles. Pégalo en chat.", "success")
-      } catch {
-        // Fallback: log a consola si clipboard no disponible
-        // eslint-disable-next-line no-console
-        console.log("AgendaPro probe:", text)
-        showToast("Diagnóstico impreso en consola del navegador (F12 → Console).", "info")
-      }
+
+      // Descargar como .txt — el usuario lo abre en Notepad y pega en chat
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)
+      a.href = url
+      a.download = `agendapro-diagnostico-${stamp}.txt`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      showToast("Diagnóstico descargado (revisa tu carpeta de descargas).", "success")
     } catch (probeErr) {
       showToast(probeErr instanceof Error ? probeErr.message : "Error en diagnóstico", "error")
     }
