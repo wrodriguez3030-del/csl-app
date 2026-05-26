@@ -44,7 +44,7 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "cosmiatria-ficha", label: "Ficha Dermatología", section: "Clientes y Consentimientos" },
   { id: "consent-masajes", label: "Consentimiento Masajes", section: "Clientes y Consentimientos" },
   { id: "consent-tatuajes-cejas", label: "Consentimiento Eliminación de Tatuajes y Cejas", section: "Clientes y Consentimientos" },
-  { id: "reportes-firmados", label: "Reportes de Consentimientos y Fichas", section: "Clientes y Consentimientos" },
+  { id: "reportes-firmados", label: "Historial Fichas y Consentimientos", section: "Clientes y Consentimientos" },
   { id: "cliente-certificados", label: "CF Regalo Digital", section: "Atención a cliente" },
   { id: "cliente-certificados-depicenter", label: "Certificado Digital Depicenter", section: "Atención a cliente" },
   { id: "cliente-certificados-imprimir", label: "CF de Regalo para imprimir", section: "Atención a cliente" },

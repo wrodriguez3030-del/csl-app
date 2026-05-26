@@ -97,7 +97,7 @@ const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
       { id: "cosmiatria-ficha", label: "Ficha Dermatologia", icon: <Sparkles className="h-4 w-4" /> },
       { id: "consent-masajes", label: "Consentimiento Masajes", icon: <FileSignature className="h-4 w-4" /> },
       { id: "consent-tatuajes-cejas", label: "Eliminacion Tatuajes y Cejas", icon: <FileSignature className="h-4 w-4" /> },
-      { id: "reportes-firmados", label: "Reportes Consentimientos y Fichas", icon: <Files className="h-4 w-4" /> },
+      { id: "reportes-firmados", label: "Historial Fichas y Consentimientos", icon: <Files className="h-4 w-4" /> },
     ],
   },
   {

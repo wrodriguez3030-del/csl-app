@@ -307,7 +307,7 @@ export function ReportesFirmadosPage() {
                 <span className="csl-pill">Documentos</span>
               </div>
               <h2 className="font-heading text-2xl font-black tracking-tight text-[color:var(--brand-primary-dark)] sm:text-3xl">
-                Reportes de Consentimientos y Fichas
+                Historial Fichas y Consentimientos
               </h2>
               <p className="mt-1 max-w-2xl text-sm text-slate-500">
                 Vista centralizada de fichas dermatológicas y consentimientos firmados. Cliente · sucursal · especialista · estado.

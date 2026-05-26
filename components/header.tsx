@@ -38,7 +38,7 @@ const pageMeta: Partial<Record<TabId, { title: string; description: string; eyeb
   "cosmiatria-ficha": { title: "Ficha Dermatología", description: "Ficha dermo-cosmiátrica con firma digital", eyebrow: "Cosmiatría" },
   "consent-masajes": { title: "Consentimiento Masajes", description: "Registro, firmas y PDF para terapias corporales", eyebrow: "Consentimientos" },
   "consent-tatuajes-cejas": { title: "Consentimiento Eliminacion de Tatuajes y Cejas", description: "Autorizacion informada para procedimientos laser", eyebrow: "Consentimientos" },
-  "reportes-firmados": { title: "Reportes de Consentimientos y Fichas", description: "Vista centralizada de fichas dermatológicas y consentimientos firmados", eyebrow: "Clientes y Consentimientos" },
+  "reportes-firmados": { title: "Historial Fichas y Consentimientos", description: "Vista centralizada de fichas dermatológicas y consentimientos firmados", eyebrow: "Clientes y Consentimientos" },
   "cliente-certificados": { title: "CF Regalo Digital", description: "Certificados digitales en PDF y registro emitido", eyebrow: "Atención a cliente" },
   "cliente-certificados-depicenter": { title: "Certificado Digital Depicenter", description: "Emisión, validación y PDF con plantilla Depicenter", eyebrow: "Atención a cliente" },
   "cliente-certificados-imprimir": { title: "CF de Regalo para imprimir", description: "Impresión de campos sobre certificado físico", eyebrow: "Atención a cliente" },
