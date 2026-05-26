@@ -28,6 +28,7 @@ import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import type { Business } from "@/lib/types"
+import { displayPhone, displayDocumento } from "@/lib/formatters"
 
 /**
  * Vista centralizada de documentos firmados / pendientes:
@@ -461,9 +462,9 @@ export function ReportesFirmadosPage() {
                       </TableCell>
                       <TableCell>
                         <div className="font-bold">{r.cliente || "—"}</div>
-                        <div className="text-xs text-muted-foreground">{r.telefono || r.correo || ""}</div>
+                        <div className="text-xs text-muted-foreground">{displayPhone(r.telefono) || r.correo || ""}</div>
                       </TableCell>
-                      <TableCell>{r.documento || "—"}</TableCell>
+                      <TableCell>{displayDocumento(r.documento) || "—"}</TableCell>
                       <TableCell>{r.sucursal || "—"}</TableCell>
                       <TableCell>{r.especialista || "—"}</TableCell>
                       <TableCell>
@@ -560,8 +561,8 @@ function DetalleDialog({
 
         <div className="grid gap-3 md:grid-cols-2">
           <DetalleItem label="Cliente" value={record.cliente} />
-          <DetalleItem label="Documento" value={record.documento} />
-          <DetalleItem label="Teléfono" value={record.telefono} />
+          <DetalleItem label="Documento" value={displayDocumento(record.documento)} />
+          <DetalleItem label="Teléfono" value={displayPhone(record.telefono)} />
           <DetalleItem label="Correo" value={record.correo} />
           <DetalleItem label="Sucursal" value={record.sucursal} />
           <DetalleItem label="Especialista" value={record.especialista} />
@@ -676,8 +677,8 @@ function buildPrintHtml(record: ReporteUnificado, business?: Business) {
         <div class="section-title">Datos del cliente</div>
         <div class="grid">
           <div class="field"><b>Nombre:</b><span>${escapeHtml(record.cliente || "-")}</span></div>
-          <div class="field"><b>Documento:</b><span>${escapeHtml(record.documento || "-")}</span></div>
-          <div class="field"><b>Teléfono:</b><span>${escapeHtml(record.telefono || "-")}</span></div>
+          <div class="field"><b>Documento:</b><span>${escapeHtml(displayDocumento(record.documento) || "-")}</span></div>
+          <div class="field"><b>Teléfono:</b><span>${escapeHtml(displayPhone(record.telefono) || "-")}</span></div>
           <div class="field"><b>Correo:</b><span>${escapeHtml(record.correo || "-")}</span></div>
           <div class="field full"><b>Especialista:</b><span>${escapeHtml(record.especialista || "-")}</span></div>
           <div class="field full"><b>Estado:</b><span>${escapeHtml(record.estado || "-")}</span></div>

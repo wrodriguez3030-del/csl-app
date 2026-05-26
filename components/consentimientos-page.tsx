@@ -25,6 +25,7 @@ import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { useSessionUser } from "@/hooks/use-session-user"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import type { Business } from "@/lib/types"
+import { displayPhone, displayDocumento, formatPhone, formatCedula } from "@/lib/formatters"
 
 export type ConsentKind = "masajes" | "tatuajes"
 export type ConsentStatus = "Pendiente" | "Pendiente de revisión" | "Firmado" | "Anulado"
@@ -794,8 +795,8 @@ function printConsent(record: ConsentimientoRecord, kind: ConsentKind, business?
         <div class="section-title">Datos del cliente</div>
         <div class="grid">
           <div class="field"><b>Nombre:</b><span>${escapeHtml(record.nombreCliente)}</span></div>
-          <div class="field"><b>Teléfono:</b><span>${escapeHtml(record.telefono || "-")}</span></div>
-          <div class="field"><b>Cédula / Documento:</b><span>${escapeHtml(record.documento || "-")}</span></div>
+          <div class="field"><b>Teléfono:</b><span>${escapeHtml(displayPhone(record.telefono) || "-")}</span></div>
+          <div class="field"><b>Cédula / Documento:</b><span>${escapeHtml(displayDocumento(record.documento) || "-")}</span></div>
           <div class="field"><b>Correo:</b><span>${escapeHtml(record.correo || "-")}</span></div>
           <div class="field full"><b>Dirección:</b><span>${escapeHtml(record.direccion || "-")}</span></div>
         </div>
@@ -1297,10 +1298,10 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
                           </Badge>
                         ) : null}
                       </div>
-                      <div className="text-xs text-muted-foreground">{record.documento || record.id}</div>
+                      <div className="text-xs text-muted-foreground">{displayDocumento(record.documento) || record.id}</div>
                     </TableCell>
                     <TableCell>{record.sucursal || "-"}</TableCell>
-                    <TableCell className="text-muted-foreground">{record.telefono || "-"}</TableCell>
+                    <TableCell className="text-muted-foreground">{displayPhone(record.telefono) || "-"}</TableCell>
                     <TableCell><StatusBadge status={record.estado} /></TableCell>
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-1">
@@ -1522,8 +1523,8 @@ function ConsentFormDialog({
             <h3 className="mb-4 font-heading text-lg font-black">Datos del cliente</h3>
             <div className="grid gap-4 md:grid-cols-3">
               <Field label="Nombre del cliente"><Input value={form.nombreCliente} onChange={(e) => onUpdate({ nombreCliente: e.target.value })} /></Field>
-              <Field label="Teléfono"><Input value={form.telefono} onChange={(e) => onUpdate({ telefono: e.target.value })} /></Field>
-              <Field label="Cédula o documento"><Input value={form.documento} onChange={(e) => onUpdate({ documento: e.target.value })} /></Field>
+              <Field label="Teléfono"><Input value={form.telefono} onChange={(e) => onUpdate({ telefono: formatPhone(e.target.value) })} placeholder="829-714-1974" inputMode="numeric" maxLength={12} /></Field>
+              <Field label="Cédula o documento"><Input value={form.documento} onChange={(e) => onUpdate({ documento: formatCedula(e.target.value) })} placeholder="031-0327422-2" /></Field>
               <Field label="Correo"><Input type="email" value={form.correo} onChange={(e) => onUpdate({ correo: e.target.value })} /></Field>
               <Field label="Dirección" className="md:col-span-3"><Input value={form.direccion} onChange={(e) => onUpdate({ direccion: e.target.value })} /></Field>
             </div>
@@ -1647,8 +1648,8 @@ function DetailDialog({ record, kind, clientes, onClose, onPrint, onEdit }: { re
           </div>
         ) : null}
         <div className="grid gap-4 md:grid-cols-2">
-          <DetailItem label="Documento" value={record.documento} />
-          <DetailItem label="Teléfono" value={record.telefono} />
+          <DetailItem label="Documento" value={displayDocumento(record.documento)} />
+          <DetailItem label="Teléfono" value={displayPhone(record.telefono)} />
           <DetailItem label="Correo" value={record.correo} />
           <DetailItem label="Edad" value={record.edad} />
           {extra.map(([label, value]) => <DetailItem key={label} label={label || ""} value={value || "-"} />)}

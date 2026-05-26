@@ -16,6 +16,7 @@ import { useSessionUser } from "@/hooks/use-session-user"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
 import type { Business, ClienteCosmiatria } from "@/lib/types"
+import { displayPhone, displayDocumento } from "@/lib/formatters"
 import type { FichaDermoCosmiatrica } from "@/lib/dermo-cosmiatria"
 import { normalizeSearchText, normalizeDigits } from "@/lib/cliente-search"
 
@@ -160,8 +161,8 @@ ${watermarkBanner}<div class="header">${logoSrc ? `<img src="${escapeHtml(logoSr
 ${printRow(printField("Fecha", ficha.fecha), printField("Estado", ficha.estado))}
 ${printRow(printField("Sucursal", ficha.sucursal), printField("Operadora", ficha.operadora), printField("Especialista", ficha.nombreEspecialista || ficha.especialista))}
 <h2>Datos del cliente</h2>
-${printRow(printField("Nombre", ficha.nombre), printField("Edad", ficha.edad), printField("Cédula", ficha.cedula || ficha.documento))}
-${printRow(printField("Ciudad", ficha.ciudad), printField("Teléfono", ficha.telefono), printField("Email", ficha.email))}
+${printRow(printField("Nombre", ficha.nombre), printField("Edad", ficha.edad), printField("Cédula", displayDocumento(ficha.cedula || ficha.documento)))}
+${printRow(printField("Ciudad", ficha.ciudad), printField("Teléfono", displayPhone(ficha.telefono)), printField("Email", ficha.email))}
 ${printRow(printField("Fecha nacimiento", ficha.fechaNacimiento), printField("Dirección", ficha.direccion))}
 ${printRow(printField("Ocupación", ficha.ocupacion))}
 ${printRow(printField("Motivo de consulta", ficha.motivoConsulta))}
@@ -220,7 +221,7 @@ ${printRow(printField("Declaración aceptada", ficha.declaracionAceptada ? "Sí"
       </div>
     </div>
     <div class="meta">
-      ${printRow(printField("Cédula", ficha.cedula), printField("Fecha", ficha.fecha))}
+      ${printRow(printField("Cédula", displayDocumento(ficha.cedula)), printField("Fecha", ficha.fecha))}
       ${printRow(printField("Sucursal", ficha.sucursal), printField("Operadora", ficha.operadora))}
     </div>
   </div>

@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { SignaturePad } from "@/components/signature-pad"
+import { displayPhone, displayDocumento } from "@/lib/formatters"
 
 // Read-only display de un campo cliente — el cliente ve los datos
 // pre-cargados por el operador, NO puede editarlos.
@@ -101,8 +102,8 @@ function buildPrintHtml(args: {
 <h2>Datos del cliente</h2>
 <div class="grid2">
   <div class="field"><b>Nombre:</b> ${escapeHtml(cliente.nombre || "—")}</div>
-  <div class="field"><b>Teléfono:</b> ${escapeHtml(cliente.telefono || "—")}</div>
-  <div class="field"><b>Cédula / Doc:</b> ${escapeHtml(cliente.documento || "—")}</div>
+  <div class="field"><b>Teléfono:</b> ${escapeHtml(displayPhone(cliente.telefono) || "—")}</div>
+  <div class="field"><b>Cédula / Doc:</b> ${escapeHtml(displayDocumento(cliente.documento) || "—")}</div>
   <div class="field"><b>Correo:</b> ${escapeHtml(cliente.correo || "—")}</div>
   <div class="field" style="grid-column: 1 / -1"><b>Dirección:</b> ${escapeHtml(cliente.direccion || "—")}</div>
   <div class="field"><b>Sucursal:</b> ${escapeHtml(cliente.sucursal || "—")}</div>
@@ -317,8 +318,8 @@ export function PublicFichaConsentForm({ prefill = {}, onSubmit }: Props) {
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2">
           <ReadOnlyField label="Nombre" value={cliente.nombre} />
-          <ReadOnlyField label="Teléfono" value={cliente.telefono} />
-          <ReadOnlyField label="Cédula / Documento" value={cliente.documento} />
+          <ReadOnlyField label="Teléfono" value={displayPhone(cliente.telefono)} />
+          <ReadOnlyField label="Cédula / Documento" value={displayDocumento(cliente.documento)} />
           <ReadOnlyField label="Correo" value={cliente.correo} />
           <ReadOnlyField label="Dirección" value={cliente.direccion} className="sm:col-span-2" />
           <ReadOnlyField label="Sucursal" value={cliente.sucursal} />

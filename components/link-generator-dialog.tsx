@@ -13,6 +13,7 @@ import { normalizeAddress } from "@/lib/address"
 import type { ClienteCosmiatria } from "@/lib/types"
 import { MASSAGE_SPECIALISTS } from "@/components/consentimientos-page"
 import { searchClients } from "@/lib/cliente-search"
+import { formatPhone, formatCedula, displayPhone, displayDocumento } from "@/lib/formatters"
 
 // 10 motivos canónicos para Ficha Dermatológica. Espejo de
 // MOTIVOS_CONSULTA_PREDEFINIDOS en ficha-dermatologia-form.tsx — mantener
@@ -276,8 +277,8 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       ...current,
       clienteId: cliente.ClienteID,
       nombre: clienteNombre(cliente),
-      telefono: cliente.Telefono || "",
-      documento: cliente.DocumentoIdentidad || "",
+      telefono: displayPhone(cliente.Telefono),
+      documento: displayDocumento(cliente.DocumentoIdentidad),
       correo: cliente.Email || "",
       direccion: clienteDireccion(cliente),
       sucursal: cliente.Sucursal || current.sucursal,
@@ -582,8 +583,8 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                                 {clienteNombre(c) || "Cliente sin nombre"}
                               </div>
                               <div className="text-sm text-muted-foreground">
-                                {c.Telefono || "Sin teléfono"}
-                                {c.DocumentoIdentidad ? ` · ${c.DocumentoIdentidad}` : ""}
+                                {displayPhone(c.Telefono) || "Sin teléfono"}
+                                {c.DocumentoIdentidad ? ` · ${displayDocumento(c.DocumentoIdentidad)}` : ""}
                               </div>
                               {direccionLine ? (
                                 <div className="truncate text-xs text-muted-foreground">{direccionLine}</div>
@@ -654,11 +655,23 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                   </div>
                   <div>
                     <Label className="text-xs">Teléfono</Label>
-                    <Input value={prefill.telefono} onChange={(e) => update({ telefono: e.target.value })} className="mt-1" />
+                    <Input
+                      value={prefill.telefono}
+                      onChange={(e) => update({ telefono: formatPhone(e.target.value) })}
+                      placeholder="829-714-1974"
+                      inputMode="numeric"
+                      maxLength={12}
+                      className="mt-1"
+                    />
                   </div>
                   <div>
                     <Label className="text-xs">Cédula / Documento</Label>
-                    <Input value={prefill.documento} onChange={(e) => update({ documento: e.target.value })} className="mt-1" />
+                    <Input
+                      value={prefill.documento}
+                      onChange={(e) => update({ documento: formatCedula(e.target.value) })}
+                      placeholder="031-0327422-2"
+                      className="mt-1"
+                    />
                   </div>
                   <div className="lg:col-span-2">
                     <Label className="text-xs">Correo</Label>

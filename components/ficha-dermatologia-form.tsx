@@ -35,6 +35,7 @@ import {
 } from "@/lib/dermo-cosmiatria"
 import type { ClienteCosmiatria } from "@/lib/types"
 import { searchClients } from "@/lib/cliente-search"
+import { formatPhone, formatCedula, displayPhone, displayDocumento } from "@/lib/formatters"
 import { SignaturePad } from "@/components/signature-pad"
 import { SiNoButtons, SiNoConDetalle, EMBARAZO_WARNING_MESSAGE } from "@/components/si-no-buttons"
 
@@ -61,16 +62,7 @@ function toggle(list: string[], value: string) {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
 }
 
-function onlyDigits(value: string) {
-  return value.replace(/\D/g, "")
-}
-
-function formatPhone(value: string) {
-  const digits = onlyDigits(value).slice(0, 10)
-  if (digits.length <= 3) return digits
-  if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`
-  return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`
-}
+// Helpers centralizados en lib/formatters.ts.
 
 function clienteNombre(cliente: ClienteCosmiatria) {
   return `${cliente.Nombre || ""} ${cliente.Apellido || ""}`.trim()
@@ -530,8 +522,8 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
           {isPublic ? (
             <>
               <ReadOnlyDisplay label="Nombre" value={form.nombre} />
-              <ReadOnlyDisplay label="Teléfono" value={form.telefono} />
-              <ReadOnlyDisplay label="Cédula / Documento" value={form.cedula || form.documento} />
+              <ReadOnlyDisplay label="Teléfono" value={displayPhone(form.telefono)} />
+              <ReadOnlyDisplay label="Cédula / Documento" value={displayDocumento(form.cedula || form.documento)} />
               <ReadOnlyDisplay label="Correo" value={form.email} />
               <ReadOnlyDisplay label="Dirección" value={form.direccion} className="col-span-full" />
               <ReadOnlyDisplay label="Sucursal" value={form.sucursal} />
@@ -544,7 +536,7 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
           ) : (<>
           <div><Label>Nombre *</Label><Input value={form.nombre} onChange={(event) => update({ nombre: event.target.value })} /></div>
           <div><Label>Teléfono *</Label><Input value={form.telefono} onChange={(event) => update({ telefono: formatPhone(event.target.value) })} /></div>
-          <div><Label>Cédula / Documento</Label><Input value={form.cedula || form.documento} onChange={(event) => update({ cedula: event.target.value, documento: event.target.value })} /></div>
+          <div><Label>Cédula / Documento</Label><Input value={form.cedula || form.documento} onChange={(event) => { const v = formatCedula(event.target.value); update({ cedula: v, documento: v }) }} placeholder="031-0327422-2" /></div>
           <div><Label>Correo</Label><Input type="email" value={form.email} onChange={(event) => update({ email: event.target.value })} /></div>
           <div className="col-span-full"><Label>Dirección</Label><Input value={form.direccion} onChange={(event) => update({ direccion: event.target.value })} /></div>
           <div>

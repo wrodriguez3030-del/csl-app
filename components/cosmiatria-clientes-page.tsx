@@ -17,6 +17,7 @@ import { SeqBadge } from "@/components/seq-badge"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { normalizeAddress } from "@/lib/address"
 import { clientMatchesSearch } from "@/lib/cliente-search"
+import { digitsOnly as onlyDigits, formatPhone, formatCedula, displayPhone, displayDocumento } from "@/lib/formatters"
 
 interface HistorialPayload {
   fichas: Array<{ id: string; fecha: string; sucursal: string; operadora: string; estado: string; motivoConsulta?: string }>
@@ -48,24 +49,6 @@ const emptyCliente: ClienteCosmiatria = {
   ClienteDesde: today,
   Estado: "Activo",
   Notas: "",
-}
-
-function onlyDigits(value: string) {
-  return String(value || "").replace(/\D/g, "")
-}
-
-function formatPhone(value: string) {
-  const digits = onlyDigits(value).slice(0, 10)
-  if (digits.length <= 3) return digits
-  if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`
-  return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`
-}
-
-function formatCedula(value: string) {
-  const digits = onlyDigits(value).slice(0, 11)
-  if (digits.length <= 3) return digits
-  if (digits.length <= 10) return `${digits.slice(0, 3)}-${digits.slice(3)}`
-  return `${digits.slice(0, 3)}-${digits.slice(3, 10)}-${digits.slice(10)}`
 }
 
 function calculateAge(fechaNacimiento: string) {
@@ -452,8 +435,8 @@ export function CosmiatriaClientesPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-3 py-3">{cliente.Telefono}</td>
-                  <td className="px-3 py-3">{cliente.DocumentoIdentidad || "—"}</td>
+                  <td className="px-3 py-3">{displayPhone(cliente.Telefono)}</td>
+                  <td className="px-3 py-3">{displayDocumento(cliente.DocumentoIdentidad) || "—"}</td>
                   <td className="px-3 py-3">{cliente.Sucursal || "—"}</td>
                   <td className="px-3 py-3 text-xs">{cliente.ClienteDesde || "—"}</td>
                   <td className="px-3 py-3 text-center"><Badge variant="outline">{cliente.FichasCount || 0}</Badge></td>
