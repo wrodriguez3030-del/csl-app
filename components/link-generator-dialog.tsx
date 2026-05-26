@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Check, Copy, Loader2, MessageCircle, RefreshCcw, Search, Send, UserPlus } from "lucide-react"
+import { Check, Copy, Loader2, MessageCircle, RefreshCcw, Save, Search, Send, UserPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -178,6 +178,9 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
   const [error, setError] = useState("")
   const [result, setResult] = useState<GeneratedLink | null>(null)
   const [copied, setCopied] = useState(false)
+  // ─── Guardar / Actualizar cliente ────────────────────────────────────────
+  const [savingCliente, setSavingCliente] = useState(false)
+  const [clienteNotice, setClienteNotice] = useState("")
 
   // Carga inicial de clientes — usa el mismo endpoint autenticado que las
   // pantallas internas de Cosmiatría y Consentimientos. Multi-tenant lo
@@ -230,6 +233,8 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       setResult(null)
       setCopied(false)
       setGenerating(false)
+      setSavingCliente(false)
+      setClienteNotice("")
       if (clientes.length === 0) {
         void loadClientes()
       }
@@ -293,6 +298,84 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
     setPrefill({ ...emptyPrefill, nombre: clientSearch.trim() })
     setManualMode(true)
     setDropdownOpen(false)
+  }
+
+  // "+ Crear cliente nuevo" — limpia el prefill y entra en modo captura
+  // manual con los campos vacíos. Recepción puede llenar y luego "Guardar".
+  const crearClienteNuevo = () => {
+    setPrefill(emptyPrefill)
+    setManualMode(true)
+    setDropdownOpen(false)
+    setClientSearch("")
+    setClienteNotice("")
+    setError("")
+  }
+
+  // Guardar / actualizar cliente. Reutiliza el endpoint existente
+  // `saveClienteCosmiatria` — el backend resuelve dedupe automáticamente
+  // (documento → cli_doc_XXX, teléfono → cli_tel_XXX, email → match en DB)
+  // y hace upsert. Si el cliente ya existe por documento/teléfono, el
+  // backend devuelve el registro existente sin duplicar.
+  const guardarCliente = async () => {
+    setError("")
+    setClienteNotice("")
+    if (!prefill.nombre.trim()) {
+      setError("Escribe el nombre del cliente antes de guardar.")
+      return
+    }
+    if (!prefill.telefono.trim() && !prefill.documento.trim()) {
+      setError("Necesitas al menos teléfono o documento para guardar el cliente.")
+      return
+    }
+    setSavingCliente(true)
+    try {
+      // Separamos nombre completo en Nombre + Apellido (1ª palabra vs resto)
+      // para coincidir con el esquema de csl_cosmiatria_clientes.
+      const parts = prefill.nombre.trim().split(/\s+/)
+      const Nombre = parts[0] || ""
+      const Apellido = parts.slice(1).join(" ")
+      const data: Record<string, string> = {
+        ClienteID: prefill.clienteId || "",
+        Nombre,
+        Apellido,
+        Telefono: prefill.telefono.trim(),
+        DocumentoIdentidad: prefill.documento.trim(),
+        Email: prefill.correo.trim(),
+        Direccion: prefill.direccion.trim(),
+        Sucursal: prefill.sucursal.trim(),
+        Estado: "Activo",
+      }
+      const result = await apiJsonp(normalizeApiUrl(apiUrl), {
+        action: "saveClienteCosmiatria",
+        data: JSON.stringify(data),
+      })
+      if (!result?.ok) throw new Error(String((result as { error?: string })?.error || "No se pudo guardar el cliente"))
+      const saved = normalizeCliente((result as { record?: Record<string, unknown> }).record || {})
+      const wasNew = !prefill.clienteId
+      const alreadyExists = wasNew && saved.ClienteID && clientes.some((c) => c.ClienteID === saved.ClienteID)
+      setPrefill((current) => ({
+        ...current,
+        clienteId: saved.ClienteID,
+        nombre: clienteNombre(saved) || current.nombre,
+        telefono: saved.Telefono || current.telefono,
+        documento: saved.DocumentoIdentidad || current.documento,
+        correo: saved.Email || current.correo,
+        direccion: clienteDireccion(saved) || current.direccion,
+        sucursal: saved.Sucursal || current.sucursal,
+      }))
+      setManualMode(false)
+      // Refrescar lista en background — el cliente nuevo aparece en futuras búsquedas
+      void loadClientes()
+      if (alreadyExists) {
+        setClienteNotice("Este cliente ya existe. Se usó el registro existente.")
+      } else {
+        setClienteNotice(wasNew ? "Cliente creado correctamente." : "Cliente actualizado correctamente.")
+      }
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Error al guardar el cliente")
+    } finally {
+      setSavingCliente(false)
+    }
   }
 
   const update = (patch: Partial<PrefillState>) => setPrefill((c) => ({ ...c, ...patch }))
@@ -443,13 +526,13 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-[94vw] max-w-[900px] max-h-[90vh] overflow-y-auto p-5 sm:p-6"
-        style={{ width: "min(900px, 94vw)" }}
+        className="max-w-[960px] max-h-[calc(100dvh-24px)] overflow-y-auto p-5 sm:p-6"
+        style={{ width: "min(960px, calc(100vw - 16px))" }}
       >
         <DialogHeader>
           <DialogTitle className="text-lg">{title}</DialogTitle>
           <DialogDescription>
-            Busca el cliente en el sistema; sus datos se cargan automáticamente.
+            Busca un cliente existente, crea uno nuevo o actualiza sus datos antes de generar el link.
             El enlace es válido por <b>12 horas</b> y de <b>un solo uso</b>.
           </DialogDescription>
         </DialogHeader>
@@ -513,7 +596,20 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                   </div>
                 ) : null}
 
-                {/* Opción secundaria, discreta, fuera del dropdown principal. */}
+                {/* Botón principal: "+ Crear cliente nuevo" — vacía el prefill y abre los
+                    campos para llenarlos. Al guardar el backend hace dedupe automatico. */}
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={crearClienteNuevo}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-primary/40 bg-transparent px-3 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  + Crear cliente nuevo
+                </button>
+
+                {/* Opción secundaria, sin vincular — útil cuando recepción no quiere
+                    guardar el registro pero igual genera el link. */}
                 {dropdownOpen && clientSearch.trim() ? (
                   <button
                     type="button"
@@ -664,6 +760,11 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
               </div>
             ) : null}
 
+            {clienteNotice ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-xs font-semibold text-emerald-700">
+                ✓ {clienteNotice}
+              </div>
+            ) : null}
             {error ? (
               <div className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-xs font-semibold text-rose-700">
                 ⚠ {error}
@@ -705,14 +806,26 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
           </div>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="sticky bottom-0 -mx-5 mt-3 flex-col gap-2 border-t bg-background px-5 pt-3 sm:-mx-6 sm:flex-row sm:px-6">
           {!result ? (
             <>
-              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={generating}>Cancelar</Button>
+              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={generating || savingCliente}>Cancelar</Button>
+              {hasSelectedOrManual ? (
+                <Button
+                  variant="secondary"
+                  onClick={guardarCliente}
+                  disabled={savingCliente || generating || !prefill.nombre.trim()}
+                  className="gap-2"
+                >
+                  {savingCliente ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {savingCliente ? "Guardando..." : prefill.clienteId ? "Actualizar cliente" : "Guardar cliente"}
+                </Button>
+              ) : null}
               <Button
                 onClick={generate}
                 disabled={
                   generating
+                  || savingCliente
                   || !prefill.nombre.trim()
                   || (isFicha && !motivoSelected)
                   || (!isFicha && !servicioSelected)
