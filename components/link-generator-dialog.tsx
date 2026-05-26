@@ -313,86 +313,92 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
     setError("")
   }
 
-  // Guardar / actualizar cliente. Reutiliza el endpoint existente
-  // `saveClienteCosmiatria` — el backend resuelve dedupe automáticamente
-  // (documento → cli_doc_XXX, teléfono → cli_tel_XXX, email → match en DB)
-  // y hace upsert. Si el cliente ya existe por documento/teléfono, el
-  // backend devuelve el registro existente sin duplicar.
-  const guardarCliente = async () => {
-    setError("")
-    setClienteNotice("")
+  // Persiste el cliente actual a csl_cosmiatria_clientes (via
+  // saveClienteCosmiatria) con dedupe local + backend. Devuelve el cliente
+  // resuelto (existente o nuevo). NO muta UI — el caller decide qué
+  // mensaje mostrar. Lanza si falla la persistencia.
+  const persistCurrentCliente = async (): Promise<{ cliente: ClienteCosmiatria; existed: boolean } | null> => {
     if (!prefill.nombre.trim()) {
-      setError("Escribe el nombre del cliente antes de guardar.")
-      return
+      setError("Escribe el nombre del cliente antes de continuar.")
+      return null
     }
-    if (!prefill.telefono.trim() && !prefill.documento.trim()) {
+    if (!prefill.telefono.trim() && !prefill.documento.trim() && !prefill.clienteId) {
       setError("Necesitas al menos teléfono o documento para guardar el cliente.")
-      return
+      return null
     }
-    // Separamos nombre completo en Nombre + Apellido (1ª palabra vs resto)
-    // para coincidir con el esquema de csl_cosmiatria_clientes.
     const parts = prefill.nombre.trim().split(/\s+/)
     const Nombre = parts[0] || ""
     const Apellido = parts.slice(1).join(" ")
 
-    // Dedupe check antes de guardar: si ya existe un cliente con mismo
-    // telefono/documento/nombre dentro del business actual, autoseleccionamos
-    // el existente y mostramos aviso en vez de crear duplicado.
+    // Dedupe local primero (lista en memoria filtrada por business).
     const match = findExistingClienteMatch(
       { Nombre, Apellido, Telefono: prefill.telefono, DocumentoIdentidad: prefill.documento },
       clientes,
       prefill.clienteId || undefined,
     )
     if (match && !prefill.clienteId) {
-      selectCliente(match.cliente)
-      setClienteNotice("Este cliente ya existe en el sistema. Se cargó el registro existente — puedes generar el link directamente.")
-      return
+      return { cliente: match.cliente, existed: true }
     }
 
+    const data: Record<string, string> = {
+      ClienteID: prefill.clienteId || "",
+      Nombre,
+      Apellido,
+      Telefono: prefill.telefono.trim(),
+      DocumentoIdentidad: prefill.documento.trim(),
+      Email: prefill.correo.trim(),
+      Direccion: prefill.direccion.trim(),
+      Sucursal: prefill.sucursal.trim(),
+      Estado: "Activo",
+    }
+    const apiResult = await apiJsonp(normalizeApiUrl(apiUrl), {
+      action: "saveClienteCosmiatria",
+      data: JSON.stringify(data),
+    })
+    const typed = apiResult as { ok?: boolean; code?: string; error?: string; record?: Record<string, unknown> }
+    // Caso "duplicate" del backend: mismo cli_doc_/cli_tel_ que un cliente
+    // ya registrado en este business. Devolvemos el existente.
+    if (typed && typed.ok === false && typed.code === "duplicate" && typed.record) {
+      return { cliente: normalizeCliente(typed.record), existed: true }
+    }
+    if (!typed?.ok) {
+      throw new Error(String(typed?.error || "No se pudo guardar el cliente"))
+    }
+    const saved = normalizeCliente(typed.record || {})
+    const wasNew = !prefill.clienteId
+    const alreadyExists = wasNew && saved.ClienteID && clientes.some((c) => c.ClienteID === saved.ClienteID)
+    return { cliente: saved, existed: !!alreadyExists }
+  }
+
+  // Hidrata el prefill con un cliente recién guardado (o el match existente),
+  // marca el modal en modo "vinculado" y refresca la lista en background.
+  const hydrateFromCliente = (cliente: ClienteCosmiatria) => {
+    setPrefill((current) => ({
+      ...current,
+      clienteId: cliente.ClienteID,
+      nombre: clienteNombre(cliente) || current.nombre,
+      telefono: cliente.Telefono || current.telefono,
+      documento: cliente.DocumentoIdentidad || current.documento,
+      correo: cliente.Email || current.correo,
+      direccion: clienteDireccion(cliente) || current.direccion,
+      sucursal: cliente.Sucursal || current.sucursal,
+    }))
+    setManualMode(false)
+    void loadClientes()
+  }
+
+  // Botón "Guardar cliente / Actualizar cliente". Wrapper UI de
+  // persistCurrentCliente.
+  const guardarCliente = async () => {
+    setError("")
+    setClienteNotice("")
     setSavingCliente(true)
     try {
-      const data: Record<string, string> = {
-        ClienteID: prefill.clienteId || "",
-        Nombre,
-        Apellido,
-        Telefono: prefill.telefono.trim(),
-        DocumentoIdentidad: prefill.documento.trim(),
-        Email: prefill.correo.trim(),
-        Direccion: prefill.direccion.trim(),
-        Sucursal: prefill.sucursal.trim(),
-        Estado: "Activo",
-      }
-      const result = await apiJsonp(normalizeApiUrl(apiUrl), {
-        action: "saveClienteCosmiatria",
-        data: JSON.stringify(data),
-      })
-      const typed = result as { ok?: boolean; code?: string; error?: string; record?: Record<string, unknown> }
-      // Caso "duplicate" del backend (mismo cli_doc_/cli_tel_ que un cliente ya
-      // registrado): cargamos el cliente existente en el modal y avisamos.
-      if (typed && typed.ok === false && typed.code === "duplicate" && typed.record) {
-        const existing = normalizeCliente(typed.record)
-        selectCliente(existing)
-        setClienteNotice("Este cliente ya existe en el sistema. Se cargó el registro existente.")
-        return
-      }
-      if (!typed?.ok) throw new Error(String(typed?.error || "No se pudo guardar el cliente"))
-      const saved = normalizeCliente(typed.record || {})
       const wasNew = !prefill.clienteId
-      const alreadyExists = wasNew && saved.ClienteID && clientes.some((c) => c.ClienteID === saved.ClienteID)
-      setPrefill((current) => ({
-        ...current,
-        clienteId: saved.ClienteID,
-        nombre: clienteNombre(saved) || current.nombre,
-        telefono: saved.Telefono || current.telefono,
-        documento: saved.DocumentoIdentidad || current.documento,
-        correo: saved.Email || current.correo,
-        direccion: clienteDireccion(saved) || current.direccion,
-        sucursal: saved.Sucursal || current.sucursal,
-      }))
-      setManualMode(false)
-      // Refrescar lista en background — el cliente nuevo aparece en futuras búsquedas
-      void loadClientes()
-      if (alreadyExists) {
+      const result = await persistCurrentCliente()
+      if (!result) return
+      hydrateFromCliente(result.cliente)
+      if (result.existed) {
         setClienteNotice("Este cliente ya existe. Se usó el registro existente.")
       } else {
         setClienteNotice(wasNew ? "Cliente creado correctamente." : "Cliente actualizado correctamente.")
@@ -468,13 +474,34 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       const { data: { session } } = await supabaseBrowser.auth.getSession()
       if (!session?.access_token) throw new Error("Sesión no válida — vuelve a iniciar sesión")
 
+      // Auto-guardar el cliente en csl_cosmiatria_clientes ANTES de crear el
+      // link, si todavía no está vinculado a uno. Esto asegura que el cliente
+      // queda persistido en "Clientes y Consentimientos → Clientes" aunque
+      // recepción haya capturado los datos directo y dado a "Generar link"
+      // sin pasar por "Guardar cliente". Si el cliente ya existe (dedupe por
+      // documento/teléfono dentro del business), se reutiliza el existente.
+      let resolvedClienteId = prefill.clienteId
+      if (!resolvedClienteId) {
+        const persisted = await persistCurrentCliente()
+        if (!persisted) {
+          // persistCurrentCliente ya seteó setError con la razón.
+          setGenerating(false)
+          return
+        }
+        resolvedClienteId = persisted.cliente.ClienteID
+        hydrateFromCliente(persisted.cliente)
+        if (persisted.existed) {
+          setClienteNotice("Este cliente ya existe. Se usará el registro existente.")
+        }
+      }
+
       // Construir prefillPayload con solo los campos relevantes para el tipo.
       const prefillPayload: Record<string, string> = {}
       const include = (key: keyof PrefillState) => {
         const v = String(prefill[key] || "").trim()
         if (v) prefillPayload[key] = v
       }
-      if (prefill.clienteId) include("clienteId")
+      if (resolvedClienteId) prefillPayload.clienteId = resolvedClienteId
       include("nombre")
       include("telefono")
       include("documento")
