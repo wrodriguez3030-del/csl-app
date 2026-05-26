@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { CalendarDays, Download, FileSignature, FileText, History, Loader2, Plus, RefreshCw, Search, UserRound, Users, Zap } from "lucide-react"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
 import type { ClienteCosmiatria } from "@/lib/types"
@@ -128,6 +128,10 @@ export function CosmiatriaClientesPage() {
   const [mergeOpen, setMergeOpen] = useState(false)
   const [agendaProSyncing, setAgendaProSyncing] = useState(false)
   const [agendaProAutoSync, setAgendaProAutoSync] = useState(false)
+  // Página actual del auto-sync incremental. Cada tick procesa una página y
+  // avanza. Persistimos en localStorage para que sobreviva un refresh.
+  const autoPageRef = useRef<number>(1)
+  const [autoPageDisplay, setAutoPageDisplay] = useState<number>(1)
   const [clientes, setClientes] = useState<ClienteCosmiatria[]>([])
   const [fichas, setFichas] = useState<FichaDermoCosmiatrica[]>([])
   const [query, setQuery] = useState("")
@@ -392,19 +396,88 @@ export function CosmiatriaClientesPage() {
     await runAgendaProSync(search.trim())
   }
 
-  // Auto-sync: cuando el toggle está ON, dispara runAgendaProSync("")
-  // cada 30 segundos. Skip si ya hay uno corriendo. Para apagarlo, el
-  // usuario vuelve a clickear el botón.
+  // Auto-sync incremental: una página AgendaPro por tick (cada 30s). Avanza
+  // página hasta que AgendaPro devuelve un batch vacío (entonces apaga el
+  // toggle). Persistimos la página actual en localStorage para sobrevivir
+  // refresh. Evita re-fetchear las páginas ya sincronizadas.
+  const tickAutoSync = useCallback(async () => {
+    if (typeof window === "undefined") return
+    try {
+      const { data: { session } } = await import("@/lib/supabase-client").then((m) => m.supabaseBrowser.auth.getSession())
+      if (!session?.access_token) throw new Error("Sesión no válida — vuelve a iniciar sesión")
+      const page = autoPageRef.current
+      setAgendaProSyncing(true)
+      const res = await fetch("/api/integrations/agendapro/sync-clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ page }),
+      })
+      const data = await res.json() as {
+        ok?: boolean; error?: string;
+        totalAgendaPro?: number; created?: number; updated?: number;
+        skipped?: number; duplicates?: number; errors?: number;
+      }
+      if (!data?.ok) {
+        showToast(data?.error || `Error en página ${page}`, "error")
+        return
+      }
+      const count = data.totalAgendaPro || 0
+      if (count === 0) {
+        showToast(`Auto-sync completado. Página ${page} vacía — no hay más clientes en AgendaPro.`, "success")
+        setAgendaProAutoSync(false)
+        localStorage.removeItem("agendapro_auto_page")
+        return
+      }
+      showToast(
+        `Auto-sync pág. ${page}: ${count} leídos · ${data.created || 0} creados · ${data.updated || 0} actualizados`,
+        (data.created || 0) > 0 ? "success" : "info",
+      )
+      const nextPage = page + 1
+      autoPageRef.current = nextPage
+      setAutoPageDisplay(nextPage)
+      localStorage.setItem("agendapro_auto_page", String(nextPage))
+      await loadData()
+    } catch (tickErr) {
+      showToast(tickErr instanceof Error ? tickErr.message : "Error en auto-sync", "error")
+    } finally {
+      setAgendaProSyncing(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiUrl])
+
   useEffect(() => {
     if (!agendaProAutoSync) return
-    // Lanzar uno inmediato (el usuario espera resultado al activar el toggle)
-    if (!agendaProSyncing) void runAgendaProSync("")
+    void tickAutoSync()
     const interval = setInterval(() => {
-      if (!agendaProSyncing) void runAgendaProSync("")
+      void tickAutoSync()
     }, 30000)
     return () => clearInterval(interval)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agendaProAutoSync])
+  }, [agendaProAutoSync, tickAutoSync])
+
+  // Toggle auto-sync. Al activar, pide página inicial (sugiere la guardada
+  // en localStorage, o una estimada basada en cantidad actual de clientes).
+  const handleToggleAutoSync = () => {
+    if (agendaProAutoSync) {
+      setAgendaProAutoSync(false)
+      return
+    }
+    if (typeof window === "undefined") return
+    const saved = Number(localStorage.getItem("agendapro_auto_page") || "0")
+    // Estimación: AgendaPro devuelve 30 por página. Saltarse las páginas
+    // que probablemente ya están sincronizadas. -5 de overlap por seguridad.
+    const suggested = Math.max(1, Math.ceil((clientes.length || 30) / 30) - 5)
+    const defaultPage = saved > 0 ? saved : suggested
+    const inputStr = window.prompt(
+      `Auto-sync incremental: procesa una página de AgendaPro (30 clientes) cada 30 segundos.\n\nEmpezar desde página: (Default: ${defaultPage})`,
+      String(defaultPage),
+    )
+    if (inputStr === null) return
+    const startPage = Math.max(1, parseInt(inputStr, 10) || defaultPage)
+    autoPageRef.current = startPage
+    setAutoPageDisplay(startPage)
+    localStorage.setItem("agendapro_auto_page", String(startPage))
+    setAgendaProAutoSync(true)
+  }
 
   const deleteCliente = async (cliente: ClienteCosmiatria) => {
     if (!confirm(`¿Eliminar cliente ${cliente.Nombre} ${cliente.Apellido}?`)) return
@@ -485,13 +558,13 @@ export function CosmiatriaClientesPage() {
               </Button>
               <Button
                 variant={agendaProAutoSync ? "default" : "outline"}
-                onClick={() => setAgendaProAutoSync((v) => !v)}
-                title="Activa/desactiva sincronización automática cada 30 segundos"
+                onClick={handleToggleAutoSync}
+                title="Auto-sync incremental: 1 página de AgendaPro (~30 clientes) cada 30s. Avanza hasta que AgendaPro devuelva vacío."
               >
                 {agendaProAutoSync
                   ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   : <RefreshCw className="mr-2 h-4 w-4" />}
-                {agendaProAutoSync ? "Auto-sync ON (30s)" : "Auto-sync OFF"}
+                {agendaProAutoSync ? `Auto-sync ON · pág. ${autoPageDisplay}` : "Auto-sync OFF"}
               </Button>
             </>
           ) : null}

@@ -74,21 +74,23 @@ export async function POST(request: Request) {
     const syncId = (logInsert.data as { sync_id?: string } | null)?.sync_id || null
 
     try {
-      // Aceptar body opcional con { search: "..." } para sync por término.
-      // Si no llega search, intentamos LISTADO COMPLETO con paginación.
-      let body: { search?: string } = {}
+      // Body opcional:
+      //   { search }      → búsqueda puntual (una página de resultados)
+      //   { page }        → fetch SOLO esa página (modo auto-sync incremental)
+      //   {} (vacío)      → listado completo paginado
+      let body: { search?: string; page?: number } = {}
       try {
         const raw = await request.text()
         body = raw ? JSON.parse(raw) : {}
       } catch { body = {} }
       const search = (body.search || "").trim()
+      const singlePage = typeof body.page === "number" && body.page > 0 ? body.page : undefined
 
       let clients: Array<Record<string, unknown>> = []
       let pagesRead = 0
       let diagnostic: Record<string, unknown> = {}
 
       if (search) {
-        // Búsqueda puntual — una sola página, AgendaPro devuelve coincidencias
         const fetchResult = await fetchAgendaProClients(cfg, { search })
         if (!fetchResult.ok) {
           if (fetchResult.requiresSearch) {
@@ -98,8 +100,16 @@ export async function POST(request: Request) {
         }
         clients = fetchResult.clients as Array<Record<string, unknown>>
         pagesRead = 1
+      } else if (singlePage) {
+        // Modo página única — para auto-sync incremental
+        const fetchResult = await fetchAgendaProClients(cfg, { page: singlePage, perPage: 100 })
+        if (!fetchResult.ok) {
+          throw new Error(fetchResult.error || `Error AgendaPro status ${fetchResult.status} en página ${singlePage}`)
+        }
+        clients = fetchResult.clients as Array<Record<string, unknown>>
+        pagesRead = 1
+        diagnostic = { page: singlePage }
       } else {
-        // Listado completo paginado
         const pagedResult = await fetchAllAgendaProClients(cfg)
         pagesRead = pagedResult.pagesRead
         diagnostic = pagedResult.diagnostic as unknown as Record<string, unknown>
