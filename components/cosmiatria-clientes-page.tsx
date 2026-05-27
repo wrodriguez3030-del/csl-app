@@ -145,6 +145,8 @@ export function CosmiatriaClientesPage() {
   const [form, setForm] = useState<ClienteCosmiatria>(emptyCliente)
   const [sortKey, setSortKey] = useState<keyof ClienteCosmiatria>("Nombre")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState<25 | 50 | 100 | 200>(50)
 
   const sucursales = useMemo(() => {
     const fromDb = db.sucursales.map((item) => item.Nombre).filter(Boolean)
@@ -243,6 +245,18 @@ export function CosmiatriaClientesPage() {
         return String(va ?? "").localeCompare(String(vb ?? ""), "es", { numeric: true }) * (sortDir === "asc" ? 1 : -1)
       })
   }, [enriched, query, filterSucursal, sortKey, sortDir])
+
+  // Paginación: rebanada del array filtrado. Renderizar 2700+ filas en DOM
+  // hace muy lento el repaint; con páginas de 50 el render queda en <30 nodos.
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const paginated = useMemo(() => {
+    const start = (safePage - 1) * pageSize
+    return filtered.slice(start, start + pageSize)
+  }, [filtered, safePage, pageSize])
+
+  // Si el filtro/búsqueda reduce el conjunto, reset a página 1.
+  useEffect(() => { setPage(1) }, [query, filterSucursal, sortKey, sortDir, pageSize])
 
   const setSort = (key: keyof ClienteCosmiatria) => {
     if (sortKey === key) setSortDir((current) => current === "asc" ? "desc" : "asc")
@@ -656,13 +670,13 @@ export function CosmiatriaClientesPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr><td colSpan={9} className="py-12 text-center text-muted-foreground">No hay clientes registrados</td></tr>
-              ) : filtered.map((cliente, seqIndex) => (
+              ) : paginated.map((cliente, seqIndex) => (
                 <tr
                   key={cliente.ClienteID}
                   className="cursor-pointer border-b hover:bg-muted/20"
                   onClick={() => setViewing(cliente)}
                 >
-                  <td className="px-3 py-3 text-center"><SeqBadge n={seqIndex + 1} /></td>
+                  <td className="px-3 py-3 text-center"><SeqBadge n={(safePage - 1) * pageSize + seqIndex + 1} /></td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-2">
                       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-primary"><UserRound className="h-4 w-4" /></div>
@@ -699,6 +713,31 @@ export function CosmiatriaClientesPage() {
               ))}
             </tbody>
           </table>
+          {filtered.length > 0 ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
+              <div className="text-muted-foreground">
+                Mostrando <b>{(safePage - 1) * pageSize + 1}</b>–<b>{Math.min(safePage * pageSize, filtered.length)}</b> de <b>{filtered.length}</b>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-muted-foreground">Por página</label>
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value) as 25 | 50 | 100 | 200)}
+                  className="h-8 rounded-md border bg-background px-2 text-xs"
+                >
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={200}>200</option>
+                </select>
+                <Button size="sm" variant="outline" onClick={() => setPage(1)} disabled={safePage === 1}>«</Button>
+                <Button size="sm" variant="outline" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1}>‹</Button>
+                <span className="text-xs">Página <b>{safePage}</b> de <b>{totalPages}</b></span>
+                <Button size="sm" variant="outline" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage >= totalPages}>›</Button>
+                <Button size="sm" variant="outline" onClick={() => setPage(totalPages)} disabled={safePage >= totalPages}>»</Button>
+              </div>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
