@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { CalendarDays, Download, FileSignature, FileText, History, Loader2, Plus, RefreshCw, Search, UserRound, Users, Zap } from "lucide-react"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
 import type { ClienteCosmiatria } from "@/lib/types"
@@ -127,11 +127,6 @@ export function CosmiatriaClientesPage() {
   const canSyncAgendaPro = canMerge
   const [mergeOpen, setMergeOpen] = useState(false)
   const [agendaProSyncing, setAgendaProSyncing] = useState(false)
-  const [agendaProAutoSync, setAgendaProAutoSync] = useState(false)
-  // Página actual del auto-sync incremental. Cada tick procesa una página y
-  // avanza. Persistimos en localStorage para que sobreviva un refresh.
-  const autoPageRef = useRef<number>(1)
-  const [autoPageDisplay, setAutoPageDisplay] = useState<number>(1)
   const [clientes, setClientes] = useState<ClienteCosmiatria[]>([])
   const [fichas, setFichas] = useState<FichaDermoCosmiatrica[]>([])
   const [query, setQuery] = useState("")
@@ -335,33 +330,6 @@ export function CosmiatriaClientesPage() {
     }
   }
 
-  const handleAgendaProProbe = async () => {
-    try {
-      const { data: { session } } = await import("@/lib/supabase-client").then((m) => m.supabaseBrowser.auth.getSession())
-      if (!session?.access_token) throw new Error("Sesión no válida — vuelve a iniciar sesión")
-      const res = await fetch("/api/integrations/agendapro/health?probe=1", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      })
-      const data = await res.json()
-      const text = JSON.stringify(data, null, 2)
-
-      // Descargar como .txt — el usuario lo abre en Notepad y pega en chat
-      const blob = new Blob([text], { type: "text/plain;charset=utf-8" })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)
-      a.href = url
-      a.download = `agendapro-diagnostico-${stamp}.txt`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-      showToast("Diagnóstico descargado (revisa tu carpeta de descargas).", "success")
-    } catch (probeErr) {
-      showToast(probeErr instanceof Error ? probeErr.message : "Error en diagnóstico", "error")
-    }
-  }
-
   const runAgendaProSync = async (search: string) => {
     setAgendaProSyncing(true)
     try {
@@ -408,113 +376,6 @@ export function CosmiatriaClientesPage() {
       : null
     if (search === null) return
     await runAgendaProSync(search.trim())
-  }
-
-  // Auto-sync incremental: una página AgendaPro por tick (cada 30s). Avanza
-  // página hasta que AgendaPro devuelve un batch vacío (entonces apaga el
-  // toggle). Persistimos la página actual en localStorage para sobrevivir
-  // refresh. Evita re-fetchear las páginas ya sincronizadas.
-  const tickInFlightRef = useRef(false)
-  const tickAutoSync = useCallback(async () => {
-    if (typeof window === "undefined") return
-    if (tickInFlightRef.current) {
-      // eslint-disable-next-line no-console
-      console.log("[agendapro auto-sync] tick saltado: ya hay uno corriendo")
-      return
-    }
-    tickInFlightRef.current = true
-    const page = autoPageRef.current
-    // eslint-disable-next-line no-console
-    console.log("[agendapro auto-sync] tick start page=", page)
-    try {
-      const { data: { session } } = await import("@/lib/supabase-client").then((m) => m.supabaseBrowser.auth.getSession())
-      if (!session?.access_token) throw new Error("Sesión no válida — vuelve a iniciar sesión")
-      setAgendaProSyncing(true)
-      const PAGES_PER_TICK = 4 // ~120 clientes por tick (30 × 4) — AgendaPro fija 30/pág
-      const res = await fetch("/api/integrations/agendapro/sync-clients", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ page, pagesPerTick: PAGES_PER_TICK }),
-      })
-      const data = await res.json() as {
-        ok?: boolean; error?: string;
-        pagesRead?: number; lastPageWithData?: number;
-        totalAgendaPro?: number; created?: number; updated?: number;
-        skipped?: number; duplicates?: number; errors?: number;
-      }
-      // eslint-disable-next-line no-console
-      console.log("[agendapro auto-sync] page=", page, "response=", data)
-      if (!data?.ok) {
-        showToast(data?.error || `Error en página ${page}`, "error")
-        // Apago el auto-sync para que el usuario vea el error y no quede atascado en loop
-        setAgendaProAutoSync(false)
-        return
-      }
-      const count = data.totalAgendaPro || 0
-      const pagesProcessed = data.pagesRead || 0
-      const lastPage = data.lastPageWithData || 0
-      if (count === 0) {
-        showToast(`Auto-sync completado. Página ${page} vacía — no hay más clientes en AgendaPro.`, "success")
-        setAgendaProAutoSync(false)
-        localStorage.removeItem("agendapro_auto_page")
-        return
-      }
-      // Avanzar: si AgendaPro devolvió menos páginas que las pedidas, llegó al
-      // final → próxima la corre y debería venir vacía. Avanzamos igualmente.
-      const nextPage = (lastPage > 0 ? lastPage : page + pagesProcessed - 1) + 1
-      autoPageRef.current = nextPage
-      setAutoPageDisplay(nextPage)
-      localStorage.setItem("agendapro_auto_page", String(nextPage))
-      const reachedEnd = pagesProcessed < PAGES_PER_TICK
-      showToast(
-        `Pág. ${page}–${page + pagesProcessed - 1}: ${count} leídos · ${data.created || 0} nuevos · ${data.updated || 0} actualizados.${reachedEnd ? " (AgendaPro sin más páginas — terminando)" : ` Siguiente: pág. ${nextPage}`}`,
-        (data.created || 0) > 0 ? "success" : "info",
-      )
-      await loadData()
-    } catch (tickErr) {
-      // eslint-disable-next-line no-console
-      console.error("[agendapro auto-sync] tick error:", tickErr)
-      showToast(tickErr instanceof Error ? tickErr.message : "Error en auto-sync", "error")
-      setAgendaProAutoSync(false)
-    } finally {
-      setAgendaProSyncing(false)
-      tickInFlightRef.current = false
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiUrl])
-
-  useEffect(() => {
-    if (!agendaProAutoSync) return
-    void tickAutoSync()
-    const interval = setInterval(() => {
-      void tickAutoSync()
-    }, 30000)
-    return () => clearInterval(interval)
-  }, [agendaProAutoSync, tickAutoSync])
-
-  // Toggle auto-sync. Al activar, pide página inicial (sugiere la guardada
-  // en localStorage, o una estimada basada en cantidad actual de clientes).
-  const handleToggleAutoSync = () => {
-    if (agendaProAutoSync) {
-      setAgendaProAutoSync(false)
-      return
-    }
-    if (typeof window === "undefined") return
-    const saved = Number(localStorage.getItem("agendapro_auto_page") || "0")
-    // Estimación: AgendaPro devuelve 30 por página. Saltarse las páginas
-    // que probablemente ya están sincronizadas. -5 de overlap por seguridad.
-    const suggested = Math.max(1, Math.ceil((clientes.length || 30) / 30) - 5)
-    const defaultPage = saved > 0 ? saved : suggested
-    const inputStr = window.prompt(
-      `Auto-sync incremental: procesa una página de AgendaPro (30 clientes) cada 30 segundos.\n\nEmpezar desde página: (Default: ${defaultPage})`,
-      String(defaultPage),
-    )
-    if (inputStr === null) return
-    const startPage = Math.max(1, parseInt(inputStr, 10) || defaultPage)
-    autoPageRef.current = startPage
-    setAutoPageDisplay(startPage)
-    localStorage.setItem("agendapro_auto_page", String(startPage))
-    setAgendaProAutoSync(true)
   }
 
   const deleteCliente = async (cliente: ClienteCosmiatria) => {
@@ -584,27 +445,12 @@ export function CosmiatriaClientesPage() {
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={exportCsv}><Download className="mr-2 h-4 w-4" />Descargar datos</Button>
           {canSyncAgendaPro ? (
-            <>
-              <Button variant="outline" onClick={handleAgendaProProbe} title="Diagnostica si AgendaPro pagina o devuelve siempre los mismos clientes">
-                Diagnosticar AgendaPro
-              </Button>
-              <Button variant="outline" onClick={handleAgendaProSync} disabled={agendaProSyncing || agendaProAutoSync}>
-                {agendaProSyncing
-                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  : <RefreshCw className="mr-2 h-4 w-4" />}
-                {agendaProSyncing ? "Sincronizando…" : "Sincronizar AgendaPro"}
-              </Button>
-              <Button
-                variant={agendaProAutoSync ? "default" : "outline"}
-                onClick={handleToggleAutoSync}
-                title="Auto-sync incremental: 1 página de AgendaPro (~30 clientes) cada 30s. Avanza hasta que AgendaPro devuelva vacío."
-              >
-                {agendaProAutoSync
-                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  : <RefreshCw className="mr-2 h-4 w-4" />}
-                {agendaProAutoSync ? `Auto-sync ON · pág. ${autoPageDisplay}` : "Auto-sync OFF"}
-              </Button>
-            </>
+            <Button variant="outline" onClick={handleAgendaProSync} disabled={agendaProSyncing}>
+              {agendaProSyncing
+                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                : <RefreshCw className="mr-2 h-4 w-4" />}
+              {agendaProSyncing ? "Sincronizando…" : "Sincronizar AgendaPro"}
+            </Button>
           ) : null}
           {canMerge ? (
             <Button variant="outline" onClick={() => setMergeOpen(true)}>
