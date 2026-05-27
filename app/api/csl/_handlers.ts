@@ -461,6 +461,13 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true }
     }
     case "saveClienteCosmiatria": {
+      // Solo admin/superadmin pueden crear o editar clientes. Rol Usuario es
+      // solo-lectura sobre el módulo Clientes (incluye el auto-save del
+      // modal Generar link para cliente).
+      const callerProfile = await getProfile(user.id)
+      if (!callerProfile?.is_admin && !callerProfile?.is_superadmin) {
+        return { ok: false, code: "forbidden", error: "No tienes permiso para crear o editar clientes." }
+      }
       const payload = parsePayload(params)
       const explicitClienteId = String(payload.ClienteID ?? payload.clienteId ?? payload.cliente_id ?? "").trim()
       const clienteId = await resolveClienteId(payload)
@@ -489,9 +496,14 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       await syncFichasCliente(cliente)
       return { ok: true, record: fromDb("cosmiatria_clientes", cliente) }
     }
-    case "deleteClienteCosmiatria":
+    case "deleteClienteCosmiatria": {
+      const callerProfile = await getProfile(user.id)
+      if (!callerProfile?.is_admin && !callerProfile?.is_superadmin) {
+        return { ok: false, code: "forbidden", error: "No tienes permiso para eliminar clientes." }
+      }
       await deleteRow("cosmiatria_clientes", textValue(params, "id"))
       return { ok: true }
+    }
     case "mergeClientes": {
       // Unificación de clientes duplicados. Solo admin/superadmin.
       // Migración requerida: 202605260009_cliente_merge_audit.sql.

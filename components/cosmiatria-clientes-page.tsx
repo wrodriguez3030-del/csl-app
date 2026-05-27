@@ -446,7 +446,9 @@ export function CosmiatriaClientesPage() {
           <p className="text-sm text-muted-foreground">Base de datos relacionada con fichas dermatológicas.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={exportCsv}><Download className="mr-2 h-4 w-4" />Descargar datos</Button>
+          {canEditClientes ? (
+            <Button variant="outline" onClick={exportCsv}><Download className="mr-2 h-4 w-4" />Descargar datos</Button>
+          ) : null}
           {canSyncAgendaPro ? (
             <Button variant="outline" onClick={handleAgendaProSync} disabled={agendaProSyncing}>
               {agendaProSyncing
