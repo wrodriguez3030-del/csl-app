@@ -400,12 +400,21 @@ export function CosmiatriaClientesPage() {
   // página hasta que AgendaPro devuelve un batch vacío (entonces apaga el
   // toggle). Persistimos la página actual en localStorage para sobrevivir
   // refresh. Evita re-fetchear las páginas ya sincronizadas.
+  const tickInFlightRef = useRef(false)
   const tickAutoSync = useCallback(async () => {
     if (typeof window === "undefined") return
+    if (tickInFlightRef.current) {
+      // eslint-disable-next-line no-console
+      console.log("[agendapro auto-sync] tick saltado: ya hay uno corriendo")
+      return
+    }
+    tickInFlightRef.current = true
+    const page = autoPageRef.current
+    // eslint-disable-next-line no-console
+    console.log("[agendapro auto-sync] tick start page=", page)
     try {
       const { data: { session } } = await import("@/lib/supabase-client").then((m) => m.supabaseBrowser.auth.getSession())
       if (!session?.access_token) throw new Error("Sesión no válida — vuelve a iniciar sesión")
-      const page = autoPageRef.current
       setAgendaProSyncing(true)
       const res = await fetch("/api/integrations/agendapro/sync-clients", {
         method: "POST",
@@ -417,8 +426,12 @@ export function CosmiatriaClientesPage() {
         totalAgendaPro?: number; created?: number; updated?: number;
         skipped?: number; duplicates?: number; errors?: number;
       }
+      // eslint-disable-next-line no-console
+      console.log("[agendapro auto-sync] page=", page, "response=", data)
       if (!data?.ok) {
         showToast(data?.error || `Error en página ${page}`, "error")
+        // Apago el auto-sync para que el usuario vea el error y no quede atascado en loop
+        setAgendaProAutoSync(false)
         return
       }
       const count = data.totalAgendaPro || 0
@@ -428,19 +441,23 @@ export function CosmiatriaClientesPage() {
         localStorage.removeItem("agendapro_auto_page")
         return
       }
-      showToast(
-        `Auto-sync pág. ${page}: ${count} leídos · ${data.created || 0} creados · ${data.updated || 0} actualizados`,
-        (data.created || 0) > 0 ? "success" : "info",
-      )
       const nextPage = page + 1
       autoPageRef.current = nextPage
       setAutoPageDisplay(nextPage)
       localStorage.setItem("agendapro_auto_page", String(nextPage))
+      showToast(
+        `Pág. ${page}: ${count} leídos · ${data.created || 0} nuevos · ${data.updated || 0} actualizados. Siguiente: pág. ${nextPage}`,
+        (data.created || 0) > 0 ? "success" : "info",
+      )
       await loadData()
     } catch (tickErr) {
+      // eslint-disable-next-line no-console
+      console.error("[agendapro auto-sync] tick error:", tickErr)
       showToast(tickErr instanceof Error ? tickErr.message : "Error en auto-sync", "error")
+      setAgendaProAutoSync(false)
     } finally {
       setAgendaProSyncing(false)
+      tickInFlightRef.current = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiUrl])
