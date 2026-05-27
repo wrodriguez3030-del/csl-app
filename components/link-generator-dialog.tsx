@@ -15,6 +15,7 @@ import { MASSAGE_SPECIALISTS } from "@/components/consentimientos-page"
 import { searchClients } from "@/lib/cliente-search"
 import { formatPhone, formatCedula, displayPhone, displayDocumento } from "@/lib/formatters"
 import { findExistingClienteMatch } from "@/lib/cliente-dedupe"
+import { useSessionUser } from "@/hooks/use-session-user"
 
 // 10 motivos canónicos para Ficha Dermatológica. Espejo de
 // MOTIVOS_CONSULTA_PREDEFINIDOS en ficha-dermatologia-form.tsx — mantener
@@ -146,6 +147,11 @@ function normalizeCliente(raw: Record<string, unknown>): ClienteCosmiatria {
 
 export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Props) {
   const apiUrl = useAppStore((state) => state.apiUrl)
+  const sessionUser = useSessionUser()
+  // Solo admin/superadmin pueden crear clientes desde este modal. Rol Usuario
+  // solo puede buscar y seleccionar clientes existentes — el backend además
+  // rechaza saveClienteCosmiatria si Usuario lo intenta por DevTools.
+  const canCreateCliente = !!sessionUser && (sessionUser.isAdmin || sessionUser.isSuperadmin)
   const sucursalesDb = useAppStore((state) => state.db.sucursales)
   const sucursalesOptions = useMemo(
     () => (sucursalesDb || []).map((s) => s.Nombre).filter(Boolean),
@@ -649,21 +655,24 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                   </div>
                 ) : null}
 
-                {/* Botón principal: "+ Crear cliente nuevo" — vacía el prefill y abre los
-                    campos para llenarlos. Al guardar el backend hace dedupe automatico. */}
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={crearClienteNuevo}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-primary/40 bg-transparent px-3 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10"
-                >
-                  <UserPlus className="h-4 w-4" />
-                  + Crear cliente nuevo
-                </button>
+                {/* Botón principal: "+ Crear cliente nuevo" — solo admin/superadmin.
+                    Para rol Usuario el modal queda en modo "buscar y seleccionar"
+                    nada más (el backend además bloquea saveClienteCosmiatria). */}
+                {canCreateCliente ? (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={crearClienteNuevo}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-primary/40 bg-transparent px-3 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    + Crear cliente nuevo
+                  </button>
+                ) : null}
 
-                {/* Opción secundaria, sin vincular — útil cuando recepción no quiere
-                    guardar el registro pero igual genera el link. */}
-                {dropdownOpen && clientSearch.trim() ? (
+                {/* Opción secundaria "captura manual sin vincular" — también
+                    persiste el cliente (auto-save en generate). Misma regla. */}
+                {canCreateCliente && dropdownOpen && clientSearch.trim() ? (
                   <button
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
@@ -673,6 +682,12 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                     <UserPlus className="h-3.5 w-3.5" />
                     ¿No está? Captura manual sin vincular
                   </button>
+                ) : null}
+
+                {!canCreateCliente && dropdownOpen && clientSearch.trim() ? (
+                  <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    Solo administradores pueden crear nuevos clientes. Si el cliente no aparece, pídele a un administrador que lo registre primero.
+                  </div>
                 ) : null}
               </div>
             ) : null}
@@ -875,7 +890,7 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
           {!result ? (
             <>
               <Button variant="outline" onClick={() => onOpenChange(false)} disabled={generating || savingCliente}>Cancelar</Button>
-              {hasSelectedOrManual ? (
+              {hasSelectedOrManual && canCreateCliente ? (
                 <Button
                   variant="secondary"
                   onClick={guardarCliente}
