@@ -362,7 +362,11 @@ export function PulsosSesionesPage() {
     if (!importPreview) return null
     const rows = importPreview.rows
     const valid = rows.filter((r) => r.status === "valid")
-    const duplicate = rows.filter((r) => r.status === "duplicate")
+    const dupFile = rows.filter((r) => r.status === "duplicate_file")
+    const alreadyImp = rows.filter((r) => r.status === "already_imported")
+    // El tab "duplicate" muestra ambas categorías combinadas — el badge en
+    // el filtrado distingue cuál es cuál.
+    const duplicate = [...dupFile, ...alreadyImp]
     const error = rows.filter((r) => r.status === "error")
     const fechas = rows.map((r) => r.fecha).filter(Boolean).sort()
     const fechaMin = fechas[0] || ""
@@ -371,7 +375,7 @@ export function PulsosSesionesPage() {
     const operadoras = Array.from(new Set(rows.map((r) => r.operadora).filter(Boolean))).sort()
     const sucursales = Array.from(new Set(rows.map((r) => r.sucursal).filter(Boolean))).sort()
     const tratamientos = Array.from(new Set(rows.map((r) => r.tratamiento).filter(Boolean))).sort()
-    return { rows, valid, duplicate, error, fechaMin, fechaMax, totalDisparosValidos, operadoras, sucursales, tratamientos }
+    return { rows, valid, duplicate, dupFile, alreadyImp, error, fechaMin, fechaMax, totalDisparosValidos, operadoras, sucursales, tratamientos }
   }, [importPreview])
 
   // Totales por dimensión (solo cuenta filas válidas — son las que se importan).
@@ -1238,19 +1242,19 @@ export function PulsosSesionesPage() {
                 </div>
               </div>
 
-              {/* 6 KPIs principales */}
+              {/* KPIs principales — 6 cards + rango fechas */}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
                 <PreviewStat label="Leídas" value={previewStats.rows.length} />
                 <PreviewStat label="Válidas" value={previewStats.valid.length} tone="ok" />
-                <PreviewStat label="Duplicadas" value={previewStats.duplicate.length} tone="warn" />
+                <PreviewStat label="Ya importadas" value={previewStats.alreadyImp.length} tone="info" />
+                <PreviewStat label="Dup. archivo" value={previewStats.dupFile.length} tone="warn" />
                 <PreviewStat label="Con error" value={previewStats.error.length} tone="error" />
                 <PreviewStat label="Total disparos" value={previewStats.totalDisparosValidos} tone="ok" />
-                <div className="col-span-2 sm:col-span-1 rounded-xl border border-slate-200 bg-white p-3 text-center">
-                  <div className="font-mono text-xs font-bold tracking-tight">
-                    {previewStats.fechaMin || "—"}{previewStats.fechaMin && previewStats.fechaMax ? " →" : ""}
-                  </div>
-                  <div className="font-mono text-xs font-bold tracking-tight">{previewStats.fechaMax || "—"}</div>
-                  <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-700">Rango fechas</div>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3 text-center">
+                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-700">Rango fechas</div>
+                <div className="mt-1 font-mono text-xs font-bold tracking-tight">
+                  {previewStats.fechaMin || "—"}{previewStats.fechaMin && previewStats.fechaMax ? "  →  " : ""}{previewStats.fechaMax || "—"}
                 </div>
               </div>
 
@@ -1259,7 +1263,7 @@ export function PulsosSesionesPage() {
                 {[
                   { id: "resumen", label: "Resumen" },
                   { id: "valid", label: `Válidas (${previewStats.valid.length})` },
-                  { id: "duplicate", label: `Duplicadas (${previewStats.duplicate.length})` },
+                  { id: "duplicate", label: `Duplicadas (${previewStats.duplicate.length}${previewStats.alreadyImp.length > 0 || previewStats.dupFile.length > 0 ? ` · ${previewStats.alreadyImp.length} ya · ${previewStats.dupFile.length} arch.` : ""})` },
                   { id: "error", label: `Errores (${previewStats.error.length})` },
                   { id: "totales", label: "Totales" },
                 ].map((t) => (
@@ -1548,14 +1552,16 @@ function TotalesTable({ title, rows }: { title: string; rows: Array<{ nombre: st
   )
 }
 
-function PreviewStat({ label, value, tone }: { label: string; value: number; tone?: "ok" | "warn" | "error" }) {
+function PreviewStat({ label, value, tone }: { label: string; value: number; tone?: "ok" | "warn" | "error" | "info" }) {
   const cls = tone === "ok"
     ? "border-emerald-200 bg-emerald-50 text-emerald-800"
     : tone === "warn"
       ? "border-amber-200 bg-amber-50 text-amber-800"
       : tone === "error"
         ? "border-rose-200 bg-rose-50 text-rose-800"
-        : "border-slate-200 bg-white text-slate-800"
+        : tone === "info"
+          ? "border-sky-200 bg-sky-50 text-sky-800"
+          : "border-slate-200 bg-white text-slate-800"
   return (
     <div className={`rounded-xl border p-3 text-center ${cls}`}>
       <div className="font-heading text-xl font-black tracking-tight">{value.toLocaleString("es-DO")}</div>

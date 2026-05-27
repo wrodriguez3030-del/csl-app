@@ -115,9 +115,14 @@ export interface ParsedDisparoRow {
   disparos: number
   /** Hash determinístico para deduplicación. Vacío si la fila tiene error. */
   hash: string
-  /** Estado de la fila: "valid" entra al import; "duplicate" se omite;
-   *  "error" no se importa hasta corregir manualmente. */
-  status: "valid" | "duplicate" | "error"
+  /** Estado de la fila:
+   *   - "valid": entra al import.
+   *   - "duplicate_file": misma fila aparece varias veces dentro del MISMO Excel.
+   *   - "already_imported": ya existe en la DB (por import_hash o por igualdad
+   *     de campos clave) — se omite silenciosamente, no es un error.
+   *   - "error": fila inválida (falta fecha/operadora/sucursal/disparos);
+   *     no se importa hasta corregir manualmente. */
+  status: "valid" | "duplicate_file" | "already_imported" | "error"
   /** Mensaje legible cuando status !== "valid". */
   message?: string
 }
@@ -294,43 +299,96 @@ export interface ExistingSesionForDedupe {
   OperadoraID?: string
   Sucursal?: string
   DisparosReportados?: number
+  /** Campos ricos persistidos desde migración 009_pulse_import_richer.sql. */
+  ContactoCliente?: string
+  Tratamiento?: string
+  Potencia?: string
+  Spot?: string
+  /** Cuando está disponible, dedupe es exacto (mismo hash = mismo registro). */
+  ImportHash?: string
+}
+
+/** Clave expandida para dedupe: incluye TODOS los campos de identidad de una
+ *  sesión real. Un mismo cliente puede tener múltiples tratamientos el mismo
+ *  día — la clave reducida (sin tratamiento/contacto) los colapsaba en uno
+ *  solo y marcaba los reales como duplicados falsos. */
+function expandedKey(parts: {
+  fecha: string; cliente: string; contacto: string; tratamiento: string
+  operadora: string; sucursal: string; potencia: string; spot: string
+  disparos: number
+}): string {
+  return [
+    parts.fecha,
+    parts.cliente.trim().toLowerCase(),
+    parts.contacto.trim().toLowerCase(),
+    parts.tratamiento.trim().toLowerCase(),
+    parts.operadora.trim().toLowerCase(),
+    parts.sucursal.trim().toLowerCase(),
+    parts.potencia.trim(),
+    parts.spot.trim(),
+    String(parts.disparos),
+  ].join("|")
 }
 
 /**
- * Marca filas como "duplicate" cuando ya existe una sesión equivalente.
+ * Marca filas con su status final de dedupe:
+ *   - "already_imported": ya existe en DB (match por ImportHash o por clave
+ *     expandida — la primera es exacta, la segunda cubre sesiones cargadas
+ *     antes de la migración 009 cuando aún no se guardaba ImportHash).
+ *   - "duplicate_file": la fila se repite dentro del MISMO Excel.
+ *   - "valid": entra al import.
+ *   - "error": se mantiene (no se toca).
  *
- * Estrategia in-memory: compara contra `existentes` (las sesiones que el
- * store ya cargó vía getAllPulsosData). La llave de comparación es el
- * subset MÍNIMO que comparten ambos lados — el Excel trae más campos
- * (tratamiento, contacto, potencia, spot) pero la DB hoy NO los persiste.
- * Cuando aprueben el SQL de `import_hash` se vuelve dedupe robusta a nivel
- * DB y este helper queda como segundo filtro.
+ * El backend tiene como segundo filtro el UNIQUE parcial sobre import_hash
+ * (csl_sesiones_cliente_import_hash_uidx) — saveSesion devuelve duplicate:true
+ * cuando la DB rechaza, pero este helper le evita ese round-trip a la mayoría
+ * de filas y permite al usuario ver el detalle antes de confirmar.
  */
 export function markDuplicatesAgainstExisting(
   rows: ParsedDisparoRow[],
   existentes: ExistingSesionForDedupe[],
 ): ParsedDisparoRow[] {
-  // Indexamos las existentes por la llave reducida.
-  const index = new Set<string>()
+  // Indexamos las existentes por DOS llaves:
+  //   - hashIndex: match exacto por ImportHash (sesiones importadas con el
+  //     nuevo parser ya lo tienen).
+  //   - keyIndex: clave expandida — cubre sesiones legacy sin ImportHash, o
+  //     sesiones manualmente registradas. Las que sí tienen ImportHash entran
+  //     a las DOS para que `markDuplicatesAgainstExisting` sea idempotente.
+  const hashIndex = new Set<string>()
+  const keyIndex = new Set<string>()
   for (const s of existentes) {
-    const key = [
-      String(s.Fecha || "").slice(0, 10),
-      String(s.Cliente || "").trim().toLowerCase(),
-      String(s.OperadoraID || "").trim().toLowerCase(),
-      String(s.Sucursal || "").trim().toLowerCase(),
-      String(s.DisparosReportados || 0),
-    ].join("|")
-    index.add(key)
+    if (s.ImportHash && s.ImportHash.trim()) hashIndex.add(s.ImportHash.trim())
+    const key = expandedKey({
+      fecha: String(s.Fecha || "").slice(0, 10),
+      cliente: String(s.Cliente || ""),
+      contacto: String(s.ContactoCliente || ""),
+      tratamiento: String(s.Tratamiento || ""),
+      operadora: String(s.OperadoraID || ""),
+      sucursal: String(s.Sucursal || ""),
+      potencia: String(s.Potencia || ""),
+      spot: String(s.Spot || ""),
+      disparos: Number(s.DisparosReportados || 0),
+    })
+    keyIndex.add(key)
   }
-  // También dedupeamos contra el propio batch (Excel con filas repetidas).
-  const seen = new Set<string>()
+  // Dedupe contra el propio batch (Excel con filas repetidas).
+  const seenInBatch = new Set<string>()
   return rows.map((r) => {
     if (r.status !== "valid") return r
-    const key = [r.fecha, r.cliente.toLowerCase(), r.operadora.toLowerCase(), r.sucursal.toLowerCase(), String(r.disparos)].join("|")
-    if (index.has(key) || seen.has(key)) {
-      return { ...r, status: "duplicate", message: "Ya existe una sesión equivalente" }
+    const key = expandedKey({
+      fecha: r.fecha, cliente: r.cliente, contacto: r.contacto,
+      tratamiento: r.tratamiento, operadora: r.operadora, sucursal: r.sucursal,
+      potencia: r.potencia, spot: r.spot, disparos: r.disparos,
+    })
+    // 1) Match contra DB → already_imported.
+    if ((r.hash && hashIndex.has(r.hash)) || keyIndex.has(key)) {
+      return { ...r, status: "already_imported", message: "Ya importada previamente" }
     }
-    seen.add(key)
+    // 2) Match contra batch actual → duplicate_file.
+    if (seenInBatch.has(key)) {
+      return { ...r, status: "duplicate_file", message: "Repetida dentro del mismo Excel" }
+    }
+    seenInBatch.add(key)
     return r
   })
 }

@@ -704,12 +704,17 @@ export function PulsosCuadreSemanalPage() {
                   const totalArchivo = imp.rowsAll.length
                   const enRango = imp.rows.length
                   const validas = imp.rows.filter((r) => r.status === "valid").length
-                  const duplicadas = imp.rows.filter((r) => r.status === "duplicate").length
+                  const dupArchivo = imp.rows.filter((r) => r.status === "duplicate_file").length
+                  const yaImportadas = imp.rows.filter((r) => r.status === "already_imported").length
                   const errores = imp.rows.filter((r) => r.status === "error").length
                   // Si el archivo tiene datos pero ninguno cae dentro del
                   // rango de la semana actual (y NO está activo "procesar
                   // todo"), mostramos alerta con acciones para resolverlo.
                   const sinDatosEnRango = totalArchivo > 0 && enRango === 0 && !imp.procesarTodo
+                  // Cuando TODAS las filas válidas-en-rango son already_imported,
+                  // mostramos banner específico distinto del "no hay datos".
+                  const totalAccionables = validas + yaImportadas
+                  const todoYaImportado = totalAccionables > 0 && validas === 0 && yaImportadas > 0
                   return (
                     <div key={idx} className="rounded-xl border p-3 text-xs">
                       <div className="flex items-center justify-between gap-2">
@@ -728,8 +733,15 @@ export function PulsosCuadreSemanalPage() {
                         <Mini label="Filas del archivo" value={totalArchivo} />
                         <Mini label={imp.procesarTodo ? "Procesando todo" : "Dentro del rango"} value={enRango} tone={enRango > 0 ? "ok" : "warn"} />
                         <Mini label="Válidas" value={validas} tone="ok" />
-                        <Mini label="Duplicadas" value={duplicadas} tone="warn" />
-                        <Mini label="Errores" value={errores} tone="error" />
+                        {yaImportadas > 0
+                          ? <Mini label="Ya importadas" value={yaImportadas} tone="info" />
+                          : null}
+                        {dupArchivo > 0
+                          ? <Mini label="Duplicadas en archivo" value={dupArchivo} tone="warn" />
+                          : null}
+                        {errores > 0
+                          ? <Mini label="Errores" value={errores} tone="error" />
+                          : null}
                         <Mini label="Disparos a importar" value={imp.totalDisparos} />
                         {imp.imported > 0
                           ? <Mini label="Importadas" value={imp.imported} tone="ok" />
@@ -738,6 +750,23 @@ export function PulsosCuadreSemanalPage() {
                           ? <Mini label="Dup DB" value={imp.duplicatesDb} tone="warn" />
                           : null}
                       </div>
+
+                      {/* Banner cuando todo el rango de filas válidas resultó
+                          en already_imported. NO es error — es info. */}
+                      {todoYaImportado && !sinDatosEnRango ? (
+                        <div className="mt-3 rounded-lg border border-sky-300 bg-sky-50 p-3 text-xs text-sky-900">
+                          <div className="flex items-start gap-2">
+                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-sky-700" />
+                            <div className="flex-1">
+                              <p className="font-bold">Este archivo ya fue importado anteriormente.</p>
+                              <p className="mt-1 text-sky-900/80">
+                                Las <b>{yaImportadas.toLocaleString("es-DO")}</b> filas en el rango ya están en la base de datos.
+                                No se importarán duplicados.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
 
                       {/* Alerta cuando el archivo trae datos pero el filtro
                           de semana los deja fuera. Ofrece 2 salidas. */}
@@ -800,14 +829,16 @@ export function PulsosCuadreSemanalPage() {
                           .sort((a, b) => b[0].localeCompare(a[0]))
                           .map(([fechaLunes, rows]) => {
                             const valid = rows.filter((r) => r.status === "valid")
-                            const dup = rows.filter((r) => r.status === "duplicate")
+                            const dupFile = rows.filter((r) => r.status === "duplicate_file")
+                            const alreadyImp = rows.filter((r) => r.status === "already_imported")
                             const err = rows.filter((r) => r.status === "error")
                             return {
                               fechaLunes,
                               fechaFin: addDays(fechaLunes, 5),
                               rows,
                               valid: valid.length,
-                              dup: dup.length,
+                              dupFile: dupFile.length,
+                              alreadyImp: alreadyImp.length,
                               err: err.length,
                               disparos: valid.reduce((s, r) => s + r.disparos, 0),
                               operadoras: Array.from(new Set(rows.map((r) => r.operadora).filter(Boolean))),
@@ -843,7 +874,8 @@ export function PulsosCuadreSemanalPage() {
                                         <div className="mt-1 flex flex-wrap gap-1 text-[10px] text-muted-foreground">
                                           <span><b>{sem.rows.length}</b> filas</span>
                                           <span>· <span className="text-emerald-700"><b>{sem.valid}</b> válidas</span></span>
-                                          {sem.dup > 0 ? <span>· <span className="text-amber-700"><b>{sem.dup}</b> dup</span></span> : null}
+                                          {sem.alreadyImp > 0 ? <span>· <span className="text-sky-700"><b>{sem.alreadyImp}</b> ya importadas</span></span> : null}
+                                          {sem.dupFile > 0 ? <span>· <span className="text-amber-700"><b>{sem.dupFile}</b> dup archivo</span></span> : null}
                                           {sem.err > 0 ? <span>· <span className="text-rose-700"><b>{sem.err}</b> err</span></span> : null}
                                           <span>· <b>{sem.disparos.toLocaleString("es-DO")}</b> disparos</span>
                                           {sem.operadoras.length > 0 ? <span>· {sem.operadoras.length} {sem.operadoras.length === 1 ? "operadora" : "operadoras"}</span> : null}
@@ -1196,10 +1228,11 @@ function Alert({ tone, children }: { tone: "info" | "warn"; children: React.Reac
   return <div className={`rounded-xl border p-3 text-xs ${cls}`}>{children}</div>
 }
 
-function Mini({ label, value, tone }: { label: string; value: number; tone?: "ok" | "warn" | "error" }) {
+function Mini({ label, value, tone }: { label: string; value: number; tone?: "ok" | "warn" | "error" | "info" }) {
   const cls = tone === "ok" ? "border-emerald-200 bg-emerald-50 text-emerald-700"
     : tone === "warn" ? "border-amber-200 bg-amber-50 text-amber-700"
     : tone === "error" ? "border-rose-200 bg-rose-50 text-rose-700"
+    : tone === "info" ? "border-sky-200 bg-sky-50 text-sky-700"
     : "border-slate-200 bg-white text-slate-700"
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${cls}`}>
