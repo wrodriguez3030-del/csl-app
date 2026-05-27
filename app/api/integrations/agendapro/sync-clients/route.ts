@@ -41,13 +41,13 @@ export async function POST(request: Request) {
     return json({ ok: false, error: "No autenticado" }, 401)
   }
 
+  // Sin gate por rol — cualquier usuario autenticado puede disparar el sync.
+  // La integración AgendaPro es solo-lectura desde la perspectiva de AgendaPro
+  // (no creamos garbage allá) y los clientes traídos quedan en el tenant CSL
+  // (hardcoded — AgendaPro solo está integrado con la cuenta CSL hoy).
   const profile = await getProfile(user.id)
-  if (!profile?.is_admin && !profile?.is_superadmin) {
-    return json({ ok: false, error: "Solo admin o superadmin pueden ejecutar la sincronización." }, 403)
-  }
-  const businessId = String(profile.business_id || "")
-  if (!businessId) {
-    return json({ ok: false, error: "Tu perfil no tiene business_id asignado." }, 400)
+  if (!profile) {
+    return json({ ok: false, error: "Perfil no encontrado." }, 403)
   }
 
   const cfg = getAgendaProConfig()
@@ -59,6 +59,17 @@ export async function POST(request: Request) {
   const ctx = await loadBusinessContext(user.id)
   return runWithBusinessContext(ctx, async () => {
     const supabase = getSupabaseAdmin()
+    // AgendaPro es CSL-only. Hardcoded resolve para evitar que un usuario de
+    // otro tenant accidentalmente importe clientes a su business equivocado.
+    const businessRow = await supabase
+      .from("businesses")
+      .select("id")
+      .eq("slug", "csl")
+      .maybeSingle()
+    const businessId = (businessRow.data as { id?: string } | null)?.id
+    if (!businessId) {
+      return json({ ok: false, error: "Business CSL no encontrado en businesses." }, 500)
+    }
 
     // Abrir log en estado "running"
     const logInsert = await supabase

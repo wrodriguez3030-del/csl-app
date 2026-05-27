@@ -124,7 +124,10 @@ export function CosmiatriaClientesPage() {
   const { apiUrl, db, showToast, setIsLoading, setLoadingMessage, incrementFormOpen, decrementFormOpen } = useAppStore()
   const sessionUser = useSessionUser()
   const canMerge = !!sessionUser && (sessionUser.isAdmin || sessionUser.isSuperadmin)
-  const canSyncAgendaPro = canMerge
+  // Sincronizar AgendaPro: cualquier usuario autenticado puede dispararlo —
+  // sirve para que recepción jale clientes recién registrados en AgendaPro
+  // sin depender de un admin. El backend hardcodea business=CSL.
+  const canSyncAgendaPro = !!sessionUser
   // Rol Usuario tiene acceso solo-lectura a Clientes (no crear, no editar,
   // no eliminar). Admin y Superadmin sí pueden mutar.
   const canEditClientes = canMerge
