@@ -75,19 +75,25 @@ export async function POST(request: Request) {
 
     try {
       // Body opcional:
-      //   { search }      → búsqueda puntual (una página de resultados)
-      //   { page }        → fetch SOLO esa página (modo auto-sync incremental)
-      //   {} (vacío)      → listado completo paginado
-      let body: { search?: string; page?: number } = {}
+      //   { search }                       → búsqueda puntual (una página de resultados)
+      //   { page, pagesPerTick? }          → fetch desde `page` por `pagesPerTick`
+      //                                      páginas consecutivas (auto-sync incremental).
+      //                                      Si pagesPerTick no viene, default = 1.
+      //   {} (vacío)                       → listado completo paginado
+      let body: { search?: string; page?: number; pagesPerTick?: number } = {}
       try {
         const raw = await request.text()
         body = raw ? JSON.parse(raw) : {}
       } catch { body = {} }
       const search = (body.search || "").trim()
       const singlePage = typeof body.page === "number" && body.page > 0 ? body.page : undefined
+      const pagesPerTick = typeof body.pagesPerTick === "number" && body.pagesPerTick > 0
+        ? Math.min(body.pagesPerTick, 10) // safety cap
+        : 1
 
       let clients: Array<Record<string, unknown>> = []
       let pagesRead = 0
+      let lastPageWithData = 0
       let diagnostic: Record<string, unknown> = {}
 
       if (search) {
@@ -101,14 +107,23 @@ export async function POST(request: Request) {
         clients = fetchResult.clients as Array<Record<string, unknown>>
         pagesRead = 1
       } else if (singlePage) {
-        // Modo página única — para auto-sync incremental
-        const fetchResult = await fetchAgendaProClients(cfg, { page: singlePage, perPage: 100 })
-        if (!fetchResult.ok) {
-          throw new Error(fetchResult.error || `Error AgendaPro status ${fetchResult.status} en página ${singlePage}`)
+        // Modo páginas consecutivas — para auto-sync incremental
+        for (let i = 0; i < pagesPerTick; i++) {
+          const currentPage = singlePage + i
+          const fetchResult = await fetchAgendaProClients(cfg, { page: currentPage, perPage: 100 })
+          if (!fetchResult.ok) {
+            throw new Error(fetchResult.error || `Error AgendaPro status ${fetchResult.status} en página ${currentPage}`)
+          }
+          const batch = fetchResult.clients as Array<Record<string, unknown>>
+          pagesRead++
+          if (batch.length === 0) {
+            // AgendaPro ya no tiene más datos — paramos acá.
+            break
+          }
+          lastPageWithData = currentPage
+          clients.push(...batch)
         }
-        clients = fetchResult.clients as Array<Record<string, unknown>>
-        pagesRead = 1
-        diagnostic = { page: singlePage }
+        diagnostic = { startPage: singlePage, pagesPerTick, pagesRead, lastPageWithData }
       } else {
         const pagedResult = await fetchAllAgendaProClients(cfg)
         pagesRead = pagedResult.pagesRead
@@ -148,6 +163,7 @@ export async function POST(request: Request) {
       return json({
         ok: true,
         pagesRead,
+        lastPageWithData,
         diagnostic,
         totalAgendaPro: summary.total,
         created: summary.created,

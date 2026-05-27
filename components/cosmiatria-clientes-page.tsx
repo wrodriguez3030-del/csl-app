@@ -416,13 +416,15 @@ export function CosmiatriaClientesPage() {
       const { data: { session } } = await import("@/lib/supabase-client").then((m) => m.supabaseBrowser.auth.getSession())
       if (!session?.access_token) throw new Error("Sesión no válida — vuelve a iniciar sesión")
       setAgendaProSyncing(true)
+      const PAGES_PER_TICK = 4 // ~120 clientes por tick (30 × 4) — AgendaPro fija 30/pág
       const res = await fetch("/api/integrations/agendapro/sync-clients", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ page }),
+        body: JSON.stringify({ page, pagesPerTick: PAGES_PER_TICK }),
       })
       const data = await res.json() as {
         ok?: boolean; error?: string;
+        pagesRead?: number; lastPageWithData?: number;
         totalAgendaPro?: number; created?: number; updated?: number;
         skipped?: number; duplicates?: number; errors?: number;
       }
@@ -435,18 +437,23 @@ export function CosmiatriaClientesPage() {
         return
       }
       const count = data.totalAgendaPro || 0
+      const pagesProcessed = data.pagesRead || 0
+      const lastPage = data.lastPageWithData || 0
       if (count === 0) {
         showToast(`Auto-sync completado. Página ${page} vacía — no hay más clientes en AgendaPro.`, "success")
         setAgendaProAutoSync(false)
         localStorage.removeItem("agendapro_auto_page")
         return
       }
-      const nextPage = page + 1
+      // Avanzar: si AgendaPro devolvió menos páginas que las pedidas, llegó al
+      // final → próxima la corre y debería venir vacía. Avanzamos igualmente.
+      const nextPage = (lastPage > 0 ? lastPage : page + pagesProcessed - 1) + 1
       autoPageRef.current = nextPage
       setAutoPageDisplay(nextPage)
       localStorage.setItem("agendapro_auto_page", String(nextPage))
+      const reachedEnd = pagesProcessed < PAGES_PER_TICK
       showToast(
-        `Pág. ${page}: ${count} leídos · ${data.created || 0} nuevos · ${data.updated || 0} actualizados. Siguiente: pág. ${nextPage}`,
+        `Pág. ${page}–${page + pagesProcessed - 1}: ${count} leídos · ${data.created || 0} nuevos · ${data.updated || 0} actualizados.${reachedEnd ? " (AgendaPro sin más páginas — terminando)" : ` Siguiente: pág. ${nextPage}`}`,
         (data.created || 0) > 0 ? "success" : "info",
       )
       await loadData()
