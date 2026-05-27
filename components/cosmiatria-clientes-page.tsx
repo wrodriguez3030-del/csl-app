@@ -125,6 +125,9 @@ export function CosmiatriaClientesPage() {
   const sessionUser = useSessionUser()
   const canMerge = !!sessionUser && (sessionUser.isAdmin || sessionUser.isSuperadmin)
   const canSyncAgendaPro = canMerge
+  // Rol Usuario tiene acceso solo-lectura a Clientes (no crear, no editar,
+  // no eliminar). Admin y Superadmin sí pueden mutar.
+  const canEditClientes = canMerge
   const [mergeOpen, setMergeOpen] = useState(false)
   const [agendaProSyncing, setAgendaProSyncing] = useState(false)
   const [clientes, setClientes] = useState<ClienteCosmiatria[]>([])
@@ -457,7 +460,9 @@ export function CosmiatriaClientesPage() {
               <Users className="mr-2 h-4 w-4" />Unificar clientes
             </Button>
           ) : null}
-          <Button onClick={openNew}><Plus className="mr-2 h-4 w-4" />Nuevo cliente</Button>
+          {canEditClientes ? (
+            <Button onClick={openNew}><Plus className="mr-2 h-4 w-4" />Nuevo cliente</Button>
+          ) : null}
         </div>
       </div>
 
@@ -542,8 +547,8 @@ export function CosmiatriaClientesPage() {
                     <RecordActions
                       title={`Cliente: ${cliente.Nombre} ${cliente.Apellido}`}
                       record={clienteRecord(cliente)}
-                      onEdit={() => openEdit(cliente)}
-                      onDelete={() => deleteCliente(cliente)}
+                      onEdit={canEditClientes ? () => openEdit(cliente) : undefined}
+                      onDelete={canEditClientes ? () => deleteCliente(cliente) : undefined}
                       printTitle={`Cliente Cosmiatría - ${cliente.Nombre} ${cliente.Apellido}`}
                     />
                     <div className="mt-1 flex justify-end gap-1">
