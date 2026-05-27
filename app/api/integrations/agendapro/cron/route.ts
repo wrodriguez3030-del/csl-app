@@ -1,17 +1,16 @@
-/**
- * GET /api/integrations/agendapro/cron
- *
- * Endpoint para Vercel Cron — sincronización incremental automática de AgendaPro.
- * Configurado en vercel.json con schedule */5 * * * * (cada 5 min).
- *
- * Estrategia: solo fetch página 1 (AgendaPro devuelve descendente por id, los
- * clientes nuevos siempre aparecen ahí). El dedupe vía resolveClienteId
- * asegura que no se duplican los que ya están en csl_cosmiatria_clientes.
- *
- * Auth: Vercel firma con Authorization: Bearer ${CRON_SECRET}. Si CRON_SECRET
- * no está configurada, el endpoint refuse (503) — no queremos exponer sync
- * sin auth al público.
- */
+// GET /api/integrations/agendapro/cron
+//
+// Endpoint para Vercel Cron — sincronización incremental automática.
+// Configurado en vercel.json (en Hobby plan: schedule diario; en Pro:
+// se puede subir a cada 5 min con "0,5,10,15..." o similar).
+//
+// Estrategia: solo fetch página 1 (AgendaPro devuelve descendente por id;
+// los clientes nuevos siempre aparecen ahí). El dedupe vía resolveClienteId
+// asegura que no se duplican los que ya están en csl_cosmiatria_clientes.
+//
+// Auth: Vercel firma con Authorization: Bearer CRON_SECRET. Si CRON_SECRET
+// no está configurada, el endpoint refuse (503) — no queremos exponer
+// sync sin auth al público.
 
 import { NextResponse } from "next/server"
 import { getSupabaseAdmin } from "@/lib/server/supabase"
