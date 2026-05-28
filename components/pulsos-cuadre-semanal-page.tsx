@@ -102,27 +102,6 @@ const ALERT_CLS: Record<AlertaNivel, string> = {
 
 function newRowId() { return `row_${Date.now()}_${Math.random().toString(36).slice(2, 6)}` }
 
-/** Construye opciones de semanas L-S para el dropdown del Paso 1.
- *  Devuelve 8 semanas pasadas + actual + 2 próximas (11 en total), del
- *  más reciente al más antiguo. */
-function buildWeekOptions(today: string): Array<{ value: string; label: string; fin: string }> {
-  const thisLunes = lunesDeSemana(today)
-  if (!thisLunes) return []
-  const opts: Array<{ value: string; label: string; fin: string }> = []
-  for (let i = -8; i <= 2; i += 1) {
-    const lunes = addDays(thisLunes, i * 7)
-    if (!lunes) continue
-    const sabado = addDays(lunes, 5)
-    opts.push({
-      value: lunes,
-      fin: sabado,
-      label: `Semana del ${fmtFechaLocal(lunes)} al ${fmtFechaLocal(sabado)}`,
-    })
-  }
-  // Más reciente primero.
-  return opts.reverse()
-}
-
 /** Intenta detectar la semana cubierta por el header de la columna de
  *  lecturas (ej. "Pulsos 18–23 Mayo" → "2026-05-18"). Devuelve el lunes
  *  ISO si lo logra, "" si no. */
@@ -155,8 +134,10 @@ export function PulsosCuadreSemanalPage() {
   // ── Estado del wizard ─────────────────────────────────────────────────────
   const [step, setStep] = useState<WizardStep>(1)
   const today = new Date().toISOString().slice(0, 10)
-  const [weekStart, setWeekStart] = useState<string>(() => lunesDeSemana(today))
-  const [weekEnd, setWeekEnd] = useState<string>(() => addDays(lunesDeSemana(today), 5))
+  // weekStart arranca VACÍO — la semana se detecta automáticamente del Excel
+  // AgendaPro en el Paso 2. El usuario nunca elige fechas manualmente.
+  const [weekStart, setWeekStart] = useState<string>("")
+  const [weekEnd, setWeekEnd] = useState<string>("")
   const [sucursalFiltro, setSucursalFiltro] = useState<string>("Todas")
   const [excelImports, setExcelImports] = useState<ExcelImportInfo[]>([])
   const [lecturasImport, setLecturasImport] = useState<LecturasImportInfo | null>(null)
@@ -761,40 +742,25 @@ export function PulsosCuadreSemanalPage() {
 
       <ProgressBar step={step} />
 
-      {/* PASO 1 — Semana + sucursal */}
-      {step === 1 ? (() => {
-        const weekOptions = buildWeekOptions(today)
-        // Si la semana actual del state NO está en la lista (rara vez), la
-        // insertamos al principio para que el Select pueda mostrarla.
-        const inList = weekOptions.some((o) => o.value === weekStart)
-        if (!inList && weekStart) {
-          weekOptions.unshift({
-            value: weekStart,
-            fin: addDays(weekStart, 5),
-            label: `Semana del ${fmtFechaLocal(weekStart)} al ${fmtFechaLocal(addDays(weekStart, 5))}`,
-          })
-        }
-        return (
+      {/* PASO 1 — Solo sucursal + intro (la semana se detecta en Paso 2) */}
+      {step === 1 ? (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <CalendarRange className="h-4 w-4" /> Paso 1 · Selecciona la semana
+              <CalendarRange className="h-4 w-4" /> Paso 1 · Inicio
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-xs text-sky-900">
+              <p className="font-bold uppercase tracking-wide">¿Cómo funciona el cuadre?</p>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 leading-relaxed">
+                <li>Sube el Excel de <b>AgendaPro</b>. El sistema detectará automáticamente las semanas disponibles dentro del archivo.</li>
+                <li>Elige la semana del archivo que vas a cuadrar.</li>
+                <li>Sube el Excel de <b>lecturas/pulsos</b> de esa semana — el sistema valida que corresponda a la misma semana de AgendaPro.</li>
+                <li>Revisa diferencias por equipo y guarda el snapshot.</li>
+              </ol>
+            </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <Label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Semana</Label>
-                <Select value={weekStart} onValueChange={(v) => setWeekStart(v)}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Selecciona una semana" /></SelectTrigger>
-                  <SelectContent>
-                    {weekOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="mt-1 text-[10px] text-muted-foreground">Lunes a sábado · últimas 8 + actual + próximas 2.</p>
-              </div>
               <div>
                 <Label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Sucursal</Label>
                 <Select value={sucursalFiltro} onValueChange={setSucursalFiltro}>
@@ -803,19 +769,13 @@ export function PulsosCuadreSemanalPage() {
                     {sucursalesOptions.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                <p className="mt-1 text-[10px] text-muted-foreground">Filtro opcional para limitar el cuadre a una sucursal.</p>
               </div>
             </div>
-            <Alert tone="info">
-              Semana del cuadre: <b>{fmtFechaLocal(weekStart)} → {fmtFechaLocal(weekEnd)}</b>{" "}
-              · Sucursal: <b>{sucursalFiltro}</b>
-              <br />
-              <span className="text-[11px]">Esta misma semana se usará en todos los pasos. AgendaPro y Lecturas deben corresponder a este rango.</span>
-            </Alert>
-            <NavButtons onNext={() => setStep(2)} nextLabel="Continuar a Excel" nextEnabled={!!weekStart && !!weekEnd} />
+            <NavButtons onNext={() => setStep(2)} nextLabel="Continuar a AgendaPro" nextEnabled />
           </CardContent>
         </Card>
-        )
-      })() : null}
+      ) : null}
 
       {/* PASO 2 — Excel */}
       {step === 2 ? (
@@ -830,7 +790,7 @@ export function PulsosCuadreSemanalPage() {
               <Upload className="mx-auto mb-2 h-8 w-8 text-primary" />
               <p className="text-sm font-semibold">Arrastra los archivos aquí o selecciona</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Hoja &quot;Detalle Disparos tratamientos&quot;. Solo filas dentro del rango {fmtFechaLocal(weekStart)} → {fmtFechaLocal(weekEnd)}{sucursalFiltro !== "Todas" ? ` y sucursal ${sucursalFiltro}` : ""} se procesan.
+                Hoja &quot;Detalle Disparos tratamientos&quot;. Tras subir el archivo, el sistema detectará las semanas disponibles y tú eliges cuál cuadrar.
               </p>
               <input
                 ref={excelInputRef} type="file" accept=".xlsx,.xls" multiple className="hidden"
@@ -854,8 +814,8 @@ export function PulsosCuadreSemanalPage() {
                   const errores = imp.rows.filter((r) => r.status === "error").length
                   // Si el archivo tiene datos pero ninguno cae dentro del
                   // rango de la semana actual (y NO está activo "procesar
-                  // todo"), mostramos alerta con acciones para resolverlo.
-                  const sinDatosEnRango = totalArchivo > 0 && enRango === 0 && !imp.procesarTodo
+                  // todo" y YA hay semana elegida), mostramos alerta.
+                  const sinDatosEnRango = totalArchivo > 0 && enRango === 0 && !imp.procesarTodo && !!weekStart
                   // Cuando TODAS las filas válidas-en-rango son already_imported,
                   // mostramos banner específico distinto del "no hay datos".
                   const totalAccionables = validas + yaImportadas
@@ -876,8 +836,12 @@ export function PulsosCuadreSemanalPage() {
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <Mini label="Filas del archivo" value={totalArchivo} />
-                        <Mini label={imp.procesarTodo ? "Procesando todo" : "Dentro del rango"} value={enRango} tone={enRango > 0 ? "ok" : "warn"} />
-                        <Mini label="Válidas" value={validas} tone="ok" />
+                        {weekStart || imp.procesarTodo ? (
+                          <Mini label={imp.procesarTodo ? "Procesando todo" : "Dentro del rango"} value={enRango} tone={enRango > 0 ? "ok" : "warn"} />
+                        ) : null}
+                        {weekStart || imp.procesarTodo ? (
+                          <Mini label="Válidas" value={validas} tone="ok" />
+                        ) : null}
                         {yaImportadas > 0
                           ? <Mini label="Ya importadas" value={yaImportadas} tone="info" />
                           : null}
@@ -1064,11 +1028,21 @@ export function PulsosCuadreSemanalPage() {
               </div>
             ) : null}
 
+            {excelImports.length > 0 && !weekStart ? (
+              <Alert tone="warn">
+                Aún no has elegido la semana del cuadre. En la lista <b>&quot;Semanas detectadas en el archivo&quot;</b> de arriba, presiona <b>&quot;Usar para cuadre&quot;</b> en la semana que vas a auditar.
+              </Alert>
+            ) : null}
+            {weekStart ? (
+              <Alert tone="info">
+                Semana del cuadre seleccionada: <b>{fmtFechaLocal(weekStart)} → {fmtFechaLocal(weekEnd)}</b>. Esta misma semana se usará al subir las lecturas y al guardar.
+              </Alert>
+            ) : null}
             <NavButtons
               onBack={() => setStep(1)}
               onNext={() => setStep(3)}
-              nextLabel="Continuar a lecturas"
-              nextEnabled={excelImports.length > 0}
+              nextLabel={!weekStart ? "Elige una semana del archivo" : "Continuar a lecturas"}
+              nextEnabled={excelImports.length > 0 && !!weekStart}
             />
           </CardContent>
         </Card>
@@ -1083,6 +1057,13 @@ export function PulsosCuadreSemanalPage() {
         const equiposDetectados = new Set(rows.map((r) => r.override.equipo ?? r.equipo).filter(Boolean)).size
         const sucursalesDetectadas = Array.from(new Set(rows.map((r) => r.override.sucursal ?? r.sucursal).filter(Boolean)))
         const equiposCompletos = rows.filter((r) => r.status !== "error" && (r.override.equipo ?? r.equipo)).length
+        const semanaHeader = lecturasImport
+          ? detectarSemanaDeHeader(
+              lecturasImport.parsed.lecturaColumnName,
+              Number(weekStart.slice(0, 4)) || new Date().getFullYear(),
+            )
+          : ""
+        const semanasCoinciden = !semanaHeader || semanaHeader === weekStart
         return (
         <Card>
           <CardHeader>
@@ -1091,30 +1072,37 @@ export function PulsosCuadreSemanalPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Banner de la semana activa */}
+            {/* Banner: comparación semana AgendaPro vs semana lecturas */}
             <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-[10px] font-bold uppercase tracking-wide text-primary">Semana del cuadre</div>
-                  <div className="mt-1 text-base font-bold">
-                    Del {fmtFechaLocal(weekStart)} al {fmtFechaLocal(weekEnd)}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-primary">Semana de AgendaPro</div>
+                  <div className="mt-1 text-sm font-bold">
+                    {weekStart ? `${fmtFechaLocal(weekStart)} → ${fmtFechaLocal(weekEnd)}` : "Sin semana seleccionada"}
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Sube el Excel con la lectura final por equipo de esta semana. Se comparará contra los disparos del Excel de AgendaPro.
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">Detectada en el Paso 2 a partir del archivo de AgendaPro.</p>
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-primary">Semana de lecturas</div>
+                  <div className={`mt-1 text-sm font-bold ${lecturasImport && !semanasCoinciden ? "text-rose-700" : ""}`}>
+                    {lecturasImport
+                      ? (semanaHeader
+                          ? `${fmtFechaLocal(semanaHeader)} → ${fmtFechaLocal(addDays(semanaHeader, 5))}`
+                          : "No detectada en el header")
+                      : "—"}
+                  </div>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                    {lecturasImport
+                      ? `Detectada desde "${lecturasImport.parsed.lecturaColumnName}"`
+                      : "Sube el Excel de lecturas para detectar la semana."}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs text-muted-foreground">Cambiar:</Label>
-                  <Select value={weekStart} onValueChange={(v) => setWeekStart(v)}>
-                    <SelectTrigger className="h-9 w-64 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {buildWeekOptions(today).map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
+              {lecturasImport && semanaHeader && semanasCoinciden ? (
+                <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase text-emerald-700">
+                  <CheckCircle2 className="h-3 w-3" /> Las semanas coinciden
+                </div>
+              ) : null}
             </div>
 
             {/* Dropzone — sin Excel cargado todavía */}
@@ -1275,8 +1263,8 @@ export function PulsosCuadreSemanalPage() {
             <NavButtons
               onBack={() => setStep(2)}
               onNext={() => setStep(4)}
-              nextLabel="Continuar a revisión"
-              nextEnabled={equiposCompletos > 0}
+              nextLabel={!semanasCoinciden ? "Las semanas no coinciden" : "Continuar a revisión"}
+              nextEnabled={equiposCompletos > 0 && semanasCoinciden}
             />
           </CardContent>
         </Card>
