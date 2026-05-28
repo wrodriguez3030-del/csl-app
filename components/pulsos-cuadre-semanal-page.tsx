@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
-  AlertTriangle, CalendarRange, Camera, CheckCircle2, ChevronLeft, ChevronRight,
+  AlertTriangle, CalendarRange, CheckCircle2, ChevronLeft, ChevronRight,
   Download, FileSpreadsheet, Filter, Loader2, RotateCcw, Save, Upload, X,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,7 +26,11 @@ import {
 } from "@/lib/pulse-audit"
 import { printCuadre, type CuadreEquipoRow, type CuadreSnapshot } from "@/lib/pulse-cuadre-pdf"
 import { exportCuadreXlsx } from "@/lib/pulse-cuadre-xlsx"
-import { scanPulseScreen } from "@/lib/pulse-vision"
+import {
+  parseLecturasWorkbook,
+  type ParsedLecturaRow,
+  type ParseLecturasResult,
+} from "@/lib/pulsos-lecturas-parser"
 import type { SesionCliente, AuditoriaSemanal } from "@/lib/types"
 
 // ─── Tipos locales del wizard ────────────────────────────────────────────────
@@ -52,22 +56,29 @@ interface ExcelImportInfo {
   duplicatesDb: number
 }
 
-interface FotoEntry {
-  id: string
+/** Una fila del Excel de lecturas YA enriquecida con datos calculados. */
+interface LecturaCuadreEntry extends ParsedLecturaRow {
+  /** rowId estable para tracking del row en React lists. */
+  rowId: string
+  /** Lectura inicial buscada en lecturas semanales previas (puede ser null). */
+  lecturaInicialAuto: number | null
+  /** Override manual del usuario sobre cualquier campo. */
+  override: Partial<{
+    equipo: string
+    sucursal: string
+    cabina: string
+    operador: string
+    lecturaFinal: number
+    lecturaInicial: number
+    observaciones: string
+  }>
+}
+
+/** Snapshot in-memory del Excel de lecturas cargado por el usuario. */
+interface LecturasImportInfo {
   filename: string
-  /** File original — necesario para re-escanear con Vision sin perder bytes. */
-  file: File | null
-  dataUrl: string               // base64 para preview (no se sube al server)
-  equipoId: string
-  sucursal: string
-  cabina: string
-  lecturaFinal: number | null
-  lecturaInicialAuto: number | null   // se autocompleta desde lectura anterior
-  observaciones: string
-  /** Estado del OCR: "idle" | "scanning" | "ok" | "fail". */
-  scanStatus: "idle" | "scanning" | "ok" | "fail"
-  /** Serial detectado por Vision (informativo, no usado en cálculo). */
-  serialDetectado?: string
+  parsed: ParseLecturasResult
+  rows: LecturaCuadreEntry[]
 }
 
 interface EquipoCuadre extends CuadreEquipoRow {
@@ -85,15 +96,6 @@ const ALERT_CLS: Record<AlertaNivel, string> = {
 
 function newRowId() { return `row_${Date.now()}_${Math.random().toString(36).slice(2, 6)}` }
 
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result || ""))
-    reader.onerror = () => reject(new Error("No se pudo leer la foto"))
-    reader.readAsDataURL(file)
-  })
-}
-
 // ─── Componente principal ───────────────────────────────────────────────────
 
 export function PulsosCuadreSemanalPage() {
@@ -108,15 +110,16 @@ export function PulsosCuadreSemanalPage() {
   const [weekEnd, setWeekEnd] = useState<string>(() => addDays(lunesDeSemana(today), 5))
   const [sucursalFiltro, setSucursalFiltro] = useState<string>("Todas")
   const [excelImports, setExcelImports] = useState<ExcelImportInfo[]>([])
-  const [fotos, setFotos] = useState<FotoEntry[]>([])
+  const [lecturasImport, setLecturasImport] = useState<LecturasImportInfo | null>(null)
   const [parsingExcel, setParsingExcel] = useState(false)
+  const [parsingLecturas, setParsingLecturas] = useState(false)
   const [importingExcel, setImportingExcel] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [equiposEditados, setEquiposEditados] = useState<Record<string, Partial<EquipoCuadre>>>({})
   const [snapshotFinal, setSnapshotFinal] = useState<{ snapshot: CuadreSnapshot; sesiones: SesionCliente[] } | null>(null)
 
   const excelInputRef = useRef<HTMLInputElement>(null)
-  const fotosInputRef = useRef<HTMLInputElement>(null)
+  const lecturasInputRef = useRef<HTMLInputElement>(null)
 
   // Sucursales disponibles (deriva del store + presets DR).
   const sucursalesOptions = useMemo(() => {
@@ -315,14 +318,25 @@ export function PulsosCuadreSemanalPage() {
     showToast(`Semana del cuadre: ${fmtFechaLocal(fechaLunes)} → ${fmtFechaLocal(addDays(fechaLunes, 5))}`, "success")
   }
 
-  // Cuando cambia la semana, recalcular lecturaInicialAuto de las fotos ya
-  // cargadas (la lectura inicial depende de weekStart: buscamos la última
-  // lectura final con fecha_semana < weekStart para mismo equipo/sucursal/cabina).
+  // Cuando cambia la semana, recalcular lecturaInicialAuto de las lecturas ya
+  // cargadas (depende de weekStart: buscamos la última lectura final con
+  // fecha_semana < weekStart para mismo equipo/sucursal/cabina).
   useEffect(() => {
-    setFotos((current) => current.map((f) => ({
-      ...f,
-      lecturaInicialAuto: lookupLecturaPrevia(f.equipoId, f.sucursal, f.cabina, weekStart),
-    })))
+    setLecturasImport((current) => {
+      if (!current) return current
+      return {
+        ...current,
+        rows: current.rows.map((r) => {
+          const equipoEfectivo = r.override.equipo ?? r.equipo
+          const sucursalEfectiva = r.override.sucursal ?? r.sucursal
+          const cabinaEfectiva = r.override.cabina ?? r.cabina
+          return {
+            ...r,
+            lecturaInicialAuto: lookupLecturaPrevia(equipoEfectivo, sucursalEfectiva, cabinaEfectiva, weekStart),
+          }
+        }),
+      }
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekStart])
 
@@ -391,71 +405,60 @@ export function PulsosCuadreSemanalPage() {
     }
   }
 
-  // ── PASO 3: fotos ─────────────────────────────────────────────────────────
-  const handleFotosFiles = async (files: FileList | null) => {
-    if (!files || !files.length) return
-    const nuevas: FotoEntry[] = []
-    for (const file of Array.from(files)) {
-      try {
-        const dataUrl = await fileToDataUrl(file)
-        nuevas.push({
-          id: newRowId(),
-          filename: file.name,
-          file,
-          dataUrl,
-          equipoId: "",
-          sucursal: sucursalFiltro !== "Todas" ? sucursalFiltro : "",
-          cabina: "",
-          lecturaFinal: null,
-          lecturaInicialAuto: null,
-          observaciones: "",
-          scanStatus: "idle",
-        })
-      } catch {
-        showToast(`No se pudo cargar ${file.name}`, "error")
-      }
-    }
-    setFotos((current) => [...current, ...nuevas])
-    if (fotosInputRef.current) fotosInputRef.current.value = ""
-  }
-
-  /** OCR de una foto con Claude Vision. Auto-popula lecturaFinal + serial. */
-  const scanFoto = async (id: string) => {
-    const foto = fotos.find((f) => f.id === id)
-    if (!foto?.file) return
-    setFotos((current) => current.map((f) => f.id === id ? { ...f, scanStatus: "scanning" } : f))
+  // ── PASO 3: Excel de lecturas/pulsos ─────────────────────────────────────
+  const handleLecturasFile = async (files: FileList | null) => {
+    const file = files?.[0]
+    if (!file) return
+    setParsingLecturas(true)
     try {
-      const reading = await scanPulseScreen(foto.file)
-      setFotos((current) => current.map((f) => {
-        if (f.id !== id) return f
-        if (reading.totalPulses !== null) {
-          return { ...f, scanStatus: "ok", lecturaFinal: reading.totalPulses, serialDetectado: reading.serial || undefined }
-        }
-        return { ...f, scanStatus: "fail" }
+      const XLSX = await loadXLSX() as { read: (data: ArrayBuffer | string, opts: { type: string }) => unknown; utils: { sheet_to_json: (ws: unknown, opts: { header: 1; defval: string }) => unknown[][] } }
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf, { type: "array" }) as { SheetNames: string[]; Sheets: Record<string, unknown> }
+      const parsed = parseLecturasWorkbook(wb, XLSX)
+      const rows: LecturaCuadreEntry[] = parsed.rows.map((r) => ({
+        ...r,
+        rowId: newRowId(),
+        lecturaInicialAuto: lookupLecturaPrevia(r.equipo, r.sucursal, r.cabina, weekStart),
+        override: {},
       }))
-      if (reading.totalPulses !== null) {
-        showToast(`✓ Pulsos: ${reading.totalPulses.toLocaleString("es-DO")}${reading.serial ? ` · Serial ${reading.serial}` : ""}`, "success")
-      } else {
-        showToast(`No se pudo leer ${foto.filename}. Ingresa el número manualmente.`, "error")
-      }
+      setLecturasImport({ filename: file.name, parsed, rows })
+      const validas = rows.filter((r) => r.status === "valid").length
+      showToast(
+        `Archivo de lecturas leído: ${validas} válidas de ${rows.length} filas`,
+        validas === rows.length ? "success" : "info",
+      )
     } catch (err) {
-      setFotos((current) => current.map((f) => f.id === id ? { ...f, scanStatus: "fail" } : f))
-      showToast(`Error escaneando ${foto.filename}: ${err instanceof Error ? err.message : String(err)}`, "error")
+      showToast(err instanceof Error ? err.message : String(err), "error")
+    } finally {
+      setParsingLecturas(false)
+      if (lecturasInputRef.current) lecturasInputRef.current.value = ""
     }
   }
 
-  const removeFoto = (id: string) => setFotos((current) => current.filter((f) => f.id !== id))
+  const clearLecturas = () => {
+    setLecturasImport(null)
+    if (lecturasInputRef.current) lecturasInputRef.current.value = ""
+  }
 
-  const updateFoto = (id: string, patch: Partial<FotoEntry>) => {
-    setFotos((current) => current.map((f) => {
-      if (f.id !== id) return f
-      const next = { ...f, ...patch }
-      // Auto-calcula lectura inicial cuando cambia equipo+sucursal+cabina.
-      if ("equipoId" in patch || "sucursal" in patch || "cabina" in patch) {
-        next.lecturaInicialAuto = lookupLecturaPrevia(next.equipoId, next.sucursal, next.cabina, weekStart)
+  /** Override de un campo de una fila del Excel de lecturas. Usado para
+   *  corregir manualmente (equipo, sucursal, lectura inicial, etc.). */
+  const updateLecturaRow = (rowId: string, patch: LecturaCuadreEntry["override"]) => {
+    setLecturasImport((current) => {
+      if (!current) return current
+      return {
+        ...current,
+        rows: current.rows.map((r) => {
+          if (r.rowId !== rowId) return r
+          const nextOverride = { ...r.override, ...patch }
+          // Si cambió equipo/sucursal/cabina, recalculamos lectura inicial sugerida.
+          const equipoEfectivo = nextOverride.equipo ?? r.equipo
+          const sucursalEfectiva = nextOverride.sucursal ?? r.sucursal
+          const cabinaEfectiva = nextOverride.cabina ?? r.cabina
+          const lecturaInicialAuto = lookupLecturaPrevia(equipoEfectivo, sucursalEfectiva, cabinaEfectiva, weekStart)
+          return { ...r, override: nextOverride, lecturaInicialAuto }
+        }),
       }
-      return next
-    }))
+    })
   }
 
   /**
@@ -480,6 +483,7 @@ export function PulsosCuadreSemanalPage() {
 
   // ── PASO 4: cálculo del cuadre ────────────────────────────────────────────
   const equiposCuadre: EquipoCuadre[] = useMemo(() => {
+    if (!lecturasImport) return []
     // Sesiones de la semana en el rango filtrado.
     const sesionesSemana = dbPulsos.sesionesCliente.filter((s) => {
       const f = String(s.Fecha || "").slice(0, 10)
@@ -487,30 +491,47 @@ export function PulsosCuadreSemanalPage() {
       if (sucursalFiltro !== "Todas" && s.Sucursal !== sucursalFiltro) return false
       return true
     })
-    // Agrupar disparos operador por (sucursal|cabina|equipoId).
-    const opCounts: Record<string, number> = {}
+    // Agrupamos disparos operador por (sucursal|equipoId) — la cabina no
+    // siempre cuadra entre Excel de lecturas (1,2,3...) y AgendaPro (vacía).
+    // Si hay match exacto con cabina lo usamos primero; sino caemos a equipo+sucursal.
+    const opCountsFull: Record<string, number> = {}
+    const opCountsBySucEquipo: Record<string, number> = {}
     for (const s of sesionesSemana) {
-      const key = `${s.Sucursal || ""}|${s.Cabina || ""}|${s.EquipoID || ""}`
-      opCounts[key] = (opCounts[key] || 0) + (Number(s.DisparosReportados) || 0)
+      const keyFull = `${s.Sucursal || ""}|${s.Cabina || ""}|${s.EquipoID || ""}`
+      opCountsFull[keyFull] = (opCountsFull[keyFull] || 0) + (Number(s.DisparosReportados) || 0)
+      const keySE = `${s.Sucursal || ""}|${s.EquipoID || ""}`
+      opCountsBySucEquipo[keySE] = (opCountsBySucEquipo[keySE] || 0) + (Number(s.DisparosReportados) || 0)
     }
-    // Por cada foto válida (con equipo asignado), generar una fila del cuadre.
     const rows: EquipoCuadre[] = []
-    for (const foto of fotos) {
-      if (!foto.equipoId || foto.lecturaFinal === null) continue
-      const inicial = Number(foto.lecturaInicialAuto || 0)
-      const final = Number(foto.lecturaFinal || 0)
-      const disparosLaser = Math.max(0, final - inicial)
-      const key = `${foto.sucursal}|${foto.cabina}|${foto.equipoId}`
-      const disparosOperador = opCounts[key] || 0
-      const desv = calcDesviacion(disparosLaser, disparosOperador)
-      const override = equiposEditados[foto.id] || {}
+    for (const lec of lecturasImport.rows) {
+      if (lec.status === "error") continue
+      const equipo = lec.override.equipo ?? lec.equipo
+      const sucursal = lec.override.sucursal ?? lec.sucursal
+      const cabina = lec.override.cabina ?? lec.cabina
+      if (!equipo) continue
+      if (sucursalFiltro !== "Todas" && sucursal !== sucursalFiltro) continue
+      const lecturaFinalEf = lec.override.lecturaFinal ?? lec.lecturaFinal
+      const lecturaInicialEf = lec.override.lecturaInicial ?? lec.lecturaInicialAuto ?? 0
+      const disparosLaser = Math.max(0, lecturaFinalEf - lecturaInicialEf)
+      // Buscamos disparos AgendaPro: full key primero, fallback a (sucursal|equipo).
+      const keyFull = `${sucursal}|${cabina}|${equipo}`
+      const keySE = `${sucursal}|${equipo}`
+      const disparosOperadorRaw = opCountsFull[keyFull] > 0
+        ? opCountsFull[keyFull]
+        : opCountsBySucEquipo[keySE] || 0
+      const desv = calcDesviacion(disparosLaser, disparosOperadorRaw)
+      const override = equiposEditados[lec.rowId] || {}
+      const obsAuto: string[] = []
+      if (lec.serial) obsAuto.push(`Serial ${lec.serial}`)
+      if (lec.operador) obsAuto.push(`Op. ${lec.operador}`)
+      if (lecturaInicialEf === 0 && lec.lecturaInicialAuto === null) obsAuto.push("Sin lectura inicial previa — usar manual")
       rows.push({
-        rowId: foto.id,
-        equipoId: foto.equipoId,
-        sucursal: foto.sucursal,
-        cabina: foto.cabina,
-        lecturaInicial: inicial,
-        lecturaFinal: final,
+        rowId: lec.rowId,
+        equipoId: equipo,
+        sucursal,
+        cabina,
+        lecturaInicial: lecturaInicialEf,
+        lecturaFinal: lecturaFinalEf,
         disparosLaser: desv.disparosLaser,
         disparosOperador: override.disparosOperador ?? desv.disparosOperador,
         diferencia: override.disparosOperador !== undefined
@@ -518,11 +539,11 @@ export function PulsosCuadreSemanalPage() {
           : desv.diferencia,
         porcentaje: desv.porcentaje,
         alerta: desv.alerta,
-        observaciones: override.observaciones ?? foto.observaciones,
+        observaciones: override.observaciones ?? (lec.override.observaciones ?? obsAuto.join(" · ")),
       })
     }
     return rows
-  }, [fotos, dbPulsos.sesionesCliente, weekStart, weekEnd, sucursalFiltro, equiposEditados])
+  }, [lecturasImport, dbPulsos.sesionesCliente, weekStart, weekEnd, sucursalFiltro, equiposEditados])
 
   // ── PASO 5: guardar ──────────────────────────────────────────────────────
   const guardarCuadre = async () => {
@@ -535,23 +556,43 @@ export function PulsosCuadreSemanalPage() {
       const archivoExcel = excelImports.map((imp) => ({
         filename: imp.filename, rows: imp.parsed.rows.length, imported: imp.imported,
       }))
-      // 1) Guardar lecturas semanales (una por foto válida).
-      for (const foto of fotos) {
-        if (!foto.equipoId || foto.lecturaFinal === null) continue
-        const lecturaId = `lec_cuadre_${weekStart}_${foto.sucursal}_${foto.equipoId}_${foto.cabina || "_"}`.replace(/\s+/g, "_")
-        const lectura = {
-          LecturaID: lecturaId,
-          FechaSemana: weekStart,
-          EquipoID: foto.equipoId,
-          Sucursal: foto.sucursal,
-          Cabina: foto.cabina,
-          OperadoraID: "",
-          LecturaInicial: foto.lecturaInicialAuto || 0,
-          LecturaFinal: foto.lecturaFinal,
-          DiferenciaReal: Math.max(0, (foto.lecturaFinal || 0) - (foto.lecturaInicialAuto || 0)),
-          Observaciones: foto.observaciones || `Cuadre semanal — foto ${foto.filename}`,
+      if (lecturasImport) {
+        archivoExcel.push({
+          filename: `[Lecturas] ${lecturasImport.filename}`,
+          rows: lecturasImport.parsed.rows.length,
+          imported: lecturasImport.rows.filter((r) => r.status !== "error").length,
+        })
+      }
+      // 1) Guardar lecturas semanales (una por fila del Excel de lecturas).
+      if (lecturasImport) {
+        for (const lec of lecturasImport.rows) {
+          if (lec.status === "error") continue
+          const equipo = lec.override.equipo ?? lec.equipo
+          const sucursal = lec.override.sucursal ?? lec.sucursal
+          const cabina = lec.override.cabina ?? lec.cabina
+          const operador = lec.override.operador ?? lec.operador
+          const lecturaFinal = lec.override.lecturaFinal ?? lec.lecturaFinal
+          const lecturaInicial = lec.override.lecturaInicial ?? lec.lecturaInicialAuto ?? 0
+          if (!equipo) continue
+          const lecturaId = `lec_cuadre_${weekStart}_${sucursal}_${equipo}_${cabina || "_"}`.replace(/\s+/g, "_")
+          const obs: string[] = []
+          if (lec.serial) obs.push(`Serial ${lec.serial}`)
+          if (operador) obs.push(`Op. ${operador}`)
+          obs.push(`Origen: ${lecturasImport.filename}`)
+          const lectura = {
+            LecturaID: lecturaId,
+            FechaSemana: weekStart,
+            EquipoID: equipo,
+            Sucursal: sucursal,
+            Cabina: cabina,
+            OperadoraID: operador,
+            LecturaInicial: lecturaInicial,
+            LecturaFinal: lecturaFinal,
+            DiferenciaReal: Math.max(0, lecturaFinal - lecturaInicial),
+            Observaciones: lec.override.observaciones ?? obs.join(" · "),
+          }
+          await apiJsonp(normalizeApiUrl(apiUrl), { action: "saveLectura", data: JSON.stringify(lectura) })
         }
-        await apiJsonp(normalizeApiUrl(apiUrl), { action: "saveLectura", data: JSON.stringify(lectura) })
       }
       // 2) Guardar auditorías (una por equipo del cuadre).
       for (const eq of equiposCuadre) {
@@ -573,8 +614,8 @@ export function PulsosCuadreSemanalPage() {
           LecturaFinal: eq.lecturaFinal,
           CreadoPor: user?.id || undefined,
           ArchivoExcel: archivoExcel,
-          FotosCount: fotos.length,
-          Fuente: "wizard_cuadre_semanal",
+          FotosCount: 0,
+          Fuente: "wizard_cuadre_semanal_excel_lecturas",
         }
         await apiJsonp(normalizeApiUrl(apiUrl), { action: "saveAuditoria", data: JSON.stringify(auditoria) })
       }
@@ -592,7 +633,7 @@ export function PulsosCuadreSemanalPage() {
         generadoEn: new Date().toLocaleString("es-DO"),
         generadoPor: user?.nombre || user?.username || undefined,
         archivos: archivoExcel.map((a) => ({ filename: String(a.filename), rows: a.rows as number })),
-        fotosCount: fotos.length,
+        fotosCount: 0,
         equipos: equiposCuadre.map((r) => ({
           equipoId: r.equipoId, sucursal: r.sucursal, cabina: r.cabina,
           lecturaInicial: r.lecturaInicial, lecturaFinal: r.lecturaFinal,
@@ -613,7 +654,7 @@ export function PulsosCuadreSemanalPage() {
   const resetWizard = () => {
     setStep(1)
     setExcelImports([])
-    setFotos([])
+    setLecturasImport(null)
     setEquiposEditados({})
     setSnapshotFinal(null)
   }
@@ -627,7 +668,7 @@ export function PulsosCuadreSemanalPage() {
         <p className="csl-kicker">Cuadre semanal · {business.shortName}</p>
         <h2 className="mt-1 font-heading text-2xl font-black tracking-tight md:text-3xl">Asistente de cuadre semanal</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Sube el Excel de AgendaPro, las fotos de las pantallas láser, revisa diferencias y guarda el snapshot.
+          Sube el Excel de AgendaPro y el Excel de lecturas por equipo, revisa diferencias y guarda el snapshot.
         </p>
       </div>
 
@@ -922,53 +963,40 @@ export function PulsosCuadreSemanalPage() {
             <NavButtons
               onBack={() => setStep(1)}
               onNext={() => setStep(3)}
-              nextLabel="Continuar a fotos"
+              nextLabel="Continuar a lecturas"
               nextEnabled={excelImports.length > 0}
             />
           </CardContent>
         </Card>
       ) : null}
 
-      {/* PASO 3 — Fotos */}
+      {/* PASO 3 — Excel de lecturas/pulsos */}
       {step === 3 ? (() => {
-        // Semanas detectadas en TODOS los Excel cargados (deduplicado por
-        // lunes ISO). Permite al usuario clic-to-asignar la semana de las
-        // fotos sin volver al paso 1.
-        const semanasDelExcel = new Map<string, { fechaLunes: string; fechaFin: string; sesiones: number; disparos: number }>()
-        for (const imp of excelImports) {
-          for (const r of imp.rowsAll) {
-            if (r.status !== "valid") continue
-            const wk = lunesDeSemana(r.fecha)
-            if (!wk) continue
-            const cur = semanasDelExcel.get(wk) || { fechaLunes: wk, fechaFin: addDays(wk, 5), sesiones: 0, disparos: 0 }
-            cur.sesiones += 1
-            cur.disparos += r.disparos
-            semanasDelExcel.set(wk, cur)
-          }
-        }
-        const semanasOpts = Array.from(semanasDelExcel.values()).sort((a, b) => b.fechaLunes.localeCompare(a.fechaLunes))
-        // ¿Hay sesiones del Excel para la semana activa?
-        const sesionesEnSemana = semanasDelExcel.get(weekStart)
-        const semanaTieneDatos = !!sesionesEnSemana && sesionesEnSemana.sesiones > 0
-
+        const rows = lecturasImport?.rows || []
+        const validas = rows.filter((r) => r.status === "valid").length
+        const advertencias = rows.filter((r) => r.status === "warning").length
+        const errores = rows.filter((r) => r.status === "error").length
+        const equiposDetectados = new Set(rows.map((r) => r.override.equipo ?? r.equipo).filter(Boolean)).size
+        const sucursalesDetectadas = Array.from(new Set(rows.map((r) => r.override.sucursal ?? r.sucursal).filter(Boolean)))
+        const equiposCompletos = rows.filter((r) => r.status !== "error" && (r.override.equipo ?? r.equipo)).length
         return (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Camera className="h-4 w-4" /> Paso 3 · Sube las fotos de pantalla
+              <FileSpreadsheet className="h-4 w-4" /> Paso 3 · Sube el Excel de lecturas/pulsos
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Banner de SEMANA DE LAS FOTOS — clave del cuadre */}
+            {/* Banner de la semana activa */}
             <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-[10px] font-bold uppercase tracking-wide text-primary">Semana de las fotos *</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-primary">Semana del cuadre</div>
                   <div className="mt-1 text-base font-bold">
                     Del {fmtFechaLocal(weekStart)} al {fmtFechaLocal(weekEnd)}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Las lecturas de estas fotos se compararán contra los disparos del Excel de esta misma semana.
+                    Sube el Excel con la lectura final por equipo de esta semana. Se comparará contra los disparos del Excel de AgendaPro.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -981,93 +1009,134 @@ export function PulsosCuadreSemanalPage() {
                   />
                 </div>
               </div>
-
-              {/* Quick-select de semanas detectadas del Excel */}
-              {semanasOpts.length > 0 ? (
-                <div className="mt-3">
-                  <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                    Semanas detectadas en el Excel ({semanasOpts.length})
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {semanasOpts.map((sem) => {
-                      const active = sem.fechaLunes === weekStart
-                      return (
-                        <button
-                          key={sem.fechaLunes}
-                          type="button"
-                          onClick={() => useWeekForCuadre(sem.fechaLunes)}
-                          className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                            active
-                              ? "border-primary bg-primary text-white"
-                              : "border-slate-200 bg-white text-slate-700 hover:border-primary/50 hover:text-primary"
-                          }`}
-                          title={`${sem.sesiones} sesiones · ${sem.disparos.toLocaleString("es-DO")} disparos`}
-                        >
-                          {fmtFechaLocal(sem.fechaLunes)} → {fmtFechaLocal(sem.fechaFin)}
-                          <span className="ml-1.5 opacity-75">({sem.sesiones})</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              ) : null}
-
-              {/* Alerta si la semana activa no tiene sesiones del Excel */}
-              {excelImports.length > 0 && !semanaTieneDatos ? (
-                <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
-                    <div className="flex-1">
-                      <p className="font-bold text-amber-900">
-                        El Excel fue leído correctamente, pero no contiene disparos para la semana seleccionada de las fotos.
-                      </p>
-                      <p className="mt-1 text-amber-900/80">
-                        Semana de las fotos: <b>{fmtFechaLocal(weekStart)} → {fmtFechaLocal(weekEnd)}</b>
-                        {semanasOpts.length > 0 ? <> · Disponibles en el Excel: <b>{semanasOpts.length}</b> (toca un chip arriba para elegir otra).</> : null}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
             </div>
 
-            <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 p-6 text-center">
-              <Camera className="mx-auto mb-2 h-8 w-8 text-primary" />
-              <p className="text-sm font-semibold">Arrastra las fotos o selecciona</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Una foto por equipo (pantalla del GentleYAG). Cada foto se asigna automáticamente
-                a la semana del cuadre. Lectura final por OCR/IA o manual.
-              </p>
-              <input
-                ref={fotosInputRef} type="file" accept="image/*" multiple className="hidden"
-                onChange={(e) => handleFotosFiles(e.target.files)}
-              />
-              <Button variant="outline" size="sm" className="mt-3 gap-2" onClick={() => fotosInputRef.current?.click()}>
-                <Upload className="h-4 w-4" /> Seleccionar fotos
-              </Button>
-            </div>
-
-            {fotos.length ? (
-              <div className="grid gap-3 md:grid-cols-2">
-                {fotos.map((foto) => (
-                  <FotoCard
-                    key={foto.id}
-                    foto={foto}
-                    equipos={db.equipos.filter((e) => e.Estado !== "Inactivo")}
-                    sucursales={sucursalesOptions.filter((s) => s !== "Todas")}
-                    onUpdate={(patch) => updateFoto(foto.id, patch)}
-                    onRemove={() => removeFoto(foto.id)}
-                    onScan={() => scanFoto(foto.id)}
-                  />
-                ))}
+            {/* Dropzone — sin Excel cargado todavía */}
+            {!lecturasImport ? (
+              <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 p-6 text-center">
+                <Upload className="mx-auto mb-2 h-8 w-8 text-primary" />
+                <p className="text-sm font-semibold">Sube el Excel de lecturas/pulsos por equipo</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Columnas esperadas: <b>Sucursal · Cabina · Operador · Equipo · Serial · Pulsos/Lectura final</b>.
+                  El encabezado de la columna de lectura puede variar (ej. &quot;Pulsos 18–23 Mayo&quot;).
+                </p>
+                <input
+                  ref={lecturasInputRef} type="file" accept=".xlsx,.xls" className="hidden"
+                  onChange={(e) => handleLecturasFile(e.target.files)}
+                />
+                <Button variant="outline" size="sm" className="mt-3 gap-2" onClick={() => lecturasInputRef.current?.click()} disabled={parsingLecturas}>
+                  {parsingLecturas ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  {parsingLecturas ? "Leyendo Excel..." : "Seleccionar Excel de lecturas"}
+                </Button>
               </div>
-            ) : null}
+            ) : (
+              <div className="space-y-3">
+                {/* Resumen del archivo */}
+                <div className="rounded-xl border p-3 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-bold">{lecturasImport.filename}</div>
+                      <div className="mt-0.5 text-muted-foreground">
+                        Hoja: <b>{lecturasImport.parsed.sheet}</b> · Header fila: {lecturasImport.parsed.headerRow} · Columna lectura: <b>{lecturasImport.parsed.lecturaColumnName}</b>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => lecturasInputRef.current?.click()} disabled={parsingLecturas} className="h-7 gap-1 text-[11px]">
+                      <Upload className="h-3 w-3" /> Cambiar archivo
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={clearLecturas} className="h-7 gap-1 text-[11px]">
+                      <X className="h-3 w-3" /> Limpiar
+                    </Button>
+                    <input
+                      ref={lecturasInputRef} type="file" accept=".xlsx,.xls" className="hidden"
+                      onChange={(e) => handleLecturasFile(e.target.files)}
+                    />
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Mini label="Filas leídas" value={rows.length} />
+                    <Mini label="Válidas" value={validas} tone="ok" />
+                    {advertencias > 0 ? <Mini label="Advertencias" value={advertencias} tone="warn" /> : null}
+                    {errores > 0 ? <Mini label="Errores" value={errores} tone="error" /> : null}
+                    <Mini label="Equipos" value={equiposDetectados} tone="info" />
+                    <Mini label="Sucursales" value={sucursalesDetectadas.length} />
+                  </div>
+                  {sucursalesDetectadas.length > 0 ? (
+                    <div className="mt-2 text-[11px] text-muted-foreground">
+                      Sucursales detectadas: <b>{sucursalesDetectadas.join(", ")}</b>
+                    </div>
+                  ) : null}
+                  {errores > 0 ? (
+                    <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 p-2 text-[11px] text-rose-800">
+                      Hay <b>{errores}</b> {errores === 1 ? "fila con error" : "filas con errores"}. Corrige el archivo o completa manualmente antes de revisar.
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Tabla preview */}
+                <div className="overflow-x-auto rounded-xl border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-20">Estado</TableHead>
+                        <TableHead>Sucursal</TableHead>
+                        <TableHead>Cabina</TableHead>
+                        <TableHead>Operador</TableHead>
+                        <TableHead>Equipo</TableHead>
+                        <TableHead>Serial</TableHead>
+                        <TableHead className="text-right">Lectura final</TableHead>
+                        <TableHead>Observaciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {rows.map((r) => {
+                        const sucursalEf = r.override.sucursal ?? r.sucursal
+                        const cabinaEf = r.override.cabina ?? r.cabina
+                        const operadorEf = r.override.operador ?? r.operador
+                        const equipoEf = r.override.equipo ?? r.equipo
+                        const lecturaEf = r.override.lecturaFinal ?? r.lecturaFinal
+                        const stateBadge = r.status === "error"
+                          ? <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-rose-700"><AlertTriangle className="h-2.5 w-2.5" />Error</span>
+                          : r.status === "warning"
+                            ? <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-700"><AlertTriangle className="h-2.5 w-2.5" />Aviso</span>
+                            : <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-emerald-700"><CheckCircle2 className="h-2.5 w-2.5" />OK</span>
+                        return (
+                          <TableRow key={r.rowId}>
+                            <TableCell className="text-[10px]">{stateBadge}</TableCell>
+                            <TableCell className="text-xs">
+                              <Input value={sucursalEf} onChange={(e) => updateLecturaRow(r.rowId, { sucursal: e.target.value })} className="h-7 w-32 text-xs" />
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <Input value={cabinaEf} onChange={(e) => updateLecturaRow(r.rowId, { cabina: e.target.value })} className="h-7 w-16 text-xs" placeholder="—" />
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <Input value={operadorEf} onChange={(e) => updateLecturaRow(r.rowId, { operador: e.target.value })} className="h-7 w-28 text-xs" placeholder="—" />
+                            </TableCell>
+                            <TableCell className="text-xs font-bold">
+                              <Input value={equipoEf} onChange={(e) => updateLecturaRow(r.rowId, { equipo: e.target.value })} className="h-7 w-16 text-xs" />
+                            </TableCell>
+                            <TableCell className="text-[10px] text-muted-foreground">{r.serial || "—"}</TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="number" min={0}
+                                value={lecturaEf || ""}
+                                onChange={(e) => updateLecturaRow(r.rowId, { lecturaFinal: Number(e.target.value) || 0 })}
+                                className="h-7 w-32 text-right font-mono text-xs"
+                              />
+                            </TableCell>
+                            <TableCell className="text-[10px] text-muted-foreground">{r.message || "—"}</TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
 
             <NavButtons
               onBack={() => setStep(2)}
               onNext={() => setStep(4)}
               nextLabel="Continuar a revisión"
-              nextEnabled={fotos.some((f) => f.equipoId && f.lecturaFinal !== null)}
+              nextEnabled={equiposCompletos > 0}
             />
           </CardContent>
         </Card>
@@ -1157,7 +1226,7 @@ export function PulsosCuadreSemanalPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Alert tone="info">
-              Se guardarán <b>{equiposCuadre.length}</b> auditorías y <b>{fotos.filter((f) => f.equipoId && f.lecturaFinal !== null).length}</b> lecturas semanales en la base de datos.
+              Se guardarán <b>{equiposCuadre.length}</b> auditorías y <b>{lecturasImport ? lecturasImport.rows.filter((r) => r.status !== "error" && (r.override.equipo ?? r.equipo)).length : 0}</b> lecturas semanales en la base de datos.
               Si ya existe un cuadre para alguna combinación semana/equipo/cabina, el handler responde con error claro — desde el SQL editor se puede borrar el row previo para reemplazar.
             </Alert>
             <div className="rounded-xl border bg-slate-50/60 p-3 text-xs">
@@ -1165,8 +1234,8 @@ export function PulsosCuadreSemanalPage() {
               <ul className="mt-2 space-y-1">
                 <li>Semana: <b>{fmtFechaLocal(weekStart)} → {fmtFechaLocal(weekEnd)}</b></li>
                 <li>Sucursal: <b>{sucursalFiltro}</b></li>
-                <li>Excel cargados: <b>{excelImports.length}</b> ({excelImports.reduce((s, i) => s + i.imported, 0)} sesiones importadas)</li>
-                <li>Fotos: <b>{fotos.length}</b></li>
+                <li>Excel AgendaPro: <b>{excelImports.length}</b> ({excelImports.reduce((s, i) => s + i.imported, 0)} sesiones importadas)</li>
+                <li>Excel lecturas: <b>{lecturasImport ? `${lecturasImport.filename}` : "—"}</b>{lecturasImport ? <> · {lecturasImport.rows.length} filas leídas</> : null}</li>
                 <li>Equipos a auditar: <b>{equiposCuadre.length}</b></li>
                 <li>Alertas: <b className="text-emerald-600">{equiposCuadre.filter((e) => e.alerta === "OK").length} OK</b> · <b className="text-amber-600">{equiposCuadre.filter((e) => e.alerta === "Advertencia").length} Advertencia</b> · <b className="text-rose-600">{equiposCuadre.filter((e) => e.alerta === "Critico").length} Crítico</b></li>
               </ul>
@@ -1187,7 +1256,7 @@ export function PulsosCuadreSemanalPage() {
 // ─── Sub-componentes ─────────────────────────────────────────────────────────
 
 function ProgressBar({ step }: { step: WizardStep }) {
-  const labels = ["Semana", "Excel", "Fotos", "Revisar", "Guardar"]
+  const labels = ["Semana", "AgendaPro", "Lecturas", "Revisar", "Guardar"]
   return (
     <div className="rounded-2xl border bg-white p-4">
       <div className="flex items-center justify-between">
@@ -1238,92 +1307,6 @@ function Mini({ label, value, tone }: { label: string; value: number; tone?: "ok
     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${cls}`}>
       {label}: <span className="font-mono">{value.toLocaleString("es-DO")}</span>
     </span>
-  )
-}
-
-function FotoCard({ foto, equipos, sucursales, onUpdate, onRemove, onScan }: {
-  foto: FotoEntry
-  equipos: Array<{ EquipoID: string; Sucursal: string; Modelo: string }>
-  sucursales: string[]
-  onUpdate: (patch: Partial<FotoEntry>) => void
-  onRemove: () => void
-  onScan: () => void
-}) {
-  const scanning = foto.scanStatus === "scanning"
-  return (
-    <div className="rounded-xl border bg-white p-3">
-      <div className="flex items-start gap-3">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={foto.dataUrl} alt={foto.filename} className="h-24 w-24 shrink-0 rounded-lg border object-cover" />
-        <div className="min-w-0 flex-1 space-y-2">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="truncate text-xs font-bold">{foto.filename}</div>
-              <div className="text-[10px] text-muted-foreground">
-                {foto.lecturaInicialAuto !== null
-                  ? `Lect. inicial auto: ${foto.lecturaInicialAuto.toLocaleString("es-DO")}`
-                  : "Sin lectura previa para autocompletar"}
-                {foto.serialDetectado ? ` · Serial: ${foto.serialDetectado}` : ""}
-              </div>
-            </div>
-            <Button variant="ghost" size="icon" onClick={onRemove}><X className="h-3.5 w-3.5" /></Button>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <Select value={foto.equipoId} onValueChange={(value) => onUpdate({ equipoId: value })}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Equipo" /></SelectTrigger>
-              <SelectContent>
-                {equipos.map((e) => <SelectItem key={e.EquipoID} value={e.EquipoID}>{e.EquipoID} · {e.Modelo}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select value={foto.sucursal} onValueChange={(value) => onUpdate({ sucursal: value })}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Sucursal" /></SelectTrigger>
-              <SelectContent>
-                {sucursales.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Input
-              type="text" placeholder="Cabina (opcional)" value={foto.cabina}
-              onChange={(e) => onUpdate({ cabina: e.target.value })}
-              className="h-8 text-xs"
-            />
-            <Input
-              type="number" min={0} placeholder="Lectura final *"
-              value={foto.lecturaFinal ?? ""}
-              onChange={(e) => onUpdate({ lecturaFinal: e.target.value === "" ? null : Number(e.target.value) })}
-              className="h-8 text-xs"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline" size="sm" onClick={onScan}
-              disabled={scanning || !foto.file}
-              className="h-8 gap-1 text-xs"
-            >
-              {scanning
-                ? <Loader2 className="h-3 w-3 animate-spin" />
-                : <Camera className="h-3 w-3" />}
-              {scanning ? "Escaneando…" : foto.scanStatus === "ok" ? "Re-escanear con IA" : "Escanear con IA"}
-            </Button>
-            {foto.scanStatus === "ok" ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-emerald-700">
-                <CheckCircle2 className="h-2.5 w-2.5" /> Detectado
-              </span>
-            ) : null}
-            {foto.scanStatus === "fail" ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-rose-700">
-                <AlertTriangle className="h-2.5 w-2.5" /> No leído
-              </span>
-            ) : null}
-          </div>
-          <Input
-            type="text" placeholder="Observaciones"
-            value={foto.observaciones}
-            onChange={(e) => onUpdate({ observaciones: e.target.value })}
-            className="h-8 text-xs"
-          />
-        </div>
-      </div>
-    </div>
   )
 }
 

@@ -1,84 +1,123 @@
 /**
- * OCR de la pantalla del equipo láser Candela GentleYAG vía Claude Vision.
+ * Wrapper cliente del OCR de pantalla del equipo láser Candela GentleYAG.
  *
- * Reusado por la pantalla "Lecturas semanales" (captura individual) y por el
- * paso 3 del wizard "Cuadre semanal" (captura batch). Centraliza el prompt
- * y el parseo del JSON para que ambos lugares queden alineados.
+ * Antes hacía fetch directo a api.anthropic.com — eso NUNCA funcionó desde
+ * el navegador porque Anthropic requiere `x-api-key` (no puede salir al
+ * cliente) y su CORS bloquea orígenes externos. Ahora todo pasa por nuestro
+ * endpoint server-side `/api/pulse/ocr`, que sí tiene la API key.
  *
- * Devuelve `null` cuando la imagen no es legible o la respuesta no parsea.
- * El caller decide cómo mostrar el error (toast / mensaje inline).
+ * Usado por:
+ *   - Cuadre semanal (paso 3, captura batch)
+ *   - Lecturas semanales (captura individual)
  */
 
 export interface PulseScreenReading {
+  /** true si se obtuvo lectura legible. false con error/reason cuando falla. */
+  ok: boolean
+  /** Lectura del contador principal del equipo. null si no se pudo leer. */
   totalPulses: number | null
+  /** Serial del equipo si la IA lo detectó en la pantalla. */
   serial: string | null
-  lastFaults: string | null
-  /** Texto crudo devuelto por Claude — útil para debug. */
+  /** Número/etiqueta del equipo detectado (ej. "10", "06"). */
+  equipo: string | null
+  /** Número de cabina si visible. */
+  cabina: string | null
+  /** Confianza de la IA sobre la lectura (0.0-1.0). null si no la reportó. */
+  confidence: number | null
+  /** Observación humana de la IA — útil cuando confidence es bajo. */
+  observation: string | null
+  /** Texto crudo que devolvió Claude — útil para debug en la consola. */
   raw: string
+  /** Advertencias semánticas: "no_reading", "low_confidence", etc. */
+  warnings: string[]
+  /** Código de error machine-readable cuando ok=false. */
+  error?: string
+  /** Texto humano para mostrar en UI cuando ok=false. */
+  reason?: string
 }
 
-const SCAN_PROMPT = "Esta es la pantalla de un equipo laser Candela GentleYAG. Extrae SOLO estos datos en formato JSON: {serial, totalPulses, lastFaults}. El campo totalPulses es el numero despues de Total Treatment Pulses=. Responde SOLO con el JSON, sin texto adicional."
+const SUPPORTED_EXT_RE = /\.(jpe?g|png|webp)$/i
+const SUPPORTED_MIMES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"])
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024
 
-const MODEL = "claude-sonnet-4-20250514"
-
-/**
- * Convierte un File a base64 (sin el prefijo `data:`). Helper interno.
- */
-function fileToBase64(file: File): Promise<{ base64: string; mediaType: string }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      const dataUrl = String(ev.target?.result || "")
-      const [, base64] = dataUrl.split(",")
-      if (!base64) {
-        reject(new Error("No se pudo codificar la imagen"))
-        return
-      }
-      resolve({ base64, mediaType: file.type || "image/jpeg" })
-    }
-    reader.onerror = () => reject(new Error("No se pudo leer la imagen"))
-    reader.readAsDataURL(file)
-  })
+function makeFailure(error: string, reason: string): PulseScreenReading {
+  return {
+    ok: false,
+    totalPulses: null,
+    serial: null,
+    equipo: null,
+    cabina: null,
+    confidence: null,
+    observation: null,
+    raw: "",
+    warnings: [],
+    error,
+    reason,
+  }
 }
 
 /**
- * Llama a la API de Anthropic con la imagen + prompt y devuelve la lectura
- * estructurada. Lanza si la red falla; devuelve `totalPulses: null` si la
- * respuesta no se puede parsear.
+ * Sube la imagen al endpoint `/api/pulse/ocr` y devuelve la lectura
+ * estructurada. No lanza — todo error se devuelve como `ok:false` con un
+ * `reason` legible que el caller puede mostrar directamente al usuario.
  */
 export async function scanPulseScreen(file: File): Promise<PulseScreenReading> {
-  const { base64, mediaType } = await fileToBase64(file)
-  const resp = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 300,
-      messages: [{
-        role: "user",
-        content: [
-          { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
-          { type: "text", text: SCAN_PROMPT },
-        ],
-      }],
-    }),
-  })
-  if (!resp.ok) throw new Error(`Vision API ${resp.status}`)
-  const data = await resp.json() as { content?: Array<{ text?: string }> }
-  const raw = data.content?.[0]?.text || ""
-  const clean = raw.replace(/```json|```/g, "").trim()
-  try {
-    const parsed = JSON.parse(clean) as { totalPulses?: number | string; serial?: string; lastFaults?: string }
-    const totalPulses = parsed.totalPulses !== undefined && parsed.totalPulses !== null
-      ? Number(String(parsed.totalPulses).replace(/,/g, ""))
-      : null
-    return {
-      totalPulses: Number.isFinite(totalPulses) && totalPulses !== null ? totalPulses : null,
-      serial: parsed.serial ? String(parsed.serial) : null,
-      lastFaults: parsed.lastFaults ? String(parsed.lastFaults) : null,
-      raw,
-    }
-  } catch {
-    return { totalPulses: null, serial: null, lastFaults: null, raw }
+  // Validación temprana en cliente: nos ahorra una vuelta al server y
+  // permite mostrar el error inmediato.
+  const declaredType = (file.type || "").toLowerCase()
+  const hasValidExt = SUPPORTED_EXT_RE.test(file.name)
+  if (declaredType && !SUPPORTED_MIMES.has(declaredType) && !hasValidExt) {
+    return makeFailure(
+      "format_unsupported",
+      `Formato no soportado: ${declaredType || file.name}. Usa jpg, png o webp.`,
+    )
   }
+  if (file.size > MAX_IMAGE_BYTES) {
+    return makeFailure(
+      "too_large",
+      `La imagen pesa ${(file.size / 1024 / 1024).toFixed(1)} MB (máx 8 MB).`,
+    )
+  }
+
+  const form = new FormData()
+  form.append("image", file)
+
+  let resp: Response
+  try {
+    resp = await fetch("/api/pulse/ocr", { method: "POST", body: form })
+  } catch (err) {
+    return makeFailure(
+      "network",
+      err instanceof Error ? err.message : "Sin conexión al servidor.",
+    )
+  }
+
+  let payload: Record<string, unknown> | null = null
+  try {
+    payload = await resp.json()
+  } catch {
+    return makeFailure(
+      "vision_parse",
+      `El servidor devolvió una respuesta no válida (HTTP ${resp.status}).`,
+    )
+  }
+
+  // Forma común tanto para éxito como para error — el endpoint siempre
+  // devuelve el mismo shape, sólo cambia `ok` y los campos auxiliares.
+  const ok = Boolean(payload?.ok)
+  const totalPulses = typeof payload?.totalPulses === "number" ? payload.totalPulses : null
+  const reading: PulseScreenReading = {
+    ok,
+    totalPulses,
+    serial: typeof payload?.serial === "string" ? payload.serial : null,
+    equipo: typeof payload?.equipo === "string" ? payload.equipo : null,
+    cabina: typeof payload?.cabina === "string" ? payload.cabina : null,
+    confidence: typeof payload?.confidence === "number" ? payload.confidence : null,
+    observation: typeof payload?.observation === "string" ? payload.observation : null,
+    raw: typeof payload?.rawText === "string" ? payload.rawText : "",
+    warnings: Array.isArray(payload?.warnings) ? payload.warnings.filter((w): w is string => typeof w === "string") : [],
+    error: typeof payload?.error === "string" ? payload.error : undefined,
+    reason: typeof payload?.reason === "string" ? payload.reason : undefined,
+  }
+  return reading
 }

@@ -109,12 +109,15 @@ export function PulsosLecturasPage() {
       const reading = await scanPulseScreen(file)
       if (reading.totalPulses !== null) {
         setForm((prev) => ({ ...prev, LecturaFinal: reading.totalPulses as number }))
-        showToast(`✓ Pulsos extraídos: ${reading.totalPulses.toLocaleString("es-DO")}${reading.serial ? ` — Serial: ${reading.serial}` : ""}`, "success")
+        const conf = reading.confidence !== null ? ` (${Math.round(reading.confidence * 100)}% conf.)` : ""
+        showToast(`✓ Pulsos extraídos: ${reading.totalPulses.toLocaleString("es-DO")}${reading.serial ? ` — Serial: ${reading.serial}` : ""}${conf}`, "success")
       } else {
-        showToast("No se pudo leer la pantalla. Ingresa el número manualmente.", "error")
+        // reading.reason ahora trae texto específico — "ANTHROPIC_API_KEY no
+        // configurada", "imagen borrosa", "Anthropic 401", etc.
+        showToast(reading.reason || "No se pudo leer la pantalla. Ingresa el número manualmente.", "error")
       }
-    } catch {
-      showToast("Error al procesar la imagen", "error")
+    } catch (err) {
+      showToast(`Error al procesar la imagen: ${err instanceof Error ? err.message : String(err)}`, "error")
     } finally {
       setScanning(false)
       e.target.value = ""
