@@ -31,6 +31,7 @@ import {
   type ParsedLecturaRow,
   type ParseLecturasResult,
 } from "@/lib/pulsos-lecturas-parser"
+import { detectExcelType } from "@/lib/excel-type-detector"
 import type { SesionCliente, AuditoriaSemanal } from "@/lib/types"
 
 // ─── Tipos locales del wizard ────────────────────────────────────────────────
@@ -224,6 +225,27 @@ export function PulsosCuadreSemanalPage() {
         try {
           const buf = await file.arrayBuffer()
           const wb = XLSX.read(buf, { type: "array" }) as { SheetNames: string[]; Sheets: Record<string, unknown> }
+          // Validar tipo de archivo ANTES de parsear, para evitar errores
+          // técnicos cuando el usuario sube el archivo equivocado.
+          const detection = detectExcelType(wb, XLSX)
+          if (detection.type !== "agendapro") {
+            const labels = {
+              lecturas: "lecturas/pulsos por equipo",
+              base_equipos: "base maestra de equipos/operadoras",
+              desconocido: "desconocido",
+            } as const
+            const tipo = labels[detection.type]
+            const where = detection.type === "lecturas"
+              ? "Súbelo en el Paso 3 (Lecturas)."
+              : detection.type === "base_equipos"
+                ? "Súbelo en el módulo de Equipos (importador de base, próximamente)."
+                : "Verifica que sea el reporte correcto de AgendaPro."
+            showToast(
+              `${file.name}: el archivo parece ser de tipo "${tipo}", no AgendaPro. ${where}`,
+              "error",
+            )
+            continue
+          }
           const parsed = await parseAgendaProWorkbook(wb, XLSX)
           // Guardamos TODAS las filas del archivo + el subset filtrado por
           // semana/sucursal. Esto permite mostrar contadores reales y
@@ -444,6 +466,22 @@ export function PulsosCuadreSemanalPage() {
       const XLSX = await loadXLSX() as { read: (data: ArrayBuffer | string, opts: { type: string }) => unknown; utils: { sheet_to_json: (ws: unknown, opts: { header: 1; defval: string }) => unknown[][] } }
       const buf = await file.arrayBuffer()
       const wb = XLSX.read(buf, { type: "array" }) as { SheetNames: string[]; Sheets: Record<string, unknown> }
+      // Validar tipo. Aceptamos "lecturas" (objetivo) — también "base_equipos"
+      // tiene columnas parecidas pero sin lectura final, hay que rechazarlo
+      // explícitamente.
+      const detection = detectExcelType(wb, XLSX)
+      if (detection.type === "agendapro") {
+        showToast(`${file.name}: este archivo es un reporte de AgendaPro. Súbelo en el Paso 2.`, "error")
+        return
+      }
+      if (detection.type === "base_equipos") {
+        showToast(`${file.name}: es una base maestra de equipos, no un reporte de lecturas. Súbelo en el módulo de Equipos.`, "error")
+        return
+      }
+      if (detection.type === "desconocido") {
+        showToast(`${file.name}: ${detection.reason}`, "error")
+        return
+      }
       const parsed = parseLecturasWorkbook(wb, XLSX)
       const rows: LecturaCuadreEntry[] = parsed.rows.map((r) => ({
         ...r,
