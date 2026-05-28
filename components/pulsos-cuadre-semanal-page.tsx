@@ -84,6 +84,12 @@ interface LecturasImportInfo {
 interface EquipoCuadre extends CuadreEquipoRow {
   // Sufijo único para tracking del row.
   rowId: string
+  /** Bloqueo activo: razón por la cual la fila NO debe contar como crítica
+   *  hasta que el usuario confirme manualmente. undefined = sin bloqueo. */
+  bloqueo?: "sin_lectura_anterior" | "sin_agendapro" | "semana_no_coincide"
+  /** Cuando el usuario hace clic en "Calcular sin lectura previa" o similar,
+   *  marcamos true para permitir guardado. */
+  bloqueoConfirmado?: boolean
 }
 
 // ─── Helpers locales ─────────────────────────────────────────────────────────
@@ -95,6 +101,49 @@ const ALERT_CLS: Record<AlertaNivel, string> = {
 }
 
 function newRowId() { return `row_${Date.now()}_${Math.random().toString(36).slice(2, 6)}` }
+
+/** Construye opciones de semanas L-S para el dropdown del Paso 1.
+ *  Devuelve 8 semanas pasadas + actual + 2 próximas (11 en total), del
+ *  más reciente al más antiguo. */
+function buildWeekOptions(today: string): Array<{ value: string; label: string; fin: string }> {
+  const thisLunes = lunesDeSemana(today)
+  if (!thisLunes) return []
+  const opts: Array<{ value: string; label: string; fin: string }> = []
+  for (let i = -8; i <= 2; i += 1) {
+    const lunes = addDays(thisLunes, i * 7)
+    if (!lunes) continue
+    const sabado = addDays(lunes, 5)
+    opts.push({
+      value: lunes,
+      fin: sabado,
+      label: `Semana del ${fmtFechaLocal(lunes)} al ${fmtFechaLocal(sabado)}`,
+    })
+  }
+  // Más reciente primero.
+  return opts.reverse()
+}
+
+/** Intenta detectar la semana cubierta por el header de la columna de
+ *  lecturas (ej. "Pulsos 18–23 Mayo" → "2026-05-18"). Devuelve el lunes
+ *  ISO si lo logra, "" si no. */
+function detectarSemanaDeHeader(header: string, baseYear: number): string {
+  if (!header) return ""
+  const meses: Record<string, number> = {
+    enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6,
+    julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
+    ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6, jul: 7, ago: 8, sep: 9, oct: 10, nov: 11, dic: 12,
+  }
+  const low = header.toLowerCase()
+  // Match "18-23 Mayo" / "18 - 23 mayo" / "18–23 Mayo".
+  const m = low.match(/(\d{1,2})\s*[-–—]\s*(\d{1,2})\s+([a-zñ]+)/i)
+  if (!m) return ""
+  const dia = parseInt(m[1], 10)
+  const mes = meses[m[3]]
+  if (!mes || !dia) return ""
+  const iso = `${baseYear}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`
+  // Devolvemos el lunes de esa semana.
+  return lunesDeSemana(iso)
+}
 
 // ─── Componente principal ───────────────────────────────────────────────────
 
@@ -491,6 +540,9 @@ export function PulsosCuadreSemanalPage() {
       if (sucursalFiltro !== "Todas" && s.Sucursal !== sucursalFiltro) return false
       return true
     })
+    // Hay sesiones en absoluto de esta semana? Útil para distinguir
+    // "no se importó AgendaPro" vs "no hay match para este equipo".
+    const haySesionesEnSemana = sesionesSemana.length > 0
     // Agrupamos disparos operador por (sucursal|equipoId) — la cabina no
     // siempre cuadra entre Excel de lecturas (1,2,3...) y AgendaPro (vacía).
     // Si hay match exacto con cabina lo usamos primero; sino caemos a equipo+sucursal.
@@ -511,20 +563,43 @@ export function PulsosCuadreSemanalPage() {
       if (!equipo) continue
       if (sucursalFiltro !== "Todas" && sucursal !== sucursalFiltro) continue
       const lecturaFinalEf = lec.override.lecturaFinal ?? lec.lecturaFinal
+      // Lectura inicial: prioridad override > auto-detectada > NINGUNO (no 0).
+      const haLecturaInicialExplicita = lec.override.lecturaInicial !== undefined || lec.lecturaInicialAuto !== null
       const lecturaInicialEf = lec.override.lecturaInicial ?? lec.lecturaInicialAuto ?? 0
-      const disparosLaser = Math.max(0, lecturaFinalEf - lecturaInicialEf)
-      // Buscamos disparos AgendaPro: full key primero, fallback a (sucursal|equipo).
+      const override = equiposEditados[lec.rowId] || {}
+      // Búsqueda de disparos AgendaPro: full key primero, fallback a (sucursal|equipo).
       const keyFull = `${sucursal}|${cabina}|${equipo}`
       const keySE = `${sucursal}|${equipo}`
-      const disparosOperadorRaw = opCountsFull[keyFull] > 0
+      const matchFull = opCountsFull[keyFull] > 0
+      const matchSE = opCountsBySucEquipo[keySE] > 0
+      const disparosOperadorRaw = matchFull
         ? opCountsFull[keyFull]
-        : opCountsBySucEquipo[keySE] || 0
-      const desv = calcDesviacion(disparosLaser, disparosOperadorRaw)
-      const override = equiposEditados[lec.rowId] || {}
+        : (matchSE ? opCountsBySucEquipo[keySE] : 0)
+      const huboMatchAgendaPro = matchFull || matchSE
+      // Determinamos bloqueo (problema de datos que requiere confirmación
+      // antes de marcarse como crítico real).
+      let bloqueo: EquipoCuadre["bloqueo"]
       const obsAuto: string[] = []
       if (lec.serial) obsAuto.push(`Serial ${lec.serial}`)
       if (lec.operador) obsAuto.push(`Op. ${lec.operador}`)
-      if (lecturaInicialEf === 0 && lec.lecturaInicialAuto === null) obsAuto.push("Sin lectura inicial previa — usar manual")
+      if (!haLecturaInicialExplicita) {
+        bloqueo = "sin_lectura_anterior"
+        obsAuto.push("Sin lectura anterior registrada — confirmar para calcular desde 0")
+      } else if (haySesionesEnSemana && !huboMatchAgendaPro) {
+        bloqueo = "sin_agendapro"
+        obsAuto.push(`Sin sesiones en AgendaPro para ${sucursal} · equipo ${equipo}`)
+      } else if (!haySesionesEnSemana) {
+        bloqueo = "sin_agendapro"
+        obsAuto.push("AgendaPro no tiene datos en esta semana")
+      }
+      // Cálculo final.
+      const disparosLaser = Math.max(0, lecturaFinalEf - lecturaInicialEf)
+      const desv = calcDesviacion(disparosLaser, disparosOperadorRaw)
+      // Si hay bloqueo y NO ha sido confirmado por el usuario, degradamos
+      // el nivel de alerta a "Advertencia" para no asustar con "Critico"
+      // falsos por datos faltantes.
+      const bloqueoConfirmado = Boolean(override.bloqueoConfirmado)
+      const alerta = bloqueo && !bloqueoConfirmado ? "Advertencia" as const : desv.alerta
       rows.push({
         rowId: lec.rowId,
         equipoId: equipo,
@@ -538,12 +613,24 @@ export function PulsosCuadreSemanalPage() {
           ? (override.disparosOperador as number) - desv.disparosLaser
           : desv.diferencia,
         porcentaje: desv.porcentaje,
-        alerta: desv.alerta,
+        alerta,
         observaciones: override.observaciones ?? (lec.override.observaciones ?? obsAuto.join(" · ")),
+        bloqueo,
+        bloqueoConfirmado,
       })
     }
     return rows
   }, [lecturasImport, dbPulsos.sesionesCliente, weekStart, weekEnd, sucursalFiltro, equiposEditados])
+
+  /** Confirma o revierte el bloqueo de una fila (sin lectura anterior /
+   *  sin AgendaPro). Al confirmar permitimos guardado y recalculamos
+   *  alertas en su nivel real. */
+  const toggleBloqueoConfirmado = (rowId: string, confirmar: boolean) => {
+    setEquiposEditados((prev) => ({
+      ...prev,
+      [rowId]: { ...(prev[rowId] || {}), bloqueoConfirmado: confirmar },
+    }))
+  }
 
   // ── PASO 5: guardar ──────────────────────────────────────────────────────
   const guardarCuadre = async () => {
@@ -675,7 +762,19 @@ export function PulsosCuadreSemanalPage() {
       <ProgressBar step={step} />
 
       {/* PASO 1 — Semana + sucursal */}
-      {step === 1 ? (
+      {step === 1 ? (() => {
+        const weekOptions = buildWeekOptions(today)
+        // Si la semana actual del state NO está en la lista (rara vez), la
+        // insertamos al principio para que el Select pueda mostrarla.
+        const inList = weekOptions.some((o) => o.value === weekStart)
+        if (!inList && weekStart) {
+          weekOptions.unshift({
+            value: weekStart,
+            fin: addDays(weekStart, 5),
+            label: `Semana del ${fmtFechaLocal(weekStart)} al ${fmtFechaLocal(addDays(weekStart, 5))}`,
+          })
+        }
+        return (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -683,16 +782,18 @@ export function PulsosCuadreSemanalPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <Label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Lunes</Label>
-                <Input type="date" value={weekStart} onChange={(e) => setWeekStart(lunesDeSemana(e.target.value))} className="mt-1" />
-                <p className="mt-1 text-[10px] text-muted-foreground">Se ajusta al lunes de la semana elegida.</p>
-              </div>
-              <div>
-                <Label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Sábado</Label>
-                <Input type="date" value={weekEnd} readOnly className="mt-1 bg-muted/40" />
-                <p className="mt-1 text-[10px] text-muted-foreground">Auto: lunes + 5 días.</p>
+                <Label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Semana</Label>
+                <Select value={weekStart} onValueChange={(v) => setWeekStart(v)}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Selecciona una semana" /></SelectTrigger>
+                  <SelectContent>
+                    {weekOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="mt-1 text-[10px] text-muted-foreground">Lunes a sábado · últimas 8 + actual + próximas 2.</p>
               </div>
               <div>
                 <Label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Sucursal</Label>
@@ -705,13 +806,16 @@ export function PulsosCuadreSemanalPage() {
               </div>
             </div>
             <Alert tone="info">
-              Semana evaluada: <b>{fmtFechaLocal(weekStart)} → {fmtFechaLocal(weekEnd)}</b>{" "}
+              Semana del cuadre: <b>{fmtFechaLocal(weekStart)} → {fmtFechaLocal(weekEnd)}</b>{" "}
               · Sucursal: <b>{sucursalFiltro}</b>
+              <br />
+              <span className="text-[11px]">Esta misma semana se usará en todos los pasos. AgendaPro y Lecturas deben corresponder a este rango.</span>
             </Alert>
             <NavButtons onNext={() => setStep(2)} nextLabel="Continuar a Excel" nextEnabled={!!weekStart && !!weekEnd} />
           </CardContent>
         </Card>
-      ) : null}
+        )
+      })() : null}
 
       {/* PASO 2 — Excel */}
       {step === 2 ? (
@@ -1001,12 +1105,14 @@ export function PulsosCuadreSemanalPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Label className="text-xs text-muted-foreground">Cambiar:</Label>
-                  <Input
-                    type="date"
-                    value={weekStart}
-                    onChange={(e) => setWeekStart(lunesDeSemana(e.target.value))}
-                    className="h-9 w-44 text-xs"
-                  />
+                  <Select value={weekStart} onValueChange={(v) => setWeekStart(v)}>
+                    <SelectTrigger className="h-9 w-64 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {buildWeekOptions(today).map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>
@@ -1033,6 +1139,40 @@ export function PulsosCuadreSemanalPage() {
               <div className="space-y-3">
                 {/* Resumen del archivo */}
                 <div className="rounded-xl border p-3 text-xs">
+                  {/* Validación: la semana detectada en el header debe coincidir
+                      con la semana activa del cuadre. */}
+                  {(() => {
+                    const semanaHeader = detectarSemanaDeHeader(
+                      lecturasImport.parsed.lecturaColumnName,
+                      Number(weekStart.slice(0, 4)) || new Date().getFullYear(),
+                    )
+                    if (semanaHeader && semanaHeader !== weekStart) {
+                      return (
+                        <div className="mb-2 rounded-lg border border-rose-300 bg-rose-50 p-2.5 text-[11px] text-rose-900">
+                          <div className="flex items-start gap-2">
+                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-700" />
+                            <div className="flex-1">
+                              <p className="font-bold">El archivo cargado no corresponde a la semana seleccionada.</p>
+                              <p className="mt-1">
+                                Semana del cuadre: <b>{fmtFechaLocal(weekStart)} → {fmtFechaLocal(weekEnd)}</b><br />
+                                Detectada en el archivo: <b>{fmtFechaLocal(semanaHeader)} → {fmtFechaLocal(addDays(semanaHeader, 5))}</b> (header: &quot;{lecturasImport.parsed.lecturaColumnName}&quot;)
+                              </p>
+                              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                <Button size="sm" variant="outline" onClick={() => setWeekStart(semanaHeader)} className="h-7 px-2 text-[11px]">
+                                  Cambiar a la semana del archivo
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={clearLecturas} className="h-7 px-2 text-[11px]">
+                                  Subir otro archivo
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
+
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <div className="truncate text-sm font-bold">{lecturasImport.filename}</div>
@@ -1144,7 +1284,11 @@ export function PulsosCuadreSemanalPage() {
       })() : null}
 
       {/* PASO 4 — Revisión */}
-      {step === 4 ? (
+      {step === 4 ? (() => {
+        const bloqueosSinConfirmar = equiposCuadre.filter((r) => r.bloqueo && !r.bloqueoConfirmado)
+        const sinLectAnterior = bloqueosSinConfirmar.filter((r) => r.bloqueo === "sin_lectura_anterior").length
+        const sinAgendaPro = bloqueosSinConfirmar.filter((r) => r.bloqueo === "sin_agendapro").length
+        return (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -1152,6 +1296,24 @@ export function PulsosCuadreSemanalPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            {/* Banner de bloqueos pendientes */}
+            {bloqueosSinConfirmar.length > 0 ? (
+              <div className="border-b border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                  <div className="flex-1">
+                    <p className="font-bold">
+                      {bloqueosSinConfirmar.length} {bloqueosSinConfirmar.length === 1 ? "equipo requiere confirmación" : "equipos requieren confirmación"}
+                    </p>
+                    <p className="mt-0.5">
+                      {sinLectAnterior > 0 ? <><b>{sinLectAnterior}</b> sin lectura anterior · </> : null}
+                      {sinAgendaPro > 0 ? <><b>{sinAgendaPro}</b> sin datos de AgendaPro · </> : null}
+                      Confirma cada caso para poder guardar el cuadre.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1169,35 +1331,65 @@ export function PulsosCuadreSemanalPage() {
               </TableHeader>
               <TableBody>
                 {equiposCuadre.length ? equiposCuadre.map((r) => (
-                  <TableRow key={r.rowId}>
+                  <TableRow key={r.rowId} className={r.bloqueo && !r.bloqueoConfirmado ? "bg-amber-50/40" : ""}>
                     <TableCell className="font-bold">{r.equipoId}</TableCell>
                     <TableCell className="text-xs">{r.sucursal}</TableCell>
                     <TableCell className="text-xs">{r.cabina || "—"}</TableCell>
-                    <TableCell className="text-right font-mono text-xs">{r.lecturaInicial.toLocaleString("es-DO")}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">
+                      {r.bloqueo === "sin_lectura_anterior" ? (
+                        <span className="text-amber-700">Sin previa</span>
+                      ) : r.lecturaInicial.toLocaleString("es-DO")}
+                    </TableCell>
                     <TableCell className="text-right font-mono text-xs">{r.lecturaFinal.toLocaleString("es-DO")}</TableCell>
                     <TableCell className="text-right font-mono text-xs font-bold">{r.disparosLaser.toLocaleString("es-DO")}</TableCell>
                     <TableCell className="text-right font-mono text-xs">
-                      <Input
-                        type="number" min={0}
-                        value={r.disparosOperador}
-                        onChange={(e) => setEquiposEditados((prev) => ({
-                          ...prev,
-                          [r.rowId]: { ...(prev[r.rowId] || {}), disparosOperador: Math.max(0, Number(e.target.value) || 0) },
-                        }))}
-                        className="h-7 w-24 text-right text-xs"
-                      />
+                      {r.bloqueo === "sin_agendapro" && !r.bloqueoConfirmado ? (
+                        <span className="text-amber-700">Sin AgendaPro</span>
+                      ) : (
+                        <Input
+                          type="number" min={0}
+                          value={r.disparosOperador}
+                          onChange={(e) => setEquiposEditados((prev) => ({
+                            ...prev,
+                            [r.rowId]: { ...(prev[r.rowId] || {}), disparosOperador: Math.max(0, Number(e.target.value) || 0) },
+                          }))}
+                          className="h-7 w-24 text-right text-xs"
+                        />
+                      )}
                     </TableCell>
                     <TableCell className={`text-right font-mono text-xs ${r.diferencia > 0 ? "text-rose-600" : r.diferencia < 0 ? "text-sky-600" : ""}`}>
                       {r.diferencia > 0 ? "+" : ""}{r.diferencia.toLocaleString("es-DO")}
                     </TableCell>
                     <TableCell className="text-right text-xs">{r.porcentaje.toFixed(1)}%</TableCell>
                     <TableCell>
-                      <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${ALERT_CLS[r.alerta]}`}>
-                        {r.alerta === "OK"
-                          ? <CheckCircle2 className="h-2.5 w-2.5" />
-                          : <AlertTriangle className="h-2.5 w-2.5" />}
-                        {r.alerta}
-                      </span>
+                      {r.bloqueo && !r.bloqueoConfirmado ? (
+                        <div className="flex flex-col gap-1">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
+                            <AlertTriangle className="h-2.5 w-2.5" />
+                            {r.bloqueo === "sin_lectura_anterior" ? "Sin lectura anterior" : "Sin AgendaPro"}
+                          </span>
+                          <Button
+                            size="sm" variant="outline" className="h-6 px-2 text-[10px]"
+                            onClick={() => toggleBloqueoConfirmado(r.rowId, true)}
+                          >
+                            Confirmar y continuar
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${ALERT_CLS[r.alerta]}`}>
+                            {r.alerta === "OK"
+                              ? <CheckCircle2 className="h-2.5 w-2.5" />
+                              : <AlertTriangle className="h-2.5 w-2.5" />}
+                            {r.alerta}
+                          </span>
+                          {r.bloqueo && r.bloqueoConfirmado ? (
+                            <button type="button" className="text-[10px] text-muted-foreground underline" onClick={() => toggleBloqueoConfirmado(r.rowId, false)}>
+                              deshacer confirmación
+                            </button>
+                          ) : null}
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 )) : (
@@ -1210,14 +1402,22 @@ export function PulsosCuadreSemanalPage() {
               </TableBody>
             </Table>
             <div className="p-4">
-              <NavButtons onBack={() => setStep(3)} onNext={() => setStep(5)} nextLabel="Continuar a guardar" nextEnabled={equiposCuadre.length > 0} />
+              <NavButtons
+                onBack={() => setStep(3)}
+                onNext={() => setStep(5)}
+                nextLabel={bloqueosSinConfirmar.length > 0 ? `Faltan ${bloqueosSinConfirmar.length} confirmaciones` : "Continuar a guardar"}
+                nextEnabled={equiposCuadre.length > 0 && bloqueosSinConfirmar.length === 0}
+              />
             </div>
           </CardContent>
         </Card>
-      ) : null}
+        )
+      })() : null}
 
       {/* PASO 5 — Guardar */}
-      {step === 5 ? (
+      {step === 5 ? (() => {
+        const bloqueosPend = equiposCuadre.filter((r) => r.bloqueo && !r.bloqueoConfirmado).length
+        return (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -1225,6 +1425,11 @@ export function PulsosCuadreSemanalPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {bloqueosPend > 0 ? (
+              <Alert tone="warn">
+                <b>{bloqueosPend} equipos</b> tienen bloqueos sin confirmar (sin lectura anterior o sin AgendaPro). Vuelve al Paso 4 para confirmar cada caso antes de guardar.
+              </Alert>
+            ) : null}
             <Alert tone="info">
               Se guardarán <b>{equiposCuadre.length}</b> auditorías y <b>{lecturasImport ? lecturasImport.rows.filter((r) => r.status !== "error" && (r.override.equipo ?? r.equipo)).length : 0}</b> lecturas semanales en la base de datos.
               Si ya existe un cuadre para alguna combinación semana/equipo/cabina, el handler responde con error claro — desde el SQL editor se puede borrar el row previo para reemplazar.
@@ -1237,18 +1442,19 @@ export function PulsosCuadreSemanalPage() {
                 <li>Excel AgendaPro: <b>{excelImports.length}</b> ({excelImports.reduce((s, i) => s + i.imported, 0)} sesiones importadas)</li>
                 <li>Excel lecturas: <b>{lecturasImport ? `${lecturasImport.filename}` : "—"}</b>{lecturasImport ? <> · {lecturasImport.rows.length} filas leídas</> : null}</li>
                 <li>Equipos a auditar: <b>{equiposCuadre.length}</b></li>
-                <li>Alertas: <b className="text-emerald-600">{equiposCuadre.filter((e) => e.alerta === "OK").length} OK</b> · <b className="text-amber-600">{equiposCuadre.filter((e) => e.alerta === "Advertencia").length} Advertencia</b> · <b className="text-rose-600">{equiposCuadre.filter((e) => e.alerta === "Critico").length} Crítico</b></li>
+                <li>Alertas: <b className="text-emerald-600">{equiposCuadre.filter((e) => e.alerta === "OK").length} OK</b> · <b className="text-amber-600">{equiposCuadre.filter((e) => e.alerta === "Advertencia").length} Advertencia</b> · <b className="text-rose-600">{equiposCuadre.filter((e) => e.alerta === "Critico").length} Crítico</b>{bloqueosPend > 0 ? <> · <b className="text-amber-700">{bloqueosPend} pendientes de confirmar</b></> : null}</li>
               </ul>
             </div>
             <NavButtons
               onBack={() => setStep(4)}
               onNext={guardarCuadre}
-              nextLabel={guardando ? "Guardando..." : "Guardar cuadre semanal"}
-              nextEnabled={!guardando && equiposCuadre.length > 0}
+              nextLabel={guardando ? "Guardando..." : bloqueosPend > 0 ? `Resolver ${bloqueosPend} bloqueos antes` : "Guardar cuadre semanal"}
+              nextEnabled={!guardando && equiposCuadre.length > 0 && bloqueosPend === 0}
             />
           </CardContent>
         </Card>
-      ) : null}
+        )
+      })() : null}
     </div>
   )
 }
