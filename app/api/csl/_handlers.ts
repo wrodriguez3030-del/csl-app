@@ -325,7 +325,9 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const cabinaRaw = textValue(params, "cabina")
       const operadoraRaw = textValue(params, "operadora")
       const operadoraIdRaw = textValue(params, "operadoraId")
-      const row = {
+      const ultimaActRaw = textValue(params, "ultimaActualizacionPulsos")
+      const ultimaSemRaw = textValue(params, "ultimaSemanaPulsos")
+      const row: Record<string, unknown> = {
         equipo_id: textValue(params, "equipoId"),
         sucursal: textValue(params, "sucursal"),
         empresa: textValue(params, "empresa"),
@@ -343,6 +345,11 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         operadora_nombre: operadoraRaw ? operadoraRaw : null,
         operadora_id: operadoraIdRaw ? operadoraIdRaw : null,
       }
+      // Columnas añadidas por 202605280002_equipos_pulsos_audit.sql.
+      // Solo se envían si el caller las pasó — guardar un equipo
+      // manualmente NO debe resetear estos timestamps.
+      if (ultimaActRaw) row.ultima_actualizacion_pulsos = ultimaActRaw
+      if (ultimaSemRaw) row.ultima_semana_pulsos = ultimaSemRaw
       await upsertRow("equipos", row)
       return { ok: true, record: fromDb("equipos", row) }
     }

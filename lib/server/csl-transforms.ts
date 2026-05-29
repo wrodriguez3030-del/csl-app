@@ -35,6 +35,9 @@ export function fromDb(entity: string, row: Row): Row {
         Estado: row.estado, Observaciones: row.observaciones,
         // Columnas añadidas por 202605280001_equipos_cabina_operadora.sql.
         Cabina: row.cabina, Operadora: row.operadora_nombre, OperadoraID: row.operadora_id,
+        // Columnas añadidas por 202605280002_equipos_pulsos_audit.sql.
+        UltimaActualizacionPulsos: row.ultima_actualizacion_pulsos,
+        UltimaSemanaPulsos: row.ultima_semana_pulsos,
       }
     case "tecnicos":
       return { Codigo: row.codigo, Nombre: row.nombre, Telefono: row.telefono, Correo: row.correo, Estado: row.estado, Notas: row.notas }

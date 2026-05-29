@@ -28,6 +28,10 @@ export interface Equipo {
   Cabina?: string
   Operadora?: string
   OperadoraID?: string
+  // Añadidos en migración 202605280002_equipos_pulsos_audit.sql.
+  // Auditoría: cuándo / con qué semana se actualizaron los pulsos.
+  UltimaActualizacionPulsos?: string  // ISO timestamp
+  UltimaSemanaPulsos?: string         // ISO date (lunes)
 }
 
 export interface Tecnico {

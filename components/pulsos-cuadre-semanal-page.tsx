@@ -32,7 +32,7 @@ import {
   type ParseLecturasResult,
 } from "@/lib/pulsos-lecturas-parser"
 import { detectExcelType } from "@/lib/excel-type-detector"
-import type { SesionCliente, AuditoriaSemanal } from "@/lib/types"
+import type { Equipo, SesionCliente, AuditoriaSemanal } from "@/lib/types"
 
 // ─── Tipos locales del wizard ────────────────────────────────────────────────
 
@@ -128,7 +128,7 @@ function detectarSemanaDeHeader(header: string, baseYear: number): string {
 // ─── Componente principal ───────────────────────────────────────────────────
 
 export function PulsosCuadreSemanalPage() {
-  const { db, dbPulsos, setDbPulsos, apiUrl, showToast } = useAppStore()
+  const { db, setDb, dbPulsos, setDbPulsos, apiUrl, showToast } = useAppStore()
   const user = useSessionUser()
   const business = useCurrentBusiness()
 
@@ -384,7 +384,7 @@ export function PulsosCuadreSemanalPage() {
           const cabinaEfectiva = r.override.cabina ?? r.cabina
           return {
             ...r,
-            lecturaInicialAuto: lookupLecturaPrevia(equipoEfectivo, sucursalEfectiva, cabinaEfectiva, weekStart),
+            lecturaInicialAuto: resolverLecturaInicial(equipoEfectivo, sucursalEfectiva, cabinaEfectiva, weekStart),
           }
         }),
       }
@@ -486,7 +486,7 @@ export function PulsosCuadreSemanalPage() {
       const rows: LecturaCuadreEntry[] = parsed.rows.map((r) => ({
         ...r,
         rowId: newRowId(),
-        lecturaInicialAuto: lookupLecturaPrevia(r.equipo, r.sucursal, r.cabina, weekStart),
+        lecturaInicialAuto: resolverLecturaInicial(r.equipo, r.sucursal, r.cabina, weekStart),
         override: {},
       }))
       setLecturasImport({ filename: file.name, parsed, rows })
@@ -522,7 +522,7 @@ export function PulsosCuadreSemanalPage() {
           const equipoEfectivo = nextOverride.equipo ?? r.equipo
           const sucursalEfectiva = nextOverride.sucursal ?? r.sucursal
           const cabinaEfectiva = nextOverride.cabina ?? r.cabina
-          const lecturaInicialAuto = lookupLecturaPrevia(equipoEfectivo, sucursalEfectiva, cabinaEfectiva, weekStart)
+          const lecturaInicialAuto = resolverLecturaInicial(equipoEfectivo, sucursalEfectiva, cabinaEfectiva, weekStart)
           return { ...r, override: nextOverride, lecturaInicialAuto }
         }),
       }
@@ -547,6 +547,25 @@ export function PulsosCuadreSemanalPage() {
     const lecturaPrevia = candidates[0]
     const final = Number(lecturaPrevia.LecturaFinal)
     return Number.isFinite(final) ? final : null
+  }
+
+  /**
+   * Resuelve la lectura inicial (P_Totales antes de esta semana) para un
+   * equipo. Orden de prioridad:
+   *   1. db.equipos[EquipoID].P_Totales — es el "valor actual" del equipo,
+   *      actualizado por el último cuadre guardado. Es la fuente de verdad.
+   *   2. lookupLecturaPrevia — busca en lecturas_semanales históricas para
+   *      equipos que aún no tienen P_Totales en csl_equipos (legacy).
+   *   3. null — el caller marcará "sin lectura anterior".
+   */
+  const resolverLecturaInicial = (equipoId: string, sucursal: string, cabina: string, fromIso: string): number | null => {
+    if (!equipoId) return null
+    // 1) Valor actual en el equipo (alimentado por cuadres previos).
+    const eq = db.equipos.find((e) => e.EquipoID === equipoId)
+    const pTot = eq ? Number(eq.P_Totales || 0) : 0
+    if (Number.isFinite(pTot) && pTot > 0) return pTot
+    // 2) Fallback a histórico semanal.
+    return lookupLecturaPrevia(equipoId, sucursal, cabina, fromIso)
   }
 
   // ── PASO 4: cálculo del cuadre ────────────────────────────────────────────
@@ -725,7 +744,73 @@ export function PulsosCuadreSemanalPage() {
         }
         await apiJsonp(normalizeApiUrl(apiUrl), { action: "saveAuditoria", data: JSON.stringify(auditoria) })
       }
-      // 3) Construir snapshot para el resumen / PDF / Excel.
+      // 3) Actualizar csl_equipos.p_totales con la Lectura Final de la
+      // semana para cada equipo del cuadre. La regla: el "valor actual"
+      // del equipo es el último Pulso Fin guardado, que la siguiente
+      // semana se usará como Lectura Inicial.
+      const nowIso = new Date().toISOString()
+      const equiposActualizados: Equipo[] = []
+      let pulsosOk = 0
+      let pulsosConflicto = 0
+      const conflictos: string[] = []
+      for (const eq of equiposCuadre) {
+        // Buscar el equipo en la tabla maestra. Si hay duplicados por
+        // EquipoID, lo flaggeamos en vez de elegir uno al azar.
+        const matches = db.equipos.filter((e) => e.EquipoID === eq.equipoId)
+        if (matches.length === 0) {
+          pulsosConflicto += 1
+          conflictos.push(`Equipo ${eq.equipoId} no existe en la tabla maestra — pulsos totales no actualizados.`)
+          continue
+        }
+        if (matches.length > 1) {
+          pulsosConflicto += 1
+          conflictos.push(`Equipo ${eq.equipoId} aparece ${matches.length} veces — ambigüedad, pulsos totales no actualizados.`)
+          continue
+        }
+        const equipoActual = matches[0]
+        const equipoActualizado: Equipo = {
+          ...equipoActual,
+          P_Totales: eq.lecturaFinal,
+          UltimaActualizacionPulsos: nowIso,
+          UltimaSemanaPulsos: weekStart,
+        }
+        try {
+          await apiJsonp(normalizeApiUrl(apiUrl), {
+            action: "saveEquipo",
+            equipoId: equipoActualizado.EquipoID,
+            sucursal: equipoActualizado.Sucursal,
+            empresa: equipoActualizado.Empresa || "CIBAO SPA LASER",
+            domicilio: equipoActualizado.Domicilio || "",
+            modelo: equipoActualizado.Modelo || "",
+            serie: equipoActualizado.Serie || "",
+            numero: equipoActualizado.Numero || "",
+            pcabeza: String(equipoActualizado.P_Cabeza || 0),
+            ptotales: String(eq.lecturaFinal),
+            maxCabeza: String(equipoActualizado.Max_Cabeza || 6000000),
+            estado: equipoActualizado.Estado || "Activo",
+            observaciones: equipoActualizado.Observaciones || "",
+            cabina: equipoActualizado.Cabina || "",
+            operadora: equipoActualizado.Operadora || "",
+            operadoraId: equipoActualizado.OperadoraID || "",
+            ultimaActualizacionPulsos: nowIso,
+            ultimaSemanaPulsos: weekStart,
+          })
+          equiposActualizados.push(equipoActualizado)
+          pulsosOk += 1
+        } catch (err) {
+          pulsosConflicto += 1
+          conflictos.push(`Equipo ${eq.equipoId}: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+      // Refrescar store local con los equipos actualizados.
+      if (equiposActualizados.length) {
+        const updatedIds = new Set(equiposActualizados.map((e) => e.EquipoID))
+        const nuevosEquipos = db.equipos.map((e) =>
+          updatedIds.has(e.EquipoID) ? equiposActualizados.find((x) => x.EquipoID === e.EquipoID)! : e,
+        )
+        setDb({ ...db, equipos: nuevosEquipos })
+      }
+      // 4) Construir snapshot para el resumen / PDF / Excel.
       const sesionesSemana = dbPulsos.sesionesCliente.filter((s) => {
         const f = String(s.Fecha || "").slice(0, 10)
         if (f < weekStart || f > weekEnd) return false
@@ -749,7 +834,16 @@ export function PulsosCuadreSemanalPage() {
         })),
       }
       setSnapshotFinal({ snapshot, sesiones: sesionesSemana })
-      showToast(`Cuadre semanal guardado: ${equiposCuadre.length} equipos`, "success")
+      const baseMsg = `Cuadre semanal guardado: ${equiposCuadre.length} equipos · ${pulsosOk} Pulsos Totales actualizados`
+      if (pulsosConflicto > 0) {
+        showToast(
+          `${baseMsg} · ${pulsosConflicto} con conflicto (revisa la consola para detalle)`,
+          "info",
+        )
+        console.warn("Cuadre semanal — equipos sin actualizar Pulsos Totales:", conflictos)
+      } else {
+        showToast(baseMsg, "success")
+      }
     } catch (err) {
       showToast(`Error guardando cuadre: ${err instanceof Error ? err.message : String(err)}`, "error")
     } finally {
