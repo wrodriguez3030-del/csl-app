@@ -40,6 +40,8 @@ export interface PublicMasajesPrefill {
 interface Props {
   prefill?: PublicMasajesPrefill
   onSubmit: (payload: Record<string, unknown>) => Promise<{ recordId?: string } | void>
+  /** Slug del tenant para branding multi-tenant. Default "csl". */
+  businessSlug?: string
 }
 
 const TITULO_DOC = "Consentimiento informado para masajes"
@@ -69,8 +71,9 @@ function buildPrintHtml(args: {
   fechaFirma: string
   firmaDataUrl: string
   recordId: string
+  businessName?: string
 }) {
-  const { cliente, fechaFirma, firmaDataUrl, recordId } = args
+  const { cliente, fechaFirma, firmaDataUrl, recordId, businessName = "CIBAO SPA LASER" } = args
   return `<!doctype html><html><head><meta charset="utf-8" />
 <title>${escapeHtml(buildPdfBaseName(cliente.nombre))}</title>
 <style>
@@ -97,7 +100,7 @@ function buildPrintHtml(args: {
 </style></head><body>
 
 <div class="header center">
-  <div class="logo">CIBAO SPA LASER</div>
+  <div class="logo">${escapeHtml(businessName.toUpperCase())}</div>
   <h1>${escapeHtml(TITULO_DOC)}</h1>
   <div class="meta">Fecha de firma: ${escapeHtml(fechaFirma)} · Ref: ${escapeHtml(recordId)}</div>
 </div>
@@ -199,7 +202,15 @@ function buildPrintHtml(args: {
 </body></html>`
 }
 
-export function PublicMasajesConsentForm({ prefill = {}, onSubmit }: Props) {
+// Hardcoded resolver para evitar dependencia circular con el catálogo
+// de business. Si se añade un tenant nuevo, agregar acá.
+const BUSINESS_NAME_BY_SLUG: Record<string, string> = {
+  csl: "Cibao Spa Laser",
+  depicenter: "Depicenter Skin Láser",
+}
+
+export function PublicMasajesConsentForm({ prefill = {}, onSubmit, businessSlug = "csl" }: Props) {
+  const businessName = BUSINESS_NAME_BY_SLUG[businessSlug] || BUSINESS_NAME_BY_SLUG.csl
   const cliente: Required<PublicMasajesPrefill> = {
     clienteId: prefill.clienteId || "",
     nombre: prefill.nombre || "",
@@ -280,6 +291,7 @@ export function PublicMasajesConsentForm({ prefill = {}, onSubmit }: Props) {
       fechaFirma: success.fechaFirma,
       firmaDataUrl: success.firma,
       recordId: success.recordId,
+      businessName,
     })
     const popup = window.open("", "_blank", "width=1000,height=900")
     if (!popup) return
@@ -299,7 +311,7 @@ export function PublicMasajesConsentForm({ prefill = {}, onSubmit }: Props) {
             <CheckCircle2 className="mx-auto mb-4 h-14 w-14 text-green-500" />
             <h1 className="text-2xl font-bold">Consentimiento firmado correctamente</h1>
             <p className="mt-2 text-muted-foreground">
-              Gracias. Cibao Spa Laser recibió tu consentimiento de masajes firmado.
+              Gracias. {businessName} recibió tu consentimiento de masajes firmado.
             </p>
             <p className="mt-3 text-xs text-muted-foreground">Ref: {success.recordId}</p>
           </div>

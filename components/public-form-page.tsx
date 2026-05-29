@@ -34,6 +34,10 @@ interface VerifyResponse {
   clienteTelefono: string | null
   prefillPayload: PrefillPayload | null
   expiraEn: string | null
+  /** Slug del tenant (csl | depicenter | …) — se inyecta a los 3 forms
+   *  públicos para que rendereen la marca correcta en lugar del hardcoded
+   *  "CIBAO SPA LASER". */
+  businessSlug?: string | null
 }
 
 function StatusCard({
@@ -174,6 +178,7 @@ export function PublicFormPage({ token }: { token: string }) {
     return (
       <main className="min-h-screen bg-background">
         <PublicFichaConsentForm
+          businessSlug={linkState.businessSlug || "csl"}
           prefill={{
             clienteId: pf.clienteId || "",
             nombre: pf.nombre || linkState.clienteNombre || "",
@@ -207,16 +212,17 @@ export function PublicFormPage({ token }: { token: string }) {
     especialista: pf.especialista || "",
     servicio: pf.servicio || "",
   }
+  const businessSlug = linkState.businessSlug || "csl"
   if (formType === "consentimiento_masajes") {
     return (
       <main className="min-h-screen bg-background">
-        <PublicMasajesConsentForm prefill={commonPrefill} onSubmit={async (value) => { await submit(value) }} />
+        <PublicMasajesConsentForm businessSlug={businessSlug} prefill={commonPrefill} onSubmit={async (value) => { await submit(value) }} />
       </main>
     )
   }
   return (
     <main className="min-h-screen bg-background">
-      <PublicTatuajesConsentForm prefill={commonPrefill} onSubmit={async (value) => { await submit(value) }} />
+      <PublicTatuajesConsentForm businessSlug={businessSlug} prefill={commonPrefill} onSubmit={async (value) => { await submit(value) }} />
     </main>
   )
 }

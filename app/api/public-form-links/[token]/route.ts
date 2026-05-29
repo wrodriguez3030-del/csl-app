@@ -11,6 +11,7 @@
 
 import { NextResponse } from "next/server"
 import { verifyPublicFormLink } from "@/lib/server/public-form-links"
+import { getSupabaseAdmin } from "@/lib/server/supabase"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -25,6 +26,18 @@ function json(data: Record<string, unknown>, status = 200) {
   })
 }
 
+/** Resuelve business_id → slug. Default "csl" si no se puede determinar. */
+async function lookupBusinessSlug(businessId: string | null | undefined): Promise<string> {
+  if (!businessId) return "csl"
+  try {
+    const { data } = await getSupabaseAdmin()
+      .from("businesses").select("slug").eq("id", businessId).maybeSingle()
+    return (data as { slug?: string } | null)?.slug || "csl"
+  } catch {
+    return "csl"
+  }
+}
+
 export async function GET(
   _request: Request,
   context: { params: Promise<{ token: string }> },
@@ -32,6 +45,10 @@ export async function GET(
   try {
     const { token } = await context.params
     const result = await verifyPublicFormLink(String(token || ""))
+    // Incluimos el slug del business para que el frontend muestre marca
+    // correcta (Cibao vs Depicenter vs futuro tenant). NO devolvemos el
+    // business_id raw porque el slug es lo único que el cliente necesita.
+    const businessSlug = await lookupBusinessSlug(result.link?.business_id)
     return json({
       ok: true,
       status: result.status,
@@ -40,6 +57,7 @@ export async function GET(
       clienteTelefono: result.clienteTelefono ?? null,
       prefillPayload: result.prefillPayload ?? null,
       expiraEn: result.expiraEn ?? null,
+      businessSlug,
     })
   } catch (error) {
     return json(

@@ -40,6 +40,12 @@ export interface PublicTatuajesPrefill {
 interface Props {
   prefill?: PublicTatuajesPrefill
   onSubmit: (payload: Record<string, unknown>) => Promise<{ recordId?: string } | void>
+  businessSlug?: string
+}
+
+const BUSINESS_NAME_BY_SLUG: Record<string, string> = {
+  csl: "Cibao Spa Laser",
+  depicenter: "Depicenter Skin Láser",
 }
 
 const TITULO_DOC = "Consentimiento informado para eliminación de tatuajes y cejas"
@@ -69,8 +75,9 @@ function buildPrintHtml(args: {
   fechaFirma: string
   firmaDataUrl: string
   recordId: string
+  businessName?: string
 }) {
-  const { cliente, fechaFirma, firmaDataUrl, recordId } = args
+  const { cliente, fechaFirma, firmaDataUrl, recordId, businessName = "CIBAO SPA LASER" } = args
   return `<!doctype html><html><head><meta charset="utf-8" />
 <title>${escapeHtml(buildPdfBaseName(cliente.nombre))}</title>
 <style>
@@ -97,7 +104,7 @@ function buildPrintHtml(args: {
 </style></head><body>
 
 <div class="header center">
-  <div class="logo">CIBAO SPA LASER</div>
+  <div class="logo">${escapeHtml(businessName.toUpperCase())}</div>
   <h1>${escapeHtml(TITULO_DOC)}</h1>
   <div class="meta">Fecha de firma: ${escapeHtml(fechaFirma)} · Ref: ${escapeHtml(recordId)}</div>
 </div>
@@ -249,7 +256,8 @@ function buildPrintHtml(args: {
 </body></html>`
 }
 
-export function PublicTatuajesConsentForm({ prefill = {}, onSubmit }: Props) {
+export function PublicTatuajesConsentForm({ prefill = {}, onSubmit, businessSlug = "csl" }: Props) {
+  const businessName = BUSINESS_NAME_BY_SLUG[businessSlug] || BUSINESS_NAME_BY_SLUG.csl
   const cliente: Required<PublicTatuajesPrefill> = {
     clienteId: prefill.clienteId || "",
     nombre: prefill.nombre || "",
@@ -329,6 +337,7 @@ export function PublicTatuajesConsentForm({ prefill = {}, onSubmit }: Props) {
       fechaFirma: success.fechaFirma,
       firmaDataUrl: success.firma,
       recordId: success.recordId,
+      businessName,
     })
     const popup = window.open("", "_blank", "width=1000,height=900")
     if (!popup) return
@@ -348,7 +357,7 @@ export function PublicTatuajesConsentForm({ prefill = {}, onSubmit }: Props) {
             <CheckCircle2 className="mx-auto mb-4 h-14 w-14 text-green-500" />
             <h1 className="text-2xl font-bold">Consentimiento firmado correctamente</h1>
             <p className="mt-2 text-muted-foreground">
-              Gracias. Cibao Spa Laser recibió tu consentimiento de eliminación de tatuajes y cejas firmado.
+              Gracias. {businessName} recibió tu consentimiento de eliminación de tatuajes y cejas firmado.
             </p>
             <p className="mt-3 text-xs text-muted-foreground">Ref: {success.recordId}</p>
           </div>
