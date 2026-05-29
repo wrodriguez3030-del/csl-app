@@ -1,6 +1,8 @@
 import type { Metadata } from "next"
 import { PublicFormPage } from "@/components/public-form-page"
 import { verifyPublicFormLink, type FormType } from "@/lib/server/public-form-links"
+import { BUSINESS_FALLBACK } from "@/lib/business"
+import { getSupabaseAdmin } from "@/lib/server/supabase"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -9,8 +11,7 @@ interface PageProps {
   params: Promise<{ token: string }>
 }
 
-// Etiquetas legales por tipo — espejo de FORM_TYPE_LABEL del helper, pero
-// con el prefijo "Consentimiento de" para el contexto del cliente público.
+// Etiquetas legales por tipo — espejo de FORM_TYPE_LABEL del helper.
 const TITLE_BY_TYPE: Record<FormType, string> = {
   ficha_dermatologica: "Consentimiento Ficha Dermatológica",
   consentimiento_masajes: "Consentimiento Masajes",
@@ -18,15 +19,26 @@ const TITLE_BY_TYPE: Record<FormType, string> = {
 }
 
 const DESCRIPTION_BY_TYPE: Record<FormType, string> = {
-  ficha_dermatologica: "Complete y firme su consentimiento de Ficha Dermatológica para Cibao Spa Laser.",
-  consentimiento_masajes: "Complete y firme su consentimiento de Masajes para Cibao Spa Laser.",
-  consentimiento_tatuajes_cejas: "Complete y firme su consentimiento de Eliminación de Tatuajes y Cejas para Cibao Spa Laser.",
+  ficha_dermatologica: "Complete y firme su consentimiento de Ficha Dermatológica.",
+  consentimiento_masajes: "Complete y firme su consentimiento de Masajes.",
+  consentimiento_tatuajes_cejas: "Complete y firme su consentimiento de Eliminación de Tatuajes y Cejas.",
 }
 
-const GENERIC_TITLE = "Consentimiento Digital · Cibao Spa Laser"
-const GENERIC_DESCRIPTION = "Complete y firme su consentimiento digital de Cibao Spa Laser."
-const SITE_NAME = "Cibao Spa Laser"
-const OG_IMAGE = "/cibao-spa-laser-logo.jpeg"
+const GENERIC_TITLE = "Consentimiento Digital"
+const GENERIC_DESCRIPTION = "Complete y firme su consentimiento digital."
+
+/** Resuelve business_id → slug consultando la tabla businesses. Si falla,
+ *  cae a "csl" como default. */
+async function lookupBusinessSlug(businessId: string | null | undefined): Promise<string> {
+  if (!businessId) return "csl"
+  try {
+    const { data } = await getSupabaseAdmin()
+      .from("businesses").select("slug").eq("id", businessId).maybeSingle()
+    return data?.slug || "csl"
+  } catch {
+    return "csl"
+  }
+}
 
 /**
  * Metadata dinámica por token — WhatsApp, Twitter y otros scrapers
@@ -43,14 +55,28 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { token } = await params
   let title = GENERIC_TITLE
   let description = GENERIC_DESCRIPTION
+  // Branding por defecto = CSL. Si el token apunta a Depicenter (u otro
+  // tenant futuro), se sobreescribe abajo con el slug correcto.
+  let siteName = BUSINESS_FALLBACK.csl.name
+  let ogImage = BUSINESS_FALLBACK.csl.logoUrl
   try {
     const verified = await verifyPublicFormLink(String(token || ""))
+    // Resolver tenant del link → ajustar siteName/logo dinámicamente.
+    const slug = await lookupBusinessSlug(verified.link?.business_id)
+    const business = BUSINESS_FALLBACK[slug as keyof typeof BUSINESS_FALLBACK] || BUSINESS_FALLBACK.csl
+    siteName = business.name
+    ogImage = business.logoUrl
     if (verified.formType && TITLE_BY_TYPE[verified.formType]) {
-      title = `${TITLE_BY_TYPE[verified.formType]} · ${SITE_NAME}`
-      description = DESCRIPTION_BY_TYPE[verified.formType]
+      title = `${TITLE_BY_TYPE[verified.formType]} · ${siteName}`
+      description = `${DESCRIPTION_BY_TYPE[verified.formType]} ${siteName}.`
+    } else {
+      title = `${GENERIC_TITLE} · ${siteName}`
+      description = `${GENERIC_DESCRIPTION} ${siteName}.`
     }
   } catch {
-    // Mantenemos el title genérico — nunca cae al default del layout.
+    // Mantenemos el title genérico de CSL — nunca cae al default del layout.
+    title = `${GENERIC_TITLE} · ${siteName}`
+    description = `${GENERIC_DESCRIPTION} ${siteName}.`
   }
   return {
     title,
@@ -59,15 +85,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       title,
       description,
       type: "website",
-      siteName: SITE_NAME,
-      images: [{ url: OG_IMAGE, width: 800, height: 600, alt: SITE_NAME }],
+      siteName,
+      images: [{ url: ogImage, width: 800, height: 600, alt: siteName }],
       locale: "es_DO",
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
-      images: [OG_IMAGE],
+      images: [ogImage],
     },
     robots: {
       // Links de un solo uso, NO queremos indexarlos.
