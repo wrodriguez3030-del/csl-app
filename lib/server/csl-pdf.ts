@@ -85,15 +85,32 @@ function buildRawPdf(lines: string[]) {
   return Buffer.from(pdf, "ascii")
 }
 
+// Resolver business_id → nombre uppercase para usar en headers de PDF.
+// Coincide con BUSINESS_NAME_BY_SLUG del frontend pero en mayúsculas
+// para PDF heading style.
+const BUSINESS_PDF_NAME_BY_ID: Record<string, string> = {
+  "66b0cf3e-4cd7-4cfb-a7cf-0674b77fc4e6": "CIBAO SPA LASER",
+  "03b96698-c5df-4b4b-84df-1160a7ad56b9": "DEPICENTER SKIN LÁSER",
+}
+
+function resolveBusinessNameForPdf(row: Row): string {
+  const bid = String(row.business_id || "")
+  return BUSINESS_PDF_NAME_BY_ID[bid] || "CIBAO SPA LASER"
+}
+
 export function buildReportePdf(row: Row) {
   const piezas = parseJsonArray(row.piezas_json)
+  const businessName = resolveBusinessNameForPdf(row)
+  // empresa default según tenant del reporte (preserva legacy cuando el
+  // row trae empresa explícita).
+  const empresaDefault = businessName === "CIBAO SPA LASER" ? "CIBAO SPA LASER, CSL, S.R.L." : businessName
   const lines = [
-    "CIBAO SPA LASER - REPORTE DE SERVICIO",
+    `${businessName} - REPORTE DE SERVICIO`,
     "------------------------------------------------------------",
     ...wrapPdfLine("Reporte", row.report_id),
     ...wrapPdfLine("Fecha", row.fecha),
     ...wrapPdfLine("Sucursal", row.sucursal),
-    ...wrapPdfLine("Empresa", row.empresa || "CIBAO SPA LASER, CSL, S.R.L."),
+    ...wrapPdfLine("Empresa", row.empresa || empresaDefault),
     ...wrapPdfLine("Cliente", row.cliente),
     ...wrapPdfLine("Domicilio", row.domicilio),
     ...wrapPdfLine("Ciudad", row.ciudad),
@@ -205,7 +222,12 @@ function buildSolicitudPdfBase(row: Row) {
     records.forEach((record) => tableRow(values(record), widths))
   }
 
-  text(250, 770, "CIBAO SPA LASER", 12, true)
+  // Brand name dinámico según business_id del solicitante.
+  const brandName = resolveBusinessNameForPdf(row)
+  // Centrar el texto: el offset 250 funcionaba para "CIBAO SPA LASER".
+  // Aproximación simple por longitud para mantener centrado en otros tenants.
+  const brandOffset = Math.max(80, 300 - brandName.length * 4)
+  text(brandOffset, 770, brandName, 12, true)
   text(248, 752, "SOLICITUD DE EMPLEO", 10, true)
   line(margin, 736, margin + width, 736, teal)
   y = 720

@@ -15,6 +15,19 @@ function cleanEnv(value: unknown) {
   return String(value || "").replace(/\\r\\n|\\n|\\r/g, "").trim()
 }
 
+// Resolver business_id del row → nombre legible para usar en el header
+// del email, el subject y el `from` (cuando no hay EMAIL_FROM configurado).
+// Mantiene CSL como fallback para back-compat con rows sin business_id.
+const BUSINESS_EMAIL_NAME_BY_ID: Record<string, string> = {
+  "66b0cf3e-4cd7-4cfb-a7cf-0674b77fc4e6": "Cibao Spa Laser",
+  "03b96698-c5df-4b4b-84df-1160a7ad56b9": "Depicenter Skin Láser",
+}
+
+function resolveBusinessNameForEmail(row: Row): string {
+  const bid = String(row.business_id || "")
+  return BUSINESS_EMAIL_NAME_BY_ID[bid] || "Cibao Spa Laser"
+}
+
 async function resendWarning(response: Response) {
   const text = await response.text().catch(() => "")
   try {
@@ -171,7 +184,7 @@ function consentMasajeEmailHtml(row: Row) {
   return `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#102A3A;background:#F7FAFC;padding:24px">
     <div style="max-width:760px;margin:0 auto;background:#FFFFFF;border:1px solid #E1ECF2;border-radius:14px;overflow:hidden">
       <div style="background:linear-gradient(90deg,#14B7B0,#22C7C9);padding:18px 22px;color:#FFFFFF">
-        <div style="font-size:11px;letter-spacing:0.18em;text-transform:uppercase;opacity:0.9">Cibao Spa Laser</div>
+        <div style="font-size:11px;letter-spacing:0.18em;text-transform:uppercase;opacity:0.9">${emailEscape(resolveBusinessNameForEmail(row))}</div>
         <h1 style="margin:4px 0 0 0;font-size:22px">Consentimiento de Masajes registrado</h1>
       </div>
       <div style="padding:18px 22px">
@@ -227,7 +240,8 @@ export async function sendConsentMasajeEmail(row: Row) {
     })
   if (!recipients.length) return { sent: false, warning: "Sin destinatarios configurados" }
 
-  const from = cleanEnv(process.env.EMAIL_FROM) || "Cibao Spa Laser <onboarding@resend.dev>"
+  const businessName = resolveBusinessNameForEmail(row)
+  const from = cleanEnv(process.env.EMAIL_FROM) || `${businessName} <onboarding@resend.dev>`
   const subject = `Consentimiento Masajes · ${String(row.cliente_nombre || row.consent_id || "").trim()}`.trim()
 
   const response = await fetch("https://api.resend.com/emails", {
@@ -285,7 +299,7 @@ function consentTatuajeCejaEmailHtml(row: Row) {
   return `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#102A3A;background:#F7FAFC;padding:24px">
     <div style="max-width:760px;margin:0 auto;background:#FFFFFF;border:1px solid #E1ECF2;border-radius:14px;overflow:hidden">
       <div style="background:linear-gradient(90deg,#14B7B0,#22C7C9);padding:18px 22px;color:#FFFFFF">
-        <div style="font-size:11px;letter-spacing:0.18em;text-transform:uppercase;opacity:0.9">Cibao Spa Laser</div>
+        <div style="font-size:11px;letter-spacing:0.18em;text-transform:uppercase;opacity:0.9">${emailEscape(resolveBusinessNameForEmail(row))}</div>
         <h1 style="margin:4px 0 0 0;font-size:22px">Consentimiento Eliminación de Tatuajes y Cejas</h1>
       </div>
       <div style="padding:18px 22px">
@@ -350,7 +364,8 @@ export async function sendConsentTatuajeCejaEmail(row: Row) {
     })
   if (!recipients.length) return { sent: false, warning: "Sin destinatarios configurados" }
 
-  const from = cleanEnv(process.env.EMAIL_FROM) || "Cibao Spa Laser <onboarding@resend.dev>"
+  const businessName = resolveBusinessNameForEmail(row)
+  const from = cleanEnv(process.env.EMAIL_FROM) || `${businessName} <onboarding@resend.dev>`
   const subject = `Consentimiento Tatuajes/Cejas · ${String(row.cliente_nombre || row.consent_id || "").trim()}`.trim()
 
   const response = await fetch("https://api.resend.com/emails", {
