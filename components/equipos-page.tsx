@@ -147,24 +147,56 @@ export function EquiposPage() {
     })
     setFormData(emptyEquipo); setEditingEquipo(null); setIsFormOpen(false)
     showToast("Equipo guardado", "success")
-    syncApi({
-      action: "saveEquipo",
-      equipoId: formData.EquipoID,
-      sucursal: formData.Sucursal,
-      empresa: formData.Empresa || "CIBAO SPA LASER",
-      domicilio: formData.Domicilio || "",
-      modelo: formData.Modelo,
-      serie: formData.Serie || "",
-      numero: formData.Numero || "",
-      pcabeza: String(formData.P_Cabeza || 0),
-      ptotales: String(formData.P_Totales || 0),
-      maxCabeza: String(formData.Max_Cabeza || 6000000),
-      estado: formData.Estado,
-      observaciones: formData.Observaciones || "",
-      cabina: formData.Cabina || "",
-      operadora: formData.Operadora || "",
-      operadoraId: formData.OperadoraID || "",
-    })
+    if (exists) {
+      // UPDATE PARCIAL — solo envía los campos que el form maneja con valor
+      // no vacío. Preserva en DB cualquier campo no editado (no sobreescribe
+      // con "" como hacía el upsert full-row).
+      const params: Record<string, string> = {
+        action: "updateEquipoCampos",
+        equipoId: formData.EquipoID,
+      }
+      // Helper para añadir solo si tiene valor real.
+      const put = (key: string, val: string | number | null | undefined) => {
+        if (val === null || val === undefined) return
+        const s = String(val).trim()
+        if (s) params[key] = s
+      }
+      put("sucursal", formData.Sucursal)
+      put("empresa", formData.Empresa)
+      put("domicilio", formData.Domicilio)
+      put("modelo", formData.Modelo)
+      put("serie", formData.Serie)
+      put("numero", formData.Numero)
+      put("pcabeza", formData.P_Cabeza)
+      put("ptotales", formData.P_Totales)
+      put("maxCabeza", formData.Max_Cabeza)
+      put("estado", formData.Estado)
+      put("observaciones", formData.Observaciones)
+      put("cabina", formData.Cabina)
+      put("operadora", formData.Operadora)
+      put("operadoraId", formData.OperadoraID)
+      syncApi(params)
+    } else {
+      // INSERT nuevo — todos los campos.
+      syncApi({
+        action: "saveEquipo",
+        equipoId: formData.EquipoID,
+        sucursal: formData.Sucursal,
+        empresa: formData.Empresa || "CIBAO SPA LASER",
+        domicilio: formData.Domicilio || "",
+        modelo: formData.Modelo,
+        serie: formData.Serie || "",
+        numero: formData.Numero || "",
+        pcabeza: String(formData.P_Cabeza || 0),
+        ptotales: String(formData.P_Totales || 0),
+        maxCabeza: String(formData.Max_Cabeza || 6000000),
+        estado: formData.Estado,
+        observaciones: formData.Observaciones || "",
+        cabina: formData.Cabina || "",
+        operadora: formData.Operadora || "",
+        operadoraId: formData.OperadoraID || "",
+      })
+    }
   }
 
   // ── Importación masiva de base maestra de equipos ────────────────────────
