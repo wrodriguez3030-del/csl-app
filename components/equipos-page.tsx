@@ -216,42 +216,73 @@ export function EquiposPage() {
       for (const row of validRows) {
         const existing = db.equipos.find((e) => e.EquipoID === row.equipo)
         const opId = row.operadora ? (opByNombre.get(row.operadora.toLowerCase()) || "") : ""
-        const merged: Equipo = {
-          ...emptyEquipo,
-          ...(existing || {}),
-          EquipoID: row.equipo,
-          Sucursal: row.sucursal || existing?.Sucursal || "",
-          Serie: row.serial || existing?.Serie || "",
-          Cabina: row.cabina || existing?.Cabina || "",
-          Operadora: row.operadora || existing?.Operadora || "",
-          OperadoraID: opId || existing?.OperadoraID || "",
-          // Estado: respeta existing o defaultea a Activo.
-          Estado: existing?.Estado || "Activo",
-        }
-        newEquipos.push(merged)
-        try {
-          await apiJsonp(normalizeApiUrl(apiUrl), {
-            action: "saveEquipo",
-            equipoId: merged.EquipoID,
-            sucursal: merged.Sucursal,
-            empresa: merged.Empresa || "CIBAO SPA LASER",
-            domicilio: merged.Domicilio || "",
-            modelo: merged.Modelo || "",
-            serie: merged.Serie || "",
-            numero: merged.Numero || "",
-            pcabeza: String(merged.P_Cabeza || 0),
-            ptotales: String(merged.P_Totales || 0),
-            maxCabeza: String(merged.Max_Cabeza || 6000000),
-            estado: merged.Estado,
-            observaciones: merged.Observaciones || "",
-            cabina: merged.Cabina || "",
-            operadora: merged.Operadora || "",
-            operadoraId: merged.OperadoraID || "",
-          })
-          upserted += 1
-        } catch (err) {
-          console.warn("saveEquipo failed", row.equipo, err)
-          failed += 1
+        if (existing) {
+          // Equipo YA EXISTE — UPDATE PARCIAL con solo los campos del
+          // archivo. NO tocamos modelo / pulsos / observaciones / max_cabeza
+          // / empresa porque el archivo de base maestra no los trae.
+          const updateParams: Record<string, string> = {
+            action: "updateEquipoCampos",
+            equipoId: row.equipo,
+          }
+          if (row.sucursal) updateParams.sucursal = row.sucursal
+          if (row.serial) updateParams.serie = row.serial
+          if (row.cabina) updateParams.cabina = row.cabina
+          if (row.operadora) updateParams.operadora = row.operadora
+          if (opId) updateParams.operadoraId = opId
+          try {
+            await apiJsonp(normalizeApiUrl(apiUrl), updateParams)
+            const merged: Equipo = {
+              ...existing,
+              Sucursal: row.sucursal || existing.Sucursal,
+              Serie: row.serial || existing.Serie,
+              Cabina: row.cabina || existing.Cabina,
+              Operadora: row.operadora || existing.Operadora,
+              OperadoraID: opId || existing.OperadoraID,
+            }
+            newEquipos.push(merged)
+            upserted += 1
+          } catch (err) {
+            console.warn("updateEquipoCampos failed", row.equipo, err)
+            failed += 1
+          }
+        } else {
+          // Equipo NUEVO — INSERT full. Los campos no presentes en el
+          // archivo quedan con defaults seguros (modelo vacío, pulsos 0).
+          const nuevo: Equipo = {
+            ...emptyEquipo,
+            EquipoID: row.equipo,
+            Sucursal: row.sucursal,
+            Serie: row.serial,
+            Cabina: row.cabina,
+            Operadora: row.operadora,
+            OperadoraID: opId,
+            Estado: "Activo",
+          }
+          try {
+            await apiJsonp(normalizeApiUrl(apiUrl), {
+              action: "saveEquipo",
+              equipoId: nuevo.EquipoID,
+              sucursal: nuevo.Sucursal,
+              empresa: nuevo.Empresa || "CIBAO SPA LASER",
+              domicilio: nuevo.Domicilio || "",
+              modelo: nuevo.Modelo || "",
+              serie: nuevo.Serie || "",
+              numero: nuevo.Numero || "",
+              pcabeza: String(nuevo.P_Cabeza || 0),
+              ptotales: String(nuevo.P_Totales || 0),
+              maxCabeza: String(nuevo.Max_Cabeza || 6000000),
+              estado: nuevo.Estado,
+              observaciones: nuevo.Observaciones || "",
+              cabina: nuevo.Cabina || "",
+              operadora: nuevo.Operadora || "",
+              operadoraId: nuevo.OperadoraID || "",
+            })
+            newEquipos.push(nuevo)
+            upserted += 1
+          } catch (err) {
+            console.warn("saveEquipo (nuevo) failed", row.equipo, err)
+            failed += 1
+          }
         }
       }
       // Actualizar store local: reemplazar o agregar.

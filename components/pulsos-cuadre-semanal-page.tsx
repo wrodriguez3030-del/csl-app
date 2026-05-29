@@ -745,17 +745,14 @@ export function PulsosCuadreSemanalPage() {
         await apiJsonp(normalizeApiUrl(apiUrl), { action: "saveAuditoria", data: JSON.stringify(auditoria) })
       }
       // 3) Actualizar csl_equipos.p_totales con la Lectura Final de la
-      // semana para cada equipo del cuadre. La regla: el "valor actual"
-      // del equipo es el último Pulso Fin guardado, que la siguiente
-      // semana se usará como Lectura Inicial.
+      // semana — UPDATE PARCIAL (solo los campos de pulsos), nunca un
+      // upsert full-row, para no sobreescribir modelo/observaciones/etc.
       const nowIso = new Date().toISOString()
       const equiposActualizados: Equipo[] = []
       let pulsosOk = 0
       let pulsosConflicto = 0
       const conflictos: string[] = []
       for (const eq of equiposCuadre) {
-        // Buscar el equipo en la tabla maestra. Si hay duplicados por
-        // EquipoID, lo flaggeamos en vez de elegir uno al azar.
         const matches = db.equipos.filter((e) => e.EquipoID === eq.equipoId)
         if (matches.length === 0) {
           pulsosConflicto += 1
@@ -768,34 +765,20 @@ export function PulsosCuadreSemanalPage() {
           continue
         }
         const equipoActual = matches[0]
-        const equipoActualizado: Equipo = {
-          ...equipoActual,
-          P_Totales: eq.lecturaFinal,
-          UltimaActualizacionPulsos: nowIso,
-          UltimaSemanaPulsos: weekStart,
-        }
         try {
           await apiJsonp(normalizeApiUrl(apiUrl), {
-            action: "saveEquipo",
-            equipoId: equipoActualizado.EquipoID,
-            sucursal: equipoActualizado.Sucursal,
-            empresa: equipoActualizado.Empresa || "CIBAO SPA LASER",
-            domicilio: equipoActualizado.Domicilio || "",
-            modelo: equipoActualizado.Modelo || "",
-            serie: equipoActualizado.Serie || "",
-            numero: equipoActualizado.Numero || "",
-            pcabeza: String(equipoActualizado.P_Cabeza || 0),
+            action: "updateEquipoCampos",
+            equipoId: equipoActual.EquipoID,
             ptotales: String(eq.lecturaFinal),
-            maxCabeza: String(equipoActualizado.Max_Cabeza || 6000000),
-            estado: equipoActualizado.Estado || "Activo",
-            observaciones: equipoActualizado.Observaciones || "",
-            cabina: equipoActualizado.Cabina || "",
-            operadora: equipoActualizado.Operadora || "",
-            operadoraId: equipoActualizado.OperadoraID || "",
             ultimaActualizacionPulsos: nowIso,
             ultimaSemanaPulsos: weekStart,
           })
-          equiposActualizados.push(equipoActualizado)
+          equiposActualizados.push({
+            ...equipoActual,
+            P_Totales: eq.lecturaFinal,
+            UltimaActualizacionPulsos: nowIso,
+            UltimaSemanaPulsos: weekStart,
+          })
           pulsosOk += 1
         } catch (err) {
           pulsosConflicto += 1

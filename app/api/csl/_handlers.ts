@@ -359,6 +359,53 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "setEquipoEstado":
       await updateRowFields("equipos", textValue(params, "equipoId"), { estado: textValue(params, "estado") })
       return { ok: true }
+    case "updateEquipoCampos": {
+      // UPDATE parcial — solo aplica los campos enviados con valor no vacío.
+      // A diferencia de saveEquipo (upsert full-row), preserva los campos
+      // que NO se mandan. Usado por:
+      //   - guardarCuadre (solo actualiza pulsos)
+      //   - importador masivo de base (solo actualiza sucursal/cabina/op./serial)
+      const equipoId = textValue(params, "equipoId")
+      if (!equipoId) throw new Error("equipoId obligatorio para updateEquipoCampos")
+      const fields: Record<string, unknown> = {}
+      // Mapeo camelCase del request → snake_case de la DB. Solo se incluye
+      // un campo si vino con valor no vacío (= el caller quiere actualizarlo).
+      const mapText: Array<[string, string]> = [
+        ["sucursal", "sucursal"],
+        ["empresa", "empresa"],
+        ["domicilio", "domicilio"],
+        ["modelo", "modelo"],
+        ["serie", "serie"],
+        ["numero", "numero"],
+        ["estado", "estado"],
+        ["observaciones", "observaciones"],
+        ["cabina", "cabina"],
+        ["operadora", "operadora_nombre"],
+        ["operadoraId", "operadora_id"],
+        ["ultimaActualizacionPulsos", "ultima_actualizacion_pulsos"],
+        ["ultimaSemanaPulsos", "ultima_semana_pulsos"],
+      ]
+      for (const [camel, snake] of mapText) {
+        const v = params[camel]
+        if (typeof v === "string" && v.length > 0) fields[snake] = v
+      }
+      // Numéricos: el frontend los manda como string. Solo aplicamos si
+      // vino una cadena no vacía (string "0" sí vale → permite resetear).
+      const mapNum: Array<[string, string]> = [
+        ["pcabeza", "p_cabeza"],
+        ["ptotales", "p_totales"],
+        ["maxCabeza", "max_cabeza"],
+      ]
+      for (const [camel, snake] of mapNum) {
+        const v = params[camel]
+        if (typeof v === "string" && v.length > 0) fields[snake] = Number(v) || 0
+      }
+      if (Object.keys(fields).length === 0) {
+        return { ok: true, message: "Sin campos para actualizar" }
+      }
+      await updateRowFields("equipos", equipoId, fields)
+      return { ok: true }
+    }
     case "saveTecnico": {
       const row = { codigo: textValue(params, "codigo"), nombre: textValue(params, "nombre"), telefono: textValue(params, "telefono"), correo: textValue(params, "correo"), estado: textValue(params, "estado", "Activo"), notas: textValue(params, "notas") }
       await upsertRow("tecnicos", row)
