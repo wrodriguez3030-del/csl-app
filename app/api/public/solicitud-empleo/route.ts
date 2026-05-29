@@ -2,6 +2,19 @@ import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { clientIp, rateLimit, type RateLimitResult } from "@/lib/rate-limit-server"
 
+// Map slug → business_id. Hardcoded para evitar query extra al validar
+// el slug en el POST público (que es un endpoint hot-path). Si se añade
+// un tenant nuevo, agregar acá. Coincide con BUSINESS_FALLBACK de lib/business.ts.
+const BUSINESS_SLUG_TO_ID: Record<string, string> = {
+  csl:        "66b0cf3e-4cd7-4cfb-a7cf-0674b77fc4e6",
+  depicenter: "03b96698-c5df-4b4b-84df-1160a7ad56b9",
+}
+
+function resolveBusinessId(slug: unknown): string {
+  const s = String(slug ?? "csl").trim().toLowerCase()
+  return BUSINESS_SLUG_TO_ID[s] || BUSINESS_SLUG_TO_ID.csl
+}
+
 type SolicitudPayload = Record<string, unknown>
 
 // Rate-limit del POST público.  Más estricto que ficha-dermatologia: una
@@ -58,11 +71,17 @@ function stringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    // Filtrar sucursales por empresa para que cuando un candidato abra el
+    // link público de Depicenter solo vea las sucursales de Depicenter
+    // (en este caso, La Vega), no las de Cibao.
+    const url = new URL(request.url)
+    const businessId = resolveBusinessId(url.searchParams.get("empresa"))
     const { data, error } = await getSupabaseAdmin()
       .from("csl_sucursales")
       .select("nombre")
+      .eq("business_id", businessId)
       .eq("estado", "Activa")
       .order("nombre", { ascending: true })
 
@@ -135,9 +154,14 @@ export async function POST(request: Request) {
       )
     }
 
+    // Asignar business_id según el slug que el form envió (default CSL).
+    // Esto garantiza que solicitudes que vienen del link público de
+    // Depicenter queden en csl_solicitudes_empleo con business_id de Depi.
+    const rowWithBusiness = { ...row, business_id: resolveBusinessId(body.empresa) }
+
     const { error } = await getSupabaseAdmin()
       .from("csl_solicitudes_empleo")
-      .upsert(row, { onConflict: "solicitud_id" })
+      .upsert(rowWithBusiness, { onConflict: "solicitud_id" })
 
     if (error) throw error
     return json({ ok: true, solicitudId: row.solicitud_id }, 200, limitHeaders)

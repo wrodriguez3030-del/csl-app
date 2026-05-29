@@ -1,6 +1,7 @@
 ﻿"use client"
 import { useEffect, useRef, useState } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
+import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -263,6 +264,9 @@ function solicitudRecord(solicitud: Solicitud) {
 
 export function RecursosHumanosPage() {
   const { showToast, apiUrl, setIsLoading, setLoadingMessage } = useAppStore()
+  // Business activo (CSL o Depicenter) — usado por copyPublicLink para
+  // generar el link público con el slug correcto.
+  const business = useCurrentBusiness()
   const sucursalesDb = useAppStore((state) => state.db.sucursales)
   const sucursales = sucursalesDb.length ? sucursalesDb.map((sucursal) => sucursal.Nombre).filter(Boolean) : ["Rafael Vidal", "Los Jardines", "Villa Olga", "La Vega"]
   const [solicitudes, setSolicitudes] = useState<Solicitud[]>([])
@@ -376,9 +380,12 @@ export function RecursosHumanosPage() {
   const openNew = () => { setForm({ ...emptyForm, id: `sol_${Date.now()}` }); setActiveTab("personal"); setOpen(true) }
   const openEdit = (s: Solicitud) => { setForm(s); setActiveTab("personal"); setOpen(true) }
   const copyPublicLink = async () => {
-    const link = `${window.location.origin}/solicitud-empleo`
+    // El slug del tenant activo va como query param para que el formulario
+    // público muestre la marca correcta y el POST se guarde con el
+    // business_id correcto.
+    const link = `${window.location.origin}/solicitud-empleo?empresa=${business.slug}`
     await navigator.clipboard.writeText(link)
-    showToast("Link público copiado", "success")
+    showToast(`Link público de ${business.name} · Solicitud de empleo copiado`, "success")
   }
   const handleDelete = async (id: string) => {
     if (!confirm("¿Eliminar?")) return

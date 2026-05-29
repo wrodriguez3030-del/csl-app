@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { Suspense, useEffect, useMemo, useRef, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { Briefcase, CheckCircle2, FileSignature, GraduationCap, Landmark, Loader2, Send, Trash2, User, Users2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,6 +10,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { SiNoButtons } from "@/components/si-no-buttons"
+import { getBusinessBySlug } from "@/lib/business"
+import type { Business } from "@/lib/types"
 
 type FamiliarItem = { nombre: string; parentesco: string; edad: string; direccion: string; ocupacion: string }
 type EducacionItem = { escolaridad: string; institucion: string; curso: string; nivel: string; estado: string }
@@ -149,22 +152,44 @@ function formatHeightInput(value: string) {
 }
 
 export default function SolicitudEmpleoPublicaPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-slate-950" />}>
+      <SolicitudEmpleoForm />
+    </Suspense>
+  )
+}
+
+function SolicitudEmpleoForm() {
+  const searchParams = useSearchParams()
+  // Slug del tenant viene como ?empresa=depicenter | ?empresa=csl. Si falta
+  // o es inválido, getBusinessBySlug devuelve CSL como default seguro.
+  const empresaSlug = (searchParams.get("empresa") || "csl").toLowerCase()
+  const business: Business = useMemo(() => getBusinessBySlug(empresaSlug), [empresaSlug])
+  // Fallback de sucursales por tenant cuando aún no llegan las del backend.
+  const sucursalesByTenant: Record<string, string[]> = {
+    csl: ["Rafael Vidal", "Los Jardines", "Villa Olga"],
+    depicenter: ["La Vega"],
+  }
+
   const [form, setForm] = useState<SolicitudPublica>(emptyForm)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [successId, setSuccessId] = useState("")
-  const [sucursales, setSucursales] = useState(fallbackSucursales)
+  const [sucursales, setSucursales] = useState(
+    sucursalesByTenant[empresaSlug] || fallbackSucursales,
+  )
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const isDrawing = useRef(false)
 
   useEffect(() => {
-    fetch("/api/public/solicitud-empleo")
+    // Pedir las sucursales reales del tenant — el backend filtra por empresa.
+    fetch(`/api/public/solicitud-empleo?empresa=${encodeURIComponent(empresaSlug)}`)
       .then((response) => response.json())
       .then((result: { sucursales?: string[] }) => {
         if (Array.isArray(result.sucursales) && result.sucursales.length) setSucursales(result.sucursales)
       })
       .catch(() => undefined)
-  }, [])
+  }, [empresaSlug])
 
   const progress = useMemo(() => {
     const required = [form.puestoSolicitado, form.sucursal, form.nombre, form.apellido, form.cedula, form.celular, form.fechaNacimiento, form.sexo, form.ciudad, form.firma]
@@ -235,7 +260,8 @@ export default function SolicitudEmpleoPublicaPage() {
       const response = await fetch("/api/public/solicitud-empleo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, id: form.id || `sol_${Date.now()}` }),
+        // Incluir empresa para que el backend asigne el business_id correcto.
+        body: JSON.stringify({ ...form, id: form.id || `sol_${Date.now()}`, empresa: empresaSlug }),
       })
       const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; solicitudId?: string }
       if (!response.ok || !result.ok) throw new Error(result.error || "No se pudo enviar la solicitud")
@@ -257,7 +283,7 @@ export default function SolicitudEmpleoPublicaPage() {
           <CardContent className="space-y-4 pt-8 text-center">
             <CheckCircle2 className="mx-auto h-14 w-14 text-cyan-400" />
             <h1 className="text-2xl font-bold">Solicitud enviada</h1>
-            <p className="text-slate-300">Gracias. Tu solicitud fue registrada correctamente en el sistema de Recursos Humanos.</p>
+            <p className="text-slate-300">Gracias. Tu solicitud para una posición en <b>{business.name}</b> fue registrada correctamente.</p>
             <p className="rounded-lg bg-slate-950 p-3 text-sm text-slate-400">Código: {successId}</p>
             <Button onClick={() => setSuccessId("")}>Enviar otra solicitud</Button>
           </CardContent>
@@ -291,9 +317,11 @@ export default function SolicitudEmpleoPublicaPage() {
         <div className="rounded-3xl border border-cyan-500/20 bg-slate-900 p-6 shadow-2xl">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <div className="text-sm font-semibold text-cyan-400">Cibao Spa Laser</div>
+              <div className="text-sm font-semibold text-cyan-400">{business.name}</div>
               <h1 className="mt-1 text-3xl font-bold">Solicitud de empleo</h1>
-              <p className="mt-2 text-slate-400">Completa tus datos. Al enviar, RRHH recibirá la solicitud en el sistema.</p>
+              <p className="mt-2 text-slate-400">
+                Completa tus datos para aplicar a una posición en {business.name}. Al enviar, RRHH recibirá la solicitud en el sistema.
+              </p>
             </div>
             <div className="min-w-44">
               <div className="mb-2 text-sm text-slate-400">Progreso {progress}%</div>
