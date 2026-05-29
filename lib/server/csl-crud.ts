@@ -11,13 +11,29 @@ import { getBusinessContext } from "./business-context"
 import type { BusinessContext, Row } from "./csl-types"
 
 /**
- * Tablas que NO tienen columna business_id y deben quedar exentas de filtro
- * tenant. Si un caller invoca getRows/upsertRow contra una de estas, el
- * contexto se ignora.
+ * Tablas exentas del filtro por business_id.
+ *
+ * Dos razones para exentar:
+ *   1) Tablas que NO tienen columna business_id (ej. `businesses` misma).
+ *   2) Catálogos técnicos COMPARTIDOS — los conoce todo el sistema sin
+ *      importar la empresa del usuario. Hoy:
+ *        - csl_piezas: catálogo de piezas para reportes técnicos. Mismo
+ *          inventario físico es relevante a CSL y a Depicenter (ej. "Filtro
+ *          de agua", "Flashlamp", "Fuente de poder"). Aislar por business
+ *          forzaría a duplicar 38 filas en cada empresa y mantenerlas en
+ *          sync manualmente.
+ *
+ *  NO incluido (siguen separados por empresa):
+ *    - csl_equipos, csl_reportes, csl_operadoras, csl_lecturas_semanales,
+ *      csl_sesiones_cliente, csl_auditorias_semanales: datos operacionales.
+ *    - csl_tecnicos: personas con relación laboral a UNA empresa.
+ *    - csl_inventario: stock físico per-sucursal.
+ *    - csl_sucursales: per-empresa.
+ *    - csl_credenciales: secretos per-tenant.
  */
 const TENANT_EXEMPT_TABLES = new Set<string>([
-  // Tabla de tenants en sí — global, no per-business
   "businesses",
+  "csl_piezas",
 ])
 
 export const SYSTEM_ENTITIES = ["sucursales", "equipos", "reportes", "piezas", "tecnicos", "inventario"] as const
