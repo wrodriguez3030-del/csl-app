@@ -1,6 +1,7 @@
 ﻿"use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { CheckCircle2, FileSignature, Loader2, MessageCircle, RefreshCcw, Send, UserRound } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
@@ -254,6 +255,7 @@ function ConditionalYesNo({
 }
 
 export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes = [], submitLabel = "Enviar ficha", onCancel, onSubmit, mode = "internal" }: Props) {
+  const business = useCurrentBusiness()
   const isPublic = mode === "public"
   const [form, setForm] = useState<FichaDermoCosmiatrica>(initialValue || { ...emptyFichaDermo, id: `dermo_${Date.now()}` })
   const [clientSearch, setClientSearch] = useState("")
@@ -398,7 +400,7 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-bold">Ficha Dermo-Cosmiátrica</h2>
-              <p className="text-sm text-muted-foreground">Cibao Spa Laser · completar y firmar digitalmente</p>
+              <p className="text-sm text-muted-foreground">{business.name} · completar y firmar digitalmente</p>
             </div>
             <div className="text-right text-sm">
               <div className="font-semibold">{progress}%</div>
@@ -691,14 +693,14 @@ export function FichaDermatologiaForm({ initialValue, operadoras = [], clientes 
           <div className="rounded-2xl border bg-primary/5 p-4 text-sm leading-relaxed text-muted-foreground">
             <p>
               Declaro que la información suministrada en esta ficha dermatológica
-              es verdadera y completa. Entiendo que Cibao Spa Laser y su personal
+              es verdadera y completa. Entiendo que {business.name} y su personal
               utilizarán esta información para evaluar mi piel, mis antecedentes y
               las condiciones necesarias antes de realizar cualquier procedimiento
               estético o dermatológico. Entiendo que omitir información puede
               afectar la seguridad y los resultados del tratamiento.
             </p>
             <p className="mt-2 font-semibold text-foreground">
-              Autorizo a Cibao Spa Laser y a su personal a realizar el procedimiento descrito.
+              Autorizo a {business.name} y a su personal a realizar el procedimiento descrito.
             </p>
           </div>
           <label className="flex items-start gap-3 rounded-2xl border bg-white p-3 text-sm">

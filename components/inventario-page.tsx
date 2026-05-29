@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
+import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { loadXLSX } from "@/lib/load-xlsx"
 import { SeqBadge } from "@/components/seq-badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -41,6 +42,7 @@ function fmt(n: number) { return n.toLocaleString("es-DO") }
 function money(n: number) { return "RD$ " + (n || 0).toLocaleString("es-DO", {minimumFractionDigits: 2, maximumFractionDigits: 2}) }
 
 export function InventarioPage() {
+  const business = useCurrentBusiness()
   const { db, setDb, showToast, apiUrl } = useAppStore()
   const [open, setOpen] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -915,7 +917,7 @@ export function InventarioPage() {
                       >
                         <div className="flex justify-between items-center mb-3">
                           <span className="font-semibold text-base">{suc}</span>
-                          <span className="text-xs text-muted-foreground">Cibao Spa Laser</span>
+                          <span className="text-xs text-muted-foreground">{business.name}</span>
                         </div>
                         
                         <div className="flex items-center justify-between">
