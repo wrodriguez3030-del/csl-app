@@ -52,30 +52,67 @@ export function tableConfig(entity: string) {
   return config
 }
 
-export async function getRows(entity: string): Promise<Row[]> {
+/**
+ * Opciones de getRows para optimizar egress:
+ *
+ *   - `columns`: lista CSV de columnas a seleccionar. Si se omite, `*`.
+ *     Para listados ligeros pasar SOLO los campos visibles. Por ejemplo
+ *     un listado de reportes no necesita firmas+fotos+piezas_json+checklist
+ *     — esos pesan ~60 KB/fila vs ~500 B sin ellos.
+ *   - `sinceColumn` + `sinceDays`: filtro por fecha para no traer histórico
+ *     completo. Ej. para `csl_sesiones_cliente` traer solo últimas N semanas.
+ *   - `limit`: cap absoluto de filas. Útil para listados con paginación
+ *     server-side futura.
+ */
+export interface GetRowsOptions {
+  columns?: string
+  sinceColumn?: string
+  sinceDays?: number
+  limit?: number
+}
+
+export async function getRows(entity: string, options?: GetRowsOptions): Promise<Row[]> {
   const supabase = getSupabaseAdmin()
   const config = tableConfig(entity)
   // Auto-aplicar filter por business_id desde el contexto del request.
   // Service Role bypasa RLS, así que el filtro EXPLÍCITO acá es la única defensa.
   const ctx = getBusinessContext()
   const applyTenant = ctx && !ctx.isSuperadmin && !TENANT_EXEMPT_TABLES.has(config.table)
-  const pageSize = 1000
+  const select = options?.columns || "*"
+  const cap = options?.limit ?? Infinity
+  const pageSize = Math.min(1000, cap === Infinity ? 1000 : cap)
   let from = 0
   const rows: Row[] = []
 
-  while (true) {
-    let query = supabase.from(config.table).select("*")
+  // Filtro por fecha — usado para que sesiones_cliente no traiga las 24,000
+  // filas históricas en cada getAllPulsosData (egress crítico).
+  let sinceIso: string | null = null
+  if (options?.sinceColumn && options?.sinceDays && options.sinceDays > 0) {
+    const d = new Date()
+    d.setDate(d.getDate() - options.sinceDays)
+    sinceIso = d.toISOString().slice(0, 10)
+  }
+
+  while (rows.length < cap) {
+    let query = supabase.from(config.table).select(select)
     if (applyTenant) {
       query = query.eq("business_id", ctx!.businessId)
+    }
+    if (sinceIso && options?.sinceColumn) {
+      query = query.gte(options.sinceColumn, sinceIso)
     }
     if (config.order) {
       query = query.order(config.order, { ascending: entity !== "reportes" && entity !== "sesiones_cliente" })
     }
-    const { data, error } = await query.range(from, from + pageSize - 1)
+    const remaining = cap - rows.length
+    const batch = Math.min(pageSize, remaining)
+    const { data, error } = await query.range(from, from + batch - 1)
     if (error) throw error
-    rows.push(...((data || []) as Row[]))
-    if (!data || data.length < pageSize) break
-    from += pageSize
+    // Cast a unknown primero porque supabase-js infiere tipos distintos
+    // cuando se pasa un select string custom vs "*".
+    rows.push(...((data || []) as unknown as Row[]))
+    if (!data || data.length < batch) break
+    from += batch
   }
 
   return rows.map((row) => fromDb(entity, row))
@@ -199,22 +236,102 @@ export async function updateRowFields(entity: string, keyValue: string, fields: 
   if (error) throw error
 }
 
-/** Snapshot de las entidades del sistema base + consentimientos. */
+// ── Columnas LIGERAS para listados (excluyen campos pesados base64/json) ───
+//
+// Filosofía: el listado en pantalla solo necesita identificadores + metadatos
+// para mostrar la tabla y permitir abrir un registro. Los campos pesados
+// (firmas, fotos, PDFs base64, JSONs de checklist) se cargan bajo demanda
+// vía actions específicas (ej. getReporte).
+//
+// Cada fila de reportes con TODO pesa ~64 KB. Sin firmas/fotos/piezas
+// pesa ~600 B. Para un listado de 132 reportes: 8 MB → 80 KB (99% menos egress).
+
+const REPORTES_LIST_COLS = [
+  "report_id", "fecha", "equipo_id", "sucursal", "empresa", "cliente",
+  "domicilio", "ciudad", "modelo", "serie", "numero",
+  "tipo", "estado_equipo", "prioridad", "atendio",
+  "p_cabeza", "p_totales",
+  "business_id", "created_at", "updated_at",
+].join(",")
+
+// Sin firmas+foto cédula+adjuntos base64.
+const SOLICITUDES_LIST_COLS = [
+  "solicitud_id", "fecha_solicitud", "nombre_completo", "cedula",
+  "puesto", "sucursal", "estado", "telefono", "email",
+  "business_id", "created_at", "updated_at",
+].join(",")
+
+// Sin firma_base64+payload_json (que tiene foto cédula).
+const FICHA_LIST_COLS = [
+  "ficha_id", "cliente_id", "nombre", "telefono", "cedula", "email",
+  "ciudad", "sucursal", "fecha",
+  "business_id", "created_at", "updated_at",
+].join(",")
+
+// Sin firmas+payload_json grandes.
+const CONSENT_LIST_COLS = [
+  "consent_id", "cliente_id", "nombre", "cedula", "telefono",
+  "fecha_servicio", "sucursal",
+  "business_id", "created_at", "updated_at",
+].join(",")
+
+// csl_sesiones_cliente — solo últimas 6 semanas (~42 días) por defecto.
+// El histórico anterior se consulta bajo demanda desde el wizard del cuadre.
+const SESIONES_RECENT_DAYS = 42
+
+/** Snapshot del sistema base + consentimientos.
+ *
+ *  OPTIMIZADO 2026-05-29 para reducir egress (10 GB/mes → ~1 GB/mes esperado):
+ *   - reportes, solicitudes_empleo, ficha_dermatologica, consents → SELECT
+ *     específico sin campos pesados base64/json. Detalle se carga bajo
+ *     demanda con la action `getReporte`, `getSolicitud`, etc.
+ */
 export async function getAllData() {
   const [sucursales, equipos, reportes, piezas, tecnicos, inventario, consentMasajes, consentTatuajesCejas] = await Promise.all([
-    ...SYSTEM_ENTITIES.map((entity) => getRows(entity)),
-    getRows("csl_consent_masajes").catch(() => []),
-    getRows("csl_consent_tatuajes_cejas").catch(() => []),
+    getRows("sucursales"),
+    getRows("equipos"),
+    getRows("reportes", { columns: REPORTES_LIST_COLS }),
+    getRows("piezas"),
+    getRows("tecnicos"),
+    getRows("inventario"),
+    getRows("csl_consent_masajes", { columns: CONSENT_LIST_COLS }).catch(() => []),
+    getRows("csl_consent_tatuajes_cejas", { columns: CONSENT_LIST_COLS }).catch(() => []),
   ])
   return { sucursales, equipos, reportes, piezas, tecnicos, inventario, consentMasajes, consentTatuajesCejas }
 }
 
-/** Snapshot del módulo PulseControl. */
-export async function getAllPulsosData() {
-  const [operadoras, lecturasSemanales, sesionesCliente, auditoriasSemanales] = await Promise.all(
-    PULSOS_ENTITIES.map((entity) => getRows(entity))
-  )
+/** Snapshot PulseControl.
+ *
+ *  OPTIMIZADO 2026-05-29:
+ *   - sesiones_cliente → solo últimas 6 semanas (en vez de las 24,616 filas
+ *     históricas). El cuadre semanal usa esto. Para semanas viejas se puede
+ *     pedir con extendedDays.
+ */
+export async function getAllPulsosData(opts?: { extendedDays?: number }) {
+  const sinceDays = opts?.extendedDays ?? SESIONES_RECENT_DAYS
+  const [operadoras, lecturasSemanales, sesionesCliente, auditoriasSemanales] = await Promise.all([
+    getRows("operadoras"),
+    getRows("lecturas_semanales"),
+    getRows("sesiones_cliente", { sinceColumn: "fecha", sinceDays }),
+    getRows("auditorias_semanales"),
+  ])
   return { operadoras, lecturasSemanales, sesionesCliente, auditoriasSemanales }
+}
+
+/** Carga un reporte COMPLETO por ID — incluye firmas, fotos, piezas_json,
+ *  checklist, partes_texto. Usado por el detalle del reporte al abrirlo
+ *  desde el listado. Esos campos NO vienen en getAllData.reportes. */
+export async function getReporteCompleto(reportId: string): Promise<Row | null> {
+  if (!reportId) return null
+  const supabase = getSupabaseAdmin()
+  const config = tableConfig("reportes")
+  const ctx = getBusinessContext()
+  const applyTenant = ctx && !ctx.isSuperadmin && !TENANT_EXEMPT_TABLES.has(config.table)
+  let query = supabase.from(config.table).select("*").eq(config.key, reportId)
+  if (applyTenant) query = query.eq("business_id", ctx!.businessId)
+  const { data, error } = await query.maybeSingle()
+  if (error) throw error
+  return data ? (fromDb("reportes", data as Row)) : null
 }
 
 // ---------- composite ops cosmiatría ----------

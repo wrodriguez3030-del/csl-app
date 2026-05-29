@@ -345,11 +345,28 @@ export function ReportesPage() {
     }
   }
 
-  const handleEdit = (reporte: Reporte) => {
-    setEditingReporte(reporte)
-    const piezas = parsePiezas(reporte.PiezasJSON)
-    setPiezasReporte(piezas)
+  const handleEdit = async (reporte: Reporte) => {
+    // El listado de reportes solo trae campos livianos (sin firmas/fotos/
+    // piezas/checklist) para reducir egress. Antes de abrir el editor
+    // pedimos el detalle COMPLETO al backend.
     setActiveTab("reporte")
+    const normalized = normalizeApiUrl(apiUrl)
+    let reporteCompleto: Reporte = reporte
+    if (normalized) {
+      try {
+        const resp = await apiJsonp(normalized, { action: "getReporte", reportId: reporte.ID }) as { ok?: boolean; record?: Reporte }
+        if (resp?.ok && resp.record) {
+          // Mezclamos el detalle pesado con los campos livianos del listado
+          // por si la response no incluye alguno (defensa en profundidad).
+          reporteCompleto = { ...reporte, ...resp.record }
+        }
+      } catch (err) {
+        console.warn("getReporte falló, abriendo con datos del listado:", err)
+      }
+    }
+    setEditingReporte(reporteCompleto)
+    const piezas = parsePiezas(reporteCompleto.PiezasJSON)
+    setPiezasReporte(piezas)
   }
 
   // Delete report

@@ -24,6 +24,7 @@ import {
   getAllData,
   getAllPulsosData,
   getProfile,
+  getReporteCompleto,
   getRows,
   getRowsPaged,
   loadBusinessContext,
@@ -492,6 +493,72 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         warning: error instanceof Error ? error.message : "No se pudo enviar el correo",
       }))
       return { ok: true, record: fromDb("reportes", row), email }
+    }
+    case "updateReporteCampos": {
+      // UPDATE PARCIAL — solo aplica los campos enviados con valor no vacío,
+      // preservando los demás. Usado por el modal de edición de Reportes
+      // para evitar el bug de upsert-full-row que sobreescribe firmas/piezas
+      // con strings vacíos cuando el formData solo cambió 1 campo.
+      const reportId = textValue(params, "reportId") || textValue(params, "id")
+      if (!reportId) throw new Error("reportId obligatorio para updateReporteCampos")
+      const fields: Record<string, unknown> = {}
+      const mapText: Array<[string, string]> = [
+        ["fecha", "fecha"],
+        ["equipoId", "equipo_id"],
+        ["sucursal", "sucursal"],
+        ["empresa", "empresa"],
+        ["cliente", "cliente"],
+        ["domicilio", "domicilio"],
+        ["ciudad", "ciudad"],
+        ["modelo", "modelo"],
+        ["serie", "serie"],
+        ["numero", "numero"],
+        ["tipo", "tipo"],
+        ["estadoEquipo", "estado_equipo"],
+        ["prioridad", "prioridad"],
+        ["problema", "problema"],
+        ["correccion", "correccion"],
+        ["observaciones", "observaciones"],
+        ["checklist", "checklist"],
+        ["atendio", "atendio"],
+        ["piezasJson", "piezas_json"],
+        ["partesTexto", "partes_texto"],
+        ["firmaCliente", "firma_cliente"],
+        ["firmaTecnico", "firma_tecnico"],
+        ["fotos", "fotos"],
+      ]
+      for (const [camel, snake] of mapText) {
+        const v = params[camel]
+        if (typeof v === "string" && v.length > 0) {
+          // Fecha como string ISO (date column)
+          if (camel === "fecha") {
+            fields[snake] = dateValue(v)
+          } else {
+            fields[snake] = v
+          }
+        }
+      }
+      const mapNum: Array<[string, string]> = [["pcabeza", "p_cabeza"], ["ptotales", "p_totales"]]
+      for (const [camel, snake] of mapNum) {
+        const v = params[camel]
+        if (typeof v === "string" && v.length > 0) fields[snake] = Number(v) || 0
+      }
+      if (Object.keys(fields).length === 0) {
+        return { ok: true, message: "Sin campos para actualizar" }
+      }
+      await updateRowFields("reportes", reportId, fields)
+      return { ok: true }
+    }
+    case "getReporte": {
+      // Detalle completo de un reporte — incluye firma_cliente, firma_tecnico,
+      // fotos, piezas_json, checklist, partes_texto (todo lo que getAllData
+      // omite por egress). Llamado por el frontend al ABRIR un reporte
+      // específico, no en el listado.
+      const reportId = textValue(params, "reportId") || textValue(params, "id")
+      if (!reportId) throw new Error("reportId obligatorio")
+      const record = await getReporteCompleto(reportId)
+      if (!record) return { ok: false, error: "Reporte no encontrado" }
+      return { ok: true, record }
     }
     case "deleteReporte":
       await deleteRow("reportes", textValue(params, "reportId") || textValue(params, "id"))

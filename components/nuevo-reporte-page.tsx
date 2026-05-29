@@ -304,25 +304,70 @@ export function NuevoReportePage() {
     const normalized = normalizeApiUrl(apiUrl)
     if (normalized) {
       try {
-        const result = await apiJsonp(normalized, {
-          action: "saveReporte", reportId: id,
-          fecha: newReporte.Fecha, equipoId: formData.EquipoID || "",
-          sucursal: formData.Sucursal || "", empresa: formData.Empresa || "",
-          cliente: formData.Cliente || "", domicilio: formData.Domicilio || "",
-          ciudad: formData.Ciudad || "Santiago", modelo: formData.Modelo || "",
-          serie: formData.Serie || "", numero: formData.Numero || "",
-          tipo: formData.Tipo || "Preventivo", estadoEquipo: formData.EstadoEquipo || "Operativo",
-          prioridad: formData.Prioridad || "Baja", problema: formData.Problema || "",
-          correccion: formData.Correccion || "", observaciones: formData.Observaciones || "",
-          checklist: formData.Checklist || "", pcabeza: String(formData.P_Cabeza || 0),
-          ptotales: String(formData.P_Totales || 0), atendio: formData.Atendio || "",
-          piezasJson: JSON.stringify(piezasReporte), partesTexto: formData.PartesTexto || "",
-          firmaCliente: firmaCliente || "", firmaTecnico: firmaTecnico || "",
-          fotos: JSON.stringify(fotos),
-        })
-        const email = (result as { email?: { sent?: boolean; warning?: string } }).email
-        if (email?.sent) showToast("Reporte enviado por correo con PDF", "success")
-        else if (email?.warning) showToast(`Reporte guardado. Correo pendiente: ${email.warning}`, "error")
+        if (exists) {
+          // UPDATE PARCIAL — solo envía los campos con valor real para
+          // preservar firmas/fotos/piezas si el usuario solo cambió un texto.
+          // El backend usa updateRowFields, no upsert full-row.
+          const params: Record<string, string> = {
+            action: "updateReporteCampos",
+            reportId: id,
+          }
+          const put = (key: string, val: string | number | null | undefined) => {
+            if (val === null || val === undefined) return
+            const s = String(val).trim()
+            if (s) params[key] = s
+          }
+          put("fecha", newReporte.Fecha)
+          put("equipoId", formData.EquipoID)
+          put("sucursal", formData.Sucursal)
+          put("empresa", formData.Empresa)
+          put("cliente", formData.Cliente)
+          put("domicilio", formData.Domicilio)
+          put("ciudad", formData.Ciudad)
+          put("modelo", formData.Modelo)
+          put("serie", formData.Serie)
+          put("numero", formData.Numero)
+          put("tipo", formData.Tipo)
+          put("estadoEquipo", formData.EstadoEquipo)
+          put("prioridad", formData.Prioridad)
+          put("problema", formData.Problema)
+          put("correccion", formData.Correccion)
+          put("observaciones", formData.Observaciones)
+          put("checklist", formData.Checklist)
+          put("pcabeza", formData.P_Cabeza)
+          put("ptotales", formData.P_Totales)
+          put("atendio", formData.Atendio)
+          put("partesTexto", formData.PartesTexto)
+          // Estos se mandan SIEMPRE si tienen contenido (firmas, fotos,
+          // piezas) — son listas/imagenes que el usuario puede haber
+          // editado en este flujo.
+          if (firmaCliente) params.firmaCliente = firmaCliente
+          if (firmaTecnico) params.firmaTecnico = firmaTecnico
+          if (fotos && fotos.length > 0) params.fotos = JSON.stringify(fotos)
+          if (piezasReporte && piezasReporte.length > 0) params.piezasJson = JSON.stringify(piezasReporte)
+          await apiJsonp(normalized, params)
+        } else {
+          // CREATE — saveReporte full-row es correcto al crear.
+          const result = await apiJsonp(normalized, {
+            action: "saveReporte", reportId: id,
+            fecha: newReporte.Fecha, equipoId: formData.EquipoID || "",
+            sucursal: formData.Sucursal || "", empresa: formData.Empresa || "",
+            cliente: formData.Cliente || "", domicilio: formData.Domicilio || "",
+            ciudad: formData.Ciudad || "Santiago", modelo: formData.Modelo || "",
+            serie: formData.Serie || "", numero: formData.Numero || "",
+            tipo: formData.Tipo || "Preventivo", estadoEquipo: formData.EstadoEquipo || "Operativo",
+            prioridad: formData.Prioridad || "Baja", problema: formData.Problema || "",
+            correccion: formData.Correccion || "", observaciones: formData.Observaciones || "",
+            checklist: formData.Checklist || "", pcabeza: String(formData.P_Cabeza || 0),
+            ptotales: String(formData.P_Totales || 0), atendio: formData.Atendio || "",
+            piezasJson: JSON.stringify(piezasReporte), partesTexto: formData.PartesTexto || "",
+            firmaCliente: firmaCliente || "", firmaTecnico: firmaTecnico || "",
+            fotos: JSON.stringify(fotos),
+          })
+          const email = (result as { email?: { sent?: boolean; warning?: string } }).email
+          if (email?.sent) showToast("Reporte enviado por correo con PDF", "success")
+          else if (email?.warning) showToast(`Reporte guardado. Correo pendiente: ${email.warning}`, "error")
+        }
       } catch(e) { console.warn("API sync reporte:", e) }
     }
   }
