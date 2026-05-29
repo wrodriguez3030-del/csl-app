@@ -179,13 +179,32 @@ export function ReportesPage() {
   // Edit report
   const [viewDialog, setViewDialog] = useState<Reporte | null>(null)
 
-  const handlePrint = (reporte: Reporte) => {
-    const piezas = parsePiezas(reporte.PiezasJSON)
+  const handlePrint = async (reporte: Reporte) => {
+    // El listado de reportes solo trae campos livianos (sin firmas/fotos/
+    // piezas_json/checklist/partes_texto/problema/correccion/observaciones).
+    // Antes de generar el PDF cargamos el detalle COMPLETO por ID. Sin
+    // esto el PDF mostraba vacíos en problema/corrección/firmas/piezas.
+    const normalized = normalizeApiUrl(apiUrl)
+    let reporteCompleto: Reporte = reporte
+    if (normalized) {
+      try {
+        const resp = await apiJsonp(normalized, { action: "getReporte", reportId: reporte.ID }) as { ok?: boolean; record?: Reporte }
+        if (resp?.ok && resp.record) {
+          reporteCompleto = { ...reporte, ...resp.record }
+        }
+      } catch (err) {
+        console.warn("getReporte para PDF falló, usando datos del listado:", err)
+      }
+    }
+    const piezas = parsePiezas(reporteCompleto.PiezasJSON)
     // Nombre sugerido del PDF: Equipo-<id>-Serie-<ultimos4>.pdf
     // El navegador toma document.title como filename al "Guardar como PDF".
-    const pdfBaseName = buildReportePdfBaseName(reporte)
+    const pdfBaseName = buildReportePdfBaseName(reporteCompleto)
     const printWindow = window.open("", "_blank")
     if (!printWindow) return
+    // Renombrar local para que el template HTML que sigue use el detalle
+    // completo (firmas, piezas, problema, etc.) en vez del listado liviano.
+    reporte = reporteCompleto
 
     const content = `
       <!DOCTYPE html>
