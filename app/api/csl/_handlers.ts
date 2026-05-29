@@ -341,8 +341,9 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         estado: textValue(params, "estado", "Activo"),
         observaciones: textValue(params, "observaciones"),
         // Columnas añadidas por 202605280001_equipos_cabina_operadora.sql.
+        // Nombre de la operadora simplificado a `operadora` (no `operadora_nombre`).
         cabina: cabinaRaw ? cabinaRaw : null,
-        operadora_nombre: operadoraRaw ? operadoraRaw : null,
+        operadora: operadoraRaw ? operadoraRaw : null,
         operadora_id: operadoraIdRaw ? operadoraIdRaw : null,
       }
       // Columnas añadidas por 202605280002_equipos_pulsos_audit.sql.
@@ -380,7 +381,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         ["estado", "estado"],
         ["observaciones", "observaciones"],
         ["cabina", "cabina"],
-        ["operadora", "operadora_nombre"],
+        ["operadora", "operadora"],
         ["operadoraId", "operadora_id"],
         ["ultimaActualizacionPulsos", "ultima_actualizacion_pulsos"],
         ["ultimaSemanaPulsos", "ultima_semana_pulsos"],
