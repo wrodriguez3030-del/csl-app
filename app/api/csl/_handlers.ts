@@ -320,7 +320,29 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       await updateRowFields("sucursales", textValue(params, "codigo"), { estado: textValue(params, "estado") })
       return { ok: true }
     case "saveEquipo": {
-      const row = { equipo_id: textValue(params, "equipoId"), sucursal: textValue(params, "sucursal"), empresa: textValue(params, "empresa"), domicilio: textValue(params, "domicilio"), modelo: textValue(params, "modelo"), serie: textValue(params, "serie"), numero: textValue(params, "numero"), p_cabeza: numberValue(params, "pcabeza"), p_totales: numberValue(params, "ptotales"), max_cabeza: numberValue(params, "maxCabeza", 6000000), estado: textValue(params, "estado", "Activo"), observaciones: textValue(params, "observaciones") }
+      // Cabina/operadora_nombre/operadora_id vienen como string vacío cuando
+      // no se asignan — convertimos a null para respetar el default de la DB.
+      const cabinaRaw = textValue(params, "cabina")
+      const operadoraRaw = textValue(params, "operadora")
+      const operadoraIdRaw = textValue(params, "operadoraId")
+      const row = {
+        equipo_id: textValue(params, "equipoId"),
+        sucursal: textValue(params, "sucursal"),
+        empresa: textValue(params, "empresa"),
+        domicilio: textValue(params, "domicilio"),
+        modelo: textValue(params, "modelo"),
+        serie: textValue(params, "serie"),
+        numero: textValue(params, "numero"),
+        p_cabeza: numberValue(params, "pcabeza"),
+        p_totales: numberValue(params, "ptotales"),
+        max_cabeza: numberValue(params, "maxCabeza", 6000000),
+        estado: textValue(params, "estado", "Activo"),
+        observaciones: textValue(params, "observaciones"),
+        // Columnas añadidas por 202605280001_equipos_cabina_operadora.sql.
+        cabina: cabinaRaw ? cabinaRaw : null,
+        operadora_nombre: operadoraRaw ? operadoraRaw : null,
+        operadora_id: operadoraIdRaw ? operadoraIdRaw : null,
+      }
       await upsertRow("equipos", row)
       return { ok: true, record: fromDb("equipos", row) }
     }

@@ -23,6 +23,11 @@ export interface Equipo {
   Max_Cabeza?: number
   Estado: "Activo" | "Inactivo"
   Observaciones?: string
+  // Añadidos en migración 202605280001_equipos_cabina_operadora.sql.
+  // Eran texto libre dentro de Observaciones — ahora son campos separados.
+  Cabina?: string
+  Operadora?: string
+  OperadoraID?: string
 }
 
 export interface Tecnico {

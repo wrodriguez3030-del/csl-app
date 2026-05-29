@@ -1,7 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
+import { loadXLSX } from "@/lib/load-xlsx"
+import { detectExcelType } from "@/lib/excel-type-detector"
+import { parseEquiposBaseWorkbook, type ParsedEquipoBaseRow, type ParseEquiposBaseResult } from "@/lib/equipos-base-parser"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,7 +21,7 @@ import { SEQ_HEADER_CLASS, SeqBadge } from "@/components/seq-badge"
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
-import { Plus, Pencil, Trash2, Power, PowerOff, Save, X } from "lucide-react"
+import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Plus, Power, PowerOff, Save, Trash2, Upload, X } from "lucide-react"
 import { RecordActions } from "@/components/record-actions"
 import { RecordViewDialog } from "@/components/record-view-dialog"
 import type { Equipo } from "@/lib/types"
@@ -28,15 +31,48 @@ const emptyEquipo: Equipo = {
   Domicilio: "", Modelo: "", Serie: "", Numero: "",
   P_Cabeza: 0, P_Totales: 0, Max_Cabeza: 6000000,
   Estado: "Activo", Observaciones: "",
+  Cabina: "", Operadora: "", OperadoraID: "",
+}
+
+const CABINA_OPTIONS = [
+  "Cabina 1", "Cabina 2", "Cabina 3", "Cabina 4", "Cabina 5",
+  "Cabina 6", "Cabina 7", "Cabina 8", "Cabina 9", "Cabina 10",
+  "Backup", "Taller", "Sin asignar",
+] as const
+
+/** Si la cabina viene legacy en Observaciones (texto libre tipo "CABINA 1 -
+ *  YAMILKA"), intentamos detectar el valor canonical para pre-llenar el
+ *  dropdown al editar. */
+function detectarCabinaLegacy(observaciones: string | undefined): string {
+  if (!observaciones) return ""
+  const s = observaciones.toUpperCase()
+  for (let i = 10; i >= 1; i -= 1) {
+    if (s.includes(`CABINA ${i}`)) return `Cabina ${i}`
+  }
+  if (s.includes("BACKUP")) return "Backup"
+  if (s.includes("TALLER")) return "Taller"
+  return ""
 }
 
 export function EquiposPage() {
-  const { db, setDb, apiUrl, showToast, editingEquipo, setEditingEquipo } = useAppStore()
+  const { db, setDb, dbPulsos, apiUrl, showToast, editingEquipo, setEditingEquipo } = useAppStore()
 
   const [formData, setFormData] = useState<Equipo>(emptyEquipo)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [deleteDialog, setDeleteDialog] = useState<Equipo | null>(null)
   const [viewEquipo, setViewEquipo] = useState<Equipo | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
+  const [importPreview, setImportPreview] = useState<{ filename: string; parsed: ParseEquiposBaseResult } | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [parsingFile, setParsingFile] = useState(false)
+  const importInputRef = useRef<HTMLInputElement>(null)
+
+  // Lista de operadoras desde dbPulsos — usada por el dropdown del modal.
+  const operadorasActivas = useMemo(() => {
+    return dbPulsos.operadoras
+      .filter((o) => (o.Estado || "Activa") !== "Inactiva")
+      .sort((a, b) => (a.Nombre || "").localeCompare(b.Nombre || "", "es"))
+  }, [dbPulsos.operadoras])
 
   // Reportes relacionados al equipo abierto (mostrados como extraSlot del dialog).
   const reportesEquipo = viewEquipo
@@ -60,13 +96,15 @@ export function EquiposPage() {
   }
 
   const sortedEquipos = [...db.equipos].sort((a, b) => {
-    let va: any, vb: any
+    let va: string | number = ""
+    let vb: string | number = ""
     switch(sortCol) {
       case "EquipoID": va = Number(a.EquipoID) || 0; vb = Number(b.EquipoID) || 0; break
       case "Sucursal": va = a.Sucursal; vb = b.Sucursal; break
-      case "Observaciones": va = a.Observaciones; vb = b.Observaciones; break
+      case "Cabina": va = a.Cabina || ""; vb = b.Cabina || ""; break
+      case "Operadora": va = a.Operadora || ""; vb = b.Operadora || ""; break
       case "Modelo": va = a.Modelo; vb = b.Modelo; break
-      case "Serie": va = a.Serie; vb = b.Serie; break
+      case "Serie": va = a.Serie || ""; vb = b.Serie || ""; break
       case "P_Cabeza": va = Number(a.P_Cabeza) || 0; vb = Number(b.P_Cabeza) || 0; break
       case "P_Totales": va = Number(a.P_Totales) || 0; vb = Number(b.P_Totales) || 0; break
       case "Estado": va = a.Estado; vb = b.Estado; break
@@ -80,7 +118,14 @@ export function EquiposPage() {
 
   useEffect(() => {
     if (editingEquipo) {
-      setFormData(editingEquipo)
+      // Pre-llenamos cabina desde Observaciones legacy si no estaba seteada.
+      const cabinaLegacy = !editingEquipo.Cabina ? detectarCabinaLegacy(editingEquipo.Observaciones) : ""
+      setFormData({
+        ...editingEquipo,
+        Cabina: editingEquipo.Cabina || cabinaLegacy || "",
+        Operadora: editingEquipo.Operadora || "",
+        OperadoraID: editingEquipo.OperadoraID || "",
+      })
       setIsFormOpen(true)
     }
   }, [editingEquipo])
@@ -116,7 +161,114 @@ export function EquiposPage() {
       maxCabeza: String(formData.Max_Cabeza || 6000000),
       estado: formData.Estado,
       observaciones: formData.Observaciones || "",
+      cabina: formData.Cabina || "",
+      operadora: formData.Operadora || "",
+      operadoraId: formData.OperadoraID || "",
     })
+  }
+
+  // ── Importación masiva de base maestra de equipos ────────────────────────
+  const handleImportFile = async (files: FileList | null) => {
+    const file = files?.[0]
+    if (!file) return
+    setParsingFile(true)
+    try {
+      const XLSX = await loadXLSX() as { read: (data: ArrayBuffer | string, opts: { type: string }) => unknown; utils: { sheet_to_json: (ws: unknown, opts: { header: 1; defval: string }) => unknown[][] } }
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf, { type: "array" }) as { SheetNames: string[]; Sheets: Record<string, unknown> }
+      // Validar tipo: solo aceptamos "base_equipos".
+      const detection = detectExcelType(wb, XLSX)
+      if (detection.type !== "base_equipos") {
+        const label = detection.type === "agendapro" ? "reporte AgendaPro"
+          : detection.type === "lecturas" ? "reporte de lecturas/pulsos"
+          : "desconocido"
+        showToast(`${file.name}: el archivo es de tipo "${label}", no una base maestra. Usa el archivo correcto.`, "error")
+        return
+      }
+      const parsed = parseEquiposBaseWorkbook(wb, XLSX)
+      setImportPreview({ filename: file.name, parsed })
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err), "error")
+    } finally {
+      setParsingFile(false)
+      if (importInputRef.current) importInputRef.current.value = ""
+    }
+  }
+
+  const confirmImport = async () => {
+    if (!importPreview) return
+    const validRows = importPreview.parsed.rows.filter((r) => r.status !== "error" && r.equipo)
+    if (!validRows.length) {
+      showToast("No hay filas válidas para importar.", "error")
+      return
+    }
+    setImporting(true)
+    let upserted = 0
+    let failed = 0
+    try {
+      // Construimos un mapa nombre → operadora_id desde dbPulsos para
+      // resolver el OperadoraID cuando el archivo solo trae el nombre.
+      const opByNombre = new Map<string, string>()
+      for (const op of dbPulsos.operadoras) {
+        if (op.Nombre && op.OperadoraID) opByNombre.set(op.Nombre.toLowerCase(), op.OperadoraID)
+      }
+      const newEquipos: Equipo[] = []
+      for (const row of validRows) {
+        const existing = db.equipos.find((e) => e.EquipoID === row.equipo)
+        const opId = row.operadora ? (opByNombre.get(row.operadora.toLowerCase()) || "") : ""
+        const merged: Equipo = {
+          ...emptyEquipo,
+          ...(existing || {}),
+          EquipoID: row.equipo,
+          Sucursal: row.sucursal || existing?.Sucursal || "",
+          Serie: row.serial || existing?.Serie || "",
+          Cabina: row.cabina || existing?.Cabina || "",
+          Operadora: row.operadora || existing?.Operadora || "",
+          OperadoraID: opId || existing?.OperadoraID || "",
+          // Estado: respeta existing o defaultea a Activo.
+          Estado: existing?.Estado || "Activo",
+        }
+        newEquipos.push(merged)
+        try {
+          await apiJsonp(normalizeApiUrl(apiUrl), {
+            action: "saveEquipo",
+            equipoId: merged.EquipoID,
+            sucursal: merged.Sucursal,
+            empresa: merged.Empresa || "CIBAO SPA LASER",
+            domicilio: merged.Domicilio || "",
+            modelo: merged.Modelo || "",
+            serie: merged.Serie || "",
+            numero: merged.Numero || "",
+            pcabeza: String(merged.P_Cabeza || 0),
+            ptotales: String(merged.P_Totales || 0),
+            maxCabeza: String(merged.Max_Cabeza || 6000000),
+            estado: merged.Estado,
+            observaciones: merged.Observaciones || "",
+            cabina: merged.Cabina || "",
+            operadora: merged.Operadora || "",
+            operadoraId: merged.OperadoraID || "",
+          })
+          upserted += 1
+        } catch (err) {
+          console.warn("saveEquipo failed", row.equipo, err)
+          failed += 1
+        }
+      }
+      // Actualizar store local: reemplazar o agregar.
+      const newIds = new Set(newEquipos.map((e) => e.EquipoID))
+      const otrosEquipos = db.equipos.filter((e) => !newIds.has(e.EquipoID))
+      setDb({ ...db, equipos: [...otrosEquipos, ...newEquipos].sort((a, b) => (Number(a.EquipoID) || 0) - (Number(b.EquipoID) || 0)) })
+      showToast(
+        failed > 0
+          ? `${upserted} equipos importados · ${failed} fallaron`
+          : `${upserted} equipos importados correctamente`,
+        failed > 0 ? "info" : "success",
+      )
+      setImportPreview(null)
+      setImportOpen(false)
+    } finally {
+      setImporting(false)
+    }
   }
 
   const handleToggleStatus = (equipo: Equipo) => {
@@ -145,9 +297,14 @@ export function EquiposPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <CardTitle className="text-base">Nuevo Equipo</CardTitle>
-          <Button size="sm" onClick={() => { setFormData(emptyEquipo); setEditingEquipo(null); setIsFormOpen(true) }}>
-            <Plus className="h-4 w-4 mr-2" /> Agregar
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setImportOpen(true)} className="gap-2">
+              <Upload className="h-4 w-4" /> Importar base masiva
+            </Button>
+            <Button size="sm" onClick={() => { setFormData(emptyEquipo); setEditingEquipo(null); setIsFormOpen(true) }}>
+              <Plus className="h-4 w-4 mr-2" /> Agregar
+            </Button>
+          </div>
         </CardHeader>
       </Card>
 
@@ -161,7 +318,8 @@ export function EquiposPage() {
                 <TableHead className={SEQ_HEADER_CLASS}>#</TableHead>
                 <TableHead className="cursor-pointer select-none" onClick={() => handleSort("EquipoID")}>No. Equipo{sortIcon("EquipoID")}</TableHead>
                 <TableHead className="cursor-pointer select-none" onClick={() => handleSort("Sucursal")}>Sucursal{sortIcon("Sucursal")}</TableHead>
-                    <TableHead className="cursor-pointer select-none" onClick={() => handleSort("Observaciones")}>Cabina / Operadora{sortIcon("Observaciones")}</TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("Cabina")}>Cabina{sortIcon("Cabina")}</TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("Operadora")}>Operadora{sortIcon("Operadora")}</TableHead>
                 <TableHead className="cursor-pointer select-none" onClick={() => handleSort("Modelo")}>Modelo{sortIcon("Modelo")}</TableHead>
                 <TableHead className="cursor-pointer select-none" onClick={() => handleSort("Serie")}>Serie{sortIcon("Serie")}</TableHead>
                 <TableHead className="cursor-pointer select-none" onClick={() => handleSort("P_Cabeza")}>Pulsos cabeza{sortIcon("P_Cabeza")}</TableHead>
@@ -173,12 +331,18 @@ export function EquiposPage() {
             <TableBody>
               {db.equipos.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
                     No hay equipos registrados
                   </TableCell>
                 </TableRow>
               ) : (
-                sortedEquipos.map((eq, i) => (
+                sortedEquipos.map((eq, i) => {
+                  // Cabina legacy: si no hay valor estructurado, intentamos
+                  // detectarlo en Observaciones para mostrar algo razonable
+                  // mientras el usuario migra cada row al editar.
+                  const cabinaShow = eq.Cabina || detectarCabinaLegacy(eq.Observaciones) || "—"
+                  const operadoraShow = eq.Operadora || "—"
+                  return (
                   <TableRow
                     key={eq.EquipoID || i}
                     className="cursor-pointer"
@@ -187,7 +351,8 @@ export function EquiposPage() {
                     <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
                     <TableCell className="font-medium">{eq.EquipoID}</TableCell>
                     <TableCell>{eq.Sucursal}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{eq.Observaciones || "-"}</TableCell>
+                    <TableCell className="text-xs">{cabinaShow}</TableCell>
+                    <TableCell className="text-xs">{operadoraShow}</TableCell>
                     <TableCell>{eq.Modelo}</TableCell>
                     <TableCell className="text-muted-foreground">{eq.Serie || "-"}</TableCell>
                     <TableCell>
@@ -224,7 +389,8 @@ export function EquiposPage() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))
+                  )
+                })
               )}
             </TableBody>
           </Table>
@@ -321,6 +487,45 @@ export function EquiposPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1.5">
+              <Label>Cabina</Label>
+              <Select value={formData.Cabina || ""} onValueChange={v => setFormData({ ...formData, Cabina: v })}>
+                <SelectTrigger><SelectValue placeholder="Sin asignar" /></SelectTrigger>
+                <SelectContent>
+                  {CABINA_OPTIONS.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Operadora</Label>
+              <Select
+                value={formData.OperadoraID || ""}
+                onValueChange={(v) => {
+                  if (v === "__none__") {
+                    setFormData({ ...formData, OperadoraID: "", Operadora: "" })
+                    return
+                  }
+                  const op = operadorasActivas.find((o) => o.OperadoraID === v)
+                  setFormData({ ...formData, OperadoraID: v, Operadora: op?.Nombre || "" })
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={operadorasActivas.length === 0 ? "Sin operadora disponible" : "Sin asignar"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Sin asignar</SelectItem>
+                  {operadorasActivas.length === 0 ? (
+                    <SelectItem value="__no_ops__" disabled>Sin operadoras cargadas en el sistema</SelectItem>
+                  ) : (
+                    operadorasActivas.map((o) => (
+                      <SelectItem key={o.OperadoraID} value={o.OperadoraID}>
+                        {o.Nombre}{o.Sucursal ? ` · ${o.Sucursal}` : ""}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-1.5 col-span-2">
               <Label>Modelo</Label>
               <Input value={formData.Modelo} onChange={e => setFormData({ ...formData, Modelo: e.target.value })}
@@ -395,6 +600,116 @@ export function EquiposPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Importación masiva — base maestra de equipos */}
+      <Dialog open={importOpen} onOpenChange={(o) => { if (!o) { setImportOpen(false); setImportPreview(null) } }}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Importar base maestra de equipos</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {!importPreview ? (
+              <div className="rounded-xl border-2 border-dashed border-primary/30 bg-primary/5 p-6 text-center">
+                <FileSpreadsheet className="mx-auto mb-2 h-8 w-8 text-primary" />
+                <p className="text-sm font-semibold">Sube el Excel con la base de equipos</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Hoja con columnas <b>Sucursal · Cabina · Operadora · Equipo · Serial</b>. Cada fila se aplica como upsert sobre el equipo existente — los campos no presentes en el archivo conservan su valor actual (modelo, pulsos, observaciones, etc).
+                </p>
+                <input
+                  ref={importInputRef} type="file" accept=".xlsx,.xls" className="hidden"
+                  onChange={(e) => handleImportFile(e.target.files)}
+                />
+                <Button variant="outline" size="sm" className="mt-3 gap-2" onClick={() => importInputRef.current?.click()} disabled={parsingFile}>
+                  {parsingFile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  {parsingFile ? "Leyendo..." : "Seleccionar Excel"}
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-bold">{importPreview.filename}</div>
+                    <div className="mt-0.5 text-muted-foreground">
+                      Hoja: <b>{importPreview.parsed.sheet}</b> · Header fila: {importPreview.parsed.headerRow}
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => { setImportPreview(null); importInputRef.current?.click() }} className="h-7 gap-1 text-[11px]">
+                    <Upload className="h-3 w-3" /> Cambiar archivo
+                  </Button>
+                </div>
+                {(() => {
+                  const rows = importPreview.parsed.rows
+                  const validas = rows.filter((r) => r.status === "valid").length
+                  const advertencias = rows.filter((r) => r.status === "warning").length
+                  const errores = rows.filter((r) => r.status === "error").length
+                  return (
+                    <div className="flex flex-wrap gap-2">
+                      <Mini label="Filas leídas" value={rows.length} />
+                      <Mini label="Válidas" value={validas} tone="ok" />
+                      {advertencias > 0 ? <Mini label="Advertencias" value={advertencias} tone="warn" /> : null}
+                      {errores > 0 ? <Mini label="Errores" value={errores} tone="error" /> : null}
+                    </div>
+                  )
+                })()}
+                <div className="max-h-80 overflow-auto rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-16">Estado</TableHead>
+                        <TableHead>Sucursal</TableHead>
+                        <TableHead>Cabina</TableHead>
+                        <TableHead>Operadora</TableHead>
+                        <TableHead>Equipo</TableHead>
+                        <TableHead>Serial</TableHead>
+                        <TableHead>Obs.</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {importPreview.parsed.rows.map((r) => (
+                        <TableRow key={r.filaOrigen}>
+                          <TableCell>
+                            {r.status === "error" ? <AlertTriangle className="h-3.5 w-3.5 text-rose-600" /> :
+                             r.status === "warning" ? <AlertTriangle className="h-3.5 w-3.5 text-amber-600" /> :
+                             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
+                          </TableCell>
+                          <TableCell className="text-xs">{r.sucursal || "—"}</TableCell>
+                          <TableCell className="text-xs">{r.cabina || "—"}</TableCell>
+                          <TableCell className="text-xs">{r.operadora || "—"}</TableCell>
+                          <TableCell className="text-xs font-bold">{r.equipo || "—"}</TableCell>
+                          <TableCell className="text-[10px] text-muted-foreground">{r.serial || "—"}</TableCell>
+                          <TableCell className="text-[10px] text-muted-foreground">{r.message || ""}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setImportOpen(false); setImportPreview(null) }}>Cancelar</Button>
+            {importPreview ? (
+              <Button onClick={confirmImport} disabled={importing}>
+                {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                {importing ? "Importando..." : `Importar ${importPreview.parsed.rows.filter((r) => r.status !== "error" && r.equipo).length} equipos`}
+              </Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+  )
+}
+
+function Mini({ label, value, tone }: { label: string; value: number; tone?: "ok" | "warn" | "error" | "info" }) {
+  const cls = tone === "ok" ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : tone === "warn" ? "border-amber-200 bg-amber-50 text-amber-700"
+    : tone === "error" ? "border-rose-200 bg-rose-50 text-rose-700"
+    : tone === "info" ? "border-sky-200 bg-sky-50 text-sky-700"
+    : "border-slate-200 bg-white text-slate-700"
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${cls}`}>
+      {label}: <span className="font-mono">{value.toLocaleString("es-DO")}</span>
+    </span>
   )
 }

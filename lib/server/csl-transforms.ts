@@ -28,7 +28,14 @@ export function fromDb(entity: string, row: Row): Row {
     case "sucursales":
       return { Codigo: row.codigo, Nombre: row.nombre, Ciudad: row.ciudad, Direccion: row.direccion, Estado: row.estado, Notas: row.notas, Correo: row.correo }
     case "equipos":
-      return { EquipoID: row.equipo_id, Sucursal: row.sucursal, Empresa: row.empresa, Domicilio: row.domicilio, Modelo: row.modelo, Serie: row.serie, Numero: row.numero, P_Cabeza: row.p_cabeza, P_Totales: row.p_totales, Max_Cabeza: row.max_cabeza, Estado: row.estado, Observaciones: row.observaciones }
+      return {
+        EquipoID: row.equipo_id, Sucursal: row.sucursal, Empresa: row.empresa, Domicilio: row.domicilio,
+        Modelo: row.modelo, Serie: row.serie, Numero: row.numero,
+        P_Cabeza: row.p_cabeza, P_Totales: row.p_totales, Max_Cabeza: row.max_cabeza,
+        Estado: row.estado, Observaciones: row.observaciones,
+        // Columnas añadidas por 202605280001_equipos_cabina_operadora.sql.
+        Cabina: row.cabina, Operadora: row.operadora_nombre, OperadoraID: row.operadora_id,
+      }
     case "tecnicos":
       return { Codigo: row.codigo, Nombre: row.nombre, Telefono: row.telefono, Correo: row.correo, Estado: row.estado, Notas: row.notas }
     case "piezas":
