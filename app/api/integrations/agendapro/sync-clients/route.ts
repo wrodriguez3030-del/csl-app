@@ -57,19 +57,10 @@ export async function POST(request: Request) {
   }
 
   const ctx = await loadBusinessContext(user.id)
+  if (!ctx) return json({ ok: false, error: "Contexto de negocio no encontrado." }, 403)
   return runWithBusinessContext(ctx, async () => {
     const supabase = getSupabaseAdmin()
-    // AgendaPro es CSL-only. Hardcoded resolve para evitar que un usuario de
-    // otro tenant accidentalmente importe clientes a su business equivocado.
-    const businessRow = await supabase
-      .from("businesses")
-      .select("id")
-      .eq("slug", "csl")
-      .maybeSingle()
-    const businessId = (businessRow.data as { id?: string } | null)?.id
-    if (!businessId) {
-      return json({ ok: false, error: "Business CSL no encontrado en businesses." }, 500)
-    }
+    const businessId = ctx.businessId
 
     // Abrir log en estado "running"
     const logInsert = await supabase

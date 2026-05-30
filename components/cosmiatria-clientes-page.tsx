@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { CalendarDays, Download, FileSignature, FileText, History, Loader2, Plus, RefreshCw, Search, UserRound, Users, Zap } from "lucide-react"
+import { CalendarDays, CheckCircle2, Download, FileSpreadsheet, FileSignature, FileText, History, Loader2, Plus, RefreshCw, Search, Upload, UserRound, Users, Zap } from "lucide-react"
+import { parseAgendaProClientsExcel } from "@/lib/agendapro-clients-excel"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
 import type { ClienteCosmiatria } from "@/lib/types"
 import type { FichaDermoCosmiatrica } from "@/lib/dermo-cosmiatria"
@@ -133,6 +134,11 @@ export function CosmiatriaClientesPage() {
   const canEditClientes = canMerge
   const [mergeOpen, setMergeOpen] = useState(false)
   const [agendaProSyncing, setAgendaProSyncing] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importParsed, setImportParsed] = useState<{ clients: Record<string, unknown>[]; skipped: number; columnsDetected: string[]; warnings: string[] } | null>(null)
+  const [importUploading, setImportUploading] = useState(false)
+  const [importResult, setImportResult] = useState<{ ok: boolean; created?: number; updated?: number; duplicates?: number; errors?: number; error?: string } | null>(null)
   const [clientes, setClientes] = useState<ClienteCosmiatria[]>([])
   const [fichas, setFichas] = useState<FichaDermoCosmiatrica[]>([])
   const [query, setQuery] = useState("")
@@ -373,15 +379,46 @@ export function CosmiatriaClientesPage() {
     }
   }
 
-  const handleAgendaProSync = async () => {
-    const search = typeof window !== "undefined"
-      ? window.prompt(
-          "Sincronizar AgendaPro\n\nEscribe un término de búsqueda (teléfono, cédula, nombre o email).\n\nDeja vacío para intentar listado completo (puede que AgendaPro lo requiera obligatorio).",
-          "",
-        )
-      : null
-    if (search === null) return
-    await runAgendaProSync(search.trim())
+  const handleAgendaProSync = () => {
+    setImportFile(null)
+    setImportParsed(null)
+    setImportResult(null)
+    setImportOpen(true)
+  }
+
+  const handleImportFile = async (file: File) => {
+    setImportFile(file)
+    setImportUploading(true)
+    setImportParsed(null)
+    try {
+      const result = await parseAgendaProClientsExcel(file)
+      setImportParsed(result as { clients: Record<string, unknown>[]; skipped: number; columnsDetected: string[]; warnings: string[] })
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Error al procesar el archivo", "error")
+    } finally {
+      setImportUploading(false)
+    }
+  }
+
+  const handleImportSubmit = async () => {
+    if (!importParsed?.clients.length) return
+    setImportUploading(true)
+    try {
+      const { data: { session } } = await import("@/lib/supabase-client").then((m) => m.supabaseBrowser.auth.getSession())
+      if (!session?.access_token) throw new Error("Sesión no válida — vuelve a iniciar sesión")
+      const res = await fetch("/api/integrations/agendapro/import-clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ clients: importParsed.clients }),
+      })
+      const data = await res.json() as { ok?: boolean; created?: number; updated?: number; duplicates?: number; errors?: number; error?: string }
+      setImportResult({ ok: data.ok === true, created: data.created, updated: data.updated, duplicates: data.duplicates, errors: data.errors, error: data.error })
+      if (data.ok) await loadData()
+    } catch (err) {
+      setImportResult({ ok: false, error: err instanceof Error ? err.message : "Error al importar" })
+    } finally {
+      setImportUploading(false)
+    }
   }
 
   const deleteCliente = async (cliente: ClienteCosmiatria) => {
@@ -801,6 +838,147 @@ export function CosmiatriaClientesPage() {
               </section>
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Import AgendaPro Excel ─────────────────────────────────────────── */}
+      <Dialog
+        open={importOpen}
+        onOpenChange={(o) => {
+          if (!importUploading) {
+            setImportOpen(o)
+            if (!o) { setImportFile(null); setImportParsed(null); setImportResult(null) }
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+              Importar clientes desde AgendaPro
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* Estado 3: resultado final */}
+          {importResult ? (
+            <div className="space-y-4">
+              {importResult.ok ? (
+                <>
+                  <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-700">
+                    <CheckCircle2 className="h-5 w-5 shrink-0" />
+                    <p className="font-bold">Importación completada</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 rounded-xl border bg-slate-50 p-4 text-sm">
+                    <div>Clientes nuevos: <strong className="text-emerald-700">{importResult.created ?? 0}</strong></div>
+                    <div>Actualizados: <strong className="text-cyan-700">{importResult.updated ?? 0}</strong></div>
+                    <div>Duplicados omitidos: <strong className="text-slate-500">{importResult.duplicates ?? 0}</strong></div>
+                    <div>Errores: <strong className="text-rose-600">{importResult.errors ?? 0}</strong></div>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-700">
+                  <p className="font-bold">Error al importar</p>
+                  <p className="mt-1 text-sm">{importResult.error}</p>
+                </div>
+              )}
+              <DialogFooter>
+                <Button onClick={() => { setImportOpen(false); setImportFile(null); setImportParsed(null); setImportResult(null) }}>Cerrar</Button>
+              </DialogFooter>
+            </div>
+          ) : importParsed ? (
+            /* Estado 2: preview de clientes detectados */
+            <div className="space-y-3">
+              <div className="rounded-xl border bg-slate-50 p-3 text-sm">
+                <span className="font-bold text-emerald-700">{importParsed.clients.length}</span> clientes listos para importar
+                {importParsed.skipped > 0 && (
+                  <span className="text-muted-foreground"> · {importParsed.skipped} filas vacías omitidas</span>
+                )}
+              </div>
+              {importParsed.warnings.length > 0 && (
+                <div className="space-y-1">
+                  {importParsed.warnings.map((w, wi) => (
+                    <p key={wi} className="text-xs text-amber-600">⚠ {w}</p>
+                  ))}
+                </div>
+              )}
+              {/* Preview table */}
+              <div className="max-h-44 overflow-auto rounded-lg border text-xs">
+                <table className="w-full">
+                  <thead className="sticky top-0 bg-slate-100">
+                    <tr>
+                      <th className="px-2 py-1.5 text-left font-bold">Nombre</th>
+                      <th className="px-2 py-1.5 text-left font-bold">Teléfono</th>
+                      <th className="px-2 py-1.5 text-left font-bold">Documento</th>
+                      <th className="px-2 py-1.5 text-left font-bold">Sucursal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importParsed.clients.slice(0, 8).map((c, ci) => (
+                      <tr key={ci} className="border-t">
+                        <td className="px-2 py-1">{[String(c.first_name ?? ""), String(c.last_name ?? "")].filter(Boolean).join(" ") || "—"}</td>
+                        <td className="px-2 py-1 font-mono">{String(c.phone ?? "") || "—"}</td>
+                        <td className="px-2 py-1 font-mono">{String(c.identification_number ?? "") || "—"}</td>
+                        <td className="px-2 py-1">{String(c.location_name ?? "") || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {importParsed.clients.length > 8 && (
+                  <p className="p-2 text-center text-muted-foreground">… y {importParsed.clients.length - 8} más</p>
+                )}
+              </div>
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => { setImportFile(null); setImportParsed(null) }}>
+                  Cambiar archivo
+                </Button>
+                <Button onClick={() => void handleImportSubmit()} disabled={importUploading}>
+                  {importUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  {importUploading ? "Importando…" : `Importar ${importParsed.clients.length} clientes`}
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            /* Estado 1: selector de archivo */
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Exporta el listado de clientes desde AgendaPro y sube el archivo aquí.
+                El sistema detectará automáticamente las columnas (nombre, teléfono, cédula, email, sucursal…).
+              </p>
+              <label className="flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 p-8 text-center transition-colors hover:border-primary/40 hover:bg-primary/5">
+                {importUploading
+                  ? <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                  : <Upload className="h-10 w-10 text-slate-400" />}
+                <div>
+                  <p className="text-sm font-bold">{importUploading ? "Procesando…" : "Haz clic para seleccionar archivo"}</p>
+                  <p className="text-xs text-muted-foreground">Excel (.xlsx, .xls) o CSV — exportado desde AgendaPro</p>
+                </div>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  className="sr-only"
+                  disabled={importUploading}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleImportFile(f) }}
+                />
+              </label>
+              {/* Opción API si está configurada */}
+              <div className="rounded-lg border bg-slate-50 p-3">
+                <p className="text-xs font-bold text-muted-foreground">¿Tienes la API de AgendaPro configurada?</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-1 h-7 gap-1.5 text-xs text-muted-foreground"
+                  disabled={agendaProSyncing}
+                  onClick={async () => {
+                    setImportOpen(false)
+                    await runAgendaProSync("")
+                  }}
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  Sincronizar directamente con la API
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
