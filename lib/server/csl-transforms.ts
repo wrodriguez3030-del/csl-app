@@ -29,6 +29,9 @@ export function fromDb(entity: string, row: Row): Row {
       return { Codigo: row.codigo, Nombre: row.nombre, Ciudad: row.ciudad, Direccion: row.direccion, Estado: row.estado, Notas: row.notas, Correo: row.correo }
     case "equipos":
       return {
+        // business_id se expone al frontend para que el filtro superadmin
+        // pueda distinguir equipos por tenant client-side.
+        business_id: row.business_id,
         EquipoID: row.equipo_id, Sucursal: row.sucursal, Empresa: row.empresa, Domicilio: row.domicilio,
         Modelo: row.modelo, Serie: row.serie, Numero: row.numero,
         P_Cabeza: row.p_cabeza, P_Totales: row.p_totales, Max_Cabeza: row.max_cabeza,
@@ -82,7 +85,7 @@ export function fromDb(entity: string, row: Row): Row {
       return { CredencialID: row.credencial_id, Sucursal: row.sucursal, Area: row.area, Equipo: row.equipo, Sistema: row.sistema, Usuario: row.usuario, Contrasena: row.contrasena, PIN: row.pin, URL: row.url, Correo: row.correo }
     case "solicitudes_empleo":
     case "empleados":
-      return { ...(row.payload_json as Row || {}), SolicitudID: row.solicitud_id || row.empleado_id, FechaSolicitud: row.fecha_solicitud, Estado: row.estado, PuestoSolicitado: row.puesto_solicitado, Nombre: row.nombre, Apellido: row.apellido, Cedula: row.cedula, Email: row.email, Telefono: row.telefono, FechaNacimiento: row.fecha_nacimiento, Sexo: row.sexo, Nacionalidad: row.nacionalidad, Provincia: row.provincia, Ciudad: row.ciudad, Sector: row.sector, Direccion: row.direccion, Experiencia: row.experiencia, Salario: row.salario, NivelEducacion: row.nivel_educacion, Especialidad: row.especialidad, DocumentosAdjuntos: row.documentos_adjuntos, FirmaDigital: row.firma_digital, Observaciones: row.observaciones, FechaRevision: row.fecha_revision, RevisadoPor: row.revisado_por, Sucursal: (row.payload_json as Row || {}).sucursal || (row.payload_json as Row || {}).Sucursal || "" }
+      return { ...(row.payload_json as Row || {}), business_id: row.business_id, SolicitudID: row.solicitud_id || row.empleado_id, FechaSolicitud: row.fecha_solicitud, Estado: row.estado, PuestoSolicitado: row.puesto_solicitado, Nombre: row.nombre, Apellido: row.apellido, Cedula: row.cedula, Email: row.email, Telefono: row.telefono, FechaNacimiento: row.fecha_nacimiento, Sexo: row.sexo, Nacionalidad: row.nacionalidad, Provincia: row.provincia, Ciudad: row.ciudad, Sector: row.sector, Direccion: row.direccion, Experiencia: row.experiencia, Salario: row.salario, NivelEducacion: row.nivel_educacion, Especialidad: row.especialidad, DocumentosAdjuntos: row.documentos_adjuntos, FirmaDigital: row.firma_digital, Observaciones: row.observaciones, FechaRevision: row.fecha_revision, RevisadoPor: row.revisado_por, Sucursal: (row.payload_json as Row || {}).sucursal || (row.payload_json as Row || {}).Sucursal || "" }
     case "cosmiatria_clientes":
       return { ...(row.payload_json as Row || {}), ClienteID: row.cliente_id, NumeroCliente: row.numero_cliente, DocumentoIdentidad: row.documento_identidad, Email: row.email, Nombre: row.nombre, Apellido: row.apellido, Telefono: row.telefono, Telefono2: row.telefono2, Direccion: row.direccion, Localidad: row.localidad, Ciudad: row.ciudad, Region: row.region, FechaNacimiento: row.fecha_nacimiento, Edad: row.edad, Genero: row.genero, Sucursal: row.sucursal, PuedeAgendar: row.puede_agendar, ClienteDesde: row.cliente_desde, Estado: row.estado, Notas: row.notas }
     case "ficha_dermatologica":

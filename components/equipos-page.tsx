@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
+import { SuperadminBusinessFilter, filterValueToBusinessId, type BusinessFilterValue } from "@/components/superadmin-business-filter"
 import { loadXLSX } from "@/lib/load-xlsx"
 import { detectExcelType } from "@/lib/excel-type-detector"
 import { parseEquiposBaseWorkbook, type ParsedEquipoBaseRow, type ParseEquiposBaseResult } from "@/lib/equipos-base-parser"
@@ -62,6 +63,10 @@ export function EquiposPage() {
   const { db, setDb, dbPulsos, apiUrl, showToast, editingEquipo, setEditingEquipo } = useAppStore()
   // Business activo — usado para defaultear Empresa al crear equipo nuevo.
   const business = useCurrentBusiness()
+  // Filtro superadmin: si el user no es superadmin, el banner no se
+  // renderiza y este state queda sin uso. Si es superadmin, controla
+  // qué subset de db.equipos se muestra en la tabla.
+  const [adminFilter, setAdminFilter] = useState<BusinessFilterValue>("all")
 
   const [formData, setFormData] = useState<Equipo>(emptyEquipo)
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -101,7 +106,14 @@ export function EquiposPage() {
     return <span className="ml-1 text-primary">{sortDir === "asc" ? "↑" : "↓"}</span>
   }
 
-  const sortedEquipos = [...db.equipos].sort((a, b) => {
+  // Aplicar el filtro superadmin ANTES del sort. Si el user no es
+  // superadmin, adminFilter queda en "all" sin efecto (el banner no se
+  // renderiza). Si es superadmin, filtra a CSL o Depicenter según selección.
+  const adminFilterBizId = filterValueToBusinessId(adminFilter)
+  const filteredEquipos = adminFilterBizId
+    ? db.equipos.filter((e) => e.business_id === adminFilterBizId)
+    : db.equipos
+  const sortedEquipos = [...filteredEquipos].sort((a, b) => {
     let va: string | number = ""
     let vb: string | number = ""
     switch(sortCol) {
@@ -363,6 +375,7 @@ export function EquiposPage() {
 
   return (
     <div className="space-y-4">
+      <SuperadminBusinessFilter value={adminFilter} onChange={setAdminFilter} />
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <CardTitle className="text-base">Nuevo Equipo</CardTitle>

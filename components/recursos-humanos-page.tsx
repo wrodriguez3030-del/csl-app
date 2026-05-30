@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
+import { SuperadminBusinessFilter, filterValueToBusinessId, type BusinessFilterValue } from "@/components/superadmin-business-filter"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,6 +22,8 @@ interface ReferenciaItem { nombre: string; ocupacion: string; telefono: string }
 
 interface Solicitud {
   id: string
+  /** UUID del business — expuesto desde fromDb para filtrar superadmin. */
+  business_id?: string
   fecha: string
   fechaIngresoLaboral: string
   estado: string
@@ -178,6 +181,7 @@ function normalizeSolicitudRecord(raw: Record<string, unknown>): Solicitud {
   return {
     ...emptyForm,
     ...payload,
+    business_id: typeof raw.business_id === "string" ? raw.business_id : undefined,
     id: String(raw.SolicitudID ?? payload.id ?? ""),
     fecha: String(raw.FechaSolicitud ?? payload.fecha ?? emptyForm.fecha),
     fechaIngresoLaboral: String((payload as Record<string, unknown>).fechaIngresoLaboral ?? (payload as Record<string, unknown>).FechaIngresoLaboral ?? ""),
@@ -267,6 +271,8 @@ export function RecursosHumanosPage() {
   // Business activo (CSL o Depicenter) — usado por copyPublicLink para
   // generar el link público con el slug correcto.
   const business = useCurrentBusiness()
+  // Filtro superadmin (banner + Select). Sin efecto si user no es superadmin.
+  const [adminFilter, setAdminFilter] = useState<BusinessFilterValue>("all")
   const sucursalesDb = useAppStore((state) => state.db.sucursales)
   const sucursales = sucursalesDb.length ? sucursalesDb.map((sucursal) => sucursal.Nombre).filter(Boolean) : ["Rafael Vidal", "Los Jardines", "Villa Olga", "La Vega"]
   const [solicitudes, setSolicitudes] = useState<Solicitud[]>([])
@@ -320,8 +326,11 @@ export function RecursosHumanosPage() {
     })
   }
 
+  // Combinar filtro superadmin con los filtros de UI (estado + búsqueda).
+  const adminBizId = filterValueToBusinessId(adminFilter)
   const filtered = solicitudes
     .filter(s => {
+      if (adminBizId && s.business_id !== adminBizId) return false
       if (filterEstado !== "todos" && s.estado !== filterEstado) return false
       if (search) {
         const q = search.toLowerCase()
@@ -546,8 +555,15 @@ ${solicitud.firma ? `<div class="firma"><p><b>Firma del Solicitante:</b></p><img
     { id: "firma", label: "Firma", icon: FileSignature },
   ]
 
+  // Filtro superadmin aplicado a las solicitudes ANTES de KPIs y listado.
+  const adminFilterBizId = filterValueToBusinessId(adminFilter)
+  const filteredSolicitudes = adminFilterBizId
+    ? solicitudes.filter((s) => s.business_id === adminFilterBizId)
+    : solicitudes
+
   return (
     <div className="space-y-6 p-4">
+      <SuperadminBusinessFilter value={adminFilter} onChange={setAdminFilter} />
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h2 className="text-xl font-bold flex items-center gap-2"><Users className="h-5 w-5" />Recursos Humanos</h2>
@@ -557,10 +573,10 @@ ${solicitud.firma ? `<div class="firma"><p><b>Firma del Solicitante:</b></p><img
       </div>
 
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-        <Card><CardContent className="pt-3"><p className="text-xs text-muted-foreground">Total</p><p className="text-2xl font-bold">{solicitudes.length}</p></CardContent></Card>
-        <Card><CardContent className="pt-3"><p className="text-xs text-muted-foreground">Pendiente</p><p className="text-2xl font-bold text-yellow-500">{solicitudes.filter(s => s.estado === "Pendiente").length}</p></CardContent></Card>
-        <Card><CardContent className="pt-3"><p className="text-xs text-muted-foreground">Entrevista</p><p className="text-2xl font-bold text-purple-500">{solicitudes.filter(s => s.estado === "Entrevista").length}</p></CardContent></Card>
-        <Card><CardContent className="pt-3"><p className="text-xs text-muted-foreground">Aprobado</p><p className="text-2xl font-bold text-green-500">{solicitudes.filter(s => s.estado === "Aprobado").length}</p></CardContent></Card>
+        <Card><CardContent className="pt-3"><p className="text-xs text-muted-foreground">Total</p><p className="text-2xl font-bold">{filteredSolicitudes.length}</p></CardContent></Card>
+        <Card><CardContent className="pt-3"><p className="text-xs text-muted-foreground">Pendiente</p><p className="text-2xl font-bold text-yellow-500">{filteredSolicitudes.filter(s => s.estado === "Pendiente").length}</p></CardContent></Card>
+        <Card><CardContent className="pt-3"><p className="text-xs text-muted-foreground">Entrevista</p><p className="text-2xl font-bold text-purple-500">{filteredSolicitudes.filter(s => s.estado === "Entrevista").length}</p></CardContent></Card>
+        <Card><CardContent className="pt-3"><p className="text-xs text-muted-foreground">Aprobado</p><p className="text-2xl font-bold text-green-500">{filteredSolicitudes.filter(s => s.estado === "Aprobado").length}</p></CardContent></Card>
       </div>
 
       <Card>

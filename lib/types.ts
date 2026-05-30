@@ -11,6 +11,9 @@ export interface Sucursal {
 
 export interface Equipo {
   _rowNum?: string
+  /** UUID del business al que pertenece. Necesario para que el filtro
+   *  superadmin distinga visualmente equipos CSL vs Depicenter. */
+  business_id?: string
   EquipoID: string
   Sucursal: string
   Empresa: string
