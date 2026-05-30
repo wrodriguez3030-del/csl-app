@@ -53,24 +53,30 @@ export function parseDisparos(raw: unknown): { value: number; error?: string } {
 
 /**
  * Normaliza el nombre de sucursal que viene de AgendaPro al nombre que el
- * resto del sistema usa (StockRafaelVidal, StockLosJardines, etc.).
+ * resto del sistema usa.
  *
- * IMPORTANTE: AgendaPro reporta "Plaza Mediterránea", pero el sistema CSL
- * lo conoce como "Rafael Vidal" (es la dirección de la sucursal Rafael
- * Vidal). Mantenemos ese mapping para no romper joins con equipos /
- * inventario / reportes que llevan "Rafael Vidal" en sus columnas.
+ * AgendaPro puede reportar sucursales con prefijo de negocio:
+ *   "Cibao Spa Láser - Los Jardines"  → "Los Jardines"
+ *   "Cibao Spa Láser - Rafael Vidal"  → "Rafael Vidal"
+ *   "Depicenter - Los Jardines"       → "Los Jardines"
+ *
+ * También acepta formato sin prefijo: "Plaza Mediterránea" → "Rafael Vidal"
+ * (nombre antiguo de AgendaPro para la sucursal Rafael Vidal).
  */
 export function normalizeSucursalFromAgendaPro(value: unknown): string {
   const raw = String(value || "").trim()
   if (!raw) return ""
-  const lower = raw.toLowerCase()
+  // Strippear prefijo de negocio: "BusinessName - SucursalName" → "SucursalName"
+  // El patrón captura todo hasta el primer guion rodeado de espacios.
+  const stripped = raw.replace(/^.+\s+-\s+/i, "").trim() || raw
+  const lower = stripped.toLowerCase()
   if (lower.includes("plaza") || lower.includes("mediterr")) return "Rafael Vidal"
   if (lower.includes("jardines")) return "Los Jardines"
+  if (lower.includes("rafael") || lower.includes("vidal")) return "Rafael Vidal"
   if (lower.includes("villa olga")) return "Villa Olga"
   if (lower.includes("la vega")) return "La Vega"
-  // Si AgendaPro reporta una sucursal nueva, devolvemos el texto original
-  // ya limpio. El caller puede mostrarlo como warning.
-  return raw
+  // Si no hay mapping específico, devolver el nombre ya sin prefijo de negocio.
+  return stripped
 }
 
 /** Normaliza el nombre de operadora — solo trim + colapsa espacios. */
