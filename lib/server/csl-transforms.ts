@@ -43,6 +43,7 @@ export function fromDb(entity: string, row: Row): Row {
         // Columnas añadidas por 202605280002_equipos_pulsos_audit.sql.
         UltimaActualizacionPulsos: row.ultima_actualizacion_pulsos,
         UltimaSemanaPulsos: row.ultima_semana_pulsos,
+        FallasRecientes: row.fallas_recientes,
       }
     case "tecnicos":
       return { Codigo: row.codigo, Nombre: row.nombre, Telefono: row.telefono, Correo: row.correo, Estado: row.estado, Notas: row.notas }

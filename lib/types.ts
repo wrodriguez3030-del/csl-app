@@ -35,6 +35,7 @@ export interface Equipo {
   // Auditoría: cuándo / con qué semana se actualizaron los pulsos.
   UltimaActualizacionPulsos?: string  // ISO timestamp
   UltimaSemanaPulsos?: string         // ISO date (lunes)
+  FallasRecientes?: string            // Comma-separated codes from latest Excel import
 }
 
 export interface Tecnico {
