@@ -368,6 +368,7 @@ const KIND_CONFIG = {
     subtitle: "Registro de autorización, firmas y PDF para terapias corporales.",
     badge: "Masajes",
     getAction: "getConsentMasajes",
+    getCompletoAction: "getConsentMasajesCompleto",
     saveAction: "saveConsentMasaje",
     deleteAction: "deleteConsentMasaje",
     idPrefix: "CM",
@@ -378,6 +379,7 @@ const KIND_CONFIG = {
     subtitle: "Autorización informada para procedimientos láser de pigmento.",
     badge: "Láser pigmento",
     getAction: "getConsentTatuajesCejas",
+    getCompletoAction: "getConsentTatuajesCejasCompleto",
     saveAction: "saveConsentTatuajeCeja",
     deleteAction: "deleteConsentTatuajeCeja",
     idPrefix: "CTC",
@@ -865,6 +867,24 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
     }
   }, [apiUrl, config.getAction, kind, showToast])
 
+  /** Trae el detalle COMPLETO del consentimiento por ID (firma_cliente,
+   *  firma_especialista, payload_json con riesgos, instrucciones, cuidados,
+   *  zonas). El listado slim no incluye esos campos pesados para reducir
+   *  egress. Fallback al row del listado si la llamada falla. */
+  const fetchConsentCompleto = useCallback(async (record: ConsentimientoRecord): Promise<ConsentimientoRecord> => {
+    const normalized = normalizeApiUrl(apiUrl)
+    if (!normalized || !record.id) return record
+    try {
+      const resp = await apiJsonp(normalized, { action: config.getCompletoAction, id: record.id }) as { ok?: boolean; record?: Partial<ConsentimientoRecord> }
+      if (resp?.ok && resp.record) {
+        return normalizeRecord({ ...record, ...resp.record }, kind)
+      }
+    } catch (err) {
+      console.warn(`${config.getCompletoAction} falló — usando datos del listado:`, err)
+    }
+    return record
+  }, [apiUrl, config.getCompletoAction, kind])
+
   const loadClientes = useCallback(async () => {
     try {
       const result = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getClientesCosmiatria" })
@@ -1045,9 +1065,10 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
     setFormOpen(true)
   }
 
-  const startEdit = (record: ConsentimientoRecord) => {
+  const startEdit = async (record: ConsentimientoRecord) => {
     setSaveError("")
-    const normalized = normalizeRecord(record, kind)
+    const full = await fetchConsentCompleto(record)
+    const normalized = normalizeRecord(full, kind)
     setForm(normalized)
     setFormOpen(true)
     if (normalized.clienteId) void loadHistorialCliente(normalized.clienteId)
@@ -1278,7 +1299,7 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
                   <TableRow
                     key={record.id}
                     className="cursor-pointer"
-                    onClick={() => setDetail(record)}
+                    onClick={async () => setDetail(await fetchConsentCompleto(record))}
                   >
                     <TableCell className="text-center"><SeqBadge n={seqIndex + 1} /></TableCell>
                     <TableCell className="font-semibold">{formatDate(record.fecha)}</TableCell>
@@ -1305,9 +1326,9 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
                     <TableCell><StatusBadge status={record.estado} /></TableCell>
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => setDetail(record)} title="Ver"><Eye className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => printConsent(record, kind, business)} title="Imprimir PDF"><Printer className="h-4 w-4 text-primary" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => startEdit(record)} title="Editar"><Pencil className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={async () => setDetail(await fetchConsentCompleto(record))} title="Ver"><Eye className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={async () => printConsent(await fetchConsentCompleto(record), kind, business)} title="Imprimir PDF"><Printer className="h-4 w-4 text-primary" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => void startEdit(record)} title="Editar"><Pencil className="h-4 w-4" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => void handleDelete(record)} title="Eliminar"><Trash2 className="h-4 w-4 text-destructive" /></Button>
                       </div>
                     </TableCell>

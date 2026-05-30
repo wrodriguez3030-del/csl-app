@@ -446,18 +446,46 @@ export function CosmiatriaFichaPage() {
     setOpen(true)
   }
 
-  const startEdit = (record: FichaDermoCosmiatrica) => {
-    setEditing(record)
+  /** Trae el detalle COMPLETO de la ficha por ID (firma_digital,
+   *  firmaEspecialista, payload_json clínico completo). El listado slim
+   *  no incluye esos campos pesados para reducir egress. Fallback al row
+   *  del listado si la llamada falla. */
+  const fetchFichaCompleta = async (record: FichaDermoCosmiatrica): Promise<FichaDermoCosmiatrica> => {
+    const normalized = normalizeApiUrl(apiUrl)
+    if (!normalized || !record.id) return record
+    try {
+      const resp = await apiJsonp(normalized, { action: "getFichaCompleta", id: record.id }) as { ok?: boolean; record?: FichaDermoCosmiatrica }
+      if (resp?.ok && resp.record) {
+        return { ...record, ...resp.record }
+      }
+    } catch (err) {
+      console.warn("getFichaCompleta falló — usando datos del listado:", err)
+    }
+    return record
+  }
+
+  const startEdit = async (record: FichaDermoCosmiatrica) => {
+    const full = await fetchFichaCompleta(record)
+    setEditing(full)
     setOpen(true)
   }
 
-  const printFicha = (record: FichaDermoCosmiatrica) => {
+  const openView = async (record: FichaDermoCosmiatrica) => {
+    // Abrimos el dialog de inmediato con el row slim para feedback rápido,
+    // y refrescamos a full cuando llegue la respuesta.
+    setViewing(record)
+    const full = await fetchFichaCompleta(record)
+    setViewing(full)
+  }
+
+  const printFicha = async (record: FichaDermoCosmiatrica) => {
+    const full = await fetchFichaCompleta(record)
     const printWindow = window.open("", "_blank")
     if (!printWindow) {
       showToast("El navegador bloqueó la ventana de impresión", "error")
       return
     }
-    printWindow.document.write(buildFichaPrintHtml(record, business))
+    printWindow.document.write(buildFichaPrintHtml(full, business))
     printWindow.document.close()
     setTimeout(() => {
       printWindow.focus()
@@ -559,9 +587,9 @@ export function CosmiatriaFichaPage() {
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex justify-end gap-1">
-                      <Button size="sm" variant="ghost" title="Ver" onClick={() => setViewing(record)}><Eye className="h-4 w-4" /></Button>
-                      <Button size="sm" variant="ghost" title="Editar" onClick={() => startEdit(record)}><Edit className="h-4 w-4" /></Button>
-                      <Button size="sm" variant="ghost" title="Imprimir PDF" onClick={() => printFicha(record)}><Printer className="h-4 w-4 text-cyan-500" /></Button>
+                      <Button size="sm" variant="ghost" title="Ver" onClick={() => void openView(record)}><Eye className="h-4 w-4" /></Button>
+                      <Button size="sm" variant="ghost" title="Editar" onClick={() => void startEdit(record)}><Edit className="h-4 w-4" /></Button>
+                      <Button size="sm" variant="ghost" title="Imprimir PDF" onClick={() => void printFicha(record)}><Printer className="h-4 w-4 text-cyan-500" /></Button>
                       <Button size="sm" variant="ghost" title="Eliminar" onClick={() => void remove(record.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
                     </div>
                   </td>

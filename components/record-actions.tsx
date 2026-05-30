@@ -9,6 +9,12 @@ import { useCurrentBusiness } from "@/hooks/use-current-business"
 type RecordActionsProps<T extends Record<string, unknown>> = {
   title: string
   record: T
+  /** Cargador opcional del detalle COMPLETO por ID. Se invoca cuando el
+   *  usuario hace click en Ver o en Imprimir (default), y el resultado
+   *  reemplaza el `record` slim que vino del listado. Permite mantener los
+   *  listados livianos (sin firmas/payload_json) sin perder datos en la
+   *  vista de detalle ni en el PDF. */
+  loadFullRecord?: () => Promise<T | null>
   onEdit?: () => void
   onDelete?: () => void
   onPrint?: () => void
@@ -74,21 +80,53 @@ tr:nth-child(even) td{background:#f8fafc}
   }, 400)
 }
 
-export function RecordActions<T extends Record<string, unknown>>({ title, record, onEdit, onDelete, onPrint, printTitle }: RecordActionsProps<T>) {
+export function RecordActions<T extends Record<string, unknown>>({ title, record, loadFullRecord, onEdit, onDelete, onPrint, printTitle }: RecordActionsProps<T>) {
   const business = useCurrentBusiness()
   const [open, setOpen] = useState(false)
+  const [fullRecord, setFullRecord] = useState<T | null>(null)
+  const [isLoadingFull, setIsLoadingFull] = useState(false)
+  const effective = fullRecord || record
   const entries = useMemo(
-    () => Object.entries(record).filter(([key, value]) => !key.startsWith("_") && typeof value !== "function"),
-    [record]
+    () => Object.entries(effective).filter(([key, value]) => !key.startsWith("_") && typeof value !== "function"),
+    [effective]
   )
+
+  const ensureFull = async (): Promise<T> => {
+    if (fullRecord) return fullRecord
+    if (!loadFullRecord) return record
+    try {
+      setIsLoadingFull(true)
+      const loaded = await loadFullRecord()
+      if (loaded) {
+        setFullRecord(loaded)
+        return loaded
+      }
+    } catch (err) {
+      console.warn("loadFullRecord falló — usando datos del listado slim:", err)
+    } finally {
+      setIsLoadingFull(false)
+    }
+    return record
+  }
+
+  const handleView = async () => {
+    setOpen(true)
+    if (loadFullRecord && !fullRecord) await ensureFull()
+  }
+
+  const handlePrintDefault = async () => {
+    const full = await ensureFull()
+    const printEntries = Object.entries(full).filter(([key, value]) => !key.startsWith("_") && typeof value !== "function")
+    printRecord(printTitle || title, printEntries, business.name)
+  }
 
   return (
     <>
       <div className="flex justify-end gap-0.5">
-        <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver" onClick={() => setOpen(true)}>
+        <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver" onClick={() => void handleView()}>
           <Eye className="h-3.5 w-3.5 text-muted-foreground" />
         </Button>
-        <Button size="icon" variant="ghost" className="h-7 w-7" title="Imprimir" onClick={() => onPrint ? onPrint() : printRecord(printTitle || title, entries, business.name)}>
+        <Button size="icon" variant="ghost" className="h-7 w-7" title="Imprimir" onClick={() => onPrint ? onPrint() : void handlePrintDefault()}>
           <Printer className="h-3.5 w-3.5 text-primary" />
         </Button>
         {onEdit ? (
@@ -104,7 +142,7 @@ export function RecordActions<T extends Record<string, unknown>>({ title, record
       </div>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-          <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{title}{isLoadingFull ? " · cargando detalle…" : ""}</DialogTitle></DialogHeader>
           <div className="grid gap-2 md:grid-cols-2">
             {entries.map(([key, value]) => (
               <div key={key} className="rounded-lg border bg-muted/20 p-3">

@@ -387,7 +387,26 @@ export function RecursosHumanosPage() {
   }
 
   const openNew = () => { setForm({ ...emptyForm, id: `sol_${Date.now()}` }); setActiveTab("personal"); setOpen(true) }
-  const openEdit = (s: Solicitud) => { setForm(s); setActiveTab("personal"); setOpen(true) }
+  /** Trae el detalle COMPLETO (firma_digital, documentos_adjuntos, payload con
+   *  foto cédula, experiencia/educación/referencias) por ID. El listado slim
+   *  no los incluye. Fallback al row del listado si la llamada falla. */
+  const fetchSolicitudCompleta = async (s: Solicitud): Promise<Solicitud> => {
+    const normalized = normalizeApiUrl(apiUrl)
+    if (!normalized || !s.id) return s
+    try {
+      const resp = await apiJsonp(normalized, { action: "getSolicitudCompleta", id: s.id }) as { ok?: boolean; record?: Record<string, unknown> }
+      if (resp?.ok && resp.record) {
+        return normalizeSolicitudRecord({ ...s, ...resp.record })
+      }
+    } catch (err) {
+      console.warn("getSolicitudCompleta falló — usando datos del listado:", err)
+    }
+    return s
+  }
+  const openEdit = async (s: Solicitud) => {
+    const full = await fetchSolicitudCompleta(s)
+    setForm(full); setActiveTab("personal"); setOpen(true)
+  }
   const copyPublicLink = async () => {
     // El slug del tenant activo va como query param para que el formulario
     // público muestre la marca correcta y el POST se guarde con el
@@ -633,9 +652,13 @@ ${solicitud.firma ? `<div class="firma"><p><b>Firma del Solicitante:</b></p><img
                     <RecordActions
                       title={`Solicitud: ${s.nombre} ${s.apellido}`}
                       record={solicitudRecord(s)}
-                      onEdit={() => openEdit(s)}
+                      loadFullRecord={async () => {
+                        const full = await fetchSolicitudCompleta(s)
+                        return solicitudRecord(full)
+                      }}
+                      onEdit={() => void openEdit(s)}
                       onDelete={() => handleDelete(s.id)}
-                      onPrint={() => exportPDF(s)}
+                      onPrint={async () => exportPDF(await fetchSolicitudCompleta(s))}
                       printTitle={`Solicitud de empleo - ${s.nombre} ${s.apellido}`}
                     />
                   </td>
