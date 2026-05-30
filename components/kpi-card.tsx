@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import type { LucideIcon } from "lucide-react"
+import { fmtN } from "@/lib/fmt"
 
 interface KpiCardProps {
   title: string
@@ -41,7 +42,7 @@ export function KpiCard({
           <div className="space-y-1">
             <p className="text-xs font-black uppercase tracking-[0.16em] text-muted-foreground">{title}</p>
             <p className="font-heading text-4xl font-black tracking-[-0.06em] text-foreground">
-              {typeof value === "number" ? value.toLocaleString("es-DO") : value}
+              {typeof value === "number" ? fmtN(value) : value}
             </p>
             {description && (
               <p className="text-xs text-muted-foreground">{description}</p>

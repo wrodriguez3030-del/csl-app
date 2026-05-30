@@ -27,6 +27,7 @@ import {
   Wrench,
   Zap,
 } from "lucide-react"
+import { fmtN } from "@/lib/fmt"
 
 // ── Semáforo ─────────────────────────────────────────────────────────────────
 
@@ -74,9 +75,7 @@ function getSemaforo(pulsos: number): SemaforoLevel {
 }
 
 function fmtPulsos(n: number) {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return n.toLocaleString("es-DO")
+  return fmtN(n)
 }
 
 function fmtFecha(value?: string) {
@@ -741,8 +740,8 @@ export function PulsosMantenimientoPage() {
                     <TableCell>{fmtFecha(a.FechaSemana)}</TableCell>
                     <TableCell className="font-black">{a.EquipoID}</TableCell>
                     <TableCell>{a.Sucursal}</TableCell>
-                    <TableCell className="text-right font-mono">{a.PulsosReales.toLocaleString("es-DO")}</TableCell>
-                    <TableCell className="text-right font-mono">{a.PulsosReportados.toLocaleString("es-DO")}</TableCell>
+                    <TableCell className="text-right font-mono">{fmtN(a.PulsosReales)}</TableCell>
+                    <TableCell className="text-right font-mono">{fmtN(a.PulsosReportados)}</TableCell>
                     <TableCell className="text-right font-mono">
                       <span className={a.PorcentajeDesviacion > 20 ? "font-bold text-rose-600" : "text-amber-600"}>
                         {a.PorcentajeDesviacion.toFixed(1)}%

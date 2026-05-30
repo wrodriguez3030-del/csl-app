@@ -5,6 +5,7 @@ import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { SuperadminBusinessFilter, filterValueToBusinessId, type BusinessFilterValue } from "@/components/superadmin-business-filter"
 import { loadXLSX } from "@/lib/load-xlsx"
+import { fmtN, parseN } from "@/lib/fmt"
 import { detectExcelType } from "@/lib/excel-type-detector"
 import { parseEquiposBaseWorkbook, type ParsedEquipoBaseRow, type ParseEquiposBaseResult } from "@/lib/equipos-base-parser"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -443,11 +444,11 @@ export function EquiposPage() {
                         <span className="text-[10px] font-bold text-muted-foreground tabular-nums">{pct(eq)}%</span>
                       </div>
                       <span className="text-[10px] text-muted-foreground tabular-nums">
-                        {Number(eq.P_Cabeza || 0).toLocaleString()}
+                        {fmtN(eq.P_Cabeza)}
                       </span>
                     </TableCell>
                     <TableCell className="tabular-nums text-xs">
-                      {Number(eq.P_Totales || 0).toLocaleString()}
+                      {fmtN(eq.P_Totales)}
                     </TableCell>
                     <TableCell>
                       <Badge variant={eq.Estado === "Activo" ? "default" : "secondary"}
@@ -624,10 +625,9 @@ export function EquiposPage() {
             <div className="space-y-1.5">
               <Label>Pulsos cabeza</Label>
               <Input
-                value={formData.P_Cabeza ? Number(formData.P_Cabeza).toLocaleString("es-DO") : ""}
+                value={formData.P_Cabeza ? fmtN(formData.P_Cabeza) : ""}
                 onChange={e => {
-                  const raw = e.target.value.replace(/[^\d]/g, "")
-                  setFormData({ ...formData, P_Cabeza: raw ? Number(raw) : 0 })
+                  setFormData({ ...formData, P_Cabeza: parseN(e.target.value) })
                 }}
                 placeholder="Ej: 1,500,000"
               />
@@ -635,18 +635,20 @@ export function EquiposPage() {
             <div className="space-y-1.5">
               <Label>Pulsos totales</Label>
               <Input
-                value={formData.P_Totales ? Number(formData.P_Totales).toLocaleString("es-DO") : ""}
+                value={formData.P_Totales ? fmtN(formData.P_Totales) : ""}
                 onChange={e => {
-                  const raw = e.target.value.replace(/[^\d]/g, "")
-                  setFormData({ ...formData, P_Totales: raw ? Number(raw) : 0 })
+                  setFormData({ ...formData, P_Totales: parseN(e.target.value) })
                 }}
                 placeholder="Ej: 7,198,234"
               />
             </div>
             <div className="space-y-1.5">
               <Label>Máx. cabeza</Label>
-              <Input type="number" value={formData.Max_Cabeza}
-                onChange={e => setFormData({ ...formData, Max_Cabeza: Number(e.target.value) })} min={0} />
+              <Input
+                value={formData.Max_Cabeza ? fmtN(formData.Max_Cabeza) : ""}
+                onChange={e => setFormData({ ...formData, Max_Cabeza: parseN(e.target.value) })}
+                placeholder="Ej: 10,000,000"
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Estado</Label>
@@ -803,7 +805,7 @@ function Mini({ label, value, tone }: { label: string; value: number; tone?: "ok
     : "border-slate-200 bg-white text-slate-700"
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${cls}`}>
-      {label}: <span className="font-mono">{value.toLocaleString("es-DO")}</span>
+      {label}: <span className="font-mono">{fmtN(value)}</span>
     </span>
   )
 }

@@ -22,6 +22,7 @@ import {
 import { Plus, Save, X, BookOpen, Camera, ChevronDown, ChevronRight, Loader2, Upload, FileSpreadsheet } from "lucide-react"
 import { RecordActions } from "@/components/record-actions"
 import type { LecturaSemanal } from "@/lib/types"
+import { fmtN } from "@/lib/fmt"
 
 const today = new Date().toISOString().split("T")[0]
 
@@ -110,7 +111,7 @@ export function PulsosLecturasPage() {
       if (reading.totalPulses !== null) {
         setForm((prev) => ({ ...prev, LecturaFinal: reading.totalPulses as number }))
         const conf = reading.confidence !== null ? ` (${Math.round(reading.confidence * 100)}% conf.)` : ""
-        showToast(`✓ Pulsos extraídos: ${reading.totalPulses.toLocaleString("es-DO")}${reading.serial ? ` — Serial: ${reading.serial}` : ""}${conf}`, "success")
+        showToast(`✓ Pulsos extraídos: ${fmtN(reading.totalPulses)}${reading.serial ? ` — Serial: ${reading.serial}` : ""}${conf}`, "success")
       } else {
         // reading.reason ahora trae texto específico — "ANTHROPIC_API_KEY no
         // configurada", "imagen borrosa", "Anthropic 401", etc.
@@ -371,7 +372,7 @@ export function PulsosLecturasPage() {
                           {bloque.sucursales.length > 0 ? (
                             <> · {bloque.sucursales.length} {bloque.sucursales.length === 1 ? "sucursal" : "sucursales"} ({bloque.sucursales.join(", ")})</>
                           ) : null}
-                          {" "}· Total diferencia <span className="font-bold text-foreground">+{bloque.totalDif.toLocaleString("es-DO")}</span>
+                          {" "}· Total diferencia <span className="font-bold text-foreground">+{fmtN(bloque.totalDif)}</span>
                         </p>
                       </div>
                     </div>
@@ -381,7 +382,7 @@ export function PulsosLecturasPage() {
                         <div className="mt-0.5">
                           Equipo {bloque.peor.EquipoID}
                           <span className="ml-2 font-mono text-emerald-600">
-                            +{Number(bloque.peor.DiferenciaReal || 0).toLocaleString("es-DO")}
+                            +{fmtN(bloque.peor.DiferenciaReal)}
                           </span>
                         </div>
                       </div>
@@ -411,11 +412,11 @@ export function PulsosLecturasPage() {
                               <TableCell className="font-mono text-sm">{l.EquipoID}</TableCell>
                               <TableCell className="text-sm text-muted-foreground">{l.Sucursal}{l.Cabina ? ` / ${l.Cabina}` : ""}</TableCell>
                               <TableCell className="text-sm">{dbPulsos.operadoras.find(o => o.OperadoraID === l.OperadoraID)?.Nombre || l.OperadoraID || "-"}</TableCell>
-                              <TableCell className="text-right font-mono text-sm">{Number(l.LecturaInicial).toLocaleString("es-DO")}</TableCell>
-                              <TableCell className="text-right font-mono text-sm">{Number(l.LecturaFinal).toLocaleString("es-DO")}</TableCell>
+                              <TableCell className="text-right font-mono text-sm">{fmtN(l.LecturaInicial)}</TableCell>
+                              <TableCell className="text-right font-mono text-sm">{fmtN(l.LecturaFinal)}</TableCell>
                               <TableCell className="text-right">
                                 <Badge variant="outline" className="font-mono text-green-400 border-green-500/30">
-                                  +{Number(l.DiferenciaReal).toLocaleString("es-DO")}
+                                  +{fmtN(l.DiferenciaReal)}
                                 </Badge>
                               </TableCell>
                               <TableCell className="text-right">
@@ -515,7 +516,7 @@ export function PulsosLecturasPage() {
             <div className="col-span-2 bg-muted/40 rounded-lg p-3 flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Diferencia real de pulsos:</span>
               <span className={`font-bold text-xl ${diferencia < 0 ? "text-destructive" : "text-green-400"}`}>
-                {diferencia < 0 ? "⚠ " : "+"}{diferencia.toLocaleString()} pulsos
+                {diferencia < 0 ? "⚠ " : "+"}{fmtN(diferencia)} pulsos
               </span>
             </div>
             <div className="space-y-1.5 col-span-2">

@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Wrench } from "lucide-react"
 import { SEQ_HEADER_CLASS, SeqBadge } from "@/components/seq-badge"
+import { fmtN } from "@/lib/fmt"
 
 const equiposGentleYag = [
   ["4", "Rafael Vidal", "Cabina 5", "Rosa"],
@@ -62,7 +63,7 @@ export function PulsosEquiposPage() {
                   <TableCell>{row.cabina}</TableCell>
                   <TableCell><Badge className="border-primary/20 bg-primary/10 text-primary">{row.operadora}</Badge></TableCell>
                   <TableCell className="text-right">{formatDate(row.ultima?.FechaSemana)}</TableCell>
-                  <TableCell className="text-right font-mono font-bold">{Number(row.ultima?.DiferenciaReal || 0).toLocaleString("es-DO")}</TableCell>
+                  <TableCell className="text-right font-mono font-bold">{fmtN(row.ultima?.DiferenciaReal)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

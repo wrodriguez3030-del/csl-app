@@ -16,8 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Activity, Download, CheckCircle, AlertTriangle, XCircle, TrendingUp, TrendingDown, Upload, FileSpreadsheet, Pencil, Save, X } from "lucide-react"
-
-function fmt(n: number) { return n.toLocaleString("es-DO") }
+import { fmtN } from "@/lib/fmt"
 
 function fmtSemanaRango(d: string) {
   if (!d) return "-"
@@ -536,13 +535,13 @@ export function PulsosAuditoriaPage() {
         <Card>
           <CardContent className="pt-3 pb-2 text-center">
             <p className="text-[10px] text-muted-foreground uppercase">Disp. Láser</p>
-            <p className="text-lg font-bold font-mono">{fmt(kpis.totLaser)}</p>
+            <p className="text-lg font-bold font-mono">{fmtN(kpis.totLaser)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-3 pb-2 text-center">
             <p className="text-[10px] text-muted-foreground uppercase">Disp. Operador</p>
-            <p className="text-lg font-bold font-mono">{fmt(kpis.totOp)}</p>
+            <p className="text-lg font-bold font-mono">{fmtN(kpis.totOp)}</p>
           </CardContent>
         </Card>
       </div>
@@ -610,14 +609,14 @@ export function PulsosAuditoriaPage() {
                     <td className="px-2 py-2 text-center text-xs">{r.cabina}</td>
                     <td className="px-3 py-2 font-semibold text-sm">{r.operadora}</td>
                     <td className="px-2 py-2 text-center font-mono text-xs">{r.equipo}</td>
-                    <td className="px-3 py-2 text-right font-mono text-xs text-muted-foreground">{r.pulsosInicio > 0 ? fmt(r.pulsosInicio) : "-"}</td>
-                    <td className="px-3 py-2 text-right font-mono text-xs text-muted-foreground">{r.pulsosFin > 0 ? fmt(r.pulsosFin) : "-"}</td>
-                    <td className="px-3 py-2 text-right font-mono text-sm font-bold">{fmt(r.dispLaser)}</td>
-                    <td className="px-3 py-2 text-right font-mono text-sm font-bold">{fmt(r.dispOperador)}</td>
+                    <td className="px-3 py-2 text-right font-mono text-xs text-muted-foreground">{r.pulsosInicio > 0 ? fmtN(r.pulsosInicio) : "-"}</td>
+                    <td className="px-3 py-2 text-right font-mono text-xs text-muted-foreground">{r.pulsosFin > 0 ? fmtN(r.pulsosFin) : "-"}</td>
+                    <td className="px-3 py-2 text-right font-mono text-sm font-bold">{fmtN(r.dispLaser)}</td>
+                    <td className="px-3 py-2 text-right font-mono text-sm font-bold">{fmtN(r.dispOperador)}</td>
                     <td className="px-3 py-2 text-right">
                       <span className={`font-mono text-sm font-bold inline-flex items-center gap-1 ${r.diferencia > 0 ? "text-orange-400" : r.diferencia < 0 ? "text-blue-400" : "text-green-400"}`}>
                         {r.diferencia > 0 ? <TrendingUp className="h-3 w-3" /> : r.diferencia < 0 ? <TrendingDown className="h-3 w-3" /> : null}
-                        {r.diferencia > 0 ? "+" : ""}{fmt(r.diferencia)}
+                        {r.diferencia > 0 ? "+" : ""}{fmtN(r.diferencia)}
                       </span>
                     </td>
                     <td className="px-2 py-2 text-right">
@@ -636,13 +635,13 @@ export function PulsosAuditoriaPage() {
                 {/* Fila TOTAL */}
                 <tr className="bg-muted/40 border-t-2 border-primary/30 font-bold">
                   <td className="px-3 py-2 text-xs" colSpan={5}>TOTAL</td>
-                  <td className="px-3 py-2 text-right font-mono text-xs">{semana.totPulsosInicio > 0 ? fmt(semana.totPulsosInicio) : "-"}</td>
-                  <td className="px-3 py-2 text-right font-mono text-xs">{semana.totPulsosFin > 0 ? fmt(semana.totPulsosFin) : "-"}</td>
-                  <td className="px-3 py-2 text-right font-mono text-sm text-primary">{fmt(semana.totDispLaser)}</td>
-                  <td className="px-3 py-2 text-right font-mono text-sm text-primary">{fmt(semana.totDispOp)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-xs">{semana.totPulsosInicio > 0 ? fmtN(semana.totPulsosInicio) : "-"}</td>
+                  <td className="px-3 py-2 text-right font-mono text-xs">{semana.totPulsosFin > 0 ? fmtN(semana.totPulsosFin) : "-"}</td>
+                  <td className="px-3 py-2 text-right font-mono text-sm text-primary">{fmtN(semana.totDispLaser)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-sm text-primary">{fmtN(semana.totDispOp)}</td>
                   <td className="px-3 py-2 text-right">
                     <span className={`font-mono text-sm font-bold ${semana.totDiferencia > 0 ? "text-orange-400" : semana.totDiferencia < 0 ? "text-blue-400" : "text-green-400"}`}>
-                      {semana.totDiferencia > 0 ? "+" : ""}{fmt(semana.totDiferencia)}
+                      {semana.totDiferencia > 0 ? "+" : ""}{fmtN(semana.totDiferencia)}
                     </span>
                   </td>
                   <td className="px-2 py-2" colSpan={3}></td>

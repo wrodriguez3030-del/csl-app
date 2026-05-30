@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
+import { fmtN, parseN } from "@/lib/fmt"
 import { useSessionUser } from "@/hooks/use-session-user"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { loadXLSX } from "@/lib/load-xlsx"
@@ -670,6 +671,16 @@ export function PulsosCuadreSemanalPage() {
     }))
   }
 
+  const confirmarTodo = () => {
+    const updates: Record<string, Partial<EquipoCuadre>> = {}
+    for (const r of equiposCuadre) {
+      if (r.bloqueo && !r.bloqueoConfirmado) {
+        updates[r.rowId] = { ...(equiposEditados[r.rowId] || {}), bloqueoConfirmado: true }
+      }
+    }
+    setEquiposEditados((prev) => ({ ...prev, ...updates }))
+  }
+
   // ── PASO 5: guardar ──────────────────────────────────────────────────────
   const guardarCuadre = async () => {
     if (!equiposCuadre.length) {
@@ -984,7 +995,7 @@ export function PulsosCuadreSemanalPage() {
                             <div className="flex-1">
                               <p className="font-bold">Este archivo ya fue importado anteriormente.</p>
                               <p className="mt-1 text-sky-900/80">
-                                Las <b>{yaImportadas.toLocaleString("es-DO")}</b> filas en el rango ya están en la base de datos.
+                                Las <b>{fmtN(yaImportadas)}</b> filas en el rango ya están en la base de datos.
                                 No se importarán duplicados.
                               </p>
                             </div>
@@ -1101,7 +1112,7 @@ export function PulsosCuadreSemanalPage() {
                                           {sem.alreadyImp > 0 ? <span>· <span className="text-sky-700"><b>{sem.alreadyImp}</b> ya importadas</span></span> : null}
                                           {sem.dupFile > 0 ? <span>· <span className="text-amber-700"><b>{sem.dupFile}</b> dup archivo</span></span> : null}
                                           {sem.err > 0 ? <span>· <span className="text-rose-700"><b>{sem.err}</b> err</span></span> : null}
-                                          <span>· <b>{sem.disparos.toLocaleString("es-DO")}</b> disparos</span>
+                                          <span>· <b>{fmtN(sem.disparos)}</b> disparos</span>
                                           {sem.operadoras.length > 0 ? <span>· {sem.operadoras.length} {sem.operadoras.length === 1 ? "operadora" : "operadoras"}</span> : null}
                                           {sem.sucursales.length > 0 ? <span>· {sem.sucursales.join(", ")}</span> : null}
                                         </div>
@@ -1155,9 +1166,16 @@ export function PulsosCuadreSemanalPage() {
             ) : null}
             <NavButtons
               onBack={() => setStep(1)}
-              onNext={() => setStep(3)}
-              nextLabel={!weekStart ? "Elige una semana del archivo" : "Continuar a lecturas"}
-              nextEnabled={excelImports.length > 0 && !!weekStart}
+              onNext={() => {
+                if (!weekStart) setWeekStart(lunesDeSemana(today))
+                setStep(3)
+              }}
+              nextLabel={
+                excelImports.length === 0
+                  ? "Continuar sin AgendaPro (solo lecturas)"
+                  : (!weekStart ? "Elige una semana del archivo" : "Continuar a lecturas")
+              }
+              nextEnabled={excelImports.length === 0 || !!weekStart}
             />
           </CardContent>
         </Card>
@@ -1359,10 +1377,13 @@ export function PulsosCuadreSemanalPage() {
                             <TableCell className="text-[10px] text-muted-foreground">{r.serial || "—"}</TableCell>
                             <TableCell className="text-right">
                               <Input
-                                type="number" min={0}
-                                value={lecturaEf || ""}
-                                onChange={(e) => updateLecturaRow(r.rowId, { lecturaFinal: Number(e.target.value) || 0 })}
+                                value={lecturaEf ? fmtN(lecturaEf) : ""}
+                                onChange={(e) => {
+                                  const raw = parseN(e.target.value)
+                                  updateLecturaRow(r.rowId, { lecturaFinal: raw })
+                                }}
                                 className="h-7 w-32 text-right font-mono text-xs"
+                                placeholder="0"
                               />
                             </TableCell>
                             <TableCell className="text-[10px] text-muted-foreground">{r.message || "—"}</TableCell>
@@ -1388,9 +1409,10 @@ export function PulsosCuadreSemanalPage() {
 
       {/* PASO 4 — Revisión */}
       {step === 4 ? (() => {
-        const bloqueosSinConfirmar = equiposCuadre.filter((r) => r.bloqueo && !r.bloqueoConfirmado)
-        const sinLectAnterior = bloqueosSinConfirmar.filter((r) => r.bloqueo === "sin_lectura_anterior").length
-        const sinAgendaPro = bloqueosSinConfirmar.filter((r) => r.bloqueo === "sin_agendapro").length
+        const modoSoloLecturas = excelImports.length === 0
+        const bloqueosSinConfirmar = equiposCuadre.filter((r) => r.bloqueo === "sin_lectura_anterior" && !r.bloqueoConfirmado)
+        const sinLectAnterior = bloqueosSinConfirmar.length
+        const sinAgendaProCount = equiposCuadre.filter((r) => r.bloqueo === "sin_agendapro").length
         return (
         <Card>
           <CardHeader>
@@ -1399,21 +1421,38 @@ export function PulsosCuadreSemanalPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            {/* Banner de bloqueos pendientes */}
-            {bloqueosSinConfirmar.length > 0 ? (
+            {/* Banner bloqueante: solo sin_lectura_anterior */}
+            {sinLectAnterior > 0 ? (
               <div className="border-b border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
                   <div className="flex-1">
                     <p className="font-bold">
-                      {bloqueosSinConfirmar.length} {bloqueosSinConfirmar.length === 1 ? "equipo requiere confirmación" : "equipos requieren confirmación"}
+                      {sinLectAnterior} {sinLectAnterior === 1 ? "equipo sin lectura anterior" : "equipos sin lectura anterior"} — se calculará diferencia desde 0.
                     </p>
-                    <p className="mt-0.5">
-                      {sinLectAnterior > 0 ? <><b>{sinLectAnterior}</b> sin lectura anterior · </> : null}
-                      {sinAgendaPro > 0 ? <><b>{sinAgendaPro}</b> sin datos de AgendaPro · </> : null}
-                      Confirma cada caso para poder guardar el cuadre.
-                    </p>
+                    <div className="mt-2">
+                      <Button size="sm" variant="outline" className="h-7 gap-1.5 px-3 text-[11px]" onClick={confirmarTodo}>
+                        <CheckCircle2 className="h-3 w-3" /> Confirmar todo y continuar
+                      </Button>
+                    </div>
                   </div>
+                </div>
+              </div>
+            ) : null}
+            {/* Banner informativo: sin AgendaPro (no bloqueante) */}
+            {sinAgendaProCount > 0 && !modoSoloLecturas ? (
+              <div className="border-b border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+                  <p><b>{sinAgendaProCount}</b> {sinAgendaProCount === 1 ? "equipo" : "equipos"} sin match en AgendaPro — se guardará solo la lectura del medidor. No es bloqueante.</p>
+                </div>
+              </div>
+            ) : null}
+            {modoSoloLecturas ? (
+              <div className="border-b border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+                  <p>Modo solo lecturas — sin AgendaPro. Los disparos operador aparecen en 0 hasta que los edites manualmente.</p>
                 </div>
               </div>
             ) : null}
@@ -1439,44 +1478,51 @@ export function PulsosCuadreSemanalPage() {
                     <TableCell className="text-xs">{r.sucursal}</TableCell>
                     <TableCell className="text-xs">{r.cabina || "—"}</TableCell>
                     <TableCell className="text-right font-mono text-xs">
-                      {r.bloqueo === "sin_lectura_anterior" ? (
+                      {r.bloqueo === "sin_lectura_anterior" && !r.bloqueoConfirmado ? (
                         <span className="text-amber-700">Sin previa</span>
-                      ) : r.lecturaInicial.toLocaleString("es-DO")}
+                      ) : fmtN(r.lecturaInicial)}
                     </TableCell>
-                    <TableCell className="text-right font-mono text-xs">{r.lecturaFinal.toLocaleString("es-DO")}</TableCell>
-                    <TableCell className="text-right font-mono text-xs font-bold">{r.disparosLaser.toLocaleString("es-DO")}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">{fmtN(r.lecturaFinal)}</TableCell>
+                    <TableCell className="text-right font-mono text-xs font-bold">{fmtN(r.disparosLaser)}</TableCell>
                     <TableCell className="text-right font-mono text-xs">
-                      {r.bloqueo === "sin_agendapro" && !r.bloqueoConfirmado ? (
-                        <span className="text-amber-700">Sin AgendaPro</span>
-                      ) : (
-                        <Input
-                          type="number" min={0}
-                          value={r.disparosOperador}
-                          onChange={(e) => setEquiposEditados((prev) => ({
+                      <Input
+                        value={fmtN(r.disparosOperador)}
+                        onChange={(e) => {
+                          const raw = parseN(e.target.value)
+                          setEquiposEditados((prev) => ({
                             ...prev,
-                            [r.rowId]: { ...(prev[r.rowId] || {}), disparosOperador: Math.max(0, Number(e.target.value) || 0) },
-                          }))}
-                          className="h-7 w-24 text-right text-xs"
-                        />
-                      )}
+                            [r.rowId]: { ...(prev[r.rowId] || {}), disparosOperador: raw },
+                          }))
+                        }}
+                        className="h-7 w-24 text-right text-xs"
+                        placeholder="0"
+                      />
                     </TableCell>
                     <TableCell className={`text-right font-mono text-xs ${r.diferencia > 0 ? "text-rose-600" : r.diferencia < 0 ? "text-sky-600" : ""}`}>
-                      {r.diferencia > 0 ? "+" : ""}{r.diferencia.toLocaleString("es-DO")}
+                      {r.diferencia > 0 ? "+" : ""}{fmtN(r.diferencia)}
                     </TableCell>
                     <TableCell className="text-right text-xs">{r.porcentaje.toFixed(1)}%</TableCell>
                     <TableCell>
-                      {r.bloqueo && !r.bloqueoConfirmado ? (
+                      {r.bloqueo === "sin_lectura_anterior" && !r.bloqueoConfirmado ? (
                         <div className="flex flex-col gap-1">
                           <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
                             <AlertTriangle className="h-2.5 w-2.5" />
-                            {r.bloqueo === "sin_lectura_anterior" ? "Sin lectura anterior" : "Sin AgendaPro"}
+                            Sin lectura anterior
                           </span>
                           <Button
                             size="sm" variant="outline" className="h-6 px-2 text-[10px]"
                             onClick={() => toggleBloqueoConfirmado(r.rowId, true)}
                           >
-                            Confirmar y continuar
+                            Confirmar
                           </Button>
+                        </div>
+                      ) : r.bloqueo === "sin_agendapro" ? (
+                        <div className="flex flex-col gap-1">
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${ALERT_CLS[r.alerta]}`}>
+                            {r.alerta === "OK" ? <CheckCircle2 className="h-2.5 w-2.5" /> : <AlertTriangle className="h-2.5 w-2.5" />}
+                            {r.alerta}
+                          </span>
+                          <span className="text-[10px] text-sky-600">Sin AgendaPro</span>
                         </div>
                       ) : (
                         <div className="flex flex-col gap-1">
@@ -1508,8 +1554,8 @@ export function PulsosCuadreSemanalPage() {
               <NavButtons
                 onBack={() => setStep(3)}
                 onNext={() => setStep(5)}
-                nextLabel={bloqueosSinConfirmar.length > 0 ? `Faltan ${bloqueosSinConfirmar.length} confirmaciones` : "Continuar a guardar"}
-                nextEnabled={equiposCuadre.length > 0 && bloqueosSinConfirmar.length === 0}
+                nextLabel={sinLectAnterior > 0 ? `Confirmar ${sinLectAnterior} sin lectura anterior` : "Continuar a guardar"}
+                nextEnabled={equiposCuadre.length > 0 && sinLectAnterior === 0}
               />
             </div>
           </CardContent>
@@ -1519,7 +1565,7 @@ export function PulsosCuadreSemanalPage() {
 
       {/* PASO 5 — Guardar */}
       {step === 5 ? (() => {
-        const bloqueosPend = equiposCuadre.filter((r) => r.bloqueo && !r.bloqueoConfirmado).length
+        const bloqueosPend = equiposCuadre.filter((r) => r.bloqueo === "sin_lectura_anterior" && !r.bloqueoConfirmado).length
         return (
         <Card>
           <CardHeader>
@@ -1530,7 +1576,7 @@ export function PulsosCuadreSemanalPage() {
           <CardContent className="space-y-4">
             {bloqueosPend > 0 ? (
               <Alert tone="warn">
-                <b>{bloqueosPend} equipos</b> tienen bloqueos sin confirmar (sin lectura anterior o sin AgendaPro). Vuelve al Paso 4 para confirmar cada caso antes de guardar.
+                <b>{bloqueosPend} {bloqueosPend === 1 ? "equipo" : "equipos"}</b> sin lectura anterior sin confirmar. Vuelve al Paso 4 para confirmar antes de guardar.
               </Alert>
             ) : null}
             <Alert tone="info">
@@ -1614,7 +1660,7 @@ function Mini({ label, value, tone }: { label: string; value: number; tone?: "ok
     : "border-slate-200 bg-white text-slate-700"
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${cls}`}>
-      {label}: <span className="font-mono">{value.toLocaleString("es-DO")}</span>
+      {label}: <span className="font-mono">{fmtN(value)}</span>
     </span>
   )
 }
@@ -1676,9 +1722,9 @@ function ResumenFinal({ snapshot, sesiones, onReset, business }: {
                   <TableCell className="font-bold">{r.equipoId}</TableCell>
                   <TableCell className="text-xs">{r.sucursal}</TableCell>
                   <TableCell className="text-xs">{r.cabina || "—"}</TableCell>
-                  <TableCell className="text-right font-mono text-xs font-bold">{r.disparosLaser.toLocaleString("es-DO")}</TableCell>
-                  <TableCell className="text-right font-mono text-xs">{r.disparosOperador.toLocaleString("es-DO")}</TableCell>
-                  <TableCell className={`text-right font-mono text-xs ${r.diferencia > 0 ? "text-rose-600" : r.diferencia < 0 ? "text-sky-600" : ""}`}>{r.diferencia > 0 ? "+" : ""}{r.diferencia.toLocaleString("es-DO")}</TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold">{fmtN(r.disparosLaser)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">{fmtN(r.disparosOperador)}</TableCell>
+                  <TableCell className={`text-right font-mono text-xs ${r.diferencia > 0 ? "text-rose-600" : r.diferencia < 0 ? "text-sky-600" : ""}`}>{r.diferencia > 0 ? "+" : ""}{fmtN(r.diferencia)}</TableCell>
                   <TableCell className="text-right text-xs">{r.porcentaje.toFixed(1)}%</TableCell>
                   <TableCell>
                     <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${ALERT_CLS[r.alerta]}`}>
@@ -1694,7 +1740,7 @@ function ResumenFinal({ snapshot, sesiones, onReset, business }: {
 
       {peor && peor.alerta !== "OK" ? (
         <Alert tone="warn">
-          <b>Mayor desviación:</b> equipo <b>{peor.equipoId}</b> ({peor.sucursal}{peor.cabina ? ` · ${peor.cabina}` : ""}) — diferencia {peor.diferencia > 0 ? "+" : ""}{peor.diferencia.toLocaleString("es-DO")} ({peor.porcentaje.toFixed(1)}%).
+          <b>Mayor desviación:</b> equipo <b>{peor.equipoId}</b> ({peor.sucursal}{peor.cabina ? ` · ${peor.cabina}` : ""}) — diferencia {peor.diferencia > 0 ? "+" : ""}{fmtN(peor.diferencia)} ({peor.porcentaje.toFixed(1)}%).
         </Alert>
       ) : null}
 
@@ -1721,7 +1767,7 @@ function KpiTile({ label, value, tone }: { label: string; value: number; tone?: 
     : "border-slate-200 bg-white text-slate-700"
   return (
     <div className={`rounded-2xl border p-4 text-center ${cls}`}>
-      <div className="font-heading text-2xl font-black tracking-tight">{value.toLocaleString("es-DO")}</div>
+      <div className="font-heading text-2xl font-black tracking-tight">{fmtN(value)}</div>
       <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.16em]">{label}</div>
     </div>
   )

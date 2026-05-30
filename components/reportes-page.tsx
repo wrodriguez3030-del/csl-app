@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
+import { fmtN } from "@/lib/fmt"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -303,8 +304,8 @@ export function ReportesPage() {
 
         <table>
           <tr>
-            <td class="label">P. TOTALES:</td><td>${(reporte.P_Totales || 0).toLocaleString()}</td>
-            <td class="label">P. CABEZA:</td><td>${(reporte.P_Cabeza || 0).toLocaleString()}</td>
+            <td class="label">P. TOTALES:</td><td>${fmtN(reporte.P_Totales)}</td>
+            <td class="label">P. CABEZA:</td><td>${fmtN(reporte.P_Cabeza)}</td>
             <td class="label">HV@</td><td></td>
             <td class="label">J</td>
             <td class="label">BS:</td><td></td>
