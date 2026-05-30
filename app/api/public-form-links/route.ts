@@ -36,6 +36,13 @@ const CONSENT_NAME_BY_TYPE: Record<FormType, string> = {
   ficha_dermatologica: "Consentimiento de Ficha Dermatológica",
   consentimiento_masajes: "Consentimiento de Masajes",
   consentimiento_tatuajes_cejas: "Consentimiento de Eliminación de Tatuajes y Cejas",
+  solicitud_empleo: "Solicitud de empleo",
+}
+
+// Mapa business_id → nombre corto para el mensaje WhatsApp.
+const BUSINESS_NAME_BY_ID: Record<string, string> = {
+  "66b0cf3e-4cd7-4cfb-a7cf-0674b77fc4e6": "Cibao Spa Laser",
+  "03b96698-c5df-4b4b-84df-1160a7ad56b9": "Depicenter Skin Láser",
 }
 
 function buildWhatsappUrl(
@@ -43,18 +50,37 @@ function buildWhatsappUrl(
   ttlHours: number,
   clienteNombre?: string,
   formType?: FormType,
+  businessId?: string,
 ): string {
-  // Personalizamos el saludo si tenemos el nombre del cliente. Tomamos solo
-  // el primer nombre para que el mensaje no quede sobre-formal.
+  const businessName = (businessId && BUSINESS_NAME_BY_ID[businessId]) || "Cibao Spa Laser"
   const firstName = clienteNombre ? clienteNombre.trim().split(/\s+/)[0].toUpperCase() : ""
-  const consentName = formType ? CONSENT_NAME_BY_TYPE[formType] : "formulario"
-  const greeting = firstName ? `Hola ${firstName}, por favor` : "Hola, por favor"
-  const mensaje = [
-    `${greeting} complete y firme su ${consentName} de Cibao Spa Laser en este enlace:`,
-    publicUrl,
-    "",
-    `Este enlace es válido por ${ttlHours} horas y solo puede usarse una vez.`,
-  ].join("\n")
+
+  let mensaje: string
+  if (formType === "solicitud_empleo") {
+    // Para solicitud de empleo: mensaje sin nombre del cliente (candidato),
+    // con la marca del tenant correcta y el link.
+    const greeting = firstName ? `Hola ${firstName} 👋` : "Hola 👋"
+    mensaje = [
+      greeting,
+      "",
+      `Te compartimos el enlace para completar tu solicitud de empleo en ${businessName}:`,
+      "",
+      publicUrl,
+      "",
+      "Este enlace es personal y solo puede utilizarse una vez.",
+      "",
+      "Gracias.",
+    ].join("\n")
+  } else {
+    const consentName = formType ? CONSENT_NAME_BY_TYPE[formType] : "formulario"
+    const greeting = firstName ? `Hola ${firstName}, por favor` : "Hola, por favor"
+    mensaje = [
+      `${greeting} complete y firme su ${consentName} de ${businessName} en este enlace:`,
+      publicUrl,
+      "",
+      `Este enlace es válido por ${ttlHours} horas y solo puede usarse una vez.`,
+    ].join("\n")
+  }
   // wa.me sin número permite al user elegir contacto desde WhatsApp.
   return `https://wa.me/?text=${encodeURIComponent(mensaje)}`
 }
@@ -103,6 +129,7 @@ export async function POST(request: Request) {
       ttlHours,
       clienteNombre || prefillPayload?.nombre,
       formType as FormType,
+      ctx.businessId,
     )
 
     return json({

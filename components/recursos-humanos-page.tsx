@@ -10,9 +10,10 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Users, Plus, Pencil, Trash2, Save, X, Search, Download, PenTool, User, MapPin, Users2, GraduationCap, Briefcase, Phone, CheckSquare, FileSignature, Landmark, Link2 } from "lucide-react"
+import { Users, Plus, Pencil, Trash2, Save, X, Search, Download, PenTool, User, MapPin, Users2, GraduationCap, Briefcase, Phone, CheckSquare, FileSignature, Landmark, Link2, MessageCircle, Loader2 } from "lucide-react"
 import { RecordActions } from "@/components/record-actions"
 import { SiNoButtons } from "@/components/si-no-buttons"
+import { supabaseBrowser } from "@/lib/supabase-client"
 
 interface FamiliarItem { nombre: string; parentesco: string; edad: string; direccion: string; ocupacion: string }
 interface EducacionItem { escolaridad: string; institucion: string; curso: string; nivel: string; estado: string }
@@ -279,6 +280,11 @@ export function RecursosHumanosPage() {
   const [open, setOpen] = useState(false)
   const [showFirma, setShowFirma] = useState(false)
   const [form, setForm] = useState<Solicitud>(emptyForm)
+  const [waOpen, setWaOpen] = useState(false)
+  const [waNombre, setWaNombre] = useState("")
+  const [waTelefono, setWaTelefono] = useState("")
+  const [waLoading, setWaLoading] = useState(false)
+  const [waError, setWaError] = useState("")
   const [search, setSearch] = useState("")
   const [filterEstado, setFilterEstado] = useState("todos")
   const [sortKey, setSortKey] = useState<SortKey>("nombre")
@@ -386,6 +392,30 @@ export function RecursosHumanosPage() {
     }
   }
 
+  /** Llama a /api/public-form-links para generar un token de un solo uso
+   *  y devuelve { url, whatsappUrl }. Requiere sesión activa (Bearer). */
+  const generateSolicitudLink = async (clienteNombre?: string, clienteTelefono?: string): Promise<{ url: string; whatsappUrl: string }> => {
+    const { data: { session } } = await supabaseBrowser.auth.getSession()
+    if (!session?.access_token) throw new Error("Sesión no válida — vuelve a iniciar sesión")
+    const response = await fetch("/api/public-form-links", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ formType: "solicitud_empleo", clienteNombre: clienteNombre || undefined, clienteTelefono: clienteTelefono || undefined }),
+    })
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; url?: string; whatsappUrl?: string; error?: string }
+    if (!result.ok || !result.url) throw new Error(result.error || "Error generando link")
+    return { url: result.url, whatsappUrl: result.whatsappUrl || "" }
+  }
+
+  /** Normaliza un número dominicano a formato wa.me (sin guiones, con país).
+   *  8297372676 → 18297372676; si ya tiene 1 al inicio se deja igual. */
+  const normalizeWaPhone = (raw: string): string => {
+    const digits = raw.replace(/\D/g, "")
+    if (digits.length === 10 && /^[89]/.test(digits)) return `1${digits}`
+    if (digits.length === 11 && digits.startsWith("1")) return digits
+    return digits
+  }
+
   const openNew = () => { setForm({ ...emptyForm, id: `sol_${Date.now()}` }); setActiveTab("personal"); setOpen(true) }
   /** Trae el detalle COMPLETO (firma_digital, documentos_adjuntos, payload con
    *  foto cédula, experiencia/educación/referencias) por ID. El listado slim
@@ -408,12 +438,45 @@ export function RecursosHumanosPage() {
     setForm(full); setActiveTab("personal"); setOpen(true)
   }
   const copyPublicLink = async () => {
-    // El slug del tenant activo va como query param para que el formulario
-    // público muestre la marca correcta y el POST se guarde con el
-    // business_id correcto.
-    const link = `${window.location.origin}/solicitud-empleo?empresa=${business.slug}`
-    await navigator.clipboard.writeText(link)
-    showToast(`Link público de ${business.name} · Solicitud de empleo copiado`, "success")
+    try {
+      const { url } = await generateSolicitudLink()
+      await navigator.clipboard.writeText(url)
+      showToast("Link de solicitud generado y copiado. Este enlace solo puede usarse una vez.", "success")
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Error generando link", "error")
+    }
+  }
+
+  const handleWhatsappSend = async () => {
+    if (!waTelefono.trim()) { setWaError("El teléfono es obligatorio."); return }
+    setWaError("")
+    setWaLoading(true)
+    try {
+      const { url } = await generateSolicitudLink(waNombre.trim() || undefined, waTelefono.trim())
+      const phone = normalizeWaPhone(waTelefono)
+      const msgParts = [
+        waNombre.trim() ? `Hola ${waNombre.trim().split(/\s+/)[0].toUpperCase()} 👋` : "Hola 👋",
+        "",
+        `Te compartimos el enlace para completar tu solicitud de empleo en ${business.name}:`,
+        "",
+        url,
+        "",
+        "Este enlace es personal y solo puede utilizarse una vez.",
+        "",
+        "Gracias.",
+      ]
+      const waUrl = phone
+        ? `https://wa.me/${phone}?text=${encodeURIComponent(msgParts.join("\n"))}`
+        : `https://wa.me/?text=${encodeURIComponent(msgParts.join("\n"))}`
+      window.open(waUrl, "_blank")
+      setWaOpen(false)
+      setWaNombre("")
+      setWaTelefono("")
+    } catch (err) {
+      setWaError(err instanceof Error ? err.message : "Error enviando")
+    } finally {
+      setWaLoading(false)
+    }
   }
   const handleDelete = async (id: string) => {
     if (!confirm("¿Eliminar?")) return
@@ -588,7 +651,12 @@ ${solicitud.firma ? `<div class="firma"><p><b>Firma del Solicitante:</b></p><img
           <h2 className="text-xl font-bold flex items-center gap-2"><Users className="h-5 w-5" />Recursos Humanos</h2>
           <p className="text-sm text-muted-foreground">Solicitudes de empleo</p>
         </div>
-        <div className="flex gap-2"><Button variant="outline" onClick={copyPublicLink}><Link2 className="h-4 w-4 mr-2" />Copiar link público</Button><Button variant="outline" onClick={() => void loadSolicitudes()}>Actualizar</Button><Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Nueva solicitud</Button></div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => void copyPublicLink()}><Link2 className="h-4 w-4 mr-2" />Copiar link público</Button>
+          <Button variant="outline" className="text-green-700 border-green-300 hover:bg-green-50" onClick={() => { setWaNombre(""); setWaTelefono(""); setWaError(""); setWaOpen(true) }}><MessageCircle className="h-4 w-4 mr-2" />Enviar por WhatsApp</Button>
+          <Button variant="outline" onClick={() => void loadSolicitudes()}>Actualizar</Button>
+          <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Nueva solicitud</Button>
+        </div>
       </div>
 
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
@@ -1268,6 +1336,56 @@ ${solicitud.firma ? `<div class="firma"><p><b>Firma del Solicitante:</b></p><img
             <Button variant="outline" onClick={clearFirma}>Limpiar</Button>
             <Button variant="outline" onClick={() => setShowFirma(false)}>Cancelar</Button>
             <Button onClick={saveFirma}>✓ Guardar firma</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal WhatsApp — genera token único y abre wa.me con mensaje del tenant */}
+      <Dialog open={waOpen} onOpenChange={(v) => { setWaOpen(v); if (!v) setWaError("") }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageCircle className="h-5 w-5 text-green-600" />
+              Enviar solicitud por WhatsApp
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Se generará un link de un solo uso para <b>{business.name}</b> y se abrirá WhatsApp con el mensaje prellenado.
+            </p>
+            <div className="space-y-2">
+              <Label>Nombre del candidato <span className="text-muted-foreground">(opcional)</span></Label>
+              <Input
+                value={waNombre}
+                onChange={(e) => setWaNombre(e.target.value)}
+                placeholder="Ej: María Pérez"
+                disabled={waLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Teléfono WhatsApp <span className="text-destructive">*</span></Label>
+              <Input
+                value={waTelefono}
+                onChange={(e) => setWaTelefono(e.target.value)}
+                placeholder="809-737-2676"
+                type="tel"
+                disabled={waLoading}
+                onKeyDown={(e) => { if (e.key === "Enter") void handleWhatsappSend() }}
+              />
+              <p className="text-xs text-muted-foreground">Número dominicano (809/829/849). Se normalizará automáticamente.</p>
+            </div>
+            {waError ? <p className="text-sm text-destructive">{waError}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWaOpen(false)} disabled={waLoading}>Cancelar</Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white"
+              onClick={() => void handleWhatsappSend()}
+              disabled={waLoading}
+            >
+              {waLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageCircle className="mr-2 h-4 w-4" />}
+              Generar y enviar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

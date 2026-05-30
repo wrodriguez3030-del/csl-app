@@ -16,12 +16,14 @@ const TITLE_BY_TYPE: Record<FormType, string> = {
   ficha_dermatologica: "Consentimiento Ficha Dermatológica",
   consentimiento_masajes: "Consentimiento Masajes",
   consentimiento_tatuajes_cejas: "Consentimiento Eliminación de Tatuajes y Cejas",
+  solicitud_empleo: "Solicitud de empleo",
 }
 
 const DESCRIPTION_BY_TYPE: Record<FormType, string> = {
   ficha_dermatologica: "Complete y firme su consentimiento de Ficha Dermatológica.",
   consentimiento_masajes: "Complete y firme su consentimiento de Masajes.",
   consentimiento_tatuajes_cejas: "Complete y firme su consentimiento de Eliminación de Tatuajes y Cejas.",
+  solicitud_empleo: "Completa tu solicitud de empleo.",
 }
 
 const GENERIC_TITLE = "Consentimiento Digital"

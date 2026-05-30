@@ -151,19 +151,29 @@ function formatHeightInput(value: string) {
   return `${digits.slice(0, 1)}'${digits.slice(1)}"`
 }
 
-export function SolicitudEmpleoPublicaPage() {
+interface SolicitudPublicaPageProps {
+  /** Slug forzado desde un token. Cuando está presente, ignora ?empresa= de la URL. */
+  forcedBusinessSlug?: string
+  /** Override de submit — cuando lo provee PublicFormPage (flujo token),
+   *  manda el payload al route de submit del token en lugar de
+   *  /api/public/solicitud-empleo directo. */
+  onSubmit?: (data: Record<string, unknown>) => Promise<{ recordId?: string }>
+}
+
+export function SolicitudEmpleoPublicaPage(props: SolicitudPublicaPageProps = {}) {
   return (
     <Suspense fallback={<main className="min-h-screen bg-slate-950" />}>
-      <SolicitudEmpleoForm />
+      <SolicitudEmpleoForm {...props} />
     </Suspense>
   )
 }
 
-function SolicitudEmpleoForm() {
+function SolicitudEmpleoForm({ forcedBusinessSlug, onSubmit }: SolicitudPublicaPageProps) {
   const searchParams = useSearchParams()
-  // Slug del tenant viene como ?empresa=depicenter | ?empresa=csl. Si falta
-  // o es inválido, getBusinessBySlug devuelve CSL como default seguro.
-  const empresaSlug = (searchParams.get("empresa") || "csl").toLowerCase()
+  // Si viene un slug forzado desde token, úsalo; si no, leer ?empresa= de la URL.
+  const empresaSlug = forcedBusinessSlug
+    ? forcedBusinessSlug.toLowerCase()
+    : (searchParams.get("empresa") || "csl").toLowerCase()
   const business: Business = useMemo(() => getBusinessBySlug(empresaSlug), [empresaSlug])
   // Fallback de sucursales por tenant cuando aún no llegan las del backend.
   const sucursalesByTenant: Record<string, string[]> = {
@@ -257,15 +267,23 @@ function SolicitudEmpleoForm() {
 
     try {
       setIsLoading(true)
-      const response = await fetch("/api/public/solicitud-empleo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // Incluir empresa para que el backend asigne el business_id correcto.
-        body: JSON.stringify({ ...form, id: form.id || `sol_${Date.now()}`, empresa: empresaSlug }),
-      })
-      const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; solicitudId?: string }
-      if (!response.ok || !result.ok) throw new Error(result.error || "No se pudo enviar la solicitud")
-      setSuccessId(result.solicitudId || "")
+      const payload = { ...form, id: form.id || `sol_${Date.now()}`, empresa: empresaSlug }
+
+      if (onSubmit) {
+        // Flujo token: el caller (PublicFormPage) maneja el POST al submit del token.
+        const result = await onSubmit(payload)
+        setSuccessId(result.recordId || payload.id)
+      } else {
+        const response = await fetch("/api/public/solicitud-empleo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+        const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; solicitudId?: string }
+        if (!response.ok || !result.ok) throw new Error(result.error || "No se pudo enviar la solicitud")
+        setSuccessId(result.solicitudId || "")
+      }
+
       setForm(emptyForm)
       clearFirma()
       window.scrollTo({ top: 0, behavior: "smooth" })
@@ -285,7 +303,7 @@ function SolicitudEmpleoForm() {
             <h1 className="text-2xl font-bold">Solicitud enviada</h1>
             <p className="text-slate-300">Gracias. Tu solicitud para una posición en <b>{business.name}</b> fue registrada correctamente.</p>
             <p className="rounded-lg bg-slate-950 p-3 text-sm text-slate-400">Código: {successId}</p>
-            <Button onClick={() => setSuccessId("")}>Enviar otra solicitud</Button>
+            {!onSubmit && <Button onClick={() => setSuccessId("")}>Enviar otra solicitud</Button>}
           </CardContent>
         </Card>
       </main>

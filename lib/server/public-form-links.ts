@@ -20,11 +20,13 @@ export type FormType =
   | "ficha_dermatologica"
   | "consentimiento_masajes"
   | "consentimiento_tatuajes_cejas"
+  | "solicitud_empleo"
 
 export const FORM_TYPE_LABEL: Record<FormType, string> = {
   ficha_dermatologica: "Ficha Dermatológica",
   consentimiento_masajes: "Consentimiento de Masajes",
   consentimiento_tatuajes_cejas: "Consentimiento de Eliminación de Tatuajes y Cejas",
+  solicitud_empleo: "Solicitud de empleo",
 }
 
 export const FORM_TYPES = Object.keys(FORM_TYPE_LABEL) as FormType[]

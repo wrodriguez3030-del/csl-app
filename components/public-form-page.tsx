@@ -5,11 +5,13 @@ import { AlertCircle, Clock, Loader2 } from "lucide-react"
 import { PublicFichaConsentForm } from "@/components/public-ficha-consent-form"
 import { PublicMasajesConsentForm } from "@/components/public-masajes-consent-form"
 import { PublicTatuajesConsentForm } from "@/components/public-tatuajes-consent-form"
+import { SolicitudEmpleoPublicaPage } from "@/app/solicitud-empleo/solicitud-empleo-form"
 
 type FormType =
   | "ficha_dermatologica"
   | "consentimiento_masajes"
   | "consentimiento_tatuajes_cejas"
+  | "solicitud_empleo"
 
 type LinkStatus = "valido" | "usado" | "expirado" | "cancelado" | "invalido" | "loading" | "error"
 
@@ -169,6 +171,18 @@ export function PublicFormPage({ token }: { token: string }) {
   // Pre-fill rico — todos los campos que el operador haya llenado al generar
   // el link aparecen ya cargados en el form. El cliente puede corregirlos.
   const pf = linkState.prefillPayload || {}
+
+  if (formType === "solicitud_empleo") {
+    return (
+      <SolicitudEmpleoPublicaPage
+        forcedBusinessSlug={linkState.businessSlug || "csl"}
+        onSubmit={async (payload) => {
+          const result = await submit(payload)
+          return result
+        }}
+      />
+    )
+  }
 
   if (formType === "ficha_dermatologica") {
     // Form público de Ficha Dermatológica = consentimiento formal +

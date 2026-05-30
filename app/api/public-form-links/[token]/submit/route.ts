@@ -302,6 +302,62 @@ export async function POST(
     const formType = verified.formType
     const businessId = verified.link.business_id
 
+    // Solicitud de empleo: no necesita ensureCliente ni firma obligatoria.
+    // Procesamiento independiente para mantener el flujo limpio.
+    if (formType === "solicitud_empleo") {
+      const solicitudId = String(body.id || `sol_${Date.now()}`)
+      const text = (v: unknown, fallback = "") => String(v ?? fallback).trim()
+      const dateVal = (v: unknown) => {
+        const raw = text(v)
+        return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : null
+      }
+      const numVal = (v: unknown) => {
+        const p = Number(String(v ?? 0).replace(/[^\d.-]/g, ""))
+        return Number.isFinite(p) ? p : 0
+      }
+      const strArr = (v: unknown) => Array.isArray(v) ? v.filter((i): i is string => typeof i === "string") : []
+      const direccion = [body.calle, body.numeroDir, body.sector, body.ciudad]
+        .map((v) => text(v)).filter(Boolean).join(", ")
+      const row: Record<string, unknown> = {
+        solicitud_id: solicitudId,
+        business_id: businessId,
+        fecha_solicitud: dateVal(body.fecha) || new Date().toISOString().slice(0, 10),
+        estado: "Pendiente",
+        puesto_solicitado: text(body.puestoSolicitado),
+        nombre: text(body.nombre),
+        apellido: text(body.apellido),
+        cedula: text(body.cedula),
+        email: text(body.email),
+        telefono: text(body.celular || body.telefonoResidencia),
+        fecha_nacimiento: dateVal(body.fechaNacimiento),
+        sexo: text(body.sexo),
+        nacionalidad: text(body.nacionalidad, "Dominicana"),
+        provincia: text(body.provincia),
+        ciudad: text(body.ciudad),
+        sector: text(body.sector),
+        direccion,
+        experiencia: JSON.stringify(body.experiencia || []),
+        salario: numVal(body.pretensionesSalariales),
+        nivel_educacion: text(body.nivelEducacion),
+        especialidad: text(body.especialidad),
+        documentos_adjuntos: strArr(body.documentosAdjuntos),
+        firma_digital: text(body.firma),
+        observaciones: text(body.observaciones),
+        payload_json: { ...body, id: solicitudId, estado: "Pendiente" },
+      }
+      if (!text(row.nombre) || !text(row.apellido) || !text(row.cedula) || !text(row.puesto_solicitado) || !text(row.telefono)) {
+        return json({ ok: false, error: "Completa nombre, apellido, cédula, teléfono y puesto." }, 400)
+      }
+      try {
+        await upsertWithSchemaFallback(getSupabaseAdmin(), "csl_solicitudes_empleo", row, "solicitud_id")
+      } catch (insertError) {
+        console.error("[public-form-link/submit] solicitud insert error", { error: insertError instanceof Error ? insertError.message : String(insertError) })
+        return json({ ok: false, error: "No se pudo enviar la solicitud. Intente nuevamente." }, 500)
+      }
+      await claimPublicFormLink(String(token), solicitudId)
+      return json({ ok: true, recordId: solicitudId, formType })
+    }
+
     // 2) Asegurar cliente_id válido en csl_cosmiatria_clientes ANTES de
     // armar el row del form. Esto previene:
     //   (a) "duplicate key on documento_identidad" — si ya existe un cliente
