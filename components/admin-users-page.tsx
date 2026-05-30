@@ -56,7 +56,7 @@ const emptyForm: FormState = {
 // Menús base sugeridos por rol/business (UX, no security — el backend
 // re-valida y aplica MENU_ID_SET).
 const SUGGESTED_MENUS_CSL: MenuPermission[] = [
-  "panel", "sucursales", "equipos", "tecnicos", "reporte", "reportes", "historial-equipos", "inventario",
+  "panel", "pulse-mantenimiento", "sucursales", "equipos", "tecnicos", "reporte", "reportes", "historial-equipos", "inventario",
 ]
 const SUGGESTED_MENUS_DEPICENTER: MenuPermission[] = [
   "panel", "sucursales", "equipos", "tecnicos", "credenciales", "reporte", "reportes",

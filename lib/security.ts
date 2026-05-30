@@ -213,7 +213,12 @@ export function canAccessMenu(user: SystemUser | null, tab: TabId): boolean {
   if (tab === "admin-users") return Boolean(user.isSuperadmin)
   if (user.isAdmin) return true
   if (tab === "pulse-dashboard" || tab === "pulse-equipos" || tab === "pulse-mantenimiento") {
-    return Array.isArray(user.menus) && user.menus.some((menu) => String(menu).startsWith("pulsos-"))
+    if (!Array.isArray(user.menus)) return false
+    // El admin UI guarda el ID directo ("pulse-mantenimiento", "pulse-dashboard", etc.).
+    // Comprobamos primero el ID exacto y luego el fallback pulsos-* para
+    // usuarios que accedían vía PulseControl antes de la migración del menú.
+    if (user.menus.includes(tab)) return true
+    return user.menus.some((menu) => String(menu).startsWith("pulsos-"))
   }
   return Array.isArray(user.menus) && user.menus.includes(tab)
 }
