@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { Eye, Pencil, Printer, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useCurrentBusiness } from "@/hooks/use-current-business"
 
 type RecordActionsProps<T extends Record<string, unknown>> = {
   title: string
@@ -50,7 +51,7 @@ function printValueHtml(key: string, value: unknown) {
   return escapeHtml(value)
 }
 
-function printRecord(title: string, entries: [string, unknown][]) {
+function printRecord(title: string, entries: [string, unknown][], businessName: string = "Cibao Spa Laser") {
   const html = `<!doctype html><html><head><meta charset="utf-8" /><title>${escapeHtml(title)}</title><style>
 body{font-family:Arial,Helvetica,sans-serif;margin:18px;font-size:12px;color:#111827}
 .header{text-align:center;border-bottom:2px solid #00897b;margin-bottom:18px;padding-bottom:10px}
@@ -60,7 +61,7 @@ table{width:100%;border-collapse:collapse}
 th{background:#00897b;color:white;text-align:left;padding:7px;width:28%}
 td{border:1px solid #d1d5db;padding:7px;vertical-align:top;white-space:pre-wrap}
 tr:nth-child(even) td{background:#f8fafc}
-</style></head><body><div class="header"><div class="logo">CIBAO SPA LASER</div><h1>${escapeHtml(title)}</h1></div><table><tbody>${entries
+</style></head><body><div class="header"><div class="logo">${escapeHtml(businessName.toUpperCase())}</div><h1>${escapeHtml(title)}</h1></div><table><tbody>${entries
     .map(([key, value]) => `<tr><th>${escapeHtml(labelize(key))}</th><td>${printValueHtml(key, value)}</td></tr>`)
     .join("")}</tbody></table></body></html>`
   const printWindow = window.open("", "_blank")
@@ -74,6 +75,7 @@ tr:nth-child(even) td{background:#f8fafc}
 }
 
 export function RecordActions<T extends Record<string, unknown>>({ title, record, onEdit, onDelete, onPrint, printTitle }: RecordActionsProps<T>) {
+  const business = useCurrentBusiness()
   const [open, setOpen] = useState(false)
   const entries = useMemo(
     () => Object.entries(record).filter(([key, value]) => !key.startsWith("_") && typeof value !== "function"),
@@ -86,7 +88,7 @@ export function RecordActions<T extends Record<string, unknown>>({ title, record
         <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver" onClick={() => setOpen(true)}>
           <Eye className="h-3.5 w-3.5 text-muted-foreground" />
         </Button>
-        <Button size="icon" variant="ghost" className="h-7 w-7" title="Imprimir" onClick={() => onPrint ? onPrint() : printRecord(printTitle || title, entries)}>
+        <Button size="icon" variant="ghost" className="h-7 w-7" title="Imprimir" onClick={() => onPrint ? onPrint() : printRecord(printTitle || title, entries, business.name)}>
           <Printer className="h-3.5 w-3.5 text-primary" />
         </Button>
         {onEdit ? (

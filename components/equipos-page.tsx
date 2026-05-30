@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
+import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { loadXLSX } from "@/lib/load-xlsx"
 import { detectExcelType } from "@/lib/excel-type-detector"
 import { parseEquiposBaseWorkbook, type ParsedEquipoBaseRow, type ParseEquiposBaseResult } from "@/lib/equipos-base-parser"
@@ -26,8 +27,11 @@ import { RecordActions } from "@/components/record-actions"
 import { RecordViewDialog } from "@/components/record-view-dialog"
 import type { Equipo } from "@/lib/types"
 
+// Empresa queda vacía por defecto — la rellena el handleSubmit usando
+// business.name del tenant activo (CSL → "CIBAO SPA LASER, CSL, S.R.L.",
+// Depicenter → "Depicenter Skin Láser", o el equivalente del tenant futuro).
 const emptyEquipo: Equipo = {
-  EquipoID: "", Sucursal: "", Empresa: "CIBAO SPA LASER, CSL, S.R.L.",
+  EquipoID: "", Sucursal: "", Empresa: "",
   Domicilio: "", Modelo: "", Serie: "", Numero: "",
   P_Cabeza: 0, P_Totales: 0, Max_Cabeza: 6000000,
   Estado: "Activo", Observaciones: "",
@@ -56,6 +60,8 @@ function detectarCabinaLegacy(observaciones: string | undefined): string {
 
 export function EquiposPage() {
   const { db, setDb, dbPulsos, apiUrl, showToast, editingEquipo, setEditingEquipo } = useAppStore()
+  // Business activo — usado para defaultear Empresa al crear equipo nuevo.
+  const business = useCurrentBusiness()
 
   const [formData, setFormData] = useState<Equipo>(emptyEquipo)
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -182,7 +188,7 @@ export function EquiposPage() {
         action: "saveEquipo",
         equipoId: formData.EquipoID,
         sucursal: formData.Sucursal,
-        empresa: formData.Empresa || "CIBAO SPA LASER",
+        empresa: formData.Empresa || business.name,
         domicilio: formData.Domicilio || "",
         modelo: formData.Modelo,
         serie: formData.Serie || "",
@@ -295,7 +301,7 @@ export function EquiposPage() {
               action: "saveEquipo",
               equipoId: nuevo.EquipoID,
               sucursal: nuevo.Sucursal,
-              empresa: nuevo.Empresa || "CIBAO SPA LASER",
+              empresa: nuevo.Empresa || business.name,
               domicilio: nuevo.Domicilio || "",
               modelo: nuevo.Modelo || "",
               serie: nuevo.Serie || "",

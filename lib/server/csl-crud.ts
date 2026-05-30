@@ -198,10 +198,19 @@ export async function upsertRow(entity: string, row: Row) {
     }
   }
 
+  // onConflict: para tablas multi-tenant cuya PK es composite (business_id, X)
+  // el caller debe declarar las dos columnas. Hoy: csl_equipos. Si no,
+  // un upsert con solo equipo_id puede sobreescribir una fila de OTRO
+  // tenant (PK collision). Las demás tablas siguen con onConflict simple.
+  const onConflictByEntity: Record<string, string> = {
+    equipos: "business_id,equipo_id",
+  }
+  const onConflict = onConflictByEntity[entity] || config.key
+
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const { error } = await supabase
       .from(config.table)
-      .upsert(payload, { onConflict: config.key })
+      .upsert(payload, { onConflict })
 
     if (!error) return
     const missingColumn = /'([^']+)' column/.exec(error.message || "")?.[1]
