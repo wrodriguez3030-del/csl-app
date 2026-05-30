@@ -370,6 +370,22 @@ export async function getReporteCompleto(reportId: string): Promise<Row | null> 
   return data ? (fromDb("reportes", data as Row)) : null
 }
 
+/** Carga registro COMPLETO por ID para tablas cuyo listado se devuelve
+ *  con SELECT slim (sin firma_digital + payload_json + JSONs grandes).
+ *  Genérico — mismo patrón que getReporteCompleto. */
+export async function getRecordCompleto(entity: string, idValue: string): Promise<Row | null> {
+  if (!idValue) return null
+  const supabase = getSupabaseAdmin()
+  const config = tableConfig(entity)
+  const ctx = getBusinessContext()
+  const applyTenant = ctx && !ctx.isSuperadmin && !TENANT_EXEMPT_TABLES.has(config.table)
+  let query = supabase.from(config.table).select("*").eq(config.key, idValue)
+  if (applyTenant) query = query.eq("business_id", ctx!.businessId)
+  const { data, error } = await query.maybeSingle()
+  if (error) throw error
+  return data ? (fromDb(entity, data as Row)) : null
+}
+
 // ---------- composite ops cosmiatría ----------
 
 export async function upsertClienteCosmiatriaPreserving(row: Row) {

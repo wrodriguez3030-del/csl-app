@@ -24,6 +24,7 @@ import {
   getAllData,
   getAllPulsosData,
   getProfile,
+  getRecordCompleto,
   getReporteCompleto,
   getRows,
   getRowsPaged,
@@ -90,6 +91,33 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       // Listado liviano — sin firma_digital, documentos_adjuntos,
       // experiencia JSON, payload_json (que contiene foto cédula base64).
       return { ok: true, records: await getRows("solicitudes_empleo", { columns: SOLICITUDES_LIST_COLS }) }
+    case "getSolicitudCompleta": {
+      // Detalle full por ID — incluye firma_digital, documentos_adjuntos,
+      // experiencia, payload_json (con foto cédula). Llamado al abrir,
+      // editar o imprimir una solicitud específica.
+      const id = textValue(params, "id") || textValue(params, "solicitudId")
+      if (!id) throw new Error("id obligatorio")
+      const record = await getRecordCompleto("solicitudes_empleo", id)
+      return record ? { ok: true, record } : { ok: false, error: "Solicitud no encontrada" }
+    }
+    case "getFichaCompleta": {
+      const id = textValue(params, "id") || textValue(params, "fichaId")
+      if (!id) throw new Error("id obligatorio")
+      const record = await getRecordCompleto("ficha_dermatologica", id)
+      return record ? { ok: true, record } : { ok: false, error: "Ficha no encontrada" }
+    }
+    case "getConsentMasajesCompleto": {
+      const id = textValue(params, "id") || textValue(params, "consentId")
+      if (!id) throw new Error("id obligatorio")
+      const record = await getRecordCompleto("csl_consent_masajes", id)
+      return record ? { ok: true, record } : { ok: false, error: "Consentimiento no encontrado" }
+    }
+    case "getConsentTatuajesCejasCompleto": {
+      const id = textValue(params, "id") || textValue(params, "consentId")
+      if (!id) throw new Error("id obligatorio")
+      const record = await getRecordCompleto("csl_consent_tatuajes_cejas", id)
+      return record ? { ok: true, record } : { ok: false, error: "Consentimiento no encontrado" }
+    }
     case "getClientesCosmiatria":
       return { ok: true, records: await getRows("cosmiatria_clientes") }
     case "getFichasDermatologia":
