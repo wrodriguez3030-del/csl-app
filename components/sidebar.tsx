@@ -59,6 +59,7 @@ const CORE_GROUPS: { label: string; items: NavItem[] }[] = [
     label: "Mantenimiento",
     items: [
       { id: "panel", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
+      { id: "pulse-mantenimiento", label: "Dashboard Mantenimiento", icon: <Stethoscope className="h-4 w-4" /> },
       { id: "reporte", label: "Nuevo reporte", icon: <FileText className="h-4 w-4" /> },
       { id: "reportes", label: "Lista de reportes", icon: <ClipboardList className="h-4 w-4" /> },
       { id: "historial-equipos", label: "Historial por equipo", icon: <BarChart3 className="h-4 w-4" /> },
@@ -79,7 +80,6 @@ const PULSE_ITEMS: NavItem[] = [
   { id: "pulsos-sesiones", label: "Registro de servicios", icon: <Zap className="h-3.5 w-3.5" /> },
   { id: "pulsos-auditoria", label: "Auditoria / IA", icon: <BarChart3 className="h-3.5 w-3.5" /> },
   { id: "pulsos-cuadre", label: "Cuadre semanal", icon: <ClipboardCheck className="h-3.5 w-3.5" /> },
-  { id: "pulse-mantenimiento", label: "Mantenimiento", icon: <Stethoscope className="h-3.5 w-3.5" /> },
 ]
 
 const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
