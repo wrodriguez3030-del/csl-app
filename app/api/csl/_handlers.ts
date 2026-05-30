@@ -35,6 +35,9 @@ import {
   updateRowFields,
   upsertClienteCosmiatriaPreserving,
   upsertRow,
+  SOLICITUDES_LIST_COLS,
+  FICHA_LIST_COLS,
+  CONSENT_LIST_COLS,
 } from "@/lib/server/csl-crud"
 import { runWithBusinessContext } from "@/lib/server/business-context"
 import {
@@ -84,15 +87,20 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "getCredenciales":
       return { ok: true, records: await getRows("credenciales") }
     case "getSolicitudesEmpleo":
-      return { ok: true, records: await getRows("solicitudes_empleo") }
+      // Listado liviano — sin firma_digital, documentos_adjuntos,
+      // experiencia JSON, payload_json (que contiene foto cédula base64).
+      return { ok: true, records: await getRows("solicitudes_empleo", { columns: SOLICITUDES_LIST_COLS }) }
     case "getClientesCosmiatria":
       return { ok: true, records: await getRows("cosmiatria_clientes") }
     case "getFichasDermatologia":
-      return { ok: true, records: await getRows("ficha_dermatologica") }
+      // Listado liviano — sin firma_digital + payload_json (cuerpo clínico
+      // + foto cédula). El detalle completo se carga al abrir.
+      return { ok: true, records: await getRows("ficha_dermatologica", { columns: FICHA_LIST_COLS }) }
     case "getConsentMasajes":
-      return { ok: true, records: await getRows("csl_consent_masajes") }
+      // Sin firmas data-URL + payload_json + JSONs grandes.
+      return { ok: true, records: await getRows("csl_consent_masajes", { columns: CONSENT_LIST_COLS }) }
     case "getConsentTatuajesCejas":
-      return { ok: true, records: await getRows("csl_consent_tatuajes_cejas") }
+      return { ok: true, records: await getRows("csl_consent_tatuajes_cejas", { columns: CONSENT_LIST_COLS }) }
     case "getCertificadosRegalo":
       return { ok: true, records: await getRows("certificados_regalo") }
     case "getRowsPaged": {

@@ -279,25 +279,36 @@ const REPORTES_LIST_COLS = [
   "business_id", "created_at", "updated_at",
 ].join(",")
 
-// Sin firmas+foto cédula+adjuntos base64.
-const SOLICITUDES_LIST_COLS = [
-  "solicitud_id", "fecha_solicitud", "nombre_completo", "cedula",
-  "puesto", "sucursal", "estado", "telefono", "email",
-  "business_id", "created_at", "updated_at",
+// Columnas LIVIANAS para listados — verificadas contra OpenAPI 2026-05-30.
+// Excluyen los campos pesados (firma_digital base64, payload_json con foto
+// cédula base64, JSONs grandes). El detalle se carga via actions específicas.
+
+// csl_solicitudes_empleo: SIN firma_digital, documentos_adjuntos,
+// experiencia (JSON), observaciones largas, payload_json (tiene foto cédula).
+// 65 KB/fila → ~600 B/fila (99% menos egress en listado).
+export const SOLICITUDES_LIST_COLS = [
+  "solicitud_id", "business_id", "fecha_solicitud", "estado",
+  "puesto_solicitado", "nombre", "apellido", "cedula",
+  "email", "telefono", "fecha_nacimiento", "sexo", "ciudad",
+  "nivel_educacion", "especialidad", "salario", "revisado_por",
+  "created_at", "updated_at",
 ].join(",")
 
-// Sin firma_base64+payload_json (que tiene foto cédula).
-const FICHA_LIST_COLS = [
-  "ficha_id", "cliente_id", "nombre", "telefono", "cedula", "email",
-  "ciudad", "sucursal", "fecha",
-  "business_id", "created_at", "updated_at",
+// csl_ficha_dermatologica: SIN firma_digital + payload_json (que tiene
+// el cuerpo clínico completo + foto cédula). 52 KB/fila → ~500 B/fila.
+export const FICHA_LIST_COLS = [
+  "ficha_id", "business_id", "cliente_id", "nombre", "cedula", "telefono",
+  "email", "ciudad", "sucursal", "fecha", "edad", "ocupacion", "operadora",
+  "motivo_consulta", "estado", "created_at", "updated_at",
 ].join(",")
 
-// Sin firmas+payload_json grandes.
-const CONSENT_LIST_COLS = [
-  "consent_id", "cliente_id", "nombre", "cedula", "telefono",
-  "fecha_servicio", "sucursal",
-  "business_id", "created_at", "updated_at",
+// csl_consent_masajes / tatuajes_cejas: SIN firma_cliente + firma_especialista
+// (data URLs base64) + payload_json + JSONs grandes. ~48 KB/fila → ~400 B.
+export const CONSENT_LIST_COLS = [
+  "consent_id", "business_id", "cliente_id", "cliente_nombre", "nombre_cliente",
+  "documento", "telefono", "correo", "fecha", "fecha_registro",
+  "sucursal", "especialista", "especialista_nombre", "estado",
+  "created_at", "updated_at",
 ].join(",")
 
 // csl_sesiones_cliente — solo últimas 6 semanas (~42 días) por defecto.
