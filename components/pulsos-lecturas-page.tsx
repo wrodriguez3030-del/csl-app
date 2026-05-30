@@ -22,7 +22,7 @@ import {
 import { Plus, Save, X, BookOpen, Camera, ChevronDown, ChevronRight, Loader2, Upload, FileSpreadsheet } from "lucide-react"
 import { RecordActions } from "@/components/record-actions"
 import type { LecturaSemanal } from "@/lib/types"
-import { fmtN } from "@/lib/fmt"
+import { fmtN, parseN } from "@/lib/fmt"
 
 const today = new Date().toISOString().split("T")[0]
 
@@ -86,6 +86,58 @@ export function PulsosLecturasPage() {
   const [form, setForm] = useState<LecturaSemanal>(empty)
   const [isEditing, setIsEditing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [recalcPreview, setRecalcPreview] = useState<null | { count: number; items: Array<{ id: string; equipo: string; semana: string; oldInicial: number; newInicial: number }> }>(null)
+  const [recalcRunning, setRecalcRunning] = useState(false)
+
+  const buildRecalcPreview = () => {
+    const byEquipo = new Map<string, typeof dbPulsos.lecturasSemanales[number][]>()
+    for (const l of dbPulsos.lecturasSemanales) {
+      const key = l.EquipoID
+      if (!byEquipo.has(key)) byEquipo.set(key, [])
+      byEquipo.get(key)!.push(l)
+    }
+    const items: Array<{ id: string; equipo: string; semana: string; oldInicial: number; newInicial: number }> = []
+    for (const [, lecs] of byEquipo) {
+      const sorted = [...lecs].sort((a, b) => String(a.FechaSemana).localeCompare(String(b.FechaSemana)))
+      for (let i = 1; i < sorted.length; i++) {
+        const prev = sorted[i - 1]
+        const cur = sorted[i]
+        const correctInicial = Number(prev.LecturaFinal) || 0
+        if (Math.abs((Number(cur.LecturaInicial) || 0) - correctInicial) > 0) {
+          items.push({ id: cur.LecturaID, equipo: cur.EquipoID, semana: String(cur.FechaSemana).slice(0, 10), oldInicial: Number(cur.LecturaInicial) || 0, newInicial: correctInicial })
+        }
+      }
+    }
+    setRecalcPreview({ count: items.length, items })
+  }
+
+  const applyRecalcHistorico = async () => {
+    if (!recalcPreview || !recalcPreview.items.length) return
+    setRecalcRunning(true)
+    try {
+      const byId = new Map(dbPulsos.lecturasSemanales.map((l) => [l.LecturaID, l]))
+      const updated: typeof dbPulsos.lecturasSemanales[number][] = []
+      for (const item of recalcPreview.items) {
+        const lec = byId.get(item.id)
+        if (!lec) continue
+        const newDiff = Math.max(0, Number(lec.LecturaFinal) - item.newInicial)
+        const newLec = { ...lec, LecturaInicial: item.newInicial, DiferenciaReal: newDiff }
+        updated.push(newLec)
+        await syncApi({ action: "saveLectura", data: JSON.stringify(newLec) })
+      }
+      const updIds = new Set(updated.map((l) => l.LecturaID))
+      setDbPulsos({
+        ...dbPulsos,
+        lecturasSemanales: dbPulsos.lecturasSemanales.map((l) => updIds.has(l.LecturaID) ? updated.find((u) => u.LecturaID === l.LecturaID)! : l),
+      })
+      showToast(`${updated.length} lecturas corregidas`, "success")
+      setRecalcPreview(null)
+    } catch (err) {
+      showToast(`Error al recalcular: ${String(err)}`, "error")
+    } finally {
+      setRecalcRunning(false)
+    }
+  }
 
   const [scanning, setScanning] = useState(false)
   const [sortCol, setSortCol] = useState<string>("")
@@ -99,6 +151,24 @@ export function PulsosLecturasPage() {
     return <span className="ml-1 text-primary">{sortDir === "asc" ? "↑" : "↓"}</span>
   }
   const diferencia = (Number(form.LecturaFinal) || 0) - (Number(form.LecturaInicial) || 0)
+
+  /** Busca la LecturaFinal más reciente para un equipo antes de una fecha dada.
+   *  Prioridad: lecturas_semanales previas → P_Totales → P_Cabeza → null */
+  const lookupPrevLecturaFinal = (equipoId: string, beforeDate: string): number | null => {
+    if (!equipoId || !beforeDate) return null
+    const prev = [...dbPulsos.lecturasSemanales]
+      .filter((l) => l.EquipoID === equipoId && String(l.FechaSemana).slice(0, 10) < beforeDate)
+      .sort((a, b) => String(b.FechaSemana).localeCompare(String(a.FechaSemana)))
+    if (prev.length > 0 && Number(prev[0].LecturaFinal) > 0) return Number(prev[0].LecturaFinal)
+    const eq = db.equipos.find((e) => e.EquipoID === equipoId)
+    if (eq) {
+      const pTot = Number(eq.P_Totales || 0)
+      const pCab = Number(eq.P_Cabeza || 0)
+      if (pTot > 0) return pTot
+      if (pCab > 0) return pCab
+    }
+    return null
+  }
 
   const handleScanPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -125,7 +195,7 @@ export function PulsosLecturasPage() {
     }
   }
 
-  const openNew = () => { setForm({ ...empty }); setIsEditing(false); setOpen(true) }
+  const openNew = () => { setForm({ ...empty, FechaSemana: today }); setIsEditing(false); setOpen(true) }
   const openEdit = (l: LecturaSemanal) => { setForm({ ...l }); setIsEditing(true); setOpen(true) }
 
   const syncApi = async (params: Record<string, string>) => {
@@ -154,6 +224,22 @@ export function PulsosLecturasPage() {
       action: isEditing ? "updateLectura" : "addLectura",
       data: JSON.stringify(record),
     })
+    // Update P_Totales / P_Cabeza only when this is the most recent lectura for the equipo
+    const isMoreRecent = !dbPulsos.lecturasSemanales.some(
+      (l) => l.EquipoID === record.EquipoID
+        && l.LecturaID !== record.LecturaID
+        && String(l.FechaSemana).slice(0, 10) > String(record.FechaSemana).slice(0, 10),
+    )
+    if (isMoreRecent && record.EquipoID && record.LecturaFinal > 0) {
+      await syncApi({
+        action: "updateEquipoCampos",
+        equipoId: record.EquipoID,
+        ptotales: String(record.LecturaFinal),
+        pcabeza: String(record.LecturaFinal),
+        ultimaSemanaPulsos: record.FechaSemana,
+        ultimaActualizacionPulsos: new Date().toISOString(),
+      })
+    }
   }
 
   const handleDelete = async (l: LecturaSemanal) => {
@@ -211,8 +297,23 @@ export function PulsosLecturasPage() {
           const sucursal = String(rowValue(record, ["Sucursal"])).trim()
           const cabina = String(rowValue(record, ["Cabina", "Cab."])).trim()
           const operadoraId = String(rowValue(record, ["OperadoraID", "Operadora", "Operador"])).trim()
-          const lecturaInicial = excelNumber(rowValue(record, ["LecturaInicial", "Lectura Inicial", "PulsosInicio", "Pulsos Inicio"]))
+          const lecturaInicialRaw = excelNumber(rowValue(record, ["LecturaInicial", "Lectura Inicial", "PulsosInicio", "Pulsos Inicio"]))
           const lecturaFinal = excelNumber(rowValue(record, ["LecturaFinal", "Lectura Final", "PulsosFin", "Pulsos Fin"]))
+          // Auto-lookup si el Excel no provee lectura inicial
+          const lecturaInicial = lecturaInicialRaw > 0 ? lecturaInicialRaw : (() => {
+            const prevLecs = dbPulsos.lecturasSemanales
+              .filter((l) => l.EquipoID === equipoId && String(l.FechaSemana).slice(0, 10) < fechaSemana)
+              .sort((a, b) => String(b.FechaSemana).localeCompare(String(a.FechaSemana)))
+            if (prevLecs.length > 0 && Number(prevLecs[0].LecturaFinal) > 0) return Number(prevLecs[0].LecturaFinal)
+            const eq = db.equipos.find((e) => e.EquipoID === equipoId)
+            if (eq) {
+              const pTot = Number(eq.P_Totales || 0)
+              const pCab = Number(eq.P_Cabeza || 0)
+              if (pTot > 0) return pTot
+              if (pCab > 0) return pCab
+            }
+            return 0
+          })()
           const observaciones = String(rowValue(record, ["Observaciones", "Notas"])).trim()
           if (!fechaSemana || !equipoId || !sucursal) return null
           const suffix = `${fechaSemana}_${equipoId}_${operadoraId || "sinop"}_${cabina || index}`.replace(/[^\w-]+/g, "_")
@@ -336,6 +437,9 @@ export function PulsosLecturasPage() {
               <span><Upload className="h-4 w-4 mr-2" />Importar Excel</span>
             </Button>
           </label>
+          <Button variant="outline" size="sm" onClick={buildRecalcPreview}>
+            Recalcular continuidad
+          </Button>
           <Button onClick={openNew} size="sm"><Plus className="h-4 w-4 mr-2" />Nueva Lectura</Button>
         </div>
       </div>
@@ -442,17 +546,79 @@ export function PulsosLecturasPage() {
         </div>
       )}
 
+      {/* Dialog de recalculo de continuidad histórica */}
+      {recalcPreview !== null ? (
+        <Dialog open onOpenChange={() => setRecalcPreview(null)}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Recalcular continuidad histórica</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-2 text-sm">
+              {recalcPreview.count === 0 ? (
+                <p className="text-emerald-700 font-medium">✓ Todas las lecturas ya tienen continuidad correcta. No hay nada que corregir.</p>
+              ) : (
+                <>
+                  <p className="text-muted-foreground">
+                    Se encontraron <b>{recalcPreview.count}</b> lecturas donde <b>Lectura Inicial</b> no coincide con el <b>Pulsos Fin</b> de la semana anterior.
+                  </p>
+                  <div className="max-h-60 overflow-y-auto rounded-lg border text-xs">
+                    <table className="w-full">
+                      <thead className="bg-slate-50 sticky top-0">
+                        <tr>
+                          <th className="px-2 py-1.5 text-left font-bold">Equipo</th>
+                          <th className="px-2 py-1.5 text-left font-bold">Semana</th>
+                          <th className="px-2 py-1.5 text-right font-bold">Inicio actual</th>
+                          <th className="px-2 py-1.5 text-right font-bold">Inicio correcto</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recalcPreview.items.slice(0, 50).map((item) => (
+                          <tr key={item.id} className="border-t">
+                            <td className="px-2 py-1 font-mono">{item.equipo}</td>
+                            <td className="px-2 py-1">{item.semana}</td>
+                            <td className="px-2 py-1 text-right font-mono text-rose-600">{fmtN(item.oldInicial)}</td>
+                            <td className="px-2 py-1 text-right font-mono text-emerald-600">{fmtN(item.newInicial)}</td>
+                          </tr>
+                        ))}
+                        {recalcPreview.items.length > 50 ? (
+                          <tr><td colSpan={4} className="px-2 py-1 text-center text-muted-foreground">... y {recalcPreview.items.length - 50} más</td></tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Esta operación NO borra datos. Solo corrige Lectura Inicial y Diferencia Real.</p>
+                </>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRecalcPreview(null)}>Cancelar</Button>
+              {recalcPreview.count > 0 ? (
+                <Button onClick={applyRecalcHistorico} disabled={recalcRunning}>
+                  {recalcRunning ? "Aplicando..." : `Aplicar ${recalcPreview.count} correcciones`}
+                </Button>
+              ) : null}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>{isEditing ? "Editar Lectura" : "Nueva Lectura Semanal"}</DialogTitle></DialogHeader>
           <div className="grid grid-cols-2 gap-4 py-2">
             <div className="space-y-1.5 col-span-2">
               <Label>Fecha de semana (lunes del período)</Label>
-              <Input type="date" value={form.FechaSemana} onChange={e => setForm({ ...form, FechaSemana: e.target.value })} />
+              <Input type="date" value={form.FechaSemana} onChange={e => {
+                const prev = form.EquipoID ? lookupPrevLecturaFinal(form.EquipoID, e.target.value) : null
+                setForm({ ...form, FechaSemana: e.target.value, LecturaInicial: prev ?? form.LecturaInicial })
+              }} />
             </div>
             <div className="space-y-1.5">
               <Label>Equipo *</Label>
-              <Select value={form.EquipoID} onValueChange={v => setForm({ ...form, EquipoID: v })}>
+              <Select value={form.EquipoID} onValueChange={v => {
+                const prev = lookupPrevLecturaFinal(v, form.FechaSemana)
+                setForm({ ...form, EquipoID: v, LecturaInicial: prev ?? 0 })
+              }}>
                 <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                 <SelectContent>
                   {db.equipos.filter(e => e.Estado === "Activo").map(e => (
@@ -498,7 +664,18 @@ export function PulsosLecturasPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Lectura inicial (pantalla)</Label>
-              <Input type="number" value={form.LecturaInicial} onChange={e => setForm({ ...form, LecturaInicial: Number(e.target.value) })} min={0} />
+              <Input
+                value={form.LecturaInicial ? fmtN(form.LecturaInicial) : ""}
+                onChange={e => setForm({ ...form, LecturaInicial: parseN(e.target.value) })}
+                placeholder="0"
+              />
+              {!isEditing && form.EquipoID ? (
+                <p className="text-[10px] mt-0.5">
+                  {lookupPrevLecturaFinal(form.EquipoID, form.FechaSemana) !== null
+                    ? <span className="text-emerald-600">✓ Automático — basado en lectura previa del equipo</span>
+                    : <span className="text-amber-600">Primera lectura registrada; sin histórico anterior.</span>}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
@@ -511,7 +688,11 @@ export function PulsosLecturasPage() {
                   </span>
                 </label>
               </div>
-              <Input type="number" value={form.LecturaFinal} onChange={e => setForm({ ...form, LecturaFinal: Number(e.target.value) })} min={0} />
+              <Input
+                value={form.LecturaFinal ? fmtN(form.LecturaFinal) : ""}
+                onChange={e => setForm({ ...form, LecturaFinal: parseN(e.target.value) })}
+                placeholder="0"
+              />
             </div>
             <div className="col-span-2 bg-muted/40 rounded-lg p-3 flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Diferencia real de pulsos:</span>

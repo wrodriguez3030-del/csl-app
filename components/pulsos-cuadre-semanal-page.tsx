@@ -561,11 +561,14 @@ export function PulsosCuadreSemanalPage() {
    */
   const resolverLecturaInicial = (equipoId: string, sucursal: string, cabina: string, fromIso: string): number | null => {
     if (!equipoId) return null
-    // 1) Valor actual en el equipo (alimentado por cuadres previos).
     const eq = db.equipos.find((e) => e.EquipoID === equipoId)
     const pTot = eq ? Number(eq.P_Totales || 0) : 0
+    const pCab = eq ? Number(eq.P_Cabeza || 0) : 0
+    // P_Totales: updated by cuadre semanal (most reliable)
     if (Number.isFinite(pTot) && pTot > 0) return pTot
-    // 2) Fallback a histórico semanal.
+    // P_Cabeza: updated by Dashboard Mantenimiento Excel import
+    if (Number.isFinite(pCab) && pCab > 0) return pCab
+    // Fallback: historical lecturas semanales
     return lookupLecturaPrevia(equipoId, sucursal, cabina, fromIso)
   }
 
@@ -781,12 +784,14 @@ export function PulsosCuadreSemanalPage() {
             action: "updateEquipoCampos",
             equipoId: equipoActual.EquipoID,
             ptotales: String(eq.lecturaFinal),
+            pcabeza: String(eq.lecturaFinal),
             ultimaActualizacionPulsos: nowIso,
             ultimaSemanaPulsos: weekStart,
           })
           equiposActualizados.push({
             ...equipoActual,
             P_Totales: eq.lecturaFinal,
+            P_Cabeza: eq.lecturaFinal,
             UltimaActualizacionPulsos: nowIso,
             UltimaSemanaPulsos: weekStart,
           })
