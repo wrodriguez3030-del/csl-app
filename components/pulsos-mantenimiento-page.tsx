@@ -87,36 +87,19 @@ export function PulsosMantenimientoPage() {
   const [showAllAlertas, setShowAllAlertas] = useState(false)
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc")
 
-  // Latest LecturaFinal per equipo — recorremos todas las lecturas y nos
-  // quedamos con la de FechaSemana más reciente por EquipoID.
-  const latestByEquipo = useMemo(() => {
-    const map = new Map<string, { lecturaFinal: number; fechaSemana: string }>()
-    for (const l of dbPulsos.lecturasSemanales) {
-      const id = String(l.EquipoID)
-      const existing = map.get(id)
-      if (!existing || String(l.FechaSemana) > existing.fechaSemana) {
-        map.set(id, {
-          lecturaFinal: Number(l.LecturaFinal || 0),
-          fechaSemana: String(l.FechaSemana || ""),
-        })
-      }
-    }
-    return map
-  }, [dbPulsos.lecturasSemanales])
-
-  // Filas de equipos activos enriquecidas con semáforo
+  // Filas de equipos activos enriquecidas con semáforo.
+  // Fuente: P_Cabeza del equipo (pulsos acumulados en cabeza registrados manualmente).
   const equipoRows = useMemo(() => {
     const rows = db.equipos
       .filter((e) => e.Estado === "Activo")
       .map((e) => {
-        const latest = latestByEquipo.get(String(e.EquipoID))
-        const pulsos = latest?.lecturaFinal ?? 0
-        return { ...e, pulsos, ultimaSemana: latest?.fechaSemana, semaforo: getSemaforo(pulsos) }
+        const pulsos = Number(e.P_Cabeza || 0)
+        return { ...e, pulsos, semaforo: getSemaforo(pulsos) }
       })
     return rows.sort((a, b) =>
       sortDir === "desc" ? b.pulsos - a.pulsos : a.pulsos - b.pulsos,
     )
-  }, [db.equipos, latestByEquipo, sortDir])
+  }, [db.equipos, sortDir])
 
   // KPIs agregados
   const stats = useMemo(() => {
@@ -371,7 +354,7 @@ export function PulsosMantenimientoPage() {
                 <TableHead>Cabina</TableHead>
                 <TableHead className="text-right">Pulsos acum.</TableHead>
                 <TableHead className="text-center">Semáforo</TableHead>
-                <TableHead>Última semana</TableHead>
+                <TableHead className="text-right">P. Totales</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -392,8 +375,8 @@ export function PulsosMantenimientoPage() {
                     <TableCell className="text-center">
                       <Badge className={cfg.badgeClass}>{cfg.label}</Badge>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {fmtFecha(e.ultimaSemana)}
+                    <TableCell className="text-right text-xs text-muted-foreground font-mono">
+                      {e.P_Totales ? fmtPulsos(Number(e.P_Totales)) : "—"}
                     </TableCell>
                   </TableRow>
                 )

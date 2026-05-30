@@ -623,13 +623,25 @@ export function EquiposPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Pulsos cabeza</Label>
-              <Input type="number" value={formData.P_Cabeza}
-                onChange={e => setFormData({ ...formData, P_Cabeza: Number(e.target.value) })} min={0} />
+              <Input
+                value={formData.P_Cabeza ? Number(formData.P_Cabeza).toLocaleString("es-DO") : ""}
+                onChange={e => {
+                  const raw = e.target.value.replace(/[^\d]/g, "")
+                  setFormData({ ...formData, P_Cabeza: raw ? Number(raw) : 0 })
+                }}
+                placeholder="Ej: 1,500,000"
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Pulsos totales</Label>
-              <Input type="number" value={formData.P_Totales}
-                onChange={e => setFormData({ ...formData, P_Totales: Number(e.target.value) })} min={0} />
+              <Input
+                value={formData.P_Totales ? Number(formData.P_Totales).toLocaleString("es-DO") : ""}
+                onChange={e => {
+                  const raw = e.target.value.replace(/[^\d]/g, "")
+                  setFormData({ ...formData, P_Totales: raw ? Number(raw) : 0 })
+                }}
+                placeholder="Ej: 7,198,234"
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Máx. cabeza</Label>
