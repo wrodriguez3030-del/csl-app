@@ -15,7 +15,9 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { Activity, Download, CheckCircle, AlertTriangle, XCircle, TrendingUp, TrendingDown, Upload, FileSpreadsheet, Pencil, Save, X, Trash2, Loader2 } from "lucide-react"
+import { Activity, Download, CheckCircle, AlertTriangle, XCircle, TrendingUp, TrendingDown, Upload, FileSpreadsheet, Pencil, Save, X, Trash2, Loader2, FileText } from "lucide-react"
+import { printAuditoria, type AuditoriaPdfSnapshot } from "@/lib/pulse-auditoria-pdf"
+import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { fmtN } from "@/lib/fmt"
 import { makeAgendaMatchKey, normalizeSucursal as canonicalSucursal } from "@/lib/normalize-pulse"
 import { signedColorClass, signedColorClassDark, signedIcon, getAlerta as getAlertaShared, alertaBadge as alertaBadgeShared } from "@/lib/pulse-colors"
@@ -99,6 +101,7 @@ function auditManualSessionId(fecha: string, sucursal: string, equipo: string, o
 
 export function PulsosAuditoriaPage() {
   const { dbPulsos, setDbPulsos, apiUrl, showToast, setIsLoading, setLoadingMessage } = useAppStore()
+  const business = useCurrentBusiness()
   const [filterSuc, setFilterSuc] = useState("todas")
   const [filterSemana, setFilterSemana] = useState("todas")
   const [sortCol, setSortCol] = useState<string>("")
@@ -350,6 +353,55 @@ export function PulsosAuditoriaPage() {
     const ws = XLSX.utils.aoa_to_sheet(rows)
     XLSX.utils.book_append_sheet(wb, ws, "Auditoria PULSE")
     XLSX.writeFile(wb, "PULSE_CSL_" + new Date().toISOString().slice(0,10) + ".xlsx")
+  }
+
+  /** Exporta PDF profesional vía window.print() sobre HTML formal.
+   *  Respeta los filtros activos (semana + sucursal) y los rangos
+   *  ordenados por fecha descendente como la tabla de pantalla. */
+  const exportPdf = () => {
+    if (!filtered.length) {
+      showToast("No hay datos para exportar", "error")
+      return
+    }
+    const snapshot: AuditoriaPdfSnapshot = {
+      semanas: filtered.map(s => ({
+        fecha: s.fecha,
+        rows: s.rows.map((r: any) => ({
+          sucursal: String(r.sucursal || ""),
+          cabina: String(r.cabina || ""),
+          operadora: String(r.operadora || ""),
+          equipo: String(r.equipo || ""),
+          pulsosInicio: Number(r.pulsosInicio) || 0,
+          pulsosFin: Number(r.pulsosFin) || 0,
+          dispLaser: Number(r.dispLaser) || 0,
+          dispOperador: Number(r.dispOperador) || 0,
+          diferencia: Number(r.diferencia) || 0,
+          pct: Number(r.pct) || 0,
+          alerta: r.alerta,
+        })),
+        totPulsosInicio: s.totPulsosInicio,
+        totPulsosFin: s.totPulsosFin,
+        totDispLaser: s.totDispLaser,
+        totDispOp: s.totDispOp,
+        totDiferencia: s.totDiferencia,
+      })),
+      filtroSemana: filterSemana === "todas" ? "Todas" : fmtSemanaRango(filterSemana),
+      filtroSucursal: filterSuc === "todas" ? "Todas" : filterSuc,
+      generadoEn: new Date().toLocaleString("es-DO", {
+        day: "2-digit", month: "long", year: "numeric",
+        hour: "2-digit", minute: "2-digit",
+      }),
+      businessName: business?.displayName || business?.name || business?.shortName,
+    }
+    try {
+      printAuditoria(snapshot)
+    } catch (err) {
+      showToast(
+        "No se pudo abrir el PDF (revisa el bloqueo de popups del navegador): " +
+          (err instanceof Error ? err.message : String(err)),
+        "error",
+      )
+    }
   }
 
   const downloadTemplate = async () => {
@@ -717,6 +769,15 @@ export function PulsosAuditoriaPage() {
           </label>
           <Button variant="outline" size="sm" onClick={exportExcel} disabled={!filtered.length}>
             <Download className="h-4 w-4 mr-2" />Exportar Excel
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportPdf}
+            disabled={!filtered.length}
+            className="bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100"
+          >
+            <FileText className="h-4 w-4 mr-2" />Exportar PDF
           </Button>
         </div>
       </div>
