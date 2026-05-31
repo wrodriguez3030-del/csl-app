@@ -1,10 +1,8 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
+import { useAppStore, apiCall, normalizeApiUrl } from "@/lib/store"
 import { loadXLSX } from "@/lib/load-xlsx"
-import { scanPulseScreen } from "@/lib/pulse-vision"
-import { SEQ_HEADER_CLASS, SeqBadge } from "@/components/seq-badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,719 +17,705 @@ import { Badge } from "@/components/ui/badge"
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
-import { Plus, Save, X, BookOpen, Camera, ChevronDown, ChevronRight, Loader2, Upload, FileSpreadsheet } from "lucide-react"
-import { RecordActions } from "@/components/record-actions"
-import type { LecturaSemanal } from "@/lib/types"
+import { ChevronDown, ChevronRight, FileSpreadsheet, Loader2, Plus, RotateCcw, Trash2, Upload } from "lucide-react"
 import { fmtN, parseN } from "@/lib/fmt"
+import {
+  type PulseReading,
+  calculateLecturaInicial,
+  type LecturaInicialSource,
+} from "@/lib/pulse-engine"
+import {
+  parseEquiposDashboard,
+  detectPeriodFromFilename,
+  type ParsedEquipoDashboard,
+  type EquiposDashboardResult,
+} from "@/lib/equipos-dashboard-parser"
 
-const today = new Date().toISOString().split("T")[0]
+// ─── Tipos locales ────────────────────────────────────────────────────────────
 
-const empty: LecturaSemanal = {
-  LecturaID: "", FechaSemana: today, EquipoID: "", Sucursal: "",
-  Cabina: "", OperadoraID: "", LecturaInicial: 0, LecturaFinal: 0,
-  DiferenciaReal: 0, Observaciones: "",
+interface ImportPreviewRow extends ParsedEquipoDashboard {
+  lectura_inicial: number
+  lectura_inicial_source: LecturaInicialSource
 }
 
-function fmt(d: string) {
-  if (!d) return "-"
-  try {
-    // Handle ISO strings, date objects converted to string, etc.
-    const clean = String(d).split("T")[0].trim()
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) return d
-    return new Date(clean + "T12:00:00").toLocaleDateString("es-DO", { day: "2-digit", month: "short", year: "numeric" })
-  } catch { return d }
+interface ImportPreview {
+  filename: string
+  result: EquiposDashboardResult
+  period_start: string
+  period_end: string
+  period_label: string
+  rows: ImportPreviewRow[]
 }
 
-function fmtSemanaRango(d: string) {
-  if (!d) return "-"
-  try {
-    const clean = String(d).split("T")[0].trim()
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) return d
-    const start = new Date(clean + "T12:00:00")
-    const end = new Date(start)
-    end.setDate(end.getDate() + 6)
-    const startText = start.toLocaleDateString("es-DO", { day: "2-digit", month: "short" })
-    const endText = end.toLocaleDateString("es-DO", { day: "2-digit", month: "short", year: "numeric" })
-    return `Del ${startText} al ${endText}`
-  } catch { return d }
+interface ManualForm {
+  equipo_id: string
+  sucursal: string
+  cabina: string
+  operadora: string
+  period_start: string
+  period_end: string
+  lectura_final: string
+  lectura_inicial: number
+  lectura_inicial_source: LecturaInicialSource
+  observaciones: string
+  id?: string
 }
 
-function excelDate(value: unknown) {
-  if (value instanceof Date) return value.toISOString().slice(0, 10)
-  if (typeof value === "number") return new Date((value - 25569) * 86400000).toISOString().slice(0, 10)
-  const text = String(value || "").trim()
-  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/)
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`
-  const local = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/)
-  if (local) return `${local[3]}-${local[2].padStart(2, "0")}-${local[1].padStart(2, "0")}`
-  return text
-}
+const today = new Date().toISOString().slice(0, 10)
 
-function excelNumber(value: unknown) {
-  const parsed = Number(String(value ?? 0).replace(/[^\d.-]/g, ""))
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-function rowValue(record: Record<string, unknown>, aliases: string[]) {
-  for (const alias of aliases) {
-    const value = record[alias.toLowerCase()]
-    if (value !== undefined && value !== null && String(value).trim() !== "") return value
+function emptyForm(): ManualForm {
+  return {
+    equipo_id: "",
+    sucursal: "",
+    cabina: "",
+    operadora: "",
+    period_start: today,
+    period_end: today,
+    lectura_final: "",
+    lectura_inicial: 0,
+    lectura_inicial_source: "primera_lectura",
+    observaciones: "",
   }
-  return ""
 }
+
+function fmtDate(d: string) {
+  if (!d) return "-"
+  try {
+    const clean = String(d).split("T")[0].trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) return d
+    return new Date(clean + "T12:00:00").toLocaleDateString("es-DO", {
+      day: "2-digit", month: "short", year: "numeric",
+    })
+  } catch { return d }
+}
+
+function fmtPeriod(start: string, end: string): string {
+  if (!start) return "-"
+  const s = fmtDate(start)
+  const e = end && end !== start ? ` — ${fmtDate(end)}` : ""
+  return `${s}${e}`
+}
+
+function SourceBadge({ source }: { source: LecturaInicialSource }) {
+  if (source === "historico") {
+    return <Badge className="text-xs bg-emerald-100 text-emerald-700 border border-emerald-200">Histórico</Badge>
+  }
+  if (source === "p_cabeza") {
+    return <Badge className="text-xs bg-amber-100 text-amber-700 border border-amber-200">P_Cabeza</Badge>
+  }
+  return <Badge className="text-xs bg-slate-100 text-slate-600 border border-slate-200">Primera lectura</Badge>
+}
+
+// ─── Componente principal ─────────────────────────────────────────────────────
 
 export function PulsosLecturasPage() {
   const { db, dbPulsos, setDbPulsos, apiUrl, showToast } = useAppStore()
-  const [open, setOpen] = useState(false)
-  const [form, setForm] = useState<LecturaSemanal>(empty)
-  const [isEditing, setIsEditing] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [recalcPreview, setRecalcPreview] = useState<null | { count: number; items: Array<{ id: string; equipo: string; semana: string; oldInicial: number; newInicial: number }> }>(null)
-  const [recalcRunning, setRecalcRunning] = useState(false)
 
-  const buildRecalcPreview = () => {
-    const byEquipo = new Map<string, typeof dbPulsos.lecturasSemanales[number][]>()
-    for (const l of dbPulsos.lecturasSemanales) {
-      const key = l.EquipoID
-      if (!byEquipo.has(key)) byEquipo.set(key, [])
-      byEquipo.get(key)!.push(l)
+  // Estado de UI
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
+  const [manualOpen, setManualOpen] = useState(false)
+  const [form, setForm] = useState<ManualForm>(emptyForm())
+  const [saving, setSaving] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [recalcRunning, setRecalcRunning] = useState(false)
+  const [collapsedPeriods, setCollapsedPeriods] = useState<Set<string>>(new Set())
+
+  const pulseReadings = useMemo(() => dbPulsos.pulseReadings ?? [], [dbPulsos.pulseReadings])
+
+  // Lecturas agrupadas por período (period_start + period_end)
+  const groupedByPeriod = useMemo(() => {
+    const map = new Map<string, PulseReading[]>()
+    for (const r of pulseReadings) {
+      const key = `${r.period_start}||${r.period_end}`
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(r)
     }
-    const items: Array<{ id: string; equipo: string; semana: string; oldInicial: number; newInicial: number }> = []
-    for (const [, lecs] of byEquipo) {
-      const sorted = [...lecs].sort((a, b) => String(a.FechaSemana).localeCompare(String(b.FechaSemana)))
-      for (let i = 1; i < sorted.length; i++) {
-        const prev = sorted[i - 1]
-        const cur = sorted[i]
-        const correctInicial = Number(prev.LecturaFinal) || 0
-        if (Math.abs((Number(cur.LecturaInicial) || 0) - correctInicial) > 0) {
-          items.push({ id: cur.LecturaID, equipo: cur.EquipoID, semana: String(cur.FechaSemana).slice(0, 10), oldInicial: Number(cur.LecturaInicial) || 0, newInicial: correctInicial })
-        }
+    // Ordenar períodos más recientes primero
+    return Array.from(map.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([key, readings]) => ({
+        key,
+        period_start: readings[0].period_start,
+        period_end: readings[0].period_end,
+        period_label: readings[0].period_label || "",
+        readings: readings.sort((a, b) => a.equipo_id.localeCompare(b.equipo_id)),
+        totalDispLaser: readings.reduce((s, r) => s + (Number(r.disp_laser) || 0), 0),
+      }))
+  }, [pulseReadings])
+
+  const apiCallLocal = (params: Record<string, string | number | boolean>) =>
+    apiCall(normalizeApiUrl(apiUrl), params)
+
+  // ── Importar Excel ──────────────────────────────────────────────────────────
+
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ""
+    setImporting(true)
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const XLSX = await loadXLSX() as any
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf, { type: "array" })
+      const result = parseEquiposDashboard(XLSX, wb, file.name)
+
+      if (!result.rows.length) {
+        showToast("No se encontraron filas de equipos en el archivo", "error")
+        return
       }
+
+      // Calcular lectura_inicial para cada equipo
+      const previewRows: ImportPreviewRow[] = result.rows.map(row => {
+        const eq = db.equipos.find(e => e.EquipoID === row.equipo_id)
+        const pCabeza = eq?.P_Cabeza ?? null
+        const { value, source } = calculateLecturaInicial(
+          pulseReadings,
+          row.equipo_id,
+          result.period_start || today,
+          pCabeza,
+        )
+        return {
+          ...row,
+          lectura_inicial: value,
+          lectura_inicial_source: source,
+        }
+      })
+
+      setImportPreview({
+        filename: file.name,
+        result,
+        period_start: result.period_start,
+        period_end: result.period_end,
+        period_label: result.period_label,
+        rows: previewRows,
+      })
+
+      if (result.warnings.length) {
+        result.warnings.forEach(w => showToast(w, "info"))
+      }
+    } catch (err) {
+      showToast(`Error al leer el archivo: ${err instanceof Error ? err.message : String(err)}`, "error")
+    } finally {
+      setImporting(false)
     }
-    setRecalcPreview({ count: items.length, items })
   }
 
-  const applyRecalcHistorico = async () => {
-    if (!recalcPreview || !recalcPreview.items.length) return
+  const handleConfirmImport = async () => {
+    if (!importPreview) return
+    setSaving(true)
+    try {
+      const saved: PulseReading[] = []
+      for (const row of importPreview.rows) {
+        const payload = {
+          equipo_id: row.equipo_id,
+          serial: row.serial || "",
+          sucursal: row.sucursal,
+          cabina: row.cabina || "",
+          operadora: row.operadora || "",
+          period_start: importPreview.period_start,
+          period_end: importPreview.period_end,
+          period_label: importPreview.period_label,
+          lectura_inicial: row.lectura_inicial,
+          lectura_final: row.pulsos,
+          estado_cuadre: "lectura_guardada",
+          estado_mantenimiento: row.estado || "",
+          fallas: row.fallas || "",
+          source_file: importPreview.filename,
+          source_type: "excel_equipos",
+          observaciones: "",
+        }
+        const res = await apiCallLocal({
+          action: "savePulseReading",
+          data: JSON.stringify(payload),
+        })
+        if (res.record) saved.push(res.record as PulseReading)
+      }
+
+      // Actualizar store
+      const existingIds = new Set(saved.map(r => r.id))
+      const updated = [
+        ...pulseReadings.filter(r => !existingIds.has(r.id)),
+        ...saved,
+      ]
+      setDbPulsos({ ...dbPulsos, pulseReadings: updated })
+      showToast(`${saved.length} lecturas guardadas`, "success")
+      setImportPreview(null)
+    } catch (err) {
+      showToast(`Error al guardar: ${err instanceof Error ? err.message : String(err)}`, "error")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // ── Formulario manual ───────────────────────────────────────────────────────
+
+  const handleEquipoChange = (equipoId: string) => {
+    const eq = db.equipos.find(e => e.EquipoID === equipoId)
+    const { value, source } = calculateLecturaInicial(
+      pulseReadings,
+      equipoId,
+      form.period_start || today,
+      eq?.P_Cabeza ?? null,
+    )
+    setForm(prev => ({
+      ...prev,
+      equipo_id: equipoId,
+      sucursal: eq?.Sucursal || prev.sucursal,
+      cabina: eq?.Cabina || prev.cabina,
+      operadora: eq?.Operadora || prev.operadora,
+      lectura_inicial: value,
+      lectura_inicial_source: source,
+    }))
+  }
+
+  const handlePeriodStartChange = (date: string) => {
+    if (!date) return
+    const { value, source } = calculateLecturaInicial(
+      pulseReadings,
+      form.equipo_id,
+      date,
+      db.equipos.find(e => e.EquipoID === form.equipo_id)?.P_Cabeza ?? null,
+    )
+    setForm(prev => ({
+      ...prev,
+      period_start: date,
+      period_end: prev.period_end < date ? date : prev.period_end,
+      lectura_inicial: value,
+      lectura_inicial_source: source,
+    }))
+  }
+
+  const handleSaveManual = async () => {
+    if (!form.equipo_id) { showToast("Selecciona un equipo", "error"); return }
+    if (!form.period_start || !form.period_end) { showToast("Indica el período", "error"); return }
+    const lecturaFinal = parseN(form.lectura_final)
+    if (lecturaFinal <= 0) { showToast("La lectura final debe ser mayor que 0", "error"); return }
+    if (lecturaFinal < form.lectura_inicial) { showToast("Lectura final no puede ser menor que la inicial", "error"); return }
+
+    setSaving(true)
+    try {
+      const payload: Record<string, string | number> = {
+        equipo_id: form.equipo_id,
+        sucursal: form.sucursal,
+        cabina: form.cabina,
+        operadora: form.operadora,
+        period_start: form.period_start,
+        period_end: form.period_end,
+        period_label: fmtPeriod(form.period_start, form.period_end),
+        lectura_inicial: form.lectura_inicial,
+        lectura_final: lecturaFinal,
+        estado_cuadre: "lectura_guardada",
+        source_type: "manual",
+        observaciones: form.observaciones,
+      }
+      if (form.id) payload.id = form.id
+
+      const res = await apiCallLocal({ action: "savePulseReading", data: JSON.stringify(payload) })
+      const saved = res.record as PulseReading
+
+      const updated = form.id
+        ? pulseReadings.map(r => r.id === form.id ? saved : r)
+        : [...pulseReadings, saved]
+      setDbPulsos({ ...dbPulsos, pulseReadings: updated })
+      showToast(form.id ? "Lectura actualizada" : "Lectura guardada", "success")
+      setManualOpen(false)
+    } catch (err) {
+      showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (reading: PulseReading) => {
+    if (!confirm(`¿Eliminar lectura de ${reading.equipo_id} (${fmtDate(reading.period_start)})?`)) return
+    try {
+      await apiCallLocal({ action: "deletePulseReading", id: reading.id })
+      setDbPulsos({ ...dbPulsos, pulseReadings: pulseReadings.filter(r => r.id !== reading.id) })
+      showToast("Lectura eliminada", "success")
+    } catch (err) {
+      showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error")
+    }
+  }
+
+  const handleEdit = (reading: PulseReading) => {
+    setForm({
+      id: reading.id,
+      equipo_id: reading.equipo_id,
+      sucursal: reading.sucursal,
+      cabina: reading.cabina || "",
+      operadora: reading.operadora || "",
+      period_start: reading.period_start,
+      period_end: reading.period_end,
+      lectura_final: String(reading.lectura_final),
+      lectura_inicial: Number(reading.lectura_inicial),
+      lectura_inicial_source: "historico",
+      observaciones: reading.observaciones || "",
+    })
+    setManualOpen(true)
+  }
+
+  // ── Recalcular continuidad ──────────────────────────────────────────────────
+
+  const handleRecalculate = async () => {
+    if (!confirm("¿Recalcular continuidad de todas las lecturas? Esto corregirá las lecturas iniciales para mantener la cadena histórica.")) return
     setRecalcRunning(true)
     try {
-      const byId = new Map(dbPulsos.lecturasSemanales.map((l) => [l.LecturaID, l]))
-      const updated: typeof dbPulsos.lecturasSemanales[number][] = []
-      for (const item of recalcPreview.items) {
-        const lec = byId.get(item.id)
-        if (!lec) continue
-        const newDiff = Math.max(0, Number(lec.LecturaFinal) - item.newInicial)
-        const newLec = { ...lec, LecturaInicial: item.newInicial, DiferenciaReal: newDiff }
-        updated.push(newLec)
-        await syncApi({ action: "saveLectura", data: JSON.stringify(newLec) })
+      const res = await apiCallLocal({ action: "recalculatePulseContinuity" })
+      const fixed = Number(res.fixed) || 0
+      showToast(`Continuidad recalculada. ${fixed} lecturas corregidas.`, fixed > 0 ? "success" : "info")
+      if (fixed > 0) {
+        // Recargar lecturas
+        const reloaded = await apiCallLocal({ action: "getPulseReadings" })
+        if (reloaded.records) {
+          setDbPulsos({ ...dbPulsos, pulseReadings: reloaded.records as PulseReading[] })
+        }
       }
-      const updIds = new Set(updated.map((l) => l.LecturaID))
-      setDbPulsos({
-        ...dbPulsos,
-        lecturasSemanales: dbPulsos.lecturasSemanales.map((l) => updIds.has(l.LecturaID) ? updated.find((u) => u.LecturaID === l.LecturaID)! : l),
-      })
-      showToast(`${updated.length} lecturas corregidas`, "success")
-      setRecalcPreview(null)
     } catch (err) {
-      showToast(`Error al recalcular: ${String(err)}`, "error")
+      showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error")
     } finally {
       setRecalcRunning(false)
     }
   }
 
-  const [scanning, setScanning] = useState(false)
-  const [sortCol, setSortCol] = useState<string>("")
-  const [sortDir, setSortDir] = useState<"asc"|"desc">("asc")
-  const handleSort = (col: string) => {
-    if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc")
-    else { setSortCol(col); setSortDir("asc") }
-  }
-  const sortIcon = (col: string) => {
-    if (sortCol !== col) return <span className="text-muted-foreground/30 ml-1">⇅</span>
-    return <span className="ml-1 text-primary">{sortDir === "asc" ? "↑" : "↓"}</span>
-  }
-  const diferencia = (Number(form.LecturaFinal) || 0) - (Number(form.LecturaInicial) || 0)
-
-  /** Busca la LecturaFinal más reciente para un equipo antes de una fecha dada.
-   *  Prioridad: lecturas_semanales previas → P_Totales → P_Cabeza → null */
-  const lookupPrevLecturaFinal = (equipoId: string, beforeDate: string): number | null => {
-    if (!equipoId || !beforeDate) return null
-    const prev = [...dbPulsos.lecturasSemanales]
-      .filter((l) => l.EquipoID === equipoId && String(l.FechaSemana).slice(0, 10) < beforeDate)
-      .sort((a, b) => String(b.FechaSemana).localeCompare(String(a.FechaSemana)))
-    if (prev.length > 0 && Number(prev[0].LecturaFinal) > 0) return Number(prev[0].LecturaFinal)
-    const eq = db.equipos.find((e) => e.EquipoID === equipoId)
-    if (eq) {
-      const pTot = Number(eq.P_Totales || 0)
-      const pCab = Number(eq.P_Cabeza || 0)
-      if (pTot > 0) return pTot
-      if (pCab > 0) return pCab
-    }
-    return null
-  }
-
-  const handleScanPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setScanning(true)
-    try {
-      // OCR centralizado en lib/pulse-vision.ts — mismo helper que usa el
-      // wizard "Cuadre semanal".
-      const reading = await scanPulseScreen(file)
-      if (reading.totalPulses !== null) {
-        setForm((prev) => ({ ...prev, LecturaFinal: reading.totalPulses as number }))
-        const conf = reading.confidence !== null ? ` (${Math.round(reading.confidence * 100)}% conf.)` : ""
-        showToast(`✓ Pulsos extraídos: ${fmtN(reading.totalPulses)}${reading.serial ? ` — Serial: ${reading.serial}` : ""}${conf}`, "success")
-      } else {
-        // reading.reason ahora trae texto específico — "ANTHROPIC_API_KEY no
-        // configurada", "imagen borrosa", "Anthropic 401", etc.
-        showToast(reading.reason || "No se pudo leer la pantalla. Ingresa el número manualmente.", "error")
-      }
-    } catch (err) {
-      showToast(`Error al procesar la imagen: ${err instanceof Error ? err.message : String(err)}`, "error")
-    } finally {
-      setScanning(false)
-      e.target.value = ""
-    }
-  }
-
-  const openNew = () => { setForm({ ...empty, FechaSemana: today }); setIsEditing(false); setOpen(true) }
-  const openEdit = (l: LecturaSemanal) => { setForm({ ...l }); setIsEditing(true); setOpen(true) }
-
-  const syncApi = async (params: Record<string, string>) => {
-    const normalized = normalizeApiUrl(apiUrl)
-    if (!normalized) return
-    try { await apiJsonp(normalized, params) } catch(e) { console.warn(e) }
-  }
-
-  const handleSave = async () => {
-    if (!form.EquipoID || !form.Sucursal) { showToast("Equipo y sucursal son obligatorios", "error"); return }
-    if (diferencia < 0) { showToast("Lectura final no puede ser menor que la inicial", "error"); return }
-
-    const record: LecturaSemanal = { ...form, LecturaID: form.LecturaID || `lec_${Date.now()}`, DiferenciaReal: diferencia }
-
-    // Guardar local primero
-    if (isEditing) {
-      setDbPulsos({ ...dbPulsos, lecturasSemanales: sortedLecturas.map(l => l.LecturaID === record.LecturaID ? record : l) })
-    } else {
-      setDbPulsos({ ...dbPulsos, lecturasSemanales: [...dbPulsos.lecturasSemanales, record] })
-    }
-    showToast(isEditing ? "Lectura actualizada" : "Lectura registrada", "success")
-    setOpen(false)
-
-    // Sync API
-    await syncApi({
-      action: isEditing ? "updateLectura" : "addLectura",
-      data: JSON.stringify(record),
+  const togglePeriod = (key: string) => {
+    setCollapsedPeriods(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
     })
-    // Update P_Totales / P_Cabeza only when this is the most recent lectura for the equipo
-    const isMoreRecent = !dbPulsos.lecturasSemanales.some(
-      (l) => l.EquipoID === record.EquipoID
-        && l.LecturaID !== record.LecturaID
-        && String(l.FechaSemana).slice(0, 10) > String(record.FechaSemana).slice(0, 10),
-    )
-    if (isMoreRecent && record.EquipoID && record.LecturaFinal > 0) {
-      await syncApi({
-        action: "updateEquipoCampos",
-        equipoId: record.EquipoID,
-        ptotales: String(record.LecturaFinal),
-        pcabeza: String(record.LecturaFinal),
-        ultimaSemanaPulsos: record.FechaSemana,
-        ultimaActualizacionPulsos: new Date().toISOString(),
-      })
-    }
   }
 
-  const handleDelete = async (l: LecturaSemanal) => {
-    if (!confirm(`¿Eliminar lectura del ${fmtSemanaRango(l.FechaSemana)}?`)) return
-    setDbPulsos({ ...dbPulsos, lecturasSemanales: dbPulsos.lecturasSemanales.filter(x => x.LecturaID !== l.LecturaID) })
-    showToast("Lectura eliminada", "success")
-    await syncApi({ action: "deleteLectura", id: l.LecturaID })
-  }
-
-  const downloadTemplate = async () => {
-    let XLSX: any
-    try {
-      XLSX = await loadXLSX()
-    } catch {
-      showToast("No se pudo cargar la librería Excel. Revisa tu conexión.", "error")
-      return
-    }
-    const headers = ["FechaSemana","EquipoID","Sucursal","Cabina","OperadoraID","LecturaInicial","LecturaFinal","Observaciones"]
-    const rows = [
-      ["2026-04-25","7","Rafael Vidal","Cabina 1","Diana","125000","128500","Semana del 25 abr de 2026"],
-      ["2026-04-25","9","Los Jardines","Cabina 4","YAMILKA","90000","92450",""],
-    ]
-    const wb = XLSX.utils.book_new()
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
-    XLSX.utils.book_append_sheet(wb, ws, "Lecturas")
-    XLSX.writeFile(wb, "Formato_Lecturas_Semanales.xlsx")
-  }
-
-  const handleExcelUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-    let XLSX: any
-    try {
-      XLSX = await loadXLSX()
-    } catch {
-      showToast("No se pudo cargar la librería Excel. Revisa tu conexión.", "error")
-      event.target.value = ""
-      return
-    }
-
-    const reader = new FileReader()
-    reader.onload = async (ev) => {
-      try {
-        setSaving(true)
-        const workbook = XLSX.read(ev.target?.result, { type: "binary" })
-        const sheet = workbook.Sheets[workbook.SheetNames[0]]
-        const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" }) as Record<string, unknown>[]
-
-        // Normalise + sort by equipoId → fechaSemana so in-batch continuity works
-        const normalised = rows.map((raw) =>
-          Object.entries(raw).reduce<Record<string, unknown>>((acc, [key, value]) => {
-            acc[key.trim().toLowerCase()] = value
-            return acc
-          }, {}),
-        ).sort((a, b) => {
-          const eqA = String(rowValue(a, ["EquipoID", "Equipo", "Eq."])).trim()
-          const eqB = String(rowValue(b, ["EquipoID", "Equipo", "Eq."])).trim()
-          const fA = excelDate(rowValue(a, ["FechaSemana", "Fecha Semana", "Semana", "Fecha"]))
-          const fB = excelDate(rowValue(b, ["FechaSemana", "Fecha Semana", "Semana", "Fecha"]))
-          const eqCmp = eqA.localeCompare(eqB)
-          if (eqCmp !== 0) return eqCmp
-          return String(fA).localeCompare(String(fB))
-        })
-
-        // Sequential loop — each row can see previously built rows (in-batch lookback)
-        const nuevas: LecturaSemanal[] = []
-        for (let index = 0; index < normalised.length; index++) {
-          const record = normalised[index]
-          const fechaSemana = excelDate(rowValue(record, ["FechaSemana", "Fecha Semana", "Semana", "Fecha"]))
-          const equipoId = String(rowValue(record, ["EquipoID", "Equipo", "Eq."])).trim()
-          const sucursal = String(rowValue(record, ["Sucursal"])).trim()
-          const cabina = String(rowValue(record, ["Cabina", "Cab."])).trim()
-          const operadoraId = String(rowValue(record, ["OperadoraID", "Operadora", "Operador"])).trim()
-          const lecturaInicialRaw = excelNumber(rowValue(record, ["LecturaInicial", "Lectura Inicial", "PulsosInicio", "Pulsos Inicio"]))
-          const lecturaFinal = excelNumber(rowValue(record, ["LecturaFinal", "Lectura Final", "PulsosFin", "Pulsos Fin"]))
-          const observaciones = String(rowValue(record, ["Observaciones", "Notas"])).trim()
-          if (!fechaSemana || !equipoId || !sucursal) continue
-
-          const lecturaInicial = lecturaInicialRaw > 0 ? lecturaInicialRaw : (() => {
-            // 1. In-batch: rows already processed in this import
-            const prevBatch = nuevas
-              .filter((n) => n.EquipoID === equipoId && String(n.FechaSemana).slice(0, 10) < fechaSemana)
-              .sort((a, b) => String(b.FechaSemana).localeCompare(String(a.FechaSemana)))
-            if (prevBatch.length > 0 && Number(prevBatch[0].LecturaFinal) > 0) return Number(prevBatch[0].LecturaFinal)
-            // 2. Stored lecturas (prior imports)
-            const prevLecs = dbPulsos.lecturasSemanales
-              .filter((l) => l.EquipoID === equipoId && String(l.FechaSemana).slice(0, 10) < fechaSemana)
-              .sort((a, b) => String(b.FechaSemana).localeCompare(String(a.FechaSemana)))
-            if (prevLecs.length > 0 && Number(prevLecs[0].LecturaFinal) > 0) return Number(prevLecs[0].LecturaFinal)
-            // 3. Equipment running totals
-            const eq = db.equipos.find((e) => e.EquipoID === equipoId)
-            if (eq) {
-              const pTot = Number(eq.P_Totales || 0)
-              const pCab = Number(eq.P_Cabeza || 0)
-              if (pTot > 0) return pTot
-              if (pCab > 0) return pCab
-            }
-            return 0
-          })()
-
-          const suffix = `${fechaSemana}_${equipoId}_${operadoraId || "sinop"}_${cabina || index}`.replace(/[^\w-]+/g, "_")
-          nuevas.push({
-            LecturaID: `lec_xlsx_${suffix}`,
-            FechaSemana: fechaSemana,
-            EquipoID: equipoId,
-            Sucursal: sucursal,
-            Cabina: cabina,
-            OperadoraID: operadoraId,
-            LecturaInicial: lecturaInicial,
-            LecturaFinal: lecturaFinal,
-            DiferenciaReal: Math.max(0, lecturaFinal - lecturaInicial),
-            Observaciones: observaciones,
-          } as LecturaSemanal)
-        }
-
-        if (!nuevas.length) {
-          showToast("No se encontraron filas válidas. Revisa el formato ejemplo.", "error")
-          return
-        }
-
-        const ids = new Set(nuevas.map(item => item.LecturaID))
-        setDbPulsos({
-          ...dbPulsos,
-          lecturasSemanales: [...dbPulsos.lecturasSemanales.filter(item => !ids.has(item.LecturaID)), ...nuevas],
-        })
-        for (const lectura of nuevas) await syncApi({ action: "saveLectura", data: JSON.stringify(lectura) })
-        showToast(`${nuevas.length} lecturas importadas correctamente`, "success")
-      } catch (error) {
-        showToast("Error importando Excel: " + String(error), "error")
-      } finally {
-        setSaving(false)
-      }
-    }
-    reader.readAsBinaryString(file)
-    event.target.value = ""
-  }
-
-  const sorted = [...dbPulsos.lecturasSemanales].sort((a, b) => b.FechaSemana.localeCompare(a.FechaSemana))
-
-  // Agrupación por semana (FechaSemana ya es el lunes ISO). Cada bloque
-  // calcula su propio resumen: lecturas, equipos, sucursales únicas,
-  // total diferencia, mayor diferencia con equipo. Orden: semana más
-  // reciente arriba; dentro de cada semana ordena por sucursal → cabina → equipo.
-  const semanasAgrupadas = useMemo(() => {
-    const map = new Map<string, typeof sorted>()
-    for (const l of sorted) {
-      const key = String(l.FechaSemana || "").slice(0, 10) || "sin-fecha"
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(l)
-    }
-    return Array.from(map.entries())
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([fechaSemana, lecturas]) => {
-        const ordered = [...lecturas].sort((a, b) => {
-          const cmpSuc = String(a.Sucursal || "").localeCompare(String(b.Sucursal || ""), "es")
-          if (cmpSuc !== 0) return cmpSuc
-          const cmpCab = String(a.Cabina || "").localeCompare(String(b.Cabina || ""), "es")
-          if (cmpCab !== 0) return cmpCab
-          return Number(a.EquipoID || 0) - Number(b.EquipoID || 0)
-        })
-        const sucursales = Array.from(new Set(lecturas.map((l) => l.Sucursal).filter(Boolean)))
-        const totalDif = lecturas.reduce((s, l) => s + (Number(l.DiferenciaReal) || 0), 0)
-        const peor = [...lecturas].sort((a, b) => Number(b.DiferenciaReal || 0) - Number(a.DiferenciaReal || 0))[0]
-        return { fechaSemana, lecturas: ordered, sucursales, totalDif, peor, equiposCount: lecturas.length }
-      })
-  }, [sorted])
-
-  // Estado de bloques colapsados — por default todas las semanas EXCEPTO
-  // la más reciente están contraídas. El usuario puede expandir las que quiera.
-  const [collapsedWeeks, setCollapsedWeeks] = useState<Set<string>>(() => new Set())
-  const toggleWeek = (key: string) => setCollapsedWeeks((current) => {
-    const next = new Set(current)
-    if (next.has(key)) next.delete(key)
-    else next.add(key)
-    return next
-  })
-  // La primera semana en la lista (más reciente) por convención está expandida
-  // a menos que el usuario explícitamente la cierre. Las otras: contraídas
-  // por default. Implementamos "isCollapsed" como: collapsedWeeks.has(key)
-  // para la primera, !collapsedWeeks.has(key) para las demás — invertimos
-  // así el default queda correcto sin pre-poblar el Set con todas las keys.
-  const isWeekExpanded = (key: string, idx: number) => idx === 0
-    ? !collapsedWeeks.has(key)
-    : collapsedWeeks.has(key)
-
-  const sortedLecturas = [...dbPulsos.lecturasSemanales].sort((a, b) => {
-    if (!sortCol) return 0
-    let va: any, vb: any
-    switch(sortCol) {
-      case "FechaSemana": va = String(a.FechaSemana || ""); vb = String(b.FechaSemana || ""); break
-      case "EquipoID": va = Number(a.EquipoID) || 0; vb = Number(b.EquipoID) || 0; break
-      case "Sucursal": va = String(a.Sucursal || ""); vb = String(b.Sucursal || ""); break
-      case "OperadoraID": va = String(a.OperadoraID || ""); vb = String(b.OperadoraID || ""); break
-      case "LecturaInicial": va = Number(a.LecturaInicial) || 0; vb = Number(b.LecturaInicial) || 0; break
-      case "LecturaFinal": va = Number(a.LecturaFinal) || 0; vb = Number(b.LecturaFinal) || 0; break
-      case "DiferenciaReal": va = Number(a.DiferenciaReal) || 0; vb = Number(b.DiferenciaReal) || 0; break
-      default: return 0
-    }
-    if (typeof va === "string") { va = va.toLowerCase(); vb = vb.toLowerCase() }
-    if (va < vb) return sortDir === "asc" ? -1 : 1
-    if (va > vb) return sortDir === "asc" ? 1 : -1
-    return 0
-  })
+  // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold flex items-center gap-2"><BookOpen className="h-5 w-5 text-primary" />Lecturas pantalla equipos</h2>
-          <p className="text-sm text-muted-foreground">Registro del contador del equipo — inicio y fin de cada semana</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={downloadTemplate}>
-            <FileSpreadsheet className="h-4 w-4 mr-2" />Formato ejemplo
-          </Button>
-          <label>
-            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleExcelUpload} />
-            <Button variant="outline" size="sm" asChild>
-              <span><Upload className="h-4 w-4 mr-2" />Importar Excel</span>
-            </Button>
-          </label>
-          <Button variant="outline" size="sm" onClick={buildRecalcPreview}>
-            Recalcular continuidad
-          </Button>
-          <Button onClick={openNew} size="sm"><Plus className="h-4 w-4 mr-2" />Nueva Lectura</Button>
-        </div>
+      {/* Toolbar */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <Label
+          htmlFor="import-excel-input"
+          className="cursor-pointer inline-flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md text-sm font-medium"
+        >
+          {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+          Importar Dashboard Excel
+        </Label>
+        <input
+          id="import-excel-input"
+          type="file"
+          accept=".xlsx,.xls"
+          className="hidden"
+          onChange={handleImportExcel}
+          disabled={importing}
+        />
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => { setForm(emptyForm()); setManualOpen(true) }}
+        >
+          <Plus className="w-4 h-4 mr-1" />
+          Nueva lectura manual
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleRecalculate}
+          disabled={recalcRunning}
+        >
+          {recalcRunning ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <RotateCcw className="w-4 h-4 mr-1" />}
+          Recalcular continuidad
+        </Button>
+
+        <span className="ml-auto text-sm text-muted-foreground">
+          {pulseReadings.length} lectura{pulseReadings.length !== 1 ? "s" : ""} · {groupedByPeriod.length} período{groupedByPeriod.length !== 1 ? "s" : ""}
+        </span>
       </div>
 
-      {/* Bloques por semana — cada semana es una Card independiente con
-          header expandible. La más reciente queda abierta por default. */}
-      {semanasAgrupadas.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            Sin lecturas. Registra la primera lectura semanal del equipo.
+      {/* Import Preview */}
+      {importPreview && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Upload className="w-4 h-4" />
+              Vista previa: {importPreview.filename}
+            </CardTitle>
+            <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mt-1">
+              <span>
+                Período:{" "}
+                {importPreview.result.period_detected_from === "filename" ? (
+                  <strong>{fmtPeriod(importPreview.period_start, importPreview.period_end)}</strong>
+                ) : (
+                  <span className="text-amber-600">No detectado automáticamente</span>
+                )}
+              </span>
+              {importPreview.result.period_detected_from === "manual" && (
+                <div className="flex gap-2 items-center">
+                  <Input
+                    type="date"
+                    className="h-7 w-36 text-xs"
+                    value={importPreview.period_start}
+                    onChange={e => setImportPreview(prev => prev ? { ...prev, period_start: e.target.value } : null)}
+                  />
+                  <span className="text-muted-foreground">al</span>
+                  <Input
+                    type="date"
+                    className="h-7 w-36 text-xs"
+                    value={importPreview.period_end}
+                    onChange={e => setImportPreview(prev => prev ? { ...prev, period_end: e.target.value } : null)}
+                  />
+                </div>
+              )}
+              <span>{importPreview.rows.length} equipos</span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto rounded border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">Equipo</TableHead>
+                    <TableHead className="text-xs">Sucursal</TableHead>
+                    <TableHead className="text-xs">Cabina</TableHead>
+                    <TableHead className="text-xs">Operadora</TableHead>
+                    <TableHead className="text-xs text-right">Inicio (fuente)</TableHead>
+                    <TableHead className="text-xs text-right">Fin</TableHead>
+                    <TableHead className="text-xs text-right">DISP Láser</TableHead>
+                    <TableHead className="text-xs">Estado</TableHead>
+                    <TableHead className="text-xs">Fallas</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {importPreview.rows.map(row => (
+                    <TableRow key={row.equipo_id}>
+                      <TableCell className="text-xs font-mono">{row.equipo_id}</TableCell>
+                      <TableCell className="text-xs">{row.sucursal || "-"}</TableCell>
+                      <TableCell className="text-xs">{row.cabina || "-"}</TableCell>
+                      <TableCell className="text-xs">{row.operadora || "-"}</TableCell>
+                      <TableCell className="text-xs text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <span>{fmtN(row.lectura_inicial)}</span>
+                          <SourceBadge source={row.lectura_inicial_source} />
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs text-right font-mono">{fmtN(row.pulsos)}</TableCell>
+                      <TableCell className="text-xs text-right font-mono text-primary font-semibold">
+                        {fmtN(row.pulsos - row.lectura_inicial)}
+                      </TableCell>
+                      <TableCell className="text-xs">{row.estado || "-"}</TableCell>
+                      <TableCell className="text-xs">{row.fallas || "-"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-3">
+              <Button variant="outline" size="sm" onClick={() => setImportPreview(null)}>
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleConfirmImport}
+                disabled={saving || !importPreview.period_start || !importPreview.period_end}
+              >
+                {saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
+                Confirmar e importar {importPreview.rows.length} lecturas
+              </Button>
+            </div>
           </CardContent>
         </Card>
-      ) : (
-        <div className="space-y-3">
-          {semanasAgrupadas.map((bloque, idx) => {
-            const expanded = isWeekExpanded(bloque.fechaSemana, idx)
-            return (
-              <Card key={bloque.fechaSemana} className="overflow-hidden">
-                <CardHeader
-                  className="cursor-pointer border-b border-slate-100 bg-slate-50/70 py-4 transition-colors hover:bg-slate-100/70"
-                  onClick={() => toggleWeek(bloque.fechaSemana)}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3 min-w-0">
-                      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                        {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                      </div>
-                      <div className="min-w-0">
-                        <CardTitle className="text-base font-bold">
-                          {fmtSemanaRango(bloque.fechaSemana)}
-                        </CardTitle>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {bloque.equiposCount} {bloque.equiposCount === 1 ? "lectura" : "lecturas"}
-                          {bloque.sucursales.length > 0 ? (
-                            <> · {bloque.sucursales.length} {bloque.sucursales.length === 1 ? "sucursal" : "sucursales"} ({bloque.sucursales.join(", ")})</>
-                          ) : null}
-                          {" "}· Total diferencia <span className="font-bold text-foreground">+{fmtN(bloque.totalDif)}</span>
-                        </p>
-                      </div>
-                    </div>
-                    {bloque.peor ? (
-                      <div className="hidden shrink-0 text-right text-xs text-muted-foreground sm:block">
-                        <div className="font-bold uppercase tracking-wide text-[10px]">Mayor diferencia</div>
-                        <div className="mt-0.5">
-                          Equipo {bloque.peor.EquipoID}
-                          <span className="ml-2 font-mono text-emerald-600">
-                            +{fmtN(bloque.peor.DiferenciaReal)}
-                          </span>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </CardHeader>
-                {expanded ? (
-                  <CardContent className="p-0">
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className={SEQ_HEADER_CLASS}>#</TableHead>
-                            <TableHead>Equipo</TableHead>
-                            <TableHead>Sucursal / Cabina</TableHead>
-                            <TableHead>Operadora</TableHead>
-                            <TableHead className="text-right">Inicial</TableHead>
-                            <TableHead className="text-right">Final</TableHead>
-                            <TableHead className="text-right">Diferencia</TableHead>
-                            <TableHead className="text-right">Acciones</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {bloque.lecturas.map((l, i) => (
-                            <TableRow key={l.LecturaID}>
-                              <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
-                              <TableCell className="font-mono text-sm">{l.EquipoID}</TableCell>
-                              <TableCell className="text-sm text-muted-foreground">{l.Sucursal}{l.Cabina ? ` / ${l.Cabina}` : ""}</TableCell>
-                              <TableCell className="text-sm">{dbPulsos.operadoras.find(o => o.OperadoraID === l.OperadoraID)?.Nombre || l.OperadoraID || "-"}</TableCell>
-                              <TableCell className="text-right font-mono text-sm">{fmtN(l.LecturaInicial)}</TableCell>
-                              <TableCell className="text-right font-mono text-sm">{fmtN(l.LecturaFinal)}</TableCell>
-                              <TableCell className="text-right">
-                                <Badge variant="outline" className="font-mono text-green-400 border-green-500/30">
-                                  +{fmtN(l.DiferenciaReal)}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex gap-1 justify-end">
-                                  <RecordActions
-                                    title={`Lectura: ${l.EquipoID} ${fmtSemanaRango(l.FechaSemana)}`}
-                                    record={l as unknown as Record<string, unknown>}
-                                    onEdit={() => openEdit(l)}
-                                    onDelete={() => handleDelete(l)}
-                                  />
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                ) : null}
-              </Card>
-            )
-          })}
-        </div>
       )}
 
-      {/* Dialog de recalculo de continuidad histórica */}
-      {recalcPreview !== null ? (
-        <Dialog open onOpenChange={() => setRecalcPreview(null)}>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Recalcular continuidad histórica</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3 py-2 text-sm">
-              {recalcPreview.count === 0 ? (
-                <p className="text-emerald-700 font-medium">✓ Todas las lecturas ya tienen continuidad correcta. No hay nada que corregir.</p>
-              ) : (
-                <>
-                  <p className="text-muted-foreground">
-                    Se encontraron <b>{recalcPreview.count}</b> lecturas donde <b>Lectura Inicial</b> no coincide con el <b>Pulsos Fin</b> de la semana anterior.
-                  </p>
-                  <div className="max-h-60 overflow-y-auto rounded-lg border text-xs">
-                    <table className="w-full">
-                      <thead className="bg-slate-50 sticky top-0">
-                        <tr>
-                          <th className="px-2 py-1.5 text-left font-bold">Equipo</th>
-                          <th className="px-2 py-1.5 text-left font-bold">Semana</th>
-                          <th className="px-2 py-1.5 text-right font-bold">Inicio actual</th>
-                          <th className="px-2 py-1.5 text-right font-bold">Inicio correcto</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {recalcPreview.items.slice(0, 50).map((item) => (
-                          <tr key={item.id} className="border-t">
-                            <td className="px-2 py-1 font-mono">{item.equipo}</td>
-                            <td className="px-2 py-1">{item.semana}</td>
-                            <td className="px-2 py-1 text-right font-mono text-rose-600">{fmtN(item.oldInicial)}</td>
-                            <td className="px-2 py-1 text-right font-mono text-emerald-600">{fmtN(item.newInicial)}</td>
-                          </tr>
-                        ))}
-                        {recalcPreview.items.length > 50 ? (
-                          <tr><td colSpan={4} className="px-2 py-1 text-center text-muted-foreground">... y {recalcPreview.items.length - 50} más</td></tr>
-                        ) : null}
-                      </tbody>
-                    </table>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">Esta operación NO borra datos. Solo corrige Lectura Inicial y Diferencia Real.</p>
-                </>
-              )}
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setRecalcPreview(null)}>Cancelar</Button>
-              {recalcPreview.count > 0 ? (
-                <Button onClick={applyRecalcHistorico} disabled={recalcRunning}>
-                  {recalcRunning ? "Aplicando..." : `Aplicar ${recalcPreview.count} correcciones`}
-                </Button>
-              ) : null}
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      ) : null}
+      {/* Lecturas agrupadas por período */}
+      {groupedByPeriod.length === 0 && !importPreview && (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            <FileSpreadsheet className="w-8 h-8 mx-auto mb-2 opacity-40" />
+            <p>No hay lecturas registradas.</p>
+            <p className="text-sm mt-1">Importa un Excel o crea una lectura manual.</p>
+          </CardContent>
+        </Card>
+      )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>{isEditing ? "Editar Lectura" : "Nueva Lectura Semanal"}</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-2 gap-4 py-2">
-            <div className="space-y-1.5 col-span-2">
-              <Label>Fecha de semana (lunes del período)</Label>
-              <Input type="date" value={form.FechaSemana} onChange={e => {
-                const prev = form.EquipoID ? lookupPrevLecturaFinal(form.EquipoID, e.target.value) : null
-                setForm({ ...form, FechaSemana: e.target.value, LecturaInicial: prev ?? form.LecturaInicial })
-              }} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Equipo *</Label>
-              <Select value={form.EquipoID} onValueChange={v => {
-                const prev = lookupPrevLecturaFinal(v, form.FechaSemana)
-                setForm({ ...form, EquipoID: v, LecturaInicial: prev ?? 0 })
-              }}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-                <SelectContent>
-                  {db.equipos.filter(e => e.Estado === "Activo").map(e => (
-                    <SelectItem key={e.EquipoID} value={e.EquipoID}>{e.EquipoID} — {e.Modelo}</SelectItem>
-                  ))}
-                  {db.equipos.length === 0 && <>
-                    <SelectItem value="133">133 — CANDELA GENTLEYAG</SelectItem>
-                    <SelectItem value="158">158 — CANDELA GENTLEYAG</SelectItem>
-                  </>}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Sucursal *</Label>
-              <Select value={form.Sucursal} onValueChange={v => setForm({ ...form, Sucursal: v })}>
-                <SelectTrigger><SelectValue placeholder="Sucursal" /></SelectTrigger>
-                <SelectContent>
-                  {db.sucursales.length > 0
-                    ? db.sucursales.map(s => <SelectItem key={s.Codigo} value={s.Nombre}>{s.Nombre}</SelectItem>)
-                    : <>
-                        <SelectItem value="Rafael Vidal">Rafael Vidal</SelectItem>
-                        <SelectItem value="Los Jardines">Los Jardines</SelectItem>
-                        <SelectItem value="Villa Olga">Villa Olga</SelectItem>
-                        <SelectItem value="La Vega">La Vega</SelectItem>
-                      </>}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Cabina</Label>
-              <Input value={form.Cabina} onChange={e => setForm({ ...form, Cabina: e.target.value })} placeholder="Ej: Cabina 1" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Operadora responsable</Label>
-              <Select value={form.OperadoraID} onValueChange={v => setForm({ ...form, OperadoraID: v })}>
-                <SelectTrigger><SelectValue placeholder="Operadora" /></SelectTrigger>
-                <SelectContent>
-                  {dbPulsos.operadoras.filter(o => o.Estado === "Activa").map(o => (
-                    <SelectItem key={o.OperadoraID} value={o.OperadoraID}>{o.Nombre}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Lectura inicial (pantalla)</Label>
-              <Input
-                value={form.LecturaInicial ? fmtN(form.LecturaInicial) : ""}
-                onChange={e => setForm({ ...form, LecturaInicial: parseN(e.target.value) })}
-                placeholder="0"
-              />
-              {!isEditing && form.EquipoID ? (
-                <p className="text-[10px] mt-0.5">
-                  {lookupPrevLecturaFinal(form.EquipoID, form.FechaSemana) !== null
-                    ? <span className="text-emerald-600">✓ Automático — basado en lectura previa del equipo</span>
-                    : <span className="text-amber-600">Primera lectura registrada; sin histórico anterior.</span>}
-                </p>
-              ) : null}
-            </div>
-            <div className="space-y-1.5">
+      {groupedByPeriod.map(group => {
+        const collapsed = collapsedPeriods.has(group.key)
+        return (
+          <Card key={group.key}>
+            <CardHeader
+              className="pb-2 cursor-pointer hover:bg-muted/30 transition-colors"
+              onClick={() => togglePeriod(group.key)}
+            >
               <div className="flex items-center justify-between">
-                <Label>Lectura final (pantalla)</Label>
-                <label className="cursor-pointer">
-                  <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleScanPhoto} />
-                  <span className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
-                    {scanning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Camera className="h-3 w-3" />}
-                    {scanning ? "Leyendo..." : "Escanear foto"}
+                <div className="flex items-center gap-2">
+                  {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  <CardTitle className="text-sm font-semibold">
+                    {group.period_label || fmtPeriod(group.period_start, group.period_end)}
+                  </CardTitle>
+                </div>
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  <span>{group.readings.length} equipo{group.readings.length !== 1 ? "s" : ""}</span>
+                  <span className="font-semibold text-primary">
+                    Total DISP Láser: +{fmtN(group.totalDispLaser)}
                   </span>
-                </label>
+                </div>
               </div>
+            </CardHeader>
+
+            {!collapsed && (
+              <CardContent className="pt-0">
+                <div className="overflow-x-auto rounded border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">Equipo</TableHead>
+                        <TableHead className="text-xs">Sucursal / Cabina</TableHead>
+                        <TableHead className="text-xs">Operadora</TableHead>
+                        <TableHead className="text-xs text-right">Inicio</TableHead>
+                        <TableHead className="text-xs text-right">Fin</TableHead>
+                        <TableHead className="text-xs text-right">DISP Láser</TableHead>
+                        <TableHead className="text-xs">Estado</TableHead>
+                        <TableHead className="text-xs w-16"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {group.readings.map(r => (
+                        <TableRow key={r.id}>
+                          <TableCell className="text-xs font-mono">{r.equipo_id}</TableCell>
+                          <TableCell className="text-xs">
+                            <div>{r.sucursal}</div>
+                            {r.cabina && <div className="text-muted-foreground">{r.cabina}</div>}
+                          </TableCell>
+                          <TableCell className="text-xs">{r.operadora || "-"}</TableCell>
+                          <TableCell className="text-xs text-right font-mono">{fmtN(r.lectura_inicial)}</TableCell>
+                          <TableCell className="text-xs text-right font-mono">{fmtN(r.lectura_final)}</TableCell>
+                          <TableCell className="text-xs text-right font-mono text-primary font-semibold">
+                            +{fmtN(r.disp_laser)}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {r.estado_cuadre === "lectura_guardada" ? (
+                              <Badge variant="outline" className="text-xs">Guardada</Badge>
+                            ) : r.estado_cuadre === "cuadre_completo" ? (
+                              <Badge className="text-xs bg-emerald-100 text-emerald-700 border border-emerald-200">Cuadre</Badge>
+                            ) : (
+                              <span className="text-muted-foreground">{r.estado_cuadre || "-"}</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            <div className="flex gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => handleEdit(r)}
+                                title="Editar"
+                              >
+                                ✏️
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-destructive"
+                                onClick={() => handleDelete(r)}
+                                title="Eliminar"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            )}
+          </Card>
+        )
+      })}
+
+      {/* Dialog: Nueva / Editar lectura manual */}
+      <Dialog open={manualOpen} onOpenChange={setManualOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{form.id ? "Editar lectura" : "Nueva lectura manual"}</DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="manual-equipo">Equipo</Label>
+              <Select value={form.equipo_id} onValueChange={handleEquipoChange}>
+                <SelectTrigger id="manual-equipo">
+                  <SelectValue placeholder="Selecciona un equipo..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {db.equipos
+                    .filter(e => e.Estado === "Activo")
+                    .map(e => (
+                      <SelectItem key={e.EquipoID} value={e.EquipoID}>
+                        {e.EquipoID} — {e.Sucursal}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="period-start">Período inicio</Label>
+                <Input
+                  id="period-start"
+                  type="date"
+                  value={form.period_start}
+                  onChange={e => handlePeriodStartChange(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="period-end">Período fin</Label>
+                <Input
+                  id="period-end"
+                  type="date"
+                  value={form.period_end}
+                  min={form.period_start}
+                  onChange={e => setForm(prev => ({ ...prev, period_end: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="manual-final">Lectura final</Label>
               <Input
-                value={form.LecturaFinal ? fmtN(form.LecturaFinal) : ""}
-                onChange={e => setForm({ ...form, LecturaFinal: parseN(e.target.value) })}
-                placeholder="0"
+                id="manual-final"
+                placeholder="Ej: 3,686,650"
+                value={form.lectura_final}
+                onChange={e => setForm(prev => ({ ...prev, lectura_final: e.target.value }))}
               />
             </div>
-            <div className="col-span-2 bg-muted/40 rounded-lg p-3 flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Diferencia real de pulsos:</span>
-              <span className={`font-bold text-xl ${diferencia < 0 ? "text-destructive" : "text-green-400"}`}>
-                {diferencia < 0 ? "⚠ " : "+"}{fmtN(diferencia)} pulsos
-              </span>
+
+            <div className="flex items-center gap-2 text-sm bg-muted/30 rounded-md px-3 py-2">
+              <span className="text-muted-foreground">Lectura inicial auto-detectada:</span>
+              <span className="font-mono font-semibold">{fmtN(form.lectura_inicial)}</span>
+              <SourceBadge source={form.lectura_inicial_source} />
             </div>
-            <div className="space-y-1.5 col-span-2">
-              <Label>Observaciones</Label>
-              <Input value={form.Observaciones} onChange={e => setForm({ ...form, Observaciones: e.target.value })} placeholder="Notas opcionales" />
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="manual-obs">Observaciones</Label>
+              <Input
+                id="manual-obs"
+                placeholder="Opcional"
+                value={form.observaciones}
+                onChange={e => setForm(prev => ({ ...prev, observaciones: e.target.value }))}
+              />
             </div>
           </div>
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}><X className="h-4 w-4 mr-2" />Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving}><Save className="h-4 w-4 mr-2" />{saving ? "Guardando..." : "Guardar"}</Button>
+            <Button variant="outline" onClick={() => setManualOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveManual} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
+              Guardar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

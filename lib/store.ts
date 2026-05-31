@@ -94,7 +94,7 @@ export const useAppStore = create<AppState>()(
       setPulsosSectionOpen: (open) => set({ pulsosSectionOpen: open }),
       db: { sucursales: [], equipos: [], reportes: [], piezas: [], tecnicos: [] },
       setDb: (db) => set({ db }),
-      dbPulsos: { operadoras: [], lecturasSemanales: [], sesionesCliente: [], auditoriasSemanales: [] },
+      dbPulsos: { operadoras: [], lecturasSemanales: [], sesionesCliente: [], auditoriasSemanales: [], pulseReadings: [] },
       setDbPulsos: (dbPulsos) => set({ dbPulsos }),
       piezasReporte: [],
       setPiezasReporte: (piezas) => set({ piezasReporte: piezas }),

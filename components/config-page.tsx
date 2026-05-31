@@ -173,6 +173,7 @@ export function ConfigPage() {
             lecturasSemanales: (pulsos.lecturasSemanales as DatabasePulsos["lecturasSemanales"]) || [],
             sesionesCliente: (pulsos.sesionesCliente as DatabasePulsos["sesionesCliente"]) || [],
             auditoriasSemanales: [],
+            pulseReadings: (pulsos.pulseReadings as DatabasePulsos["pulseReadings"]) || [],
           })
         }
       } catch {}

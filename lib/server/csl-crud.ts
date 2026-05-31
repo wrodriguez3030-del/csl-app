@@ -342,16 +342,31 @@ export async function getAllData() {
  *   - sesiones_cliente → solo últimas 6 semanas (en vez de las 24,616 filas
  *     históricas). El cuadre semanal usa esto. Para semanas viejas se puede
  *     pedir con extendedDays.
+ *
+ *  2026-05-30: incluye csl_pulse_readings (nueva tabla canónica de lecturas).
  */
 export async function getAllPulsosData(opts?: { extendedDays?: number }) {
   const sinceDays = opts?.extendedDays ?? SESIONES_RECENT_DAYS
-  const [operadoras, lecturasSemanales, sesionesCliente, auditoriasSemanales] = await Promise.all([
+  const [operadoras, lecturasSemanales, sesionesCliente, auditoriasSemanales, pulseReadingsRaw] = await Promise.all([
     getRows("operadoras"),
     getRows("lecturas_semanales"),
     getRows("sesiones_cliente", { sinceColumn: "fecha", sinceDays }),
     getRows("auditorias_semanales"),
+    // csl_pulse_readings usa service_role directo (tabla nueva, no en ENTITY_TABLES aún)
+    getSupabaseAdmin()
+      .from("csl_pulse_readings")
+      .select("*")
+      .order("period_start", { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          // Tabla puede no existir aún en producción — no bloquear la carga
+          console.warn("csl_pulse_readings not available:", error.message)
+          return []
+        }
+        return data || []
+      }),
   ])
-  return { operadoras, lecturasSemanales, sesionesCliente, auditoriasSemanales }
+  return { operadoras, lecturasSemanales, sesionesCliente, auditoriasSemanales, pulseReadings: pulseReadingsRaw }
 }
 
 /** Carga un reporte COMPLETO por ID — incluye firmas, fotos, piezas_json,

@@ -1121,6 +1121,132 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "deleteAuditoria":
       await deleteRow("auditorias_semanales", textValue(params, "id"))
       return { ok: true }
+
+    // ── PulseControl: nueva tabla canónica csl_pulse_readings ──────────────
+
+    case "getPulseReadings": {
+      const { data, error } = await getSupabaseAdmin()
+        .from("csl_pulse_readings")
+        .select("*")
+        .order("period_start", { ascending: false })
+      if (error) throw error
+      return { ok: true, records: data || [] }
+    }
+
+    case "savePulseReading": {
+      const record = parsePayload(params)
+      const sb = getSupabaseAdmin()
+      const { data: profile } = await sb
+        .from("csl_user_profiles")
+        .select("business_id")
+        .eq("user_id", user.id)
+        .single()
+      if (!profile?.business_id) throw new Error("business_id no encontrado")
+
+      const row: Record<string, unknown> = {
+        business_id: profile.business_id,
+        equipo_id: textFrom(record, "equipo_id"),
+        serial: textFrom(record, "serial") || null,
+        sucursal: textFrom(record, "sucursal"),
+        cabina: textFrom(record, "cabina") || null,
+        operadora: textFrom(record, "operadora") || null,
+        period_start: textFrom(record, "period_start"),
+        period_end: textFrom(record, "period_end"),
+        period_label: textFrom(record, "period_label") || null,
+        lectura_inicial: numberFrom(record, "lectura_inicial"),
+        lectura_final: numberFrom(record, "lectura_final"),
+        disp_operador: record.disp_operador != null ? numberFrom(record, "disp_operador") : null,
+        diferencia_pct: record.diferencia_pct != null ? numberFrom(record, "diferencia_pct") : null,
+        estado_cuadre: textFrom(record, "estado_cuadre") || "lectura_guardada",
+        estado_mantenimiento: textFrom(record, "estado_mantenimiento") || null,
+        fallas: textFrom(record, "fallas") || null,
+        source_file: textFrom(record, "source_file") || null,
+        source_type: textFrom(record, "source_type") || "manual",
+        observaciones: textFrom(record, "observaciones") || null,
+        updated_at: new Date().toISOString(),
+      }
+      if (textFrom(record, "id")) row.id = textFrom(record, "id")
+
+      const { data, error } = await sb
+        .from("csl_pulse_readings")
+        .upsert(row, { onConflict: "business_id,equipo_id,period_start,period_end" })
+        .select()
+        .single()
+      if (error) throw error
+
+      // Sincronizar campos del equipo si la lectura final es válida
+      if (row.equipo_id && Number(row.lectura_final) > 0) {
+        const equipoUpdate: Record<string, unknown> = {
+          p_cabeza: row.lectura_final,
+          ultima_actualizacion_pulsos: new Date().toISOString(),
+        }
+        if (row.period_label) equipoUpdate.ultima_semana_pulsos = row.period_label
+        if (row.sucursal) equipoUpdate.sucursal = row.sucursal
+        if (row.cabina) equipoUpdate.cabina = row.cabina
+        if (row.operadora) equipoUpdate.operadora = row.operadora
+        if (row.serial) equipoUpdate.serie = row.serial
+        if (row.fallas) equipoUpdate.fallas_recientes = row.fallas
+        await sb
+          .from("csl_equipos")
+          .update(equipoUpdate)
+          .eq("equipo_id", row.equipo_id as string)
+          .eq("business_id", profile.business_id)
+      }
+      return { ok: true, record: data }
+    }
+
+    case "deletePulseReading": {
+      const id = textValue(params, "id")
+      if (!id) throw new Error("id obligatorio")
+      const { error } = await getSupabaseAdmin()
+        .from("csl_pulse_readings")
+        .delete()
+        .eq("id", id)
+      if (error) throw error
+      return { ok: true }
+    }
+
+    case "recalculatePulseContinuity": {
+      const sb = getSupabaseAdmin()
+      const { data: profile } = await sb
+        .from("csl_user_profiles")
+        .select("business_id")
+        .eq("user_id", user.id)
+        .single()
+      if (!profile?.business_id) throw new Error("business_id no encontrado")
+
+      const { data: all, error: fetchErr } = await sb
+        .from("csl_pulse_readings")
+        .select("*")
+        .eq("business_id", profile.business_id)
+        .order("period_start", { ascending: true })
+      if (fetchErr) throw fetchErr
+
+      const byEquipo = new Map<string, typeof all>()
+      for (const r of (all || [])) {
+        if (!byEquipo.has(r.equipo_id)) byEquipo.set(r.equipo_id, [])
+        byEquipo.get(r.equipo_id)!.push(r)
+      }
+
+      let fixed = 0
+      for (const [, readings] of byEquipo) {
+        const sorted = [...(readings || [])].sort((a, b) => String(a.period_start).localeCompare(String(b.period_start)))
+        for (let i = 1; i < sorted.length; i++) {
+          const prev = sorted[i - 1]
+          const cur = sorted[i]
+          const correctInicial = Number(prev.lectura_final)
+          if (Number(cur.lectura_inicial) !== correctInicial) {
+            const { error } = await sb
+              .from("csl_pulse_readings")
+              .update({ lectura_inicial: correctInicial, updated_at: new Date().toISOString() })
+              .eq("id", cur.id)
+            if (!error) fixed++
+          }
+        }
+      }
+      return { ok: true, fixed }
+    }
+
     default:
       return { ok: false, error: `Accion no soportada: ${action}` }
   }

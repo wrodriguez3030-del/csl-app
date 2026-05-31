@@ -241,6 +241,7 @@ export function PulsosSesionesPage() {
         lecturasSemanales: result.lecturasSemanales ?? dbPulsos.lecturasSemanales,
         sesionesCliente: result.sesionesCliente ?? [],
         auditoriasSemanales: result.auditoriasSemanales ?? dbPulsos.auditoriasSemanales,
+        pulseReadings: dbPulsos.pulseReadings,
       })
     } catch (error) {
       console.warn(error)

@@ -281,6 +281,7 @@ export interface DatabasePulsos {
   lecturasSemanales: LecturaSemanal[]
   sesionesCliente: SesionCliente[]
   auditoriasSemanales: AuditoriaSemanal[]
+  pulseReadings: import("./pulse-engine").PulseReading[]
 }
 
 // =====================================================
