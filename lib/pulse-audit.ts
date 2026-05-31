@@ -11,16 +11,21 @@
  *   - diferencia        = disparosOperador - disparosLaser
  *   - porcentaje        = |diferencia| / disparosLaser × 100   (solo si disparosLaser > 0)
  *
- * Alerta:
- *   - ≤ 5 %   → "OK"
- *   - 5–15 %  → "Advertencia"
+ * Alerta (rangos exactos sobre |%|):
+ *   - ≤  2 %  → "OK"
+ *   - 3–15 %  → "Advertencia"
  *   - > 15 %  → "Critico"
+ *
+ * Estos thresholds vienen del helper compartido lib/pulse-colors.ts
+ * (getAlerta) — única fuente de verdad para todo el módulo.
  *
  * Edge case: disparosLaser = 0 (no hubo uso real del equipo esa semana)
  *   - Si disparosOperador también = 0 → OK (semana inactiva legítima).
  *   - Si disparosOperador > 0 → Crítico (operadora reportó disparos sobre
  *     un equipo sin lectura — sospechoso).
  */
+
+import { getAlerta as classifyAlerta } from "./pulse-colors"
 
 export type AlertaNivel = "OK" | "Advertencia" | "Critico"
 
@@ -43,7 +48,8 @@ export function calcDesviacion(disparosLaser: number, disparosOperador: number):
   }
 
   const porcentaje = Math.round((Math.abs(diferencia) / laser) * 1000) / 10
-  const alerta: AlertaNivel = porcentaje <= 5 ? "OK" : porcentaje <= 15 ? "Advertencia" : "Critico"
+  // Thresholds centralizados en lib/pulse-colors.ts — fuente única de verdad.
+  const alerta: AlertaNivel = classifyAlerta(porcentaje)
   return { disparosLaser: laser, disparosOperador: operador, diferencia, porcentaje, alerta }
 }
 

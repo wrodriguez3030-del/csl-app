@@ -7,7 +7,7 @@ import { KpiCard } from "@/components/kpi-card"
 import { Badge } from "@/components/ui/badge"
 import { Activity, AlertTriangle, BarChart3, Users, Wrench, Zap } from "lucide-react"
 import { fmtN } from "@/lib/fmt"
-import { signedColorClassDark } from "@/lib/pulse-colors"
+import { signedColorClassDark, getAlerta } from "@/lib/pulse-colors"
 
 export function PulseControlDashboardPage() {
   const { dbPulsos } = useAppStore()
@@ -29,8 +29,8 @@ export function PulseControlDashboardPage() {
     const semanasLegacy = dbPulsos.lecturasSemanales.map(l => String(l.FechaSemana || "").split("T")[0]).filter(Boolean)
     const semanas = Array.from(new Set([...semanasFromReadings, ...semanasLegacy])).sort().reverse()
 
-    // Críticas: % desviación > 15 sobre las readings, o desde auditorías legacy
-    const criticasFromReadings = readings.filter(r => Math.abs(Number(r.diferencia_pct) || 0) > 15).length
+    // Críticas: usa getAlerta() (fuente única) — Crítico = |pct| > 15
+    const criticasFromReadings = readings.filter(r => getAlerta(Number(r.diferencia_pct) || 0) === "Critico").length
     const criticasLegacy = dbPulsos.auditoriasSemanales.filter(a => a.Alerta === "Critico").length
     const criticas = criticasFromReadings || criticasLegacy
 

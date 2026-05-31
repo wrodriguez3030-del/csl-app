@@ -8,14 +8,15 @@
  *   - valor > 0  → AZUL    (blue-500)
  *   - valor = 0  → VERDE   (emerald-500, neutro/consistente)
  *
- * Estado (a partir del % de diferencia):
- *   - |pct| ≤  5  → OK         (verde)
- *   - |pct| ≤ 15  → Advert.    (amarillo)
- *   - |pct| > 15  → Crítico    (rojo)
+ * Estado (a partir del % de diferencia, en valor absoluto):
+ *   - |pct|  ≤  2  → OK         (verde)
+ *   - |pct|  ≤ 15  → Advert.    (amarillo)   [3% a 15%]
+ *   - |pct|  > 15  → Crítico    (rojo)       [16% en adelante]
  *
- * Esta es la lógica que se debe ver en TODAS las semanas; tomada como
- * referencia el comportamiento correcto que ya se observa en semanas
- * recientes con datos completos.
+ * Esta es la lógica que se debe ver en TODAS las semanas y menús
+ * (Auditoría/IA, Cuadre Semanal, Dashboard PulseControl) — una única
+ * función centraliza la clasificación para que no haya criterios
+ * distintos por componente.
  */
 
 import { TrendingDown, TrendingUp, CheckCircle, AlertTriangle, XCircle } from "lucide-react"
@@ -49,10 +50,20 @@ export function signedIcon(value: number) {
 
 export type AlertaEstado = "OK" | "Advertencia" | "Critico"
 
-/** Clasifica el % de diferencia a uno de los tres estados estándar. */
+/**
+ * Clasifica el % de diferencia a uno de los tres estados estándar.
+ *
+ * Rangos exactos (sobre |pct|):
+ *   [0 .. 2]  → OK
+ *   [3 .. 15] → Advertencia (incluye 15 cerrado por arriba)
+ *   [16 ..]   → Crítico
+ *
+ * Para valores fraccionarios (ej. 2.5 redondeado a 3), 2.x cae en
+ * Advertencia desde 3 inclusive. Threshold OK estricto <= 2.
+ */
 export function getAlerta(pct: number): AlertaEstado {
   const a = Math.abs(pct)
-  if (a <= 5) return "OK"
+  if (a <= 2) return "OK"
   if (a <= 15) return "Advertencia"
   return "Critico"
 }
