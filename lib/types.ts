@@ -276,12 +276,35 @@ export interface AuditoriaSemanal {
   Fuente?: string
 }
 
+/**
+ * Resumen semanal de disparos por operadora (csl_operator_shots).
+ * Una fila por (tenant, semana operativa, sucursal normalizada, operadora normalizada).
+ */
+export interface OperatorShot {
+  id: string
+  business_id: string
+  period_start: string
+  period_end: string
+  period_label?: string | null
+  sucursal_original?: string | null
+  sucursal_normalizada: string
+  operadora_original?: string | null
+  operadora_normalizada: string
+  sesiones: number
+  disparos: number
+  source_file?: string | null
+  source_type?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
 export interface DatabasePulsos {
   operadoras: Operadora[]
   lecturasSemanales: LecturaSemanal[]
   sesionesCliente: SesionCliente[]
   auditoriasSemanales: AuditoriaSemanal[]
   pulseReadings: import("./pulse-engine").PulseReading[]
+  operatorShots: OperatorShot[]
 }
 
 // =====================================================

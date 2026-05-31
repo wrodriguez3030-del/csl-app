@@ -1258,6 +1258,77 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true, fixed }
     }
 
+    case "getOperatorShots": {
+      // Devuelve el resumen semanal de disparos por operadora (csl_operator_shots).
+      // Si la tabla aún no existe (migración pendiente), devuelve [] sin error.
+      const sb = getSupabaseAdmin()
+      const { data: profile } = await sb
+        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
+      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      const { data, error } = await sb
+        .from("csl_operator_shots")
+        .select("*")
+        .eq("business_id", profile.business_id)
+        .order("period_start", { ascending: false })
+      if (error) {
+        const code = (error as { code?: string }).code
+        if (code === "42P01") return { ok: true, records: [], tableMissing: true }
+        throw error
+      }
+      return { ok: true, records: data || [] }
+    }
+
+    case "saveOperatorShots": {
+      // Upsert por (business_id, period_start, period_end, sucursal_normalizada,
+      // operadora_normalizada). Acepta payload: { rows: OperatorShotRow[] }.
+      const payload = parsePayload(params) as { rows?: unknown[] }
+      const rowsInput = Array.isArray(payload.rows) ? payload.rows : []
+      if (!rowsInput.length) return { ok: true, upserted: 0 }
+      const sb = getSupabaseAdmin()
+      const { data: profile } = await sb
+        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
+      if (!profile?.business_id) throw new Error("business_id no encontrado")
+
+      const now = new Date().toISOString()
+      const toUpsert = rowsInput.map((raw) => {
+        const r = raw as Record<string, unknown>
+        return {
+          business_id: profile.business_id,
+          period_start: String(r.period_start || ""),
+          period_end: String(r.period_end || ""),
+          period_label: r.period_label ? String(r.period_label) : null,
+          sucursal_original: r.sucursal_original ? String(r.sucursal_original) : null,
+          sucursal_normalizada: String(r.sucursal_normalizada || ""),
+          operadora_original: r.operadora_original ? String(r.operadora_original) : null,
+          operadora_normalizada: String(r.operadora_normalizada || ""),
+          sesiones: Number(r.sesiones) || 0,
+          disparos: Number(r.disparos) || 0,
+          source_file: r.source_file ? String(r.source_file) : null,
+          source_type: r.source_type ? String(r.source_type) : "agendapro",
+          updated_at: now,
+        }
+      }).filter(r =>
+        r.period_start && r.period_end && r.sucursal_normalizada && r.operadora_normalizada
+      )
+      if (!toUpsert.length) return { ok: true, upserted: 0 }
+
+      const { data, error } = await sb
+        .from("csl_operator_shots")
+        .upsert(toUpsert, {
+          onConflict: "business_id,period_start,period_end,sucursal_normalizada,operadora_normalizada",
+        })
+        .select()
+      if (error) {
+        const code = (error as { code?: string }).code
+        if (code === "42P01") {
+          console.warn("csl_operator_shots no existe — migración pendiente. Saltando persistencia.")
+          return { ok: true, upserted: 0, tableMissing: true }
+        }
+        throw error
+      }
+      return { ok: true, upserted: (data || []).length }
+    }
+
     case "recalculateDispOperador": {
       // Recalcula disp_operador en csl_pulse_readings agregando desde
       // csl_sesiones_cliente por (business_id, period_start..period_end,
@@ -1288,8 +1359,26 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const { data: readings, error: rErr } = await readingsQuery
       if (rErr) throw rErr
 
-      // Cargar sesiones del tenant cubriendo el rango de períodos a procesar.
-      // Si no se filtra por período, traer todas las sesiones del tenant.
+      // Fuente PRIMARIA: csl_operator_shots (resumen semanal por sucursal+op).
+      // Fuente FALLBACK: csl_sesiones_cliente (filas individuales) cuando el
+      // tenant no tiene operator_shots o la tabla no existe.
+      const shotsByKey = new Map<string, number>()
+      try {
+        const { data: shots, error: shErr } = await sb
+          .from("csl_operator_shots")
+          .select("period_start, period_end, sucursal_normalizada, operadora_normalizada, disparos")
+          .eq("business_id", profile.business_id)
+        if (!shErr && shots) {
+          for (const s of shots) {
+            const k = `${String(s.period_start).slice(0, 10)}|${String(s.period_end).slice(0, 10)}|${String(s.sucursal_normalizada || "").toUpperCase()}|${String(s.operadora_normalizada || "").toUpperCase()}`
+            shotsByKey.set(k, (shotsByKey.get(k) || 0) + Number(s.disparos || 0))
+          }
+        }
+      } catch {
+        // operator_shots no disponible — usaremos solo sesiones_cliente
+      }
+
+      // Sesiones individuales como fallback / complemento
       const periodStarts = (readings || []).map(r => String(r.period_start)).filter(Boolean)
       const periodEnds = (readings || []).map(r => String(r.period_end)).filter(Boolean)
       const minDate = periodStarts.length ? periodStarts.reduce((a, b) => (a < b ? a : b)) : null
@@ -1304,8 +1393,6 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const { data: sesiones, error: sErr } = await sesionesQuery
       if (sErr) throw sErr
 
-      // Indexar sesiones por (periodKey, matchKey) → suma de disparos
-      // periodKey: "YYYY-MM-DD" — usaremos fecha cruda y filtraremos por rango por reading
       type Sesion = { fecha: string; sucursal: string; operadora_id: string; disparos_reportados: number }
       const sesionList: Sesion[] = (sesiones || []).map(s => ({
         fecha: String(s.fecha || "").slice(0, 10),
@@ -1326,12 +1413,19 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         }
         const desde = String(r.period_start).slice(0, 10)
         const hasta = String(r.period_end).slice(0, 10)
+        const [sucNorm, opNorm] = matchKey.split("|")
 
-        let suma = 0
-        for (const s of sesionList) {
-          if (!s.fecha || s.fecha < desde || s.fecha > hasta) continue
-          if (makeAgendaMatchKey(s.sucursal, s.operadora_id) !== matchKey) continue
-          suma += s.disparos_reportados
+        // 1) Intento por operator_shots (match exacto por período + clave)
+        const shotsKey = `${desde}|${hasta}|${sucNorm}|${opNorm}`
+        let suma = shotsByKey.get(shotsKey) || 0
+
+        // 2) Si no hay shot, fallback a sesionesCliente sumando por rango
+        if (suma === 0) {
+          for (const s of sesionList) {
+            if (!s.fecha || s.fecha < desde || s.fecha > hasta) continue
+            if (makeAgendaMatchKey(s.sucursal, s.operadora_id) !== matchKey) continue
+            suma += s.disparos_reportados
+          }
         }
 
         const currentValue = r.disp_operador == null ? null : Number(r.disp_operador)

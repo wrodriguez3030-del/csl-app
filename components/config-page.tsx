@@ -174,6 +174,7 @@ export function ConfigPage() {
             sesionesCliente: (pulsos.sesionesCliente as DatabasePulsos["sesionesCliente"]) || [],
             auditoriasSemanales: [],
             pulseReadings: (pulsos.pulseReadings as DatabasePulsos["pulseReadings"]) || [],
+            operatorShots: (pulsos.operatorShots as DatabasePulsos["operatorShots"]) || [],
           })
         }
       } catch {}

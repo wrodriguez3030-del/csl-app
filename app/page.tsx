@@ -159,6 +159,7 @@ export default function HomePage() {
           sesionesCliente: (pulsos.sesionesCliente as DatabasePulsos["sesionesCliente"]) || [],
           auditoriasSemanales: (pulsos.auditoriasSemanales as DatabasePulsos["auditoriasSemanales"]) || [],
           pulseReadings: (pulsos.pulseReadings as DatabasePulsos["pulseReadings"]) || [],
+          operatorShots: (pulsos.operatorShots as DatabasePulsos["operatorShots"]) || [],
         })
       }
       setLastSyncAt(Date.now())

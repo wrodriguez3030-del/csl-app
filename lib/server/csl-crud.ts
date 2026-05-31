@@ -347,7 +347,7 @@ export async function getAllData() {
  */
 export async function getAllPulsosData(opts?: { extendedDays?: number }) {
   const sinceDays = opts?.extendedDays ?? SESIONES_RECENT_DAYS
-  const [operadoras, lecturasSemanales, sesionesCliente, auditoriasSemanales, pulseReadingsRaw] = await Promise.all([
+  const [operadoras, lecturasSemanales, sesionesCliente, auditoriasSemanales, pulseReadingsRaw, operatorShotsRaw] = await Promise.all([
     getRows("operadoras"),
     getRows("lecturas_semanales"),
     getRows("sesiones_cliente", { sinceColumn: "fecha", sinceDays }),
@@ -365,8 +365,26 @@ export async function getAllPulsosData(opts?: { extendedDays?: number }) {
         return data || []
       })
     })(),
+    // csl_operator_shots: resumen semanal AgendaPro. Si la tabla aún no
+    // existe (migración pendiente), devuelve [] sin romper.
+    (() => {
+      const ctx = getBusinessContext()
+      let q = getSupabaseAdmin()
+        .from("csl_operator_shots")
+        .select("*")
+        .order("period_start", { ascending: false })
+      if (ctx && !ctx.isSuperadmin) q = q.eq("business_id", ctx.businessId)
+      return q.then(({ data, error }) => {
+        if (error) {
+          const code = (error as { code?: string }).code
+          if (code !== "42P01") console.warn("csl_operator_shots not available:", error.message)
+          return []
+        }
+        return data || []
+      })
+    })(),
   ])
-  return { operadoras, lecturasSemanales, sesionesCliente, auditoriasSemanales, pulseReadings: pulseReadingsRaw }
+  return { operadoras, lecturasSemanales, sesionesCliente, auditoriasSemanales, pulseReadings: pulseReadingsRaw, operatorShots: operatorShotsRaw }
 }
 
 /** Carga un reporte COMPLETO por ID — incluye firmas, fotos, piezas_json,

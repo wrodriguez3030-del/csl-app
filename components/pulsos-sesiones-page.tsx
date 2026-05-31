@@ -242,6 +242,7 @@ export function PulsosSesionesPage() {
         sesionesCliente: result.sesionesCliente ?? [],
         auditoriasSemanales: result.auditoriasSemanales ?? dbPulsos.auditoriasSemanales,
         pulseReadings: dbPulsos.pulseReadings,
+        operatorShots: dbPulsos.operatorShots,
       })
     } catch (error) {
       console.warn(error)

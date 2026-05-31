@@ -27,8 +27,9 @@ import {
   type PulseReading,
   type LecturaInicialSource,
 } from "@/lib/pulse-engine"
-import { makeAgendaMatchKey } from "@/lib/normalize-pulse"
+import { makeAgendaMatchKey, normalizeSucursal, normalizeOperadora } from "@/lib/normalize-pulse"
 import { detectPulseFileType, extractAgendaProPeriod } from "@/lib/pulse-file-detector"
+import { getOperationalWeek, type OperationalWeek } from "@/lib/operational-week"
 
 // ─── Tipos locales ────────────────────────────────────────────────────────────
 
@@ -120,6 +121,55 @@ export function PulsosCuadreSemanalPage() {
     }
     return { start: manualPeriodStart, end: manualPeriodEnd, label: "" }
   }, [lecturasFile, agendaFile, manualPeriodStart, manualPeriodEnd])
+
+  // Bucket AgendaPro por semana operativa (lunes–sábado). Cada bucket lleva
+  // la suma por sucursal+operadora canónicos. Esto reemplaza la suma global
+  // de todo el archivo cuando el AgendaPro abarca varias semanas.
+  type WeekBucketRow = {
+    sucursal: string; sucursalNorm: string
+    operadora: string; operadoraNorm: string
+    sesiones: number; disparos: number
+  }
+  type WeekBucket = {
+    week: OperationalWeek
+    rowsByKey: Map<string, WeekBucketRow>
+    totalSesiones: number
+    totalDisparos: number
+  }
+  const weekBuckets = useMemo<WeekBucket[]>(() => {
+    if (!agendaFile) return []
+    const buckets = new Map<string, WeekBucket>()
+    for (const r of agendaFile.rows) {
+      if (r.status !== "valid") continue
+      const week = getOperationalWeek(r.fecha)
+      if (!week) continue
+      const sucursalNorm = normalizeSucursal(r.sucursal)
+      const operadoraNorm = normalizeOperadora(r.operadora)
+      if (!sucursalNorm || !operadoraNorm) continue // descarta cabecera/basura
+      let bucket = buckets.get(week.period_start)
+      if (!bucket) {
+        bucket = { week, rowsByKey: new Map(), totalSesiones: 0, totalDisparos: 0 }
+        buckets.set(week.period_start, bucket)
+      }
+      const key = `${sucursalNorm}|${operadoraNorm}`
+      const existing = bucket.rowsByKey.get(key)
+      if (existing) {
+        existing.sesiones += 1
+        existing.disparos += r.disparos
+      } else {
+        bucket.rowsByKey.set(key, {
+          sucursal: r.sucursal, sucursalNorm,
+          operadora: r.operadora, operadoraNorm,
+          sesiones: 1, disparos: r.disparos,
+        })
+      }
+      bucket.totalSesiones += 1
+      bucket.totalDisparos += r.disparos
+    }
+    return Array.from(buckets.values()).sort(
+      (a, b) => a.week.period_start.localeCompare(b.week.period_start),
+    )
+  }, [agendaFile])
 
   // Lecturas existentes en csl_pulse_readings que cubren EXACTAMENTE el mismo
   // período (start + end). pulseReadings ya viene filtrado por business_id desde
@@ -355,23 +405,56 @@ export function PulsosCuadreSemanalPage() {
         if (res.record) saved.push(res.record as PulseReading)
       }
 
-      // ── 2) Persistir sesiones AgendaPro (csl_sesiones_cliente) ──────────
-      // Idempotente por ImportHash (UNIQUE parcial en DB). Resuelve equipo
-      // por la lectura semanal recién guardada (match canónico sucursal+op).
-      // Asi Registro de Servicios / Sesiones se llena solo.
+      // ── 2a) Persistir resumen semanal (csl_operator_shots) ──────────────
+      // Una fila por (tenant, semana operativa, sucursal_norm, operadora_norm).
+      // Bucketea internamente por getOperationalWeek(fecha) — ignora el rango
+      // global del archivo. Si la tabla aún no existe, el handler lo reporta
+      // y seguimos sin error (gradual rollout).
+      let shotsUpserted = 0
+      let shotsTableMissing = false
+      if (agendaFile && weekBuckets.length > 0) {
+        const shotsPayload: Record<string, unknown>[] = []
+        for (const bucket of weekBuckets) {
+          for (const row of bucket.rowsByKey.values()) {
+            shotsPayload.push({
+              period_start: bucket.week.period_start,
+              period_end: bucket.week.period_end,
+              period_label: bucket.week.period_label,
+              sucursal_original: row.sucursal,
+              sucursal_normalizada: row.sucursalNorm,
+              operadora_original: row.operadora,
+              operadora_normalizada: row.operadoraNorm,
+              sesiones: row.sesiones,
+              disparos: row.disparos,
+              source_file: agendaFile.filename,
+              source_type: "agendapro",
+            })
+          }
+        }
+        if (shotsPayload.length) {
+          const res = await apiCallLocal({
+            action: "saveOperatorShots",
+            data: JSON.stringify({ rows: shotsPayload }),
+          }) as { ok?: boolean; upserted?: number; tableMissing?: boolean }
+          shotsUpserted = Number(res?.upserted) || 0
+          shotsTableMissing = Boolean(res?.tableMissing)
+        }
+      }
+
+      // ── 2b) Persistir sesiones AgendaPro individuales (csl_sesiones_cliente)
+      // Idempotente por ImportHash (UNIQUE parcial en DB). Solo persiste filas
+      // que caen en TODAS las semanas operativas detectadas — actúa como
+      // respaldo cuando aún no existe csl_operator_shots.
       let sesionesInsertadas = 0
       let sesionesDuplicadas = 0
       const sesionesLocal: Record<string, unknown>[] = []
       if (agendaFile) {
-        // Solo persistir sesiones AgendaPro dentro de la semana activa para
-        // evitar que un archivo multi-semana contamine períodos vecinos.
+        // Persistir TODAS las filas válidas del AgendaPro (cada una con su
+        // fecha real). El bucketing por semana se hace en operator_shots
+        // arriba. Aquí actuamos como respaldo cuando operator_shots no exista.
         const validRows = agendaFile.rows.filter(r => {
           if (r.status !== "valid") return false
-          const fecha = String(r.fecha || "").slice(0, 10)
-          if (effectivePeriod.start && effectivePeriod.end) {
-            if (fecha < effectivePeriod.start || fecha > effectivePeriod.end) return false
-          }
-          // Descartar filas con sucursal/operadora cabecera/basura
+          if (!getOperationalWeek(r.fecha)) return false
           if (!makeAgendaMatchKey(r.sucursal, r.operadora)) return false
           return true
         })
@@ -435,6 +518,17 @@ export function PulsosCuadreSemanalPage() {
       setDbPulsos({ ...dbPulsos, pulseReadings: updatedReadings, sesionesCliente: updatedSesiones })
       setSavedCount(saved.length)
       setSavedSesionesCount(sesionesInsertadas)
+      if (shotsUpserted > 0) {
+        showToast(
+          `${shotsUpserted} resumen(es) semanal(es) guardado(s) en ${weekBuckets.length} semana(s)`,
+          "success",
+        )
+      } else if (shotsTableMissing) {
+        showToast(
+          "Resumen semanal pendiente: corre la migración 202605310001_csl_operator_shots.sql en Supabase",
+          "info",
+        )
+      }
       if (sesionesInsertadas > 0) {
         showToast(
           `${sesionesInsertadas} sesión(es) AgendaPro guardada(s)` +
@@ -752,59 +846,70 @@ export function PulsosCuadreSemanalPage() {
               </div>
             )}
 
-            {/* Vista AgendaPro-only: resumen por sucursal+operadora cuando no hay archivo de lecturas */}
-            {!reviewRows.length && agendaFile && (() => {
-              const validRows = agendaFile.rows.filter(r => {
-                if (r.status !== "valid") return false
-                const f = String(r.fecha || "").slice(0, 10)
-                if (effectivePeriod.start && effectivePeriod.end &&
-                    (f < effectivePeriod.start || f > effectivePeriod.end)) return false
-                return Boolean(makeAgendaMatchKey(r.sucursal, r.operadora))
-              })
-              const grouped = new Map<string, { sucursal: string; operadora: string; sesiones: number; disparos: number }>()
-              for (const r of validRows) {
-                const key = makeAgendaMatchKey(r.sucursal, r.operadora)
-                const existing = grouped.get(key)
-                if (existing) {
-                  existing.sesiones += 1
-                  existing.disparos += r.disparos
-                } else {
-                  grouped.set(key, { sucursal: r.sucursal, operadora: r.operadora, sesiones: 1, disparos: r.disparos })
-                }
-              }
-              const rows = Array.from(grouped.values()).sort((a, b) => {
-                if (a.sucursal !== b.sucursal) return a.sucursal.localeCompare(b.sucursal)
-                return a.operadora.localeCompare(b.operadora)
-              })
-              const totalSesiones = rows.reduce((s, r) => s + r.sesiones, 0)
-              const totalDisparos = rows.reduce((s, r) => s + r.disparos, 0)
+            {/* Vista AgendaPro-only: una tarjeta por semana operativa (lunes-sábado) */}
+            {!reviewRows.length && agendaFile && weekBuckets.length > 0 && (() => {
+              const totalSesiones = weekBuckets.reduce((s, b) => s + b.totalSesiones, 0)
+              const totalDisparos = weekBuckets.reduce((s, b) => s + b.totalDisparos, 0)
               return (
-                <div className="space-y-2">
-                  <div className="text-xs text-muted-foreground">
-                    Solo se subió AgendaPro · {totalSesiones} sesión(es) · {fmtN(totalDisparos)} disparos
+                <div className="space-y-3">
+                  <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-blue-600" />
+                    <div>
+                      <div className="font-semibold">
+                        Archivo dividido en {weekBuckets.length} semana{weekBuckets.length !== 1 ? "s" : ""} operativa{weekBuckets.length !== 1 ? "s" : ""} (lunes–sábado)
+                      </div>
+                      <div className="text-blue-800">
+                        Total: {totalSesiones} sesiones · {fmtN(totalDisparos)} disparos. Al guardar, cada semana se almacena por separado.
+                      </div>
+                    </div>
                   </div>
-                  <div className="overflow-x-auto rounded border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="text-xs">Sucursal</TableHead>
-                          <TableHead className="text-xs">Operadora</TableHead>
-                          <TableHead className="text-xs text-right">Sesiones</TableHead>
-                          <TableHead className="text-xs text-right">Disparos</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {rows.map((r, i) => (
-                          <TableRow key={i}>
-                            <TableCell className="text-xs">{r.sucursal}</TableCell>
-                            <TableCell className="text-xs">{r.operadora}</TableCell>
-                            <TableCell className="text-xs text-right font-mono">{r.sesiones}</TableCell>
-                            <TableCell className="text-xs text-right font-mono text-primary font-semibold">{fmtN(r.disparos)}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+
+                  {weekBuckets.map((bucket) => {
+                    const rows = Array.from(bucket.rowsByKey.values()).sort((a, b) => {
+                      if (a.sucursalNorm !== b.sucursalNorm) return a.sucursalNorm.localeCompare(b.sucursalNorm)
+                      return a.operadoraNorm.localeCompare(b.operadoraNorm)
+                    })
+                    const sucursales = Array.from(new Set(rows.map(r => r.sucursalNorm)))
+                    return (
+                      <Card key={bucket.week.period_start} className="overflow-hidden">
+                        <CardHeader className="py-2 px-3 bg-muted/30 border-b">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div>
+                              <div className="text-sm font-semibold">Semana {bucket.week.period_label}</div>
+                              <div className="text-[11px] text-muted-foreground">
+                                {bucket.totalSesiones} sesiones · {fmtN(bucket.totalDisparos)} disparos · {sucursales.length} sucursal(es) · {rows.length} operadora(s)
+                              </div>
+                            </div>
+                            <Badge variant="outline" className="text-[10px]">
+                              {bucket.week.period_start} → {bucket.week.period_end}
+                            </Badge>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="p-0 overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="text-xs">Sucursal</TableHead>
+                                <TableHead className="text-xs">Operadora</TableHead>
+                                <TableHead className="text-xs text-right">Sesiones</TableHead>
+                                <TableHead className="text-xs text-right">Disparos</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {rows.map((r, i) => (
+                                <TableRow key={i}>
+                                  <TableCell className="text-xs">{r.sucursalNorm}</TableCell>
+                                  <TableCell className="text-xs">{r.operadoraNorm}</TableCell>
+                                  <TableCell className="text-xs text-right font-mono">{r.sesiones}</TableCell>
+                                  <TableCell className="text-xs text-right font-mono text-primary font-semibold">{fmtN(r.disparos)}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
                 </div>
               )
             })()}

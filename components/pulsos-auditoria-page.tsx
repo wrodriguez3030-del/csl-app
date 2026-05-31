@@ -144,15 +144,27 @@ export function PulsosAuditoriaPage() {
       if (!desde || !/^\d{4}-\d{2}-\d{2}$/.test(desde)) continue
       const hasta = String(r.period_end || "").split("T")[0].trim() || desde
 
-      // disp_operador: el del reading si > 0, si no fallback a AgendaPro.
-      // El fallback debe filtrar ESTRICTAMENTE por:
-      //   - misma semana (period_start ≤ fecha ≤ period_end)
-      //   - misma sucursal+operadora normalizadas (makeAgendaMatchKey)
-      // Sin esto, sumábamos disparos de OTRAS semanas en la misma operadora.
+      // disp_operador con jerarquía de fuentes:
+      //   1) reading.disp_operador (lo poblado por Cuadre semanal)
+      //   2) csl_operator_shots (match exacto por período + sucursal_norm + op_norm)
+      //   3) Fallback final: sumar csl_sesiones_cliente por rango + match key
+      // Cada fuente filtra estrictamente por la misma semana y sucursal+operadora.
       let dispOperador = Number(r.disp_operador) || 0
-      if (dispOperador === 0) {
-        const matchKey = makeAgendaMatchKey(r.sucursal, r.operadora)
-        if (matchKey) { // descarta filas cuyo equipo no tiene sucursal/operadora válidas
+      const matchKey = makeAgendaMatchKey(r.sucursal, r.operadora)
+      if (dispOperador === 0 && matchKey) {
+        const [sucNorm, opNorm] = matchKey.split("|")
+        // Intento 2: operator_shots
+        const shot = (dbPulsos.operatorShots ?? []).find(
+          os =>
+            String(os.period_start).slice(0, 10) === desde &&
+            String(os.period_end).slice(0, 10) === hasta &&
+            String(os.sucursal_normalizada || "").toUpperCase() === sucNorm &&
+            String(os.operadora_normalizada || "").toUpperCase() === opNorm,
+        )
+        if (shot) {
+          dispOperador = Number(shot.disparos) || 0
+        } else {
+          // Intento 3: sesiones individuales
           const sum = dbPulsos.sesionesCliente.reduce((acc, s) => {
             const sKey = makeAgendaMatchKey(s.Sucursal, s.OperadoraID)
             if (!sKey || sKey !== matchKey) return acc
