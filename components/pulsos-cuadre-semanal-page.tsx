@@ -120,6 +120,18 @@ export function PulsosCuadreSemanalPage() {
     return { start: manualPeriodStart, end: manualPeriodEnd, label: "" }
   }, [lecturasFile, agendaFile, manualPeriodStart, manualPeriodEnd])
 
+  // Lecturas existentes en csl_pulse_readings que cubren EXACTAMENTE el mismo
+  // período (start + end). pulseReadings ya viene filtrado por business_id desde
+  // el backend, así que esta comparación es segura por tenant.
+  const existingForPeriod = useMemo(() => {
+    if (!effectivePeriod.start || !effectivePeriod.end) return []
+    return pulseReadings.filter(
+      r =>
+        String(r.period_start || "").slice(0, 10) === effectivePeriod.start &&
+        String(r.period_end || "").slice(0, 10) === effectivePeriod.end,
+    )
+  }, [pulseReadings, effectivePeriod.start, effectivePeriod.end])
+
   // ── Paso 1: Cargar archivos ─────────────────────────────────────────────────
 
   /**
@@ -422,6 +434,21 @@ export function PulsosCuadreSemanalPage() {
               </div>
             </div>
 
+            {/* Aviso: el período detectado ya tiene lecturas en este tenant */}
+            {existingForPeriod.length > 0 && effectivePeriod.start && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                <div className="space-y-0.5">
+                  <div className="font-semibold">
+                    Esta semana ya tiene {existingForPeriod.length} lectura{existingForPeriod.length !== 1 ? "s" : ""} guardada{existingForPeriod.length !== 1 ? "s" : ""}
+                  </div>
+                  <div className="text-amber-800">
+                    Período {fmtDate(effectivePeriod.start)} — {fmtDate(effectivePeriod.end)}. Si continúas, las lecturas existentes se sobrescribirán equipo por equipo.
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Estado de archivos detectados (resumen rápido si hay alguno) */}
             {(lecturasFile || agendaFile) && (
               <div className="grid gap-2 sm:grid-cols-2">
@@ -602,6 +629,28 @@ export function PulsosCuadreSemanalPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+
+            {/* Aviso de semana ya existente con conteo de overlaps por equipo */}
+            {existingForPeriod.length > 0 && (() => {
+              const existingIds = new Set(existingForPeriod.map(r => r.equipo_id))
+              const overlap = reviewRows.filter(r => existingIds.has(r.equipo_id)).length
+              const newly = reviewRows.length - overlap
+              return (
+                <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                  <div className="space-y-0.5">
+                    <div className="font-semibold">
+                      Esta semana ya tiene lecturas guardadas
+                    </div>
+                    <div className="text-amber-800">
+                      Al guardar: <strong>{overlap}</strong> equipo{overlap !== 1 ? "s" : ""} se sobrescribirá{overlap !== 1 ? "n" : ""}
+                      {newly > 0 ? <> · <strong>{newly}</strong> equipo{newly !== 1 ? "s" : ""} nuevo{newly !== 1 ? "s" : ""}</> : null}
+                      {" "}({fmtDate(effectivePeriod.start)} — {fmtDate(effectivePeriod.end)})
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Advertencias no bloqueantes */}
             {agendaFile && reviewRows.some(r => r.sin_match_agendapro) && (
