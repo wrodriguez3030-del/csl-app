@@ -99,6 +99,8 @@ export function PulsosCuadreSemanalPage() {
   const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
   const [savedSesionesCount, setSavedSesionesCount] = useState(0)
+  const [weekPage, setWeekPage] = useState(0)
+  const WEEKS_PER_PAGE = 5
 
   const lecturasInputRef = useRef<HTMLInputElement>(null)
   const agendaInputRef = useRef<HTMLInputElement>(null)
@@ -551,6 +553,7 @@ export function PulsosCuadreSemanalPage() {
     setReviewRows([])
     setSavedCount(0)
     setSavedSesionesCount(0)
+    setWeekPage(0)
     setManualPeriodStart("")
     setManualPeriodEnd("")
   }
@@ -846,17 +849,25 @@ export function PulsosCuadreSemanalPage() {
               </div>
             )}
 
-            {/* Vista AgendaPro-only: una tarjeta por semana operativa (lunes-sábado) */}
+            {/* Vista AgendaPro-only: una tarjeta por semana operativa (lunes-sábado)
+                 Orden: semana más reciente primero. Paginación de 5 semanas por página. */}
             {!reviewRows.length && agendaFile && weekBuckets.length > 0 && (() => {
               const totalSesiones = weekBuckets.reduce((s, b) => s + b.totalSesiones, 0)
               const totalDisparos = weekBuckets.reduce((s, b) => s + b.totalDisparos, 0)
+              const weeksDesc = [...weekBuckets].sort(
+                (a, b) => b.week.period_start.localeCompare(a.week.period_start),
+              )
+              const totalPages = Math.max(1, Math.ceil(weeksDesc.length / WEEKS_PER_PAGE))
+              const page = Math.min(weekPage, totalPages - 1)
+              const startIdx = page * WEEKS_PER_PAGE
+              const pageWeeks = weeksDesc.slice(startIdx, startIdx + WEEKS_PER_PAGE)
               return (
                 <div className="space-y-3">
                   <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
                     <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-blue-600" />
                     <div>
                       <div className="font-semibold">
-                        Archivo dividido en {weekBuckets.length} semana{weekBuckets.length !== 1 ? "s" : ""} operativa{weekBuckets.length !== 1 ? "s" : ""} (lunes–sábado)
+                        Archivo dividido en {weekBuckets.length} semana{weekBuckets.length !== 1 ? "s" : ""} operativa{weekBuckets.length !== 1 ? "s" : ""} (lunes–sábado) · más reciente primero
                       </div>
                       <div className="text-blue-800">
                         Total: {totalSesiones} sesiones · {fmtN(totalDisparos)} disparos. Al guardar, cada semana se almacena por separado.
@@ -864,7 +875,39 @@ export function PulsosCuadreSemanalPage() {
                     </div>
                   </div>
 
-                  {weekBuckets.map((bucket) => {
+                  {/* Paginación: solo mostrar controles si hay más de WEEKS_PER_PAGE semanas */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between gap-2 rounded-lg border border-muted bg-muted/20 px-3 py-1.5 text-xs">
+                      <span className="text-muted-foreground">
+                        Mostrando {startIdx + 1}–{Math.min(startIdx + WEEKS_PER_PAGE, weeksDesc.length)} de {weeksDesc.length} semanas
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2"
+                          disabled={page === 0}
+                          onClick={() => setWeekPage(p => Math.max(0, p - 1))}
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                          Anterior
+                        </Button>
+                        <span className="px-2 font-medium">{page + 1} / {totalPages}</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2"
+                          disabled={page >= totalPages - 1}
+                          onClick={() => setWeekPage(p => Math.min(totalPages - 1, p + 1))}
+                        >
+                          Siguiente
+                          <ChevronLeft className="w-3.5 h-3.5 rotate-180" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {pageWeeks.map((bucket) => {
                     const rows = Array.from(bucket.rowsByKey.values()).sort((a, b) => {
                       if (a.sucursalNorm !== b.sucursalNorm) return a.sucursalNorm.localeCompare(b.sucursalNorm)
                       return a.operadoraNorm.localeCompare(b.operadoraNorm)
