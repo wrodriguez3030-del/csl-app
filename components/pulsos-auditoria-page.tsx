@@ -15,7 +15,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { Activity, Download, CheckCircle, AlertTriangle, XCircle, TrendingUp, TrendingDown, Upload, FileSpreadsheet, Pencil, Save, X } from "lucide-react"
+import { Activity, Download, CheckCircle, AlertTriangle, XCircle, TrendingUp, TrendingDown, Upload, FileSpreadsheet, Pencil, Save, X, Trash2, Loader2 } from "lucide-react"
 import { fmtN } from "@/lib/fmt"
 import { makeAgendaMatchKey, normalizeSucursal as canonicalSucursal } from "@/lib/normalize-pulse"
 
@@ -472,6 +472,54 @@ export function PulsosAuditoriaPage() {
     event.target.value = ""
   }
 
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  const handleDelete = async (row: any) => {
+    if (row.sourceTable === "pulse_readings") {
+      if (!confirm(
+        `¿Eliminar esta lectura?\n\n` +
+        `Equipo ${row.equipo} · ${row.sucursal} · ${row.operadora}\n` +
+        `Semana ${row.fechaSemana}\n\n` +
+        `Esto borra también la fila de Lecturas Semanales (csl_pulse_readings). ` +
+        `El resumen de operadora en csl_operator_shots se mantiene.`
+      )) return
+      setDeletingId(row.lecturaId)
+      try {
+        const { apiJsonp, normalizeApiUrl } = await import("@/lib/store")
+        await apiJsonp(normalizeApiUrl(apiUrl), { action: "deletePulseReading", id: row.lecturaId })
+        setDbPulsos({
+          ...dbPulsos,
+          pulseReadings: (dbPulsos.pulseReadings ?? []).filter(p => p.id !== row.lecturaId),
+        })
+        showToast("Lectura eliminada", "success")
+      } catch (err) {
+        showToast("Error al eliminar: " + (err instanceof Error ? err.message : String(err)), "error")
+      } finally {
+        setDeletingId(null)
+      }
+    } else {
+      // Legacy lecturasSemanales
+      if (!confirm(
+        `¿Eliminar esta lectura legacy?\n\n` +
+        `Equipo ${row.equipo} · ${row.sucursal}\n` +
+        `Semana ${row.fechaSemana}`
+      )) return
+      setDeletingId(row.lecturaId)
+      try {
+        await syncApi({ action: "deleteLectura", id: row.lecturaId })
+        setDbPulsos({
+          ...dbPulsos,
+          lecturasSemanales: dbPulsos.lecturasSemanales.filter(l => l.LecturaID !== row.lecturaId),
+        })
+        showToast("Lectura eliminada", "success")
+      } catch (err) {
+        showToast("Error al eliminar: " + (err instanceof Error ? err.message : String(err)), "error")
+      } finally {
+        setDeletingId(null)
+      }
+    }
+  }
+
   const openEdit = (row: any) => {
     setEditRow(row)
     setEditForm({
@@ -708,9 +756,23 @@ export function PulsosAuditoriaPage() {
                     </td>
                     <td className="px-2 py-2 text-center">{alertaBadge(r.alerta)}</td>
                     <td className="px-2 py-2 text-center">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)} title="Editar">
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex items-center justify-center gap-0.5">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)} title="Editar">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
+                          onClick={() => handleDelete(r)}
+                          disabled={deletingId === r.lecturaId}
+                          title="Eliminar"
+                        >
+                          {deletingId === r.lecturaId
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <Trash2 className="h-3.5 w-3.5" />}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}

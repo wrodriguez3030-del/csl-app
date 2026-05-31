@@ -1278,6 +1278,51 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true, records: data || [] }
     }
 
+    case "deleteOperatorShot": {
+      // Borra una fila de csl_operator_shots por id, scopeada por tenant.
+      const id = textValue(params, "id")
+      if (!id) throw new Error("id obligatorio")
+      const sb = getSupabaseAdmin()
+      const { data: profile } = await sb
+        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
+      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      const { error } = await sb
+        .from("csl_operator_shots")
+        .delete()
+        .eq("id", id)
+        .eq("business_id", profile.business_id)
+      if (error) {
+        const code = (error as { code?: string }).code
+        if (code === "42P01") return { ok: true, tableMissing: true }
+        throw error
+      }
+      return { ok: true }
+    }
+
+    case "deleteOperatorShotsByPeriod": {
+      // Borra todos los shots de una semana específica (period_start + period_end).
+      const periodStart = textValue(params, "periodStart")
+      const periodEnd = textValue(params, "periodEnd")
+      if (!periodStart || !periodEnd) throw new Error("periodStart y periodEnd obligatorios")
+      const sb = getSupabaseAdmin()
+      const { data: profile } = await sb
+        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
+      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      const { data, error } = await sb
+        .from("csl_operator_shots")
+        .delete()
+        .eq("business_id", profile.business_id)
+        .eq("period_start", periodStart)
+        .eq("period_end", periodEnd)
+        .select("id")
+      if (error) {
+        const code = (error as { code?: string }).code
+        if (code === "42P01") return { ok: true, deleted: 0, tableMissing: true }
+        throw error
+      }
+      return { ok: true, deleted: (data || []).length }
+    }
+
     case "saveOperatorShots": {
       // Upsert por (business_id, period_start, period_end, sucursal_normalizada,
       // operadora_normalizada). Acepta payload: { rows: OperatorShotRow[] }.

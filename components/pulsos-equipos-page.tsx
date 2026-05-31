@@ -5,7 +5,8 @@ import { useAppStore } from "@/lib/store"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Wrench } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Wrench, Pencil } from "lucide-react"
 import { SEQ_HEADER_CLASS, SeqBadge } from "@/components/seq-badge"
 import { fmtN } from "@/lib/fmt"
 
@@ -24,7 +25,20 @@ const equiposGentleYag = [
 ]
 
 export function PulsosEquiposPage() {
-  const { dbPulsos } = useAppStore()
+  const { dbPulsos, setActiveTab } = useAppStore()
+
+  const handleEdit = (equipoId: string) => {
+    // El CRUD completo del equipo vive en Mantenimiento>Equipos.
+    // Navegamos allí; el filtro por equipo se ajusta manualmente.
+    setActiveTab("equipos")
+    // Pequeño delay para que la página de equipos se monte antes del scroll/foco.
+    setTimeout(() => {
+      const el = document.querySelector(`[data-equipo-id="${equipoId}"]`)
+      if (el && "scrollIntoView" in el) {
+        (el as HTMLElement).scrollIntoView({ behavior: "smooth", block: "center" })
+      }
+    }, 200)
+  }
   const rows = useMemo(() => {
     return equiposGentleYag.map(([equipo, sucursal, cabina, operadora]) => {
       // Fuente PRIMARIA: csl_pulse_readings (Cuadre Semanal lo llena solo).
@@ -68,6 +82,7 @@ export function PulsosEquiposPage() {
                 <TableHead>Operadora base</TableHead>
                 <TableHead className="text-right">Última lectura</TableHead>
                 <TableHead className="text-right">Disp. semana</TableHead>
+                <TableHead className="text-center w-20">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -80,6 +95,17 @@ export function PulsosEquiposPage() {
                   <TableCell><Badge className="border-primary/20 bg-primary/10 text-primary">{row.operadora}</Badge></TableCell>
                   <TableCell className="text-right">{formatDate(row.ultimaFecha)}</TableCell>
                   <TableCell className="text-right font-mono font-bold">{fmtN(row.ultimaDispLaser)}</TableCell>
+                  <TableCell className="text-center">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => handleEdit(row.equipo)}
+                      title="Editar en Mantenimiento>Equipos"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useRef, useState } from "react"
-import { AlertTriangle, ChevronLeft, FileSpreadsheet, Loader2, Save, Upload, UploadCloud, CheckCircle2 } from "lucide-react"
+import { AlertTriangle, ChevronLeft, FileSpreadsheet, Loader2, Save, Upload, UploadCloud, CheckCircle2, Trash2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -100,6 +100,7 @@ export function PulsosCuadreSemanalPage() {
   const [savedCount, setSavedCount] = useState(0)
   const [savedSesionesCount, setSavedSesionesCount] = useState(0)
   const [weekPage, setWeekPage] = useState(0)
+  const [deletingShotsFor, setDeletingShotsFor] = useState<string | null>(null)
   const WEEKS_PER_PAGE = 5
 
   const lecturasInputRef = useRef<HTMLInputElement>(null)
@@ -358,6 +359,42 @@ export function PulsosCuadreSemanalPage() {
     }
 
     return rows
+  }
+
+  /** Elimina TODOS los operator_shots guardados para una semana específica del
+   *  tenant activo. Útil cuando se subió un AgendaPro equivocado y se quiere
+   *  empezar de cero esa semana. */
+  const handleDeleteShotsForWeek = async (periodStart: string, periodEnd: string, label: string) => {
+    if (!confirm(
+      `¿Eliminar TODOS los resúmenes guardados de la semana ${label}?\n\n` +
+      `Esto borra las filas de csl_operator_shots para esta semana (este tenant). ` +
+      `Las lecturas láser (csl_pulse_readings) NO se tocan.`
+    )) return
+    setDeletingShotsFor(periodStart)
+    try {
+      const res = await apiCallLocal({
+        action: "deleteOperatorShotsByPeriod",
+        periodStart,
+        periodEnd,
+      }) as { ok?: boolean; deleted?: number; tableMissing?: boolean }
+      const n = Number(res?.deleted) || 0
+      if (res?.tableMissing) {
+        showToast("La tabla csl_operator_shots aún no existe.", "info")
+      } else {
+        // Actualizar store: quitar shots de esa semana en este tenant
+        setDbPulsos({
+          ...dbPulsos,
+          operatorShots: (dbPulsos.operatorShots ?? []).filter(
+            s => !(String(s.period_start).slice(0, 10) === periodStart && String(s.period_end).slice(0, 10) === periodEnd),
+          ),
+        })
+        showToast(`${n} resumen(es) eliminado(s)`, "success")
+      }
+    } catch (err) {
+      showToast(`Error al eliminar: ${err instanceof Error ? err.message : String(err)}`, "error")
+    } finally {
+      setDeletingShotsFor(null)
+    }
   }
 
   const handleContinuar = () => {
@@ -913,6 +950,12 @@ export function PulsosCuadreSemanalPage() {
                       return a.operadoraNorm.localeCompare(b.operadoraNorm)
                     })
                     const sucursales = Array.from(new Set(rows.map(r => r.sucursalNorm)))
+                    // ¿Esta semana ya tiene shots guardados en el tenant?
+                    const savedShots = (dbPulsos.operatorShots ?? []).filter(
+                      s => String(s.period_start).slice(0, 10) === bucket.week.period_start &&
+                           String(s.period_end).slice(0, 10) === bucket.week.period_end,
+                    )
+                    const hasSavedShots = savedShots.length > 0
                     return (
                       <Card key={bucket.week.period_start} className="overflow-hidden">
                         <CardHeader className="py-2 px-3 bg-muted/30 border-b">
@@ -921,11 +964,34 @@ export function PulsosCuadreSemanalPage() {
                               <div className="text-sm font-semibold">Semana {bucket.week.period_label}</div>
                               <div className="text-[11px] text-muted-foreground">
                                 {bucket.totalSesiones} sesiones · {fmtN(bucket.totalDisparos)} disparos · {sucursales.length} sucursal(es) · {rows.length} operadora(s)
+                                {hasSavedShots && (
+                                  <span className="ml-2 text-amber-700">· {savedShots.length} ya guardados</span>
+                                )}
                               </div>
                             </div>
-                            <Badge variant="outline" className="text-[10px]">
-                              {bucket.week.period_start} → {bucket.week.period_end}
-                            </Badge>
+                            <div className="flex items-center gap-1">
+                              <Badge variant="outline" className="text-[10px]">
+                                {bucket.week.period_start} → {bucket.week.period_end}
+                              </Badge>
+                              {hasSavedShots && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
+                                  onClick={() => handleDeleteShotsForWeek(
+                                    bucket.week.period_start,
+                                    bucket.week.period_end,
+                                    bucket.week.period_label,
+                                  )}
+                                  disabled={deletingShotsFor === bucket.week.period_start}
+                                  title="Eliminar shots guardados de esta semana"
+                                >
+                                  {deletingShotsFor === bucket.week.period_start
+                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    : <Trash2 className="h-3.5 w-3.5" />}
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         </CardHeader>
                         <CardContent className="p-0 overflow-x-auto">
