@@ -17,6 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Activity, Download, CheckCircle, AlertTriangle, XCircle, TrendingUp, TrendingDown, Upload, FileSpreadsheet, Pencil, Save, X } from "lucide-react"
 import { fmtN } from "@/lib/fmt"
+import { makeAgendaMatchKey, normalizeSucursal as canonicalSucursal } from "@/lib/normalize-pulse"
 
 function fmtSemanaRango(d: string) {
   if (!d) return "-"
@@ -128,19 +129,76 @@ export function PulsosAuditoriaPage() {
     sortCol !== col ? <span className="text-muted-foreground/30 ml-1">⇅</span>
     : <span className="ml-1 text-primary">{sortDir === "asc" ? "↑" : "↓"}</span>
 
-  // Agrupar lecturas por semana
+  // Agrupar por semana, alimentado por:
+  //   1) csl_pulse_readings (canónico, multi-tenant filtrado en backend)
+  //   2) Fallback: lecturasSemanales legacy para períodos sin pulseReadings
+  // disp_operador: si el reading lo trae (poblado por Cuadre semanal), se usa;
+  // si no, se suma desde sesionesCliente para ese período + equipo.
   const semanas = useMemo(() => {
     const map: Record<string, any[]> = {}
-    dbPulsos.lecturasSemanales.forEach(lec => {
-      const desde = String(lec.FechaSemana || "").split("T")[0].trim()
-      if (!desde || !/^\d{4}-\d{2}-\d{2}$/.test(desde)) return
+    const seenKeys = new Set<string>() // period|equipo|sucursal|cabina
+
+    // ── 1) Fuente PRIMARIA: csl_pulse_readings ────────────────────────────
+    for (const r of (dbPulsos.pulseReadings ?? [])) {
+      const desde = String(r.period_start || "").split("T")[0].trim()
+      if (!desde || !/^\d{4}-\d{2}-\d{2}$/.test(desde)) continue
+      const hasta = String(r.period_end || "").split("T")[0].trim() || desde
+
+      // disp_operador: el del reading si > 0, si no fallback a AgendaPro
+      let dispOperador = Number(r.disp_operador) || 0
+      if (dispOperador === 0) {
+        const matchKey = makeAgendaMatchKey(r.sucursal, r.operadora)
+        const sum = dbPulsos.sesionesCliente.reduce((acc, s) => {
+          const sKey = makeAgendaMatchKey(s.Sucursal, s.OperadoraID)
+          if (sKey !== matchKey) return acc
+          const fechaSesion = String(s.Fecha || "").split("T")[0].trim()
+          if (fechaSesion < desde || fechaSesion > hasta) return acc
+          return acc + (Number(s.DisparosReportados) || 0)
+        }, 0)
+        dispOperador = sum
+      }
+
+      const dispLaser = Number(r.disp_laser) || Math.max(0, (Number(r.lectura_final) || 0) - (Number(r.lectura_inicial) || 0))
+      const diferencia = dispOperador - dispLaser
+      const pct = dispLaser > 0 ? Math.round((diferencia / dispLaser) * 100) : 0
+
       if (!map[desde]) map[desde] = []
-      
-      // Buscar disparos en la misma sucursal/cabina/equipo durante la semana
+      const cabinaRaw = String(r.cabina || "").trim()
+      map[desde].push({
+        lecturaId: r.id,
+        sourceTable: "pulse_readings",
+        fechaSemana: desde,
+        fechaFin: hasta,
+        sucursal: canonicalSucursal(r.sucursal) || r.sucursal || "",
+        cabina: cabinaRaw.replace(/^Cabina\s*/i, ""),
+        cabinaRaw,
+        operadora: r.operadora || "",
+        equipo: r.equipo_id || "",
+        serial: r.serial || "",
+        pulsosInicio: Number(r.lectura_inicial) || 0,
+        pulsosFin: Number(r.lectura_final) || 0,
+        dispLaser,
+        dispOperador,
+        diferencia,
+        pct,
+        alerta: getAlerta(pct),
+      })
+
+      const key = `${desde}|${r.equipo_id}|${canonicalSucursal(r.sucursal)}|${cabinaRaw}`
+      seenKeys.add(key)
+    }
+
+    // ── 2) Fallback LEGACY: lecturasSemanales para combinaciones sin reading
+    for (const lec of dbPulsos.lecturasSemanales) {
+      const desde = String(lec.FechaSemana || "").split("T")[0].trim()
+      if (!desde || !/^\d{4}-\d{2}-\d{2}$/.test(desde)) continue
+      const cabinaRaw = String(lec.Cabina || "").trim()
+      const key = `${desde}|${lec.EquipoID || ""}|${canonicalSucursal(lec.Sucursal || "")}|${cabinaRaw}`
+      if (seenKeys.has(key)) continue // ya cubierto por pulseReadings
+
       const d = new Date(desde + "T12:00:00")
-      if (isNaN(d.getTime())) return
-      const dEnd = new Date(d)
-      dEnd.setDate(dEnd.getDate() + 6)
+      if (isNaN(d.getTime())) continue
+      const dEnd = new Date(d); dEnd.setDate(dEnd.getDate() + 6)
       const hasta = dEnd.toISOString().split("T")[0]
 
       const manualId = auditManualSessionId(desde, lec.Sucursal || "", lec.EquipoID || "", lec.OperadoraID || "", lec.Cabina || "")
@@ -151,37 +209,40 @@ export function PulsosAuditoriaPage() {
         const mismaCabina = normalizeCabina(s.Cabina) === normalizeCabina(lec.Cabina)
         const mismoEquipo = normalizeEquipo(s.EquipoID) === normalizeEquipo(lec.EquipoID)
         const fechaSesion = String(s.Fecha || "").split("T")[0].trim()
-        const enRango = fechaSesion >= desde && fechaSesion <= hasta
-        return mismaSucursal && mismaCabina && mismoEquipo && enRango
+        return mismaSucursal && mismaCabina && mismoEquipo && fechaSesion >= desde && fechaSesion <= hasta
       })
       const dispLaser = Number(lec.DiferenciaReal) || 0
-      const dispOperador = manualSesion ? Number(manualSesion.DisparosReportados) || 0 : sesiones.reduce((sum, s) => sum + (Number(s.DisparosReportados) || 0), 0)
+      const dispOperador = manualSesion
+        ? Number(manualSesion.DisparosReportados) || 0
+        : sesiones.reduce((sum, s) => sum + (Number(s.DisparosReportados) || 0), 0)
       const diferencia = dispOperador - dispLaser
       const pct = dispLaser > 0 ? Math.round((diferencia / dispLaser) * 100) : 0
 
+      if (!map[desde]) map[desde] = []
       map[desde].push({
         lecturaId: lec.LecturaID,
+        sourceTable: "lecturas_semanales",
         fechaSemana: desde,
         sucursal: lec.Sucursal || "",
-        cabina: (lec.Cabina || "").replace("Cabina ", ""),
-        cabinaRaw: lec.Cabina || "",
+        cabina: cabinaRaw.replace(/^Cabina\s*/i, ""),
+        cabinaRaw,
         operadora: lec.OperadoraID || "",
         equipo: lec.EquipoID || "",
         serial: lec.Observaciones || "",
         pulsosInicio: Number(lec.LecturaInicial) || 0,
         pulsosFin: Number(lec.LecturaFinal) || 0,
-        dispLaser: dispLaser,
-        dispOperador: dispOperador,
-        diferencia: diferencia,
-        pct: pct,
+        dispLaser,
+        dispOperador,
+        diferencia,
+        pct,
         alerta: getAlerta(pct),
       })
-    })
+    }
+
     // Ordenar semanas de más reciente a más antigua
     return Object.entries(map)
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([fecha, rows]) => {
-        // Ordenar filas por sucursal y cabina
         rows.sort((a: any, b: any) => {
           if (a.sucursal !== b.sucursal) return a.sucursal.localeCompare(b.sucursal)
           return Number(a.cabina) - Number(b.cabina)
@@ -198,10 +259,13 @@ export function PulsosAuditoriaPage() {
           totDiferencia: totDispOp - totDispLaser,
         }
       })
-  }, [dbPulsos.lecturasSemanales, dbPulsos.sesionesCliente])
+  }, [dbPulsos.pulseReadings, dbPulsos.lecturasSemanales, dbPulsos.sesionesCliente])
 
   const semanasDisponibles = semanas.map(s => s.fecha)
-  const sucursales = Array.from(new Set(dbPulsos.lecturasSemanales.map(l => l.Sucursal).filter(Boolean)))
+  const sucursales = Array.from(new Set([
+    ...((dbPulsos.pulseReadings ?? []).map(r => canonicalSucursal(r.sucursal) || r.sucursal).filter(Boolean)),
+    ...dbPulsos.lecturasSemanales.map(l => l.Sucursal).filter(Boolean),
+  ]))
 
   const filtered = semanas.filter(s => {
     if (filterSemana !== "todas" && s.fecha !== filterSemana) return false
@@ -486,7 +550,7 @@ export function PulsosAuditoriaPage() {
           <p className="text-sm text-muted-foreground">
             Comparativo de pulsos por equipo — Disp. Láser vs Disp. Operador
             <span className="ml-3 text-xs text-muted-foreground/60">
-              ({dbPulsos.lecturasSemanales.length} lecturas · {dbPulsos.sesionesCliente.length} sesiones · {dbPulsos.operadoras.length} operadoras)
+              ({(dbPulsos.pulseReadings?.length ?? 0) + dbPulsos.lecturasSemanales.length} lecturas semanales · {dbPulsos.sesionesCliente.length} sesiones AgendaPro · {dbPulsos.operadoras.length} operadoras)
             </span>
           </p>
         </div>
