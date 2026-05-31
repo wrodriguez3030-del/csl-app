@@ -144,18 +144,24 @@ export function PulsosAuditoriaPage() {
       if (!desde || !/^\d{4}-\d{2}-\d{2}$/.test(desde)) continue
       const hasta = String(r.period_end || "").split("T")[0].trim() || desde
 
-      // disp_operador: el del reading si > 0, si no fallback a AgendaPro
+      // disp_operador: el del reading si > 0, si no fallback a AgendaPro.
+      // El fallback debe filtrar ESTRICTAMENTE por:
+      //   - misma semana (period_start ≤ fecha ≤ period_end)
+      //   - misma sucursal+operadora normalizadas (makeAgendaMatchKey)
+      // Sin esto, sumábamos disparos de OTRAS semanas en la misma operadora.
       let dispOperador = Number(r.disp_operador) || 0
       if (dispOperador === 0) {
         const matchKey = makeAgendaMatchKey(r.sucursal, r.operadora)
-        const sum = dbPulsos.sesionesCliente.reduce((acc, s) => {
-          const sKey = makeAgendaMatchKey(s.Sucursal, s.OperadoraID)
-          if (sKey !== matchKey) return acc
-          const fechaSesion = String(s.Fecha || "").split("T")[0].trim()
-          if (fechaSesion < desde || fechaSesion > hasta) return acc
-          return acc + (Number(s.DisparosReportados) || 0)
-        }, 0)
-        dispOperador = sum
+        if (matchKey) { // descarta filas cuyo equipo no tiene sucursal/operadora válidas
+          const sum = dbPulsos.sesionesCliente.reduce((acc, s) => {
+            const sKey = makeAgendaMatchKey(s.Sucursal, s.OperadoraID)
+            if (!sKey || sKey !== matchKey) return acc
+            const fechaSesion = String(s.Fecha || "").split("T")[0].trim()
+            if (!fechaSesion || fechaSesion < desde || fechaSesion > hasta) return acc
+            return acc + (Number(s.DisparosReportados) || 0)
+          }, 0)
+          dispOperador = sum
+        }
       }
 
       const dispLaser = Number(r.disp_laser) || Math.max(0, (Number(r.lectura_final) || 0) - (Number(r.lectura_inicial) || 0))

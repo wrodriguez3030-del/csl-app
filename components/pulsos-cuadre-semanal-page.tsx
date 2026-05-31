@@ -261,7 +261,7 @@ export function PulsosCuadreSemanalPage() {
   }
 
   const buildReviewRows = (): ReviewRow[] => {
-    const { start: periodStart } = effectivePeriod
+    const { start: periodStart, end: periodEnd } = effectivePeriod
     const rows: ReviewRow[] = (lecturasFile?.result.rows ?? []).map(row => {
       const { value: lectura_inicial, source: lectura_inicial_source } = calculateLecturaInicial(
         pulseReadings, row.equipo_id, periodStart || new Date().toISOString().slice(0, 10),
@@ -270,20 +270,24 @@ export function PulsosCuadreSemanalPage() {
       return { ...row, lectura_inicial, lectura_inicial_source, disp_laser }
     })
 
-    // Si hay AgendaPro, calcular disparos operador usando clave canónica
+    // Si hay AgendaPro, calcular disparos operador usando clave canónica.
+    // CRÍTICO: solo sumar filas dentro del rango de la semana activa. Si el
+    // archivo AgendaPro trae datos de más de una semana, sin este filtro
+    // disp_operador acumula disparos de semanas anteriores.
     if (agendaFile) {
-      // Acumular disparos por clave normalizada (SUCURSAL|OPERADORA en mayúsculas + aliases)
       const dispByKey = new Map<string, number>()
       for (const r of agendaFile.rows.filter(r => r.status === "valid")) {
+        const fecha = String(r.fecha || "").slice(0, 10)
+        // Si tenemos rango definido, descartar filas fuera de la semana.
+        if (periodStart && periodEnd && (fecha < periodStart || fecha > periodEnd)) continue
         const key = makeAgendaMatchKey(r.sucursal, r.operadora)
-        if (key && !key.startsWith("|")) {
-          dispByKey.set(key, (dispByKey.get(key) || 0) + r.disparos)
-        }
+        if (!key) continue // descarta cabecera/basura (SUCURSAL/OPERADORA, etc.)
+        dispByKey.set(key, (dispByKey.get(key) || 0) + r.disparos)
       }
 
       return rows.map(row => {
         const key = makeAgendaMatchKey(row.sucursal, row.operadora)
-        const dispOp = dispByKey.get(key)
+        const dispOp = key ? dispByKey.get(key) : undefined
         const matched = dispOp !== undefined && dispOp > 0
         const disp_operador = matched ? dispOp : undefined
         const diferencia = matched ? dispOp - row.disp_laser : undefined
@@ -355,7 +359,18 @@ export function PulsosCuadreSemanalPage() {
       let sesionesDuplicadas = 0
       const sesionesLocal: Record<string, unknown>[] = []
       if (agendaFile) {
-        const validRows = agendaFile.rows.filter(r => r.status === "valid")
+        // Solo persistir sesiones AgendaPro dentro de la semana activa para
+        // evitar que un archivo multi-semana contamine períodos vecinos.
+        const validRows = agendaFile.rows.filter(r => {
+          if (r.status !== "valid") return false
+          const fecha = String(r.fecha || "").slice(0, 10)
+          if (effectivePeriod.start && effectivePeriod.end) {
+            if (fecha < effectivePeriod.start || fecha > effectivePeriod.end) return false
+          }
+          // Descartar filas con sucursal/operadora cabecera/basura
+          if (!makeAgendaMatchKey(r.sucursal, r.operadora)) return false
+          return true
+        })
         // Mapa para resolver equipo_id desde sucursal+operadora canónicos
         const equipoByKey = new Map<string, { equipoId: string; cabina: string }>()
         for (const row of reviewRows) {
