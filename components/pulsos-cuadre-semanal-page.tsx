@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useRef, useState } from "react"
-import { AlertTriangle, ChevronLeft, FileSpreadsheet, Loader2, Save, Upload } from "lucide-react"
+import { AlertTriangle, ChevronLeft, FileSpreadsheet, Loader2, Save, Upload, UploadCloud, CheckCircle2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,6 +28,7 @@ import {
   type LecturaInicialSource,
 } from "@/lib/pulse-engine"
 import { makeAgendaMatchKey } from "@/lib/normalize-pulse"
+import { detectPulseFileType, extractAgendaProPeriod } from "@/lib/pulse-file-detector"
 
 // ─── Tipos locales ────────────────────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ interface AgendaProFile {
   rows: ParsedDisparoRow[]
   period_start: string
   period_end: string
+  period_label: string
 }
 
 interface ReviewRow extends ParsedEquipoDashboard {
@@ -88,6 +90,8 @@ export function PulsosCuadreSemanalPage() {
   const [parsingAgenda, setParsingAgenda] = useState(false)
   const [manualPeriodStart, setManualPeriodStart] = useState("")
   const [manualPeriodEnd, setManualPeriodEnd] = useState("")
+  const [dragOver, setDragOver] = useState(false)
+  const [bulkProcessing, setBulkProcessing] = useState(false)
 
   // Step 2 state
   const [reviewRows, setReviewRows] = useState<ReviewRow[]>([])
@@ -96,22 +100,110 @@ export function PulsosCuadreSemanalPage() {
 
   const lecturasInputRef = useRef<HTMLInputElement>(null)
   const agendaInputRef = useRef<HTMLInputElement>(null)
+  const dropInputRef = useRef<HTMLInputElement>(null)
 
   const pulseReadings = useMemo(() => dbPulsos.pulseReadings ?? [], [dbPulsos.pulseReadings])
 
   const apiCallLocal = (params: Record<string, string | number | boolean>) =>
     apiCall(normalizeApiUrl(apiUrl), params)
 
-  // Período efectivo: del archivo si fue detectado, si no del input manual
+  // Período efectivo: del archivo si fue detectado, si no del input manual.
+  // Prioridad: Lecturas > AgendaPro > manual.
   const effectivePeriod = useMemo(() => {
     const lf = lecturasFile
     if (lf?.result.period_start && lf?.result.period_end) {
       return { start: lf.result.period_start, end: lf.result.period_end, label: lf.result.period_label }
     }
+    if (agendaFile?.period_start && agendaFile?.period_end) {
+      return { start: agendaFile.period_start, end: agendaFile.period_end, label: agendaFile.period_label }
+    }
     return { start: manualPeriodStart, end: manualPeriodEnd, label: "" }
-  }, [lecturasFile, manualPeriodStart, manualPeriodEnd])
+  }, [lecturasFile, agendaFile, manualPeriodStart, manualPeriodEnd])
 
   // ── Paso 1: Cargar archivos ─────────────────────────────────────────────────
+
+  /**
+   * Procesa un archivo según el tipo detectado automáticamente.
+   * Retorna el tipo detectado para que el caller pueda informar al usuario.
+   */
+  const processFile = async (file: File): Promise<"agendapro" | "equipos" | "unknown"> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const XLSX = await loadXLSX() as any
+    const buf = await file.arrayBuffer()
+    const wb = XLSX.read(buf, { type: "array" })
+    const type = detectPulseFileType(wb)
+    if (type === "equipos") {
+      const result = parseEquiposDashboard(XLSX, wb, file.name)
+      if (!result.rows.length) {
+        showToast(`${file.name}: no se encontraron filas de equipos`, "error")
+        return "equipos"
+      }
+      setLecturasFile({ filename: file.name, result })
+      const periodTxt = result.period_start
+        ? ` · ${fmtDate(result.period_start)} — ${fmtDate(result.period_end)}`
+        : ""
+      showToast(`Lecturas: ${result.rows.length} equipos de ${file.name}${periodTxt}`, "success")
+      return "equipos"
+    }
+    if (type === "agendapro") {
+      const parsed = await parseAgendaProWorkbook(wb, XLSX)
+      const marked = markDuplicatesAgainstExisting(parsed.rows, dbPulsos.sesionesCliente)
+      // Período: 1° desde row 1 del archivo, 2° desde fechas de las filas, 3° del nombre
+      let period = extractAgendaProPeriod(wb, XLSX, file.name)
+      if (!period) {
+        const fechas = marked.map(r => r.fecha).filter(Boolean).sort()
+        if (fechas[0] && fechas[fechas.length - 1]) {
+          period = {
+            start: fechas[0],
+            end: fechas[fechas.length - 1],
+            label: `${fmtDate(fechas[0])} — ${fmtDate(fechas[fechas.length - 1])}`,
+          }
+        }
+      }
+      setAgendaFile({
+        filename: file.name,
+        rows: marked,
+        period_start: period?.start || "",
+        period_end: period?.end || "",
+        period_label: period?.label || "",
+      })
+      const periodTxt = period ? ` · ${fmtDate(period.start)} — ${fmtDate(period.end)}` : ""
+      showToast(`AgendaPro: ${marked.length} filas de ${file.name}${periodTxt}`, "success")
+      return "agendapro"
+    }
+    showToast(
+      `${file.name}: formato no reconocido. Esperaba Excel de AgendaPro (hoja "Detalle Disparos tratamientos") o de equipos (hoja "Equipos").`,
+      "error",
+    )
+    return "unknown"
+  }
+
+  /**
+   * Procesa una lista de archivos arrastrados o seleccionados. Acepta múltiples
+   * archivos a la vez (típicamente: AgendaPro + Equipos en una misma carga).
+   */
+  const processFiles = async (files: FileList | File[]) => {
+    const list = Array.from(files).filter(f => /\.(xlsx|xls|csv)$/i.test(f.name))
+    if (!list.length) {
+      showToast("Arrastra archivos .xlsx, .xls o .csv", "error")
+      return
+    }
+    setBulkProcessing(true)
+    try {
+      for (const file of list) {
+        try {
+          await processFile(file)
+        } catch (err) {
+          showToast(
+            `Error en ${file.name}: ${err instanceof Error ? err.message : String(err)}`,
+            "error",
+          )
+        }
+      }
+    } finally {
+      setBulkProcessing(false)
+    }
+  }
 
   const handleLecturasUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -119,18 +211,7 @@ export function PulsosCuadreSemanalPage() {
     e.target.value = ""
     setParsingLecturas(true)
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const XLSX = await loadXLSX() as any
-      const buf = await file.arrayBuffer()
-      const wb = XLSX.read(buf, { type: "array" })
-      const result = parseEquiposDashboard(XLSX, wb, file.name)
-      if (!result.rows.length) {
-        showToast("No se encontraron filas de equipos en el archivo", "error")
-        return
-      }
-      setLecturasFile({ filename: file.name, result })
-      if (result.warnings.length) result.warnings.forEach(w => showToast(w, "info"))
-      else showToast(`${result.rows.length} equipos leídos de ${file.name}`, "success")
+      await processFile(file)
     } catch (err) {
       showToast(`Error al leer ${file.name}: ${err instanceof Error ? err.message : String(err)}`, "error")
     } finally {
@@ -144,25 +225,27 @@ export function PulsosCuadreSemanalPage() {
     e.target.value = ""
     setParsingAgenda(true)
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const XLSX = await loadXLSX() as any
-      const buf = await file.arrayBuffer()
-      const wb = XLSX.read(buf, { type: "array" })
-      const parsed = await parseAgendaProWorkbook(wb, XLSX)
-      const marked = markDuplicatesAgainstExisting(parsed.rows, dbPulsos.sesionesCliente)
-      const fechas = marked.map(r => r.fecha).filter(Boolean).sort()
-      setAgendaFile({
-        filename: file.name,
-        rows: marked,
-        period_start: fechas[0] || "",
-        period_end: fechas[fechas.length - 1] || "",
-      })
-      showToast(`AgendaPro: ${marked.length} filas leídas de ${file.name}`, "success")
+      await processFile(file)
     } catch (err) {
       showToast(`Error al leer ${file.name}: ${err instanceof Error ? err.message : String(err)}`, "error")
     } finally {
       setParsingAgenda(false)
     }
+  }
+
+  const handleDropZoneSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || !files.length) return
+    e.target.value = ""
+    await processFiles(files)
+  }
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setDragOver(false)
+    const files = e.dataTransfer.files
+    if (!files || !files.length) return
+    await processFiles(files)
   }
 
   const buildReviewRows = (): ReviewRow[] => {
@@ -295,6 +378,86 @@ export function PulsosCuadreSemanalPage() {
             <CardTitle className="text-base">Paso 1 · Subir archivos</CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
+
+            {/* Dropzone: arrastrar y soltar con detección automática */}
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              className={`relative rounded-xl border-2 border-dashed transition-colors px-4 py-6 text-center cursor-pointer ${
+                dragOver
+                  ? "border-primary bg-primary/5"
+                  : "border-muted-foreground/30 hover:border-primary/60 hover:bg-muted/30"
+              }`}
+              onClick={() => dropInputRef.current?.click()}
+            >
+              <input
+                ref={dropInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                multiple
+                className="hidden"
+                onChange={handleDropZoneSelect}
+              />
+              <div className="flex flex-col items-center gap-2">
+                {bulkProcessing ? (
+                  <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                ) : (
+                  <UploadCloud className={`w-8 h-8 ${dragOver ? "text-primary" : "text-muted-foreground"}`} />
+                )}
+                <div className="text-sm font-semibold">
+                  {bulkProcessing
+                    ? "Procesando archivos..."
+                    : dragOver
+                      ? "Suelta los archivos aquí"
+                      : "Arrastra archivos aquí o haz clic para seleccionar"}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  AgendaPro y/o Lecturas (.xlsx, .xls, .csv) — el tipo y la semana se detectan automáticamente
+                </div>
+                <div className="flex gap-2 mt-1">
+                  <Badge variant="outline" className="text-[10px]">AgendaPro: hoja "Detalle Disparos tratamientos"</Badge>
+                  <Badge variant="outline" className="text-[10px]">Lecturas: hoja "Equipos"</Badge>
+                </div>
+              </div>
+            </div>
+
+            {/* Estado de archivos detectados (resumen rápido si hay alguno) */}
+            {(lecturasFile || agendaFile) && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className={`rounded-lg border px-3 py-2 text-xs ${
+                  lecturasFile ? "border-emerald-200 bg-emerald-50" : "border-muted bg-muted/20"
+                }`}>
+                  <div className="flex items-center gap-2 font-semibold">
+                    {lecturasFile
+                      ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      : <Upload className="w-3.5 h-3.5 text-muted-foreground" />}
+                    Lecturas (Equipos)
+                  </div>
+                  {lecturasFile && (
+                    <div className="mt-0.5 text-[11px] text-emerald-800/80 truncate">
+                      {lecturasFile.filename} · {lecturasFile.result.rows.length} equipos
+                    </div>
+                  )}
+                </div>
+                <div className={`rounded-lg border px-3 py-2 text-xs ${
+                  agendaFile ? "border-emerald-200 bg-emerald-50" : "border-muted bg-muted/20"
+                }`}>
+                  <div className="flex items-center gap-2 font-semibold">
+                    {agendaFile
+                      ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      : <Upload className="w-3.5 h-3.5 text-muted-foreground" />}
+                    AgendaPro (opcional)
+                  </div>
+                  {agendaFile && (
+                    <div className="mt-0.5 text-[11px] text-emerald-800/80 truncate">
+                      {agendaFile.filename} · {agendaFile.rows.length} filas
+                      {agendaFile.period_start ? ` · ${fmtDate(agendaFile.period_start)} — ${fmtDate(agendaFile.period_end)}` : ""}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Lecturas (obligatorio) */}
             <div className="space-y-2">
