@@ -100,9 +100,6 @@ function SourceBadge({ source }: { source: LecturaInicialSource }) {
   if (source === "historico") {
     return <Badge className="text-xs bg-emerald-100 text-emerald-700 border border-emerald-200">Histórico</Badge>
   }
-  if (source === "p_cabeza") {
-    return <Badge className="text-xs bg-amber-100 text-amber-700 border border-amber-200">P_Cabeza</Badge>
-  }
   return <Badge className="text-xs bg-slate-100 text-slate-600 border border-slate-200">Primera lectura</Badge>
 }
 
@@ -165,15 +162,12 @@ export function PulsosLecturasPage() {
         return
       }
 
-      // Calcular lectura_inicial para cada equipo
+      // Calcular lectura_inicial para cada equipo — siempre del historial
       const previewRows: ImportPreviewRow[] = result.rows.map(row => {
-        const eq = db.equipos.find(e => e.EquipoID === row.equipo_id)
-        const pCabeza = eq?.P_Cabeza ?? null
         const { value, source } = calculateLecturaInicial(
           pulseReadings,
           row.equipo_id,
           result.period_start || today,
-          pCabeza,
         )
         return {
           ...row,
@@ -252,12 +246,7 @@ export function PulsosLecturasPage() {
 
   const handleEquipoChange = (equipoId: string) => {
     const eq = db.equipos.find(e => e.EquipoID === equipoId)
-    const { value, source } = calculateLecturaInicial(
-      pulseReadings,
-      equipoId,
-      form.period_start || today,
-      eq?.P_Cabeza ?? null,
-    )
+    const { value, source } = calculateLecturaInicial(pulseReadings, equipoId, form.period_start || today)
     setForm(prev => ({
       ...prev,
       equipo_id: equipoId,
@@ -271,12 +260,7 @@ export function PulsosLecturasPage() {
 
   const handlePeriodStartChange = (date: string) => {
     if (!date) return
-    const { value, source } = calculateLecturaInicial(
-      pulseReadings,
-      form.equipo_id,
-      date,
-      db.equipos.find(e => e.EquipoID === form.equipo_id)?.P_Cabeza ?? null,
-    )
+    const { value, source } = calculateLecturaInicial(pulseReadings, form.equipo_id, date)
     setForm(prev => ({
       ...prev,
       period_start: date,

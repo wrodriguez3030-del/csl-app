@@ -70,8 +70,7 @@ function fmtDate(d: string) {
 
 function SourceBadge({ source }: { source: LecturaInicialSource }) {
   if (source === "historico") return <Badge className="text-[10px] bg-emerald-100 text-emerald-700 border-emerald-200">Hist.</Badge>
-  if (source === "p_cabeza") return <Badge className="text-[10px] bg-amber-100 text-amber-700 border-amber-200">P_Cab</Badge>
-  return <Badge className="text-[10px] bg-slate-100 text-slate-600 border-slate-200">0</Badge>
+  return <Badge className="text-[10px] bg-slate-100 text-slate-600 border-slate-200">1ª lectura</Badge>
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -169,9 +168,8 @@ export function PulsosCuadreSemanalPage() {
   const buildReviewRows = (): ReviewRow[] => {
     const { start: periodStart } = effectivePeriod
     const rows: ReviewRow[] = (lecturasFile?.result.rows ?? []).map(row => {
-      const eq: Equipo | undefined = db.equipos.find(e => e.EquipoID === row.equipo_id)
       const { value: lectura_inicial, source: lectura_inicial_source } = calculateLecturaInicial(
-        pulseReadings, row.equipo_id, periodStart || new Date().toISOString().slice(0, 10), eq?.P_Cabeza ?? null,
+        pulseReadings, row.equipo_id, periodStart || new Date().toISOString().slice(0, 10),
       )
       const disp_laser = row.pulsos - lectura_inicial
       return { ...row, lectura_inicial, lectura_inicial_source, disp_laser }

@@ -48,25 +48,23 @@ export function findPrevLecturaFinal(
   return null
 }
 
-export type LecturaInicialSource = 'historico' | 'p_cabeza' | 'primera_lectura'
+export type LecturaInicialSource = 'historico' | 'primera_lectura'
 
 /**
  * Calcula la lectura_inicial para un nuevo período de un equipo.
  *
- * Precedencia:
- *   1. Histórico: última lectura_final del equipo anterior a period_start
- *   2. P_Cabeza del equipo (cuando no hay historial)
- *   3. 0 (primera lectura del equipo)
+ * Regla: Inicio = Fin de la semana anterior guardada en csl_pulse_readings.
+ * Si no existe lectura previa → 0 (primera lectura del equipo).
+ *
+ * p_cabeza NO se usa aquí: es el estado actual del equipo, no el inicio semanal.
  */
 export function calculateLecturaInicial(
   readings: PulseReading[],
   equipoId: string,
   periodStart: string,
-  pCabeza?: number | null,
 ): { value: number; source: LecturaInicialSource } {
   const fromHistory = findPrevLecturaFinal(readings, equipoId, periodStart)
   if (fromHistory !== null) return { value: fromHistory, source: 'historico' }
-  if (pCabeza && Number(pCabeza) > 0) return { value: Number(pCabeza), source: 'p_cabeza' }
   return { value: 0, source: 'primera_lectura' }
 }
 

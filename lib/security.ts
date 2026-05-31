@@ -212,11 +212,11 @@ export function canAccessMenu(user: SystemUser | null, tab: TabId): boolean {
   // es una operación cross-tenant que requiere el rol más alto.
   if (tab === "admin-users") return Boolean(user.isSuperadmin)
   if (user.isAdmin) return true
-  if (tab === "pulse-dashboard" || tab === "pulse-equipos" || tab === "pulse-mantenimiento") {
+  // pulse-dashboard y pulse-equipos pertenecen a PulseControl.
+  // Fallback pulsos-* para usuarios con acceso genérico a PulseControl.
+  // pulse-mantenimiento pertenece a Mantenimiento y se chequea por includes(tab) abajo.
+  if (tab === "pulse-dashboard" || tab === "pulse-equipos") {
     if (!Array.isArray(user.menus)) return false
-    // El admin UI guarda el ID directo ("pulse-mantenimiento", "pulse-dashboard", etc.).
-    // Comprobamos primero el ID exacto y luego el fallback pulsos-* para
-    // usuarios que accedían vía PulseControl antes de la migración del menú.
     if (user.menus.includes(tab)) return true
     return user.menus.some((menu) => String(menu).startsWith("pulsos-"))
   }
