@@ -319,6 +319,7 @@ export function PulsosCuadreSemanalPage() {
     if (!reviewRows.length) return
     setSaving(true)
     try {
+      // ── 1) Persistir lecturas semanales (csl_pulse_readings) ────────────
       const saved: PulseReading[] = []
       for (const row of reviewRows) {
         const payload: Record<string, string | number> = {
@@ -346,14 +347,81 @@ export function PulsosCuadreSemanalPage() {
         if (res.record) saved.push(res.record as PulseReading)
       }
 
-      // Actualizar store
+      // ── 2) Persistir sesiones AgendaPro (csl_sesiones_cliente) ──────────
+      // Idempotente por ImportHash (UNIQUE parcial en DB). Resuelve equipo
+      // por la lectura semanal recién guardada (match canónico sucursal+op).
+      // Asi Registro de Servicios / Sesiones se llena solo.
+      let sesionesInsertadas = 0
+      let sesionesDuplicadas = 0
+      const sesionesLocal: Record<string, unknown>[] = []
+      if (agendaFile) {
+        const validRows = agendaFile.rows.filter(r => r.status === "valid")
+        // Mapa para resolver equipo_id desde sucursal+operadora canónicos
+        const equipoByKey = new Map<string, { equipoId: string; cabina: string }>()
+        for (const row of reviewRows) {
+          const key = makeAgendaMatchKey(row.sucursal, row.operadora)
+          if (key && !key.startsWith("|") && !equipoByKey.has(key)) {
+            equipoByKey.set(key, { equipoId: row.equipo_id, cabina: row.cabina || "" })
+          }
+        }
+        const ts = Date.now()
+        for (let idx = 0; idx < validRows.length; idx++) {
+          const r = validRows[idx]
+          const matchKey = makeAgendaMatchKey(r.sucursal, r.operadora)
+          const assignment = equipoByKey.get(matchKey)
+          const sesion: Record<string, unknown> = {
+            SesionID: `ses_${ts}_${idx}`,
+            Fecha: r.fecha,
+            EquipoID: assignment?.equipoId || "",
+            Sucursal: r.sucursal,
+            Cabina: assignment?.cabina || "",
+            OperadoraID: r.operadora,
+            Cliente: r.cliente || "Sin cliente",
+            AreaTrabajada: r.tratamiento.replace(/^depilaci[oó]n\s*-\s*/i, "").trim(),
+            DisparosReportados: r.disparos,
+            ContactoCliente: r.contacto || undefined,
+            Tratamiento: r.tratamiento || undefined,
+            Potencia: r.potencia || undefined,
+            Spot: r.spot || undefined,
+            ArchivoOrigen: agendaFile.filename,
+            FilaOrigen: r.filaOrigen,
+            ImportHash: r.hash || undefined,
+            Observaciones: r.disparosRaw && r.disparosRaw !== String(r.disparos)
+              ? `Disparos Excel: ${r.disparosRaw}` : "",
+          }
+          try {
+            const res = await apiCallLocal({ action: "saveSesion", data: JSON.stringify(sesion) }) as
+              { ok?: boolean; duplicate?: boolean }
+            if (res?.duplicate) sesionesDuplicadas += 1
+            else if (res?.ok) { sesionesInsertadas += 1; sesionesLocal.push(sesion) }
+          } catch (err) {
+            console.warn("saveSesion error:", err)
+          }
+        }
+      }
+
+      // ── 3) Actualizar store local con todo lo nuevo ─────────────────────
       const existingIds = new Set(saved.map(r => r.id))
       const updatedReadings = [
         ...pulseReadings.filter(r => !existingIds.has(r.id)),
         ...saved,
       ]
-      setDbPulsos({ ...dbPulsos, pulseReadings: updatedReadings })
+      const sesionesIds = new Set(sesionesLocal.map(s => String(s.SesionID)))
+      const updatedSesiones = sesionesLocal.length
+        ? [
+            ...dbPulsos.sesionesCliente.filter(s => !sesionesIds.has(String(s.SesionID))),
+            ...(sesionesLocal as unknown as typeof dbPulsos.sesionesCliente),
+          ]
+        : dbPulsos.sesionesCliente
+      setDbPulsos({ ...dbPulsos, pulseReadings: updatedReadings, sesionesCliente: updatedSesiones })
       setSavedCount(saved.length)
+      if (sesionesInsertadas > 0) {
+        showToast(
+          `${sesionesInsertadas} sesión(es) AgendaPro guardada(s)` +
+            (sesionesDuplicadas > 0 ? ` · ${sesionesDuplicadas} duplicada(s) omitida(s)` : ""),
+          "success",
+        )
+      }
       setStep(3)
     } catch (err) {
       showToast(`Error al guardar: ${err instanceof Error ? err.message : String(err)}`, "error")

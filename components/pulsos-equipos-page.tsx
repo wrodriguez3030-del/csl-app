@@ -27,13 +27,29 @@ export function PulsosEquiposPage() {
   const { dbPulsos } = useAppStore()
   const rows = useMemo(() => {
     return equiposGentleYag.map(([equipo, sucursal, cabina, operadora]) => {
+      // Fuente PRIMARIA: csl_pulse_readings (Cuadre Semanal lo llena solo).
+      const readings = (dbPulsos.pulseReadings ?? [])
+        .filter(r => String(r.equipo_id) === String(equipo))
+        .sort((a, b) => String(b.period_start).localeCompare(String(a.period_start)))
+      if (readings[0]) {
+        return {
+          equipo, sucursal, cabina, operadora,
+          ultimaFecha: readings[0].period_start,
+          ultimaDispLaser: Number(readings[0].disp_laser) || 0,
+        }
+      }
+      // Fallback legacy
       const lecturas = dbPulsos.lecturasSemanales
-        .filter((item) => String(item.EquipoID) === String(equipo))
+        .filter(item => String(item.EquipoID) === String(equipo))
         .sort((a, b) => String(b.FechaSemana).localeCompare(String(a.FechaSemana)))
       const ultima = lecturas[0]
-      return { equipo, sucursal, cabina, operadora, ultima }
+      return {
+        equipo, sucursal, cabina, operadora,
+        ultimaFecha: ultima?.FechaSemana,
+        ultimaDispLaser: Number(ultima?.DiferenciaReal) || 0,
+      }
     })
-  }, [dbPulsos.lecturasSemanales])
+  }, [dbPulsos.pulseReadings, dbPulsos.lecturasSemanales])
 
   return (
     <div className="csl-page-shell">
@@ -62,8 +78,8 @@ export function PulsosEquiposPage() {
                   <TableCell>{row.sucursal}</TableCell>
                   <TableCell>{row.cabina}</TableCell>
                   <TableCell><Badge className="border-primary/20 bg-primary/10 text-primary">{row.operadora}</Badge></TableCell>
-                  <TableCell className="text-right">{formatDate(row.ultima?.FechaSemana)}</TableCell>
-                  <TableCell className="text-right font-mono font-bold">{fmtN(row.ultima?.DiferenciaReal)}</TableCell>
+                  <TableCell className="text-right">{formatDate(row.ultimaFecha)}</TableCell>
+                  <TableCell className="text-right font-mono font-bold">{fmtN(row.ultimaDispLaser)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

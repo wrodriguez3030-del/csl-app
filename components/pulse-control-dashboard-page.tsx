@@ -11,11 +11,28 @@ import { fmtN } from "@/lib/fmt"
 export function PulseControlDashboardPage() {
   const { dbPulsos } = useAppStore()
   const stats = useMemo(() => {
-    const disparosLaser = dbPulsos.lecturasSemanales.reduce((sum, item) => sum + Number(item.DiferenciaReal || 0), 0)
-    const disparosOperador = dbPulsos.sesionesCliente.reduce((sum, item) => sum + Number(item.DisparosReportados || 0), 0)
+    // Fuente PRIMARIA: csl_pulse_readings (alimentada por Cuadre Semanal).
+    // Fallback: lecturasSemanales legacy + sesionesCliente para datos viejos.
+    const readings = dbPulsos.pulseReadings ?? []
+    const laserFromReadings = readings.reduce((s, r) => s + (Number(r.disp_laser) || 0), 0)
+    const opFromReadings = readings.reduce((s, r) => s + (Number(r.disp_operador) || 0), 0)
+
+    const laserLegacy = dbPulsos.lecturasSemanales.reduce((s, l) => s + (Number(l.DiferenciaReal) || 0), 0)
+    const opLegacy = dbPulsos.sesionesCliente.reduce((s, s2) => s + (Number(s2.DisparosReportados) || 0), 0)
+
+    const disparosLaser = laserFromReadings || laserLegacy
+    const disparosOperador = opFromReadings || opLegacy
     const diferencia = disparosOperador - disparosLaser
-    const semanas = Array.from(new Set(dbPulsos.lecturasSemanales.map((item) => String(item.FechaSemana || "").split("T")[0]).filter(Boolean))).sort().reverse()
-    const criticas = dbPulsos.auditoriasSemanales.filter((item) => item.Alerta === "Critico").length
+
+    const semanasFromReadings = readings.map(r => String(r.period_start || "").split("T")[0]).filter(Boolean)
+    const semanasLegacy = dbPulsos.lecturasSemanales.map(l => String(l.FechaSemana || "").split("T")[0]).filter(Boolean)
+    const semanas = Array.from(new Set([...semanasFromReadings, ...semanasLegacy])).sort().reverse()
+
+    // Críticas: % desviación > 15 sobre las readings, o desde auditorías legacy
+    const criticasFromReadings = readings.filter(r => Math.abs(Number(r.diferencia_pct) || 0) > 15).length
+    const criticasLegacy = dbPulsos.auditoriasSemanales.filter(a => a.Alerta === "Critico").length
+    const criticas = criticasFromReadings || criticasLegacy
+
     return { disparosLaser, disparosOperador, diferencia, semanas, criticas }
   }, [dbPulsos])
 
