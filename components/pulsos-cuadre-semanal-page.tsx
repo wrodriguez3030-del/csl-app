@@ -97,6 +97,7 @@ export function PulsosCuadreSemanalPage() {
   const [reviewRows, setReviewRows] = useState<ReviewRow[]>([])
   const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
+  const [savedSesionesCount, setSavedSesionesCount] = useState(0)
 
   const lecturasInputRef = useRef<HTMLInputElement>(null)
   const agendaInputRef = useRef<HTMLInputElement>(null)
@@ -308,7 +309,8 @@ export function PulsosCuadreSemanalPage() {
   }
 
   const handleContinuar = () => {
-    if (!lecturasFile) return
+    // Aceptar cualquiera de los dos archivos como entrada válida.
+    if (!lecturasFile && !agendaFile) return
     if (!effectivePeriod.start || !effectivePeriod.end) {
       showToast("Indica el período de la semana", "error")
       return
@@ -320,10 +322,12 @@ export function PulsosCuadreSemanalPage() {
   // ── Paso 2: Revisar y guardar ───────────────────────────────────────────────
 
   const handleGuardar = async () => {
-    if (!reviewRows.length) return
+    // Aceptar guardar con cualquiera de las dos fuentes (o ambas).
+    if (!reviewRows.length && !agendaFile) return
     setSaving(true)
     try {
       // ── 1) Persistir lecturas semanales (csl_pulse_readings) ────────────
+      // Si no hay archivo de lecturas, este loop simplemente se salta.
       const saved: PulseReading[] = []
       for (const row of reviewRows) {
         const payload: Record<string, string | number> = {
@@ -430,6 +434,7 @@ export function PulsosCuadreSemanalPage() {
         : dbPulsos.sesionesCliente
       setDbPulsos({ ...dbPulsos, pulseReadings: updatedReadings, sesionesCliente: updatedSesiones })
       setSavedCount(saved.length)
+      setSavedSesionesCount(sesionesInsertadas)
       if (sesionesInsertadas > 0) {
         showToast(
           `${sesionesInsertadas} sesión(es) AgendaPro guardada(s)` +
@@ -451,6 +456,7 @@ export function PulsosCuadreSemanalPage() {
     setAgendaFile(null)
     setReviewRows([])
     setSavedCount(0)
+    setSavedSesionesCount(0)
     setManualPeriodStart("")
     setManualPeriodEnd("")
   }
@@ -689,7 +695,7 @@ export function PulsosCuadreSemanalPage() {
             <div className="flex justify-end">
               <Button
                 onClick={handleContinuar}
-                disabled={!lecturasFile}
+                disabled={!lecturasFile && !agendaFile}
               >
                 Continuar →
               </Button>
@@ -746,7 +752,64 @@ export function PulsosCuadreSemanalPage() {
               </div>
             )}
 
-            <div className="overflow-x-auto rounded border">
+            {/* Vista AgendaPro-only: resumen por sucursal+operadora cuando no hay archivo de lecturas */}
+            {!reviewRows.length && agendaFile && (() => {
+              const validRows = agendaFile.rows.filter(r => {
+                if (r.status !== "valid") return false
+                const f = String(r.fecha || "").slice(0, 10)
+                if (effectivePeriod.start && effectivePeriod.end &&
+                    (f < effectivePeriod.start || f > effectivePeriod.end)) return false
+                return Boolean(makeAgendaMatchKey(r.sucursal, r.operadora))
+              })
+              const grouped = new Map<string, { sucursal: string; operadora: string; sesiones: number; disparos: number }>()
+              for (const r of validRows) {
+                const key = makeAgendaMatchKey(r.sucursal, r.operadora)
+                const existing = grouped.get(key)
+                if (existing) {
+                  existing.sesiones += 1
+                  existing.disparos += r.disparos
+                } else {
+                  grouped.set(key, { sucursal: r.sucursal, operadora: r.operadora, sesiones: 1, disparos: r.disparos })
+                }
+              }
+              const rows = Array.from(grouped.values()).sort((a, b) => {
+                if (a.sucursal !== b.sucursal) return a.sucursal.localeCompare(b.sucursal)
+                return a.operadora.localeCompare(b.operadora)
+              })
+              const totalSesiones = rows.reduce((s, r) => s + r.sesiones, 0)
+              const totalDisparos = rows.reduce((s, r) => s + r.disparos, 0)
+              return (
+                <div className="space-y-2">
+                  <div className="text-xs text-muted-foreground">
+                    Solo se subió AgendaPro · {totalSesiones} sesión(es) · {fmtN(totalDisparos)} disparos
+                  </div>
+                  <div className="overflow-x-auto rounded border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Sucursal</TableHead>
+                          <TableHead className="text-xs">Operadora</TableHead>
+                          <TableHead className="text-xs text-right">Sesiones</TableHead>
+                          <TableHead className="text-xs text-right">Disparos</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {rows.map((r, i) => (
+                          <TableRow key={i}>
+                            <TableCell className="text-xs">{r.sucursal}</TableCell>
+                            <TableCell className="text-xs">{r.operadora}</TableCell>
+                            <TableCell className="text-xs text-right font-mono">{r.sesiones}</TableCell>
+                            <TableCell className="text-xs text-right font-mono text-primary font-semibold">{fmtN(r.disparos)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {reviewRows.length > 0 && <div className="overflow-x-auto rounded border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -806,7 +869,7 @@ export function PulsosCuadreSemanalPage() {
                   ))}
                 </TableBody>
               </Table>
-            </div>
+            </div>}
 
             <div className="flex justify-between">
               <Button variant="outline" onClick={() => setStep(1)}>
@@ -815,7 +878,13 @@ export function PulsosCuadreSemanalPage() {
               </Button>
               <Button onClick={handleGuardar} disabled={saving}>
                 {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                {agendaFile ? "Guardar cuadre" : `Guardar ${reviewRows.length} lecturas`}
+                {reviewRows.length > 0 && agendaFile
+                  ? "Guardar cuadre"
+                  : reviewRows.length > 0
+                    ? `Guardar ${reviewRows.length} lecturas`
+                    : agendaFile
+                      ? `Guardar AgendaPro (${agendaFile.rows.filter(r => r.status === "valid").length} filas)`
+                      : "Guardar"}
               </Button>
             </div>
           </CardContent>
@@ -828,11 +897,21 @@ export function PulsosCuadreSemanalPage() {
           <CardContent className="py-12 text-center space-y-4">
             <div className="text-4xl">✓</div>
             <h3 className="text-xl font-bold">
-              {savedCount} lectura{savedCount !== 1 ? "s" : ""} guardada{savedCount !== 1 ? "s" : ""}
+              {savedCount > 0 ? (
+                <>{savedCount} lectura{savedCount !== 1 ? "s" : ""} guardada{savedCount !== 1 ? "s" : ""}</>
+              ) : (
+                <>{savedSesionesCount} sesión{savedSesionesCount !== 1 ? "es" : ""} AgendaPro guardada{savedSesionesCount !== 1 ? "s" : ""}</>
+              )}
             </h3>
             <p className="text-sm text-muted-foreground">
               Período: {fmtDate(effectivePeriod.start)} — {fmtDate(effectivePeriod.end)}
-              {agendaFile ? " · Cuadre con AgendaPro completado." : ""}
+              {savedCount > 0 && savedSesionesCount > 0
+                ? ` · ${savedSesionesCount} sesión(es) AgendaPro + cuadre completo.`
+                : savedCount > 0 && agendaFile
+                  ? " · Cuadre con AgendaPro completado."
+                  : savedCount === 0 && savedSesionesCount > 0
+                    ? " · Solo AgendaPro guardado. Sube las lecturas para completar el cuadre."
+                    : ""}
             </p>
             <div className="flex justify-center gap-3">
               <Button onClick={resetWizard} variant="outline">
