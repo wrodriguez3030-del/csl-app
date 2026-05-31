@@ -1125,9 +1125,14 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     // ── PulseControl: nueva tabla canónica csl_pulse_readings ──────────────
 
     case "getPulseReadings": {
-      const { data, error } = await getSupabaseAdmin()
+      const sb = getSupabaseAdmin()
+      const { data: profile } = await sb
+        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
+      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      const { data, error } = await sb
         .from("csl_pulse_readings")
         .select("*")
+        .eq("business_id", profile.business_id)
         .order("period_start", { ascending: false })
       if (error) throw error
       return { ok: true, records: data || [] }
@@ -1198,10 +1203,15 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "deletePulseReading": {
       const id = textValue(params, "id")
       if (!id) throw new Error("id obligatorio")
-      const { error } = await getSupabaseAdmin()
+      const sb = getSupabaseAdmin()
+      const { data: profile } = await sb
+        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
+      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      const { error } = await sb
         .from("csl_pulse_readings")
         .delete()
         .eq("id", id)
+        .eq("business_id", profile.business_id)
       if (error) throw error
       return { ok: true }
     }

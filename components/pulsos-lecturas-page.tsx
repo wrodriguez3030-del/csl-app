@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useAppStore, apiCall, normalizeApiUrl } from "@/lib/store"
 import { loadXLSX } from "@/lib/load-xlsx"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
-import { ChevronDown, ChevronRight, FileSpreadsheet, Loader2, Plus, RotateCcw, Trash2, Upload } from "lucide-react"
+import { AlertTriangle, ChevronDown, ChevronRight, FileSpreadsheet, Loader2, Plus, RotateCcw, Trash2, Upload } from "lucide-react"
 import { fmtN, parseN } from "@/lib/fmt"
 import {
   type PulseReading,
@@ -26,7 +26,6 @@ import {
 } from "@/lib/pulse-engine"
 import {
   parseEquiposDashboard,
-  detectPeriodFromFilename,
   type ParsedEquipoDashboard,
   type EquiposDashboardResult,
 } from "@/lib/equipos-dashboard-parser"
@@ -108,7 +107,7 @@ function SourceBadge({ source }: { source: LecturaInicialSource }) {
 export function PulsosLecturasPage() {
   const { db, dbPulsos, setDbPulsos, apiUrl, showToast } = useAppStore()
 
-  // Estado de UI
+  // UI state
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
   const [manualOpen, setManualOpen] = useState(false)
   const [form, setForm] = useState<ManualForm>(emptyForm())
@@ -117,7 +116,32 @@ export function PulsosLecturasPage() {
   const [recalcRunning, setRecalcRunning] = useState(false)
   const [collapsedPeriods, setCollapsedPeriods] = useState<Set<string>>(new Set())
 
+  // Inline editing: click on lectura_final cell
+  const [editingFinalId, setEditingFinalId] = useState<string | null>(null)
+  const [editingFinalValue, setEditingFinalValue] = useState("")
+  const [savingInline, setSavingInline] = useState(false)
+  const editingInputRef = useRef<HTMLInputElement>(null)
+
   const pulseReadings = useMemo(() => dbPulsos.pulseReadings ?? [], [dbPulsos.pulseReadings])
+
+  // Detectar problemas de continuidad: cur.lectura_inicial ≠ prev.lectura_final
+  const continuityIssues = useMemo(() => {
+    const byEquipo = new Map<string, PulseReading[]>()
+    for (const r of pulseReadings) {
+      if (!byEquipo.has(r.equipo_id)) byEquipo.set(r.equipo_id, [])
+      byEquipo.get(r.equipo_id)!.push(r)
+    }
+    let count = 0
+    for (const [, readings] of byEquipo) {
+      const sorted = [...readings].sort((a, b) => a.period_start.localeCompare(b.period_start))
+      for (let i = 1; i < sorted.length; i++) {
+        const prevFin = Number(sorted[i - 1].lectura_final)
+        const curIni = Number(sorted[i].lectura_inicial)
+        if (prevFin > 0 && curIni !== prevFin) count++
+      }
+    }
+    return count
+  }, [pulseReadings])
 
   // Lecturas agrupadas por período (period_start + period_end)
   const groupedByPeriod = useMemo(() => {
@@ -127,7 +151,6 @@ export function PulsosLecturasPage() {
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(r)
     }
-    // Ordenar períodos más recientes primero
     return Array.from(map.entries())
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([key, readings]) => ({
@@ -135,13 +158,29 @@ export function PulsosLecturasPage() {
         period_start: readings[0].period_start,
         period_end: readings[0].period_end,
         period_label: readings[0].period_label || "",
-        readings: readings.sort((a, b) => a.equipo_id.localeCompare(b.equipo_id)),
+        readings: readings.sort((a, b) => String(a.equipo_id).localeCompare(String(b.equipo_id))),
         totalDispLaser: readings.reduce((s, r) => s + (Number(r.disp_laser) || 0), 0),
       }))
   }, [pulseReadings])
 
   const apiCallLocal = (params: Record<string, string | number | boolean>) =>
     apiCall(normalizeApiUrl(apiUrl), params)
+
+  // Recargar pulse readings desde la API
+  const reloadReadings = async () => {
+    const res = await apiCallLocal({ action: "getPulseReadings" })
+    if (res.records) {
+      setDbPulsos({ ...dbPulsos, pulseReadings: res.records as PulseReading[] })
+    }
+  }
+
+  // Auto-focus cuando se activa inline edit
+  useEffect(() => {
+    if (editingFinalId && editingInputRef.current) {
+      editingInputRef.current.focus()
+      editingInputRef.current.select()
+    }
+  }, [editingFinalId])
 
   // ── Importar Excel ──────────────────────────────────────────────────────────
 
@@ -162,18 +201,13 @@ export function PulsosLecturasPage() {
         return
       }
 
-      // Calcular lectura_inicial para cada equipo — siempre del historial
       const previewRows: ImportPreviewRow[] = result.rows.map(row => {
         const { value, source } = calculateLecturaInicial(
           pulseReadings,
           row.equipo_id,
           result.period_start || today,
         )
-        return {
-          ...row,
-          lectura_inicial: value,
-          lectura_inicial_source: source,
-        }
+        return { ...row, lectura_inicial: value, lectura_inicial_source: source }
       })
 
       setImportPreview({
@@ -185,9 +219,7 @@ export function PulsosLecturasPage() {
         rows: previewRows,
       })
 
-      if (result.warnings.length) {
-        result.warnings.forEach(w => showToast(w, "info"))
-      }
+      if (result.warnings.length) result.warnings.forEach(w => showToast(w, "info"))
     } catch (err) {
       showToast(`Error al leer el archivo: ${err instanceof Error ? err.message : String(err)}`, "error")
     } finally {
@@ -219,19 +251,12 @@ export function PulsosLecturasPage() {
           source_type: "excel_equipos",
           observaciones: "",
         }
-        const res = await apiCallLocal({
-          action: "savePulseReading",
-          data: JSON.stringify(payload),
-        })
+        const res = await apiCallLocal({ action: "savePulseReading", data: JSON.stringify(payload) })
         if (res.record) saved.push(res.record as PulseReading)
       }
 
-      // Actualizar store
       const existingIds = new Set(saved.map(r => r.id))
-      const updated = [
-        ...pulseReadings.filter(r => !existingIds.has(r.id)),
-        ...saved,
-      ]
+      const updated = [...pulseReadings.filter(r => !existingIds.has(r.id)), ...saved]
       setDbPulsos({ ...dbPulsos, pulseReadings: updated })
       showToast(`${saved.length} lecturas guardadas`, "success")
       setImportPreview(null)
@@ -239,6 +264,64 @@ export function PulsosLecturasPage() {
       showToast(`Error al guardar: ${err instanceof Error ? err.message : String(err)}`, "error")
     } finally {
       setSaving(false)
+    }
+  }
+
+  // ── Inline edit lectura_final ───────────────────────────────────────────────
+
+  const startEditFinal = (r: PulseReading) => {
+    setEditingFinalId(r.id)
+    setEditingFinalValue(String(r.lectura_final))
+  }
+
+  const cancelEditFinal = () => setEditingFinalId(null)
+
+  const handleInlineSaveFinal = async (reading: PulseReading) => {
+    const newFinal = parseN(editingFinalValue)
+    setEditingFinalId(null)
+    if (!newFinal || newFinal === Number(reading.lectura_final)) return
+    setSavingInline(true)
+    try {
+      const payload = {
+        id: reading.id,
+        equipo_id: reading.equipo_id,
+        serial: reading.serial || "",
+        sucursal: reading.sucursal,
+        cabina: reading.cabina || "",
+        operadora: reading.operadora || "",
+        period_start: reading.period_start,
+        period_end: reading.period_end,
+        period_label: reading.period_label || "",
+        lectura_inicial: Number(reading.lectura_inicial),
+        lectura_final: newFinal,
+        disp_operador: reading.disp_operador != null ? Number(reading.disp_operador) : undefined,
+        diferencia_pct: reading.diferencia_pct != null ? Number(reading.diferencia_pct) : undefined,
+        estado_cuadre: reading.estado_cuadre || "lectura_guardada",
+        estado_mantenimiento: reading.estado_mantenimiento || "",
+        fallas: reading.fallas || "",
+        source_type: reading.source_type || "manual",
+        observaciones: reading.observaciones || "",
+      }
+      const res = await apiCallLocal({ action: "savePulseReading", data: JSON.stringify(payload) })
+      const saved = res.record as PulseReading
+
+      // Actualizar el registro en el store
+      let updated = pulseReadings.map(r => r.id === reading.id ? saved : r)
+      setDbPulsos({ ...dbPulsos, pulseReadings: updated })
+
+      // Recalcular continuidad de semanas posteriores para este equipo
+      const recalcRes = await apiCallLocal({ action: "recalculatePulseContinuity" })
+      const fixed = Number(recalcRes.fixed) || 0
+      if (fixed > 0) await reloadReadings()
+
+      showToast(
+        `Fin actualizado a ${fmtN(newFinal)}${fixed > 0 ? ` · ${fixed} continuidad(es) corregida(s)` : ""}`,
+        "success"
+      )
+    } catch (err) {
+      showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error")
+    } finally {
+      setSavingInline(false)
     }
   }
 
@@ -275,7 +358,6 @@ export function PulsosLecturasPage() {
     if (!form.period_start || !form.period_end) { showToast("Indica el período", "error"); return }
     const lecturaFinal = parseN(form.lectura_final)
     if (lecturaFinal <= 0) { showToast("La lectura final debe ser mayor que 0", "error"); return }
-    if (lecturaFinal < form.lectura_inicial) { showToast("Lectura final no puede ser menor que la inicial", "error"); return }
 
     setSaving(true)
     try {
@@ -302,7 +384,16 @@ export function PulsosLecturasPage() {
         ? pulseReadings.map(r => r.id === form.id ? saved : r)
         : [...pulseReadings, saved]
       setDbPulsos({ ...dbPulsos, pulseReadings: updated })
-      showToast(form.id ? "Lectura actualizada" : "Lectura guardada", "success")
+
+      // Recalcular continuidad después de guardar manual
+      const recalcRes = await apiCallLocal({ action: "recalculatePulseContinuity" })
+      const fixed = Number(recalcRes.fixed) || 0
+      if (fixed > 0) await reloadReadings()
+
+      showToast(
+        `Lectura ${form.id ? "actualizada" : "guardada"}${fixed > 0 ? ` · ${fixed} continuidad(es) corregida(s)` : ""}`,
+        "success"
+      )
       setManualOpen(false)
     } catch (err) {
       showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error")
@@ -312,10 +403,11 @@ export function PulsosLecturasPage() {
   }
 
   const handleDelete = async (reading: PulseReading) => {
-    if (!confirm(`¿Eliminar lectura de ${reading.equipo_id} (${fmtDate(reading.period_start)})?`)) return
+    if (!confirm(`¿Eliminar lectura de equipo ${reading.equipo_id} (${fmtDate(reading.period_start)})?`)) return
     try {
       await apiCallLocal({ action: "deletePulseReading", id: reading.id })
-      setDbPulsos({ ...dbPulsos, pulseReadings: pulseReadings.filter(r => r.id !== reading.id) })
+      const updated = pulseReadings.filter(r => r.id !== reading.id)
+      setDbPulsos({ ...dbPulsos, pulseReadings: updated })
       showToast("Lectura eliminada", "success")
     } catch (err) {
       showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error")
@@ -342,19 +434,17 @@ export function PulsosLecturasPage() {
   // ── Recalcular continuidad ──────────────────────────────────────────────────
 
   const handleRecalculate = async () => {
-    if (!confirm("¿Recalcular continuidad de todas las lecturas? Esto corregirá las lecturas iniciales para mantener la cadena histórica.")) return
+    if (!confirm("¿Recalcular continuidad? El Inicio de cada semana se corregirá al Final de la semana anterior para cada equipo.")) return
     setRecalcRunning(true)
     try {
       const res = await apiCallLocal({ action: "recalculatePulseContinuity" })
       const fixed = Number(res.fixed) || 0
-      showToast(`Continuidad recalculada. ${fixed} lecturas corregidas.`, fixed > 0 ? "success" : "info")
-      if (fixed > 0) {
-        // Recargar lecturas
-        const reloaded = await apiCallLocal({ action: "getPulseReadings" })
-        if (reloaded.records) {
-          setDbPulsos({ ...dbPulsos, pulseReadings: reloaded.records as PulseReading[] })
-        }
-      }
+      // Siempre recargar del servidor para reflejar el estado real
+      await reloadReadings()
+      showToast(
+        fixed > 0 ? `✓ ${fixed} lectura(s) corregida(s)` : "Todo ya estaba correcto — nada que cambiar.",
+        fixed > 0 ? "success" : "info"
+      )
     } catch (err) {
       showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error")
     } finally {
@@ -403,19 +493,32 @@ export function PulsosLecturasPage() {
         </Button>
 
         <Button
-          variant="ghost"
+          variant={continuityIssues > 0 ? "default" : "ghost"}
           size="sm"
           onClick={handleRecalculate}
           disabled={recalcRunning}
+          className={continuityIssues > 0 ? "bg-amber-500 hover:bg-amber-600 text-white" : ""}
         >
           {recalcRunning ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <RotateCcw className="w-4 h-4 mr-1" />}
-          Recalcular continuidad
+          {continuityIssues > 0 ? `Corregir continuidad (${continuityIssues})` : "Recalcular continuidad"}
         </Button>
 
         <span className="ml-auto text-sm text-muted-foreground">
           {pulseReadings.length} lectura{pulseReadings.length !== 1 ? "s" : ""} · {groupedByPeriod.length} período{groupedByPeriod.length !== 1 ? "s" : ""}
         </span>
       </div>
+
+      {/* Banner de continuidad */}
+      {continuityIssues > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>
+            <strong>{continuityIssues} lectura{continuityIssues !== 1 ? "s" : ""}</strong> {continuityIssues !== 1 ? "tienen" : "tiene"} continuidad incorrecta
+            (Inicio ≠ Final de la semana anterior).
+            Pulsa <strong>Corregir continuidad</strong> para corregirlas automáticamente.
+          </span>
+        </div>
+      )}
 
       {/* Import Preview */}
       {importPreview && (
@@ -557,7 +660,8 @@ export function PulsosLecturasPage() {
                         <TableHead className="text-xs">Sucursal / Cabina</TableHead>
                         <TableHead className="text-xs">Operadora</TableHead>
                         <TableHead className="text-xs text-right">Inicio</TableHead>
-                        <TableHead className="text-xs text-right">Fin</TableHead>
+                        {/* Fin es editable inline — haz clic para editar */}
+                        <TableHead className="text-xs text-right">Fin <span className="opacity-50">(clic para editar)</span></TableHead>
                         <TableHead className="text-xs text-right">DISP Láser</TableHead>
                         <TableHead className="text-xs">Estado</TableHead>
                         <TableHead className="text-xs w-16"></TableHead>
@@ -573,7 +677,32 @@ export function PulsosLecturasPage() {
                           </TableCell>
                           <TableCell className="text-xs">{r.operadora || "-"}</TableCell>
                           <TableCell className="text-xs text-right font-mono">{fmtN(r.lectura_inicial)}</TableCell>
-                          <TableCell className="text-xs text-right font-mono">{fmtN(r.lectura_final)}</TableCell>
+
+                          {/* Fin — inline editable */}
+                          <TableCell
+                            className="text-xs text-right font-mono cursor-pointer hover:bg-primary/5 group select-none"
+                            onClick={() => !savingInline && startEditFinal(r)}
+                          >
+                            {editingFinalId === r.id ? (
+                              <input
+                                ref={editingInputRef}
+                                className="w-28 text-right text-xs font-mono bg-background border-b-2 border-primary outline-none px-1"
+                                value={editingFinalValue}
+                                onChange={e => setEditingFinalValue(e.target.value)}
+                                onBlur={() => handleInlineSaveFinal(r)}
+                                onKeyDown={e => {
+                                  if (e.key === "Enter") { e.preventDefault(); handleInlineSaveFinal(r) }
+                                  if (e.key === "Escape") cancelEditFinal()
+                                }}
+                              />
+                            ) : (
+                              <span className="flex items-center justify-end gap-1">
+                                {fmtN(r.lectura_final)}
+                                <span className="opacity-0 group-hover:opacity-40 text-[10px]">✏</span>
+                              </span>
+                            )}
+                          </TableCell>
+
                           <TableCell className="text-xs text-right font-mono text-primary font-semibold">
                             +{fmtN(r.disp_laser)}
                           </TableCell>
@@ -593,7 +722,7 @@ export function PulsosLecturasPage() {
                                 size="icon"
                                 className="h-6 w-6"
                                 onClick={() => handleEdit(r)}
-                                title="Editar"
+                                title="Editar todos los campos"
                               >
                                 ✏️
                               </Button>
@@ -667,6 +796,25 @@ export function PulsosLecturasPage() {
               </div>
             </div>
 
+            {/* Inicio — editable (auto-calculado pero sobreridable) */}
+            <div className="grid gap-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="manual-inicial">Lectura inicial</Label>
+                <SourceBadge source={form.lectura_inicial_source} />
+              </div>
+              <Input
+                id="manual-inicial"
+                placeholder="Auto-calculado del historial"
+                value={form.lectura_inicial > 0 ? fmtN(form.lectura_inicial) : ""}
+                onChange={e => setForm(prev => ({ ...prev, lectura_inicial: parseN(e.target.value) || 0 }))}
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                Se calcula automáticamente del Final de la semana anterior. Modifica solo si necesitas corregir.
+              </p>
+            </div>
+
+            {/* Fin */}
             <div className="grid gap-1.5">
               <Label htmlFor="manual-final">Lectura final</Label>
               <Input
@@ -674,14 +822,16 @@ export function PulsosLecturasPage() {
                 placeholder="Ej: 3,686,650"
                 value={form.lectura_final}
                 onChange={e => setForm(prev => ({ ...prev, lectura_final: e.target.value }))}
+                className="font-mono"
               />
             </div>
 
-            <div className="flex items-center gap-2 text-sm bg-muted/30 rounded-md px-3 py-2">
-              <span className="text-muted-foreground">Lectura inicial auto-detectada:</span>
-              <span className="font-mono font-semibold">{fmtN(form.lectura_inicial)}</span>
-              <SourceBadge source={form.lectura_inicial_source} />
-            </div>
+            {/* Preview DISP */}
+            {form.lectura_final && parseN(form.lectura_final) > 0 && (
+              <div className="rounded-md bg-primary/5 px-3 py-2 text-sm font-mono text-center">
+                DISP Láser: <strong className="text-primary">+{fmtN(parseN(form.lectura_final) - form.lectura_inicial)}</strong>
+              </div>
+            )}
 
             <div className="grid gap-1.5">
               <Label htmlFor="manual-obs">Observaciones</Label>

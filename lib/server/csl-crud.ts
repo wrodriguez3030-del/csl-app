@@ -352,19 +352,19 @@ export async function getAllPulsosData(opts?: { extendedDays?: number }) {
     getRows("lecturas_semanales"),
     getRows("sesiones_cliente", { sinceColumn: "fecha", sinceDays }),
     getRows("auditorias_semanales"),
-    // csl_pulse_readings usa service_role directo (tabla nueva, no en ENTITY_TABLES aún)
-    getSupabaseAdmin()
-      .from("csl_pulse_readings")
-      .select("*")
-      .order("period_start", { ascending: false })
-      .then(({ data, error }) => {
-        if (error) {
-          // Tabla puede no existir aún en producción — no bloquear la carga
-          console.warn("csl_pulse_readings not available:", error.message)
-          return []
-        }
+    // csl_pulse_readings: filtrar por tenant (service_role bypasa RLS)
+    (() => {
+      const ctx = getBusinessContext()
+      let q = getSupabaseAdmin()
+        .from("csl_pulse_readings")
+        .select("*")
+        .order("period_start", { ascending: false })
+      if (ctx && !ctx.isSuperadmin) q = q.eq("business_id", ctx.businessId)
+      return q.then(({ data, error }) => {
+        if (error) { console.warn("csl_pulse_readings not available:", error.message); return [] }
         return data || []
-      }),
+      })
+    })(),
   ])
   return { operadoras, lecturasSemanales, sesionesCliente, auditoriasSemanales, pulseReadings: pulseReadingsRaw }
 }
