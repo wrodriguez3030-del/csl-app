@@ -27,7 +27,7 @@ import {
   type PulseReading,
   type LecturaInicialSource,
 } from "@/lib/pulse-engine"
-import type { Equipo } from "@/lib/types"
+import { makeAgendaMatchKey } from "@/lib/normalize-pulse"
 
 // ─── Tipos locales ────────────────────────────────────────────────────────────
 
@@ -175,34 +175,29 @@ export function PulsosCuadreSemanalPage() {
       return { ...row, lectura_inicial, lectura_inicial_source, disp_laser }
     })
 
-    // Si hay AgendaPro, calcular disparos operador por equipo+sucursal
+    // Si hay AgendaPro, calcular disparos operador usando clave canónica
     if (agendaFile) {
-      const validRows = agendaFile.rows.filter(r => r.status === "valid")
-      const dispByEquipoSuc = new Map<string, number>()
-      for (const r of validRows) {
-        const key = `${r.sucursal}|${r.operadora}`
-        dispByEquipoSuc.set(key, (dispByEquipoSuc.get(key) || 0) + r.disparos)
-      }
-      // También por sucursal pura como fallback
-      const dispBySuc = new Map<string, number>()
-      for (const r of validRows) {
-        const key = r.sucursal
-        dispBySuc.set(key, (dispBySuc.get(key) || 0) + r.disparos)
+      // Acumular disparos por clave normalizada (SUCURSAL|OPERADORA en mayúsculas + aliases)
+      const dispByKey = new Map<string, number>()
+      for (const r of agendaFile.rows.filter(r => r.status === "valid")) {
+        const key = makeAgendaMatchKey(r.sucursal, r.operadora)
+        if (key && !key.startsWith("|")) {
+          dispByKey.set(key, (dispByKey.get(key) || 0) + r.disparos)
+        }
       }
 
       return rows.map(row => {
-        // Intentar match por operadora+sucursal
-        const keyOp = `${row.sucursal}|${row.operadora || ""}`
-        const dispOp = dispByEquipoSuc.get(keyOp)
-        const disp_operador = dispOp !== undefined ? dispOp : 0
+        const key = makeAgendaMatchKey(row.sucursal, row.operadora)
+        const dispOp = dispByKey.get(key)
         const matched = dispOp !== undefined && dispOp > 0
-        const diferencia = matched ? disp_operador - row.disp_laser : undefined
+        const disp_operador = matched ? dispOp : undefined
+        const diferencia = matched ? dispOp - row.disp_laser : undefined
         const diferencia_pct = matched && row.disp_laser > 0
-          ? Math.round(((disp_operador - row.disp_laser) / row.disp_laser) * 10000) / 100
+          ? Math.round(((dispOp! - row.disp_laser) / row.disp_laser) * 10000) / 100
           : undefined
         return {
           ...row,
-          disp_operador: matched ? disp_operador : undefined,
+          disp_operador,
           diferencia,
           diferencia_pct,
           sin_match_agendapro: !matched,
