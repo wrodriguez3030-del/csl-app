@@ -287,11 +287,27 @@ export function PulsosLecturasPage() {
         const workbook = XLSX.read(ev.target?.result, { type: "binary" })
         const sheet = workbook.Sheets[workbook.SheetNames[0]]
         const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" }) as Record<string, unknown>[]
-        const nuevas = rows.map((raw, index) => {
-          const record = Object.entries(raw).reduce<Record<string, unknown>>((acc, [key, value]) => {
+
+        // Normalise + sort by equipoId → fechaSemana so in-batch continuity works
+        const normalised = rows.map((raw) =>
+          Object.entries(raw).reduce<Record<string, unknown>>((acc, [key, value]) => {
             acc[key.trim().toLowerCase()] = value
             return acc
-          }, {})
+          }, {}),
+        ).sort((a, b) => {
+          const eqA = String(rowValue(a, ["EquipoID", "Equipo", "Eq."])).trim()
+          const eqB = String(rowValue(b, ["EquipoID", "Equipo", "Eq."])).trim()
+          const fA = excelDate(rowValue(a, ["FechaSemana", "Fecha Semana", "Semana", "Fecha"]))
+          const fB = excelDate(rowValue(b, ["FechaSemana", "Fecha Semana", "Semana", "Fecha"]))
+          const eqCmp = eqA.localeCompare(eqB)
+          if (eqCmp !== 0) return eqCmp
+          return String(fA).localeCompare(String(fB))
+        })
+
+        // Sequential loop — each row can see previously built rows (in-batch lookback)
+        const nuevas: LecturaSemanal[] = []
+        for (let index = 0; index < normalised.length; index++) {
+          const record = normalised[index]
           const fechaSemana = excelDate(rowValue(record, ["FechaSemana", "Fecha Semana", "Semana", "Fecha"]))
           const equipoId = String(rowValue(record, ["EquipoID", "Equipo", "Eq."])).trim()
           const sucursal = String(rowValue(record, ["Sucursal"])).trim()
@@ -299,12 +315,21 @@ export function PulsosLecturasPage() {
           const operadoraId = String(rowValue(record, ["OperadoraID", "Operadora", "Operador"])).trim()
           const lecturaInicialRaw = excelNumber(rowValue(record, ["LecturaInicial", "Lectura Inicial", "PulsosInicio", "Pulsos Inicio"]))
           const lecturaFinal = excelNumber(rowValue(record, ["LecturaFinal", "Lectura Final", "PulsosFin", "Pulsos Fin"]))
-          // Auto-lookup si el Excel no provee lectura inicial
+          const observaciones = String(rowValue(record, ["Observaciones", "Notas"])).trim()
+          if (!fechaSemana || !equipoId || !sucursal) continue
+
           const lecturaInicial = lecturaInicialRaw > 0 ? lecturaInicialRaw : (() => {
+            // 1. In-batch: rows already processed in this import
+            const prevBatch = nuevas
+              .filter((n) => n.EquipoID === equipoId && String(n.FechaSemana).slice(0, 10) < fechaSemana)
+              .sort((a, b) => String(b.FechaSemana).localeCompare(String(a.FechaSemana)))
+            if (prevBatch.length > 0 && Number(prevBatch[0].LecturaFinal) > 0) return Number(prevBatch[0].LecturaFinal)
+            // 2. Stored lecturas (prior imports)
             const prevLecs = dbPulsos.lecturasSemanales
               .filter((l) => l.EquipoID === equipoId && String(l.FechaSemana).slice(0, 10) < fechaSemana)
               .sort((a, b) => String(b.FechaSemana).localeCompare(String(a.FechaSemana)))
             if (prevLecs.length > 0 && Number(prevLecs[0].LecturaFinal) > 0) return Number(prevLecs[0].LecturaFinal)
+            // 3. Equipment running totals
             const eq = db.equipos.find((e) => e.EquipoID === equipoId)
             if (eq) {
               const pTot = Number(eq.P_Totales || 0)
@@ -314,10 +339,9 @@ export function PulsosLecturasPage() {
             }
             return 0
           })()
-          const observaciones = String(rowValue(record, ["Observaciones", "Notas"])).trim()
-          if (!fechaSemana || !equipoId || !sucursal) return null
+
           const suffix = `${fechaSemana}_${equipoId}_${operadoraId || "sinop"}_${cabina || index}`.replace(/[^\w-]+/g, "_")
-          return {
+          nuevas.push({
             LecturaID: `lec_xlsx_${suffix}`,
             FechaSemana: fechaSemana,
             EquipoID: equipoId,
@@ -328,8 +352,8 @@ export function PulsosLecturasPage() {
             LecturaFinal: lecturaFinal,
             DiferenciaReal: Math.max(0, lecturaFinal - lecturaInicial),
             Observaciones: observaciones,
-          } as LecturaSemanal
-        }).filter(Boolean) as LecturaSemanal[]
+          } as LecturaSemanal)
+        }
 
         if (!nuevas.length) {
           showToast("No se encontraron filas válidas. Revisa el formato ejemplo.", "error")
