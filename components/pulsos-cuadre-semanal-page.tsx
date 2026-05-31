@@ -30,6 +30,7 @@ import {
 import { makeAgendaMatchKey, normalizeSucursal, normalizeOperadora } from "@/lib/normalize-pulse"
 import { detectPulseFileType, extractAgendaProPeriod } from "@/lib/pulse-file-detector"
 import { getOperationalWeek, type OperationalWeek } from "@/lib/operational-week"
+import { signedColorClass } from "@/lib/pulse-colors"
 
 // ─── Tipos locales ────────────────────────────────────────────────────────────
 
@@ -1068,7 +1069,7 @@ export function PulsosCuadreSemanalPage() {
                       {agendaFile && (
                         <TableCell className="text-xs text-right font-mono">
                           {row.diferencia !== undefined ? (
-                            <span className={row.diferencia < 0 ? "text-rose-600" : row.diferencia > 0 ? "text-amber-600" : "text-emerald-600"}>
+                            <span className={signedColorClass(row.diferencia)}>
                               {row.diferencia > 0 ? "+" : ""}{fmtN(row.diferencia)}
                               {row.diferencia_pct !== undefined && (
                                 <span className="text-[10px] text-muted-foreground ml-1">({row.diferencia_pct}%)</span>

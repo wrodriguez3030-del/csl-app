@@ -7,6 +7,7 @@ import { KpiCard } from "@/components/kpi-card"
 import { Badge } from "@/components/ui/badge"
 import { Activity, AlertTriangle, BarChart3, Users, Wrench, Zap } from "lucide-react"
 import { fmtN } from "@/lib/fmt"
+import { signedColorClassDark } from "@/lib/pulse-colors"
 
 export function PulseControlDashboardPage() {
   const { dbPulsos } = useAppStore()
@@ -94,7 +95,7 @@ function MetricLine({ label, value, highlight }: { label: string; value: number;
   return (
     <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3">
       <span className="text-sm font-bold text-muted-foreground">{label}</span>
-      <span className={`font-heading text-2xl font-black ${highlight ? value < 0 ? "text-blue-600" : "text-amber-600" : "text-slate-950"}`}>
+      <span className={`font-heading text-2xl font-black ${highlight ? signedColorClassDark(value) : "text-slate-950"}`}>
         {fmtN(value)}
       </span>
     </div>

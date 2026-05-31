@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge"
 import { Activity, Download, CheckCircle, AlertTriangle, XCircle, TrendingUp, TrendingDown, Upload, FileSpreadsheet, Pencil, Save, X, Trash2, Loader2 } from "lucide-react"
 import { fmtN } from "@/lib/fmt"
 import { makeAgendaMatchKey, normalizeSucursal as canonicalSucursal } from "@/lib/normalize-pulse"
+import { signedColorClass, signedColorClassDark, signedIcon, getAlerta as getAlertaShared, alertaBadge as alertaBadgeShared } from "@/lib/pulse-colors"
 
 function fmtSemanaRango(d: string) {
   if (!d) return "-"
@@ -33,18 +34,10 @@ function fmtSemanaRango(d: string) {
   } catch { return d }
 }
 
-function getAlerta(pct: number) {
-  const a = Math.abs(pct)
-  if (a <= 5) return "OK"
-  if (a <= 15) return "Advertencia"
-  return "Critico"
-}
-
-function alertaBadge(alerta: string) {
-  if (alerta === "OK") return <Badge className="bg-green-500/20 text-green-400 border-green-500/30 gap-1 text-xs"><CheckCircle className="h-3 w-3" />OK</Badge>
-  if (alerta === "Advertencia") return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 gap-1 text-xs"><AlertTriangle className="h-3 w-3" />Advert.</Badge>
-  return <Badge className="bg-red-500/20 text-red-400 border-red-500/30 gap-1 text-xs"><XCircle className="h-3 w-3" />Crítico</Badge>
-}
+// getAlerta / alertaBadge re-exportadas desde lib/pulse-colors para
+// consistencia con el resto del módulo. Se conservan los nombres locales.
+const getAlerta = getAlertaShared
+const alertaBadge = alertaBadgeShared
 
 function excelDate(value: unknown) {
   if (value instanceof Date) return value.toISOString().slice(0, 10)
@@ -836,13 +829,18 @@ export function PulsosAuditoriaPage() {
                     <td className="px-3 py-2 text-right font-mono text-sm font-bold">{fmtN(r.dispLaser)}</td>
                     <td className="px-3 py-2 text-right font-mono text-sm font-bold">{fmtN(r.dispOperador)}</td>
                     <td className="px-3 py-2 text-right">
-                      <span className={`font-mono text-sm font-bold inline-flex items-center gap-1 ${r.diferencia > 0 ? "text-orange-400" : r.diferencia < 0 ? "text-blue-400" : "text-green-400"}`}>
-                        {r.diferencia > 0 ? <TrendingUp className="h-3 w-3" /> : r.diferencia < 0 ? <TrendingDown className="h-3 w-3" /> : null}
-                        {r.diferencia > 0 ? "+" : ""}{fmtN(r.diferencia)}
-                      </span>
+                      {(() => {
+                        const Icon = signedIcon(r.diferencia)
+                        return (
+                          <span className={`font-mono text-sm font-bold inline-flex items-center gap-1 ${signedColorClass(r.diferencia)}`}>
+                            {Icon ? <Icon className="h-3 w-3" /> : null}
+                            {r.diferencia > 0 ? "+" : ""}{fmtN(r.diferencia)}
+                          </span>
+                        )
+                      })()}
                     </td>
                     <td className="px-2 py-2 text-right">
-                      <span className={`font-mono text-xs font-bold ${Math.abs(r.pct) <= 5 ? "text-green-400" : Math.abs(r.pct) <= 15 ? "text-yellow-400" : "text-red-400"}`}>
+                      <span className={`font-mono text-xs font-bold ${signedColorClass(r.pct)}`}>
                         {r.pct > 0 ? "+" : ""}{r.pct}%
                       </span>
                     </td>
@@ -876,7 +874,7 @@ export function PulsosAuditoriaPage() {
                   <td className="px-3 py-2 text-right font-mono text-sm text-primary">{fmtN(semana.totDispLaser)}</td>
                   <td className="px-3 py-2 text-right font-mono text-sm text-primary">{fmtN(semana.totDispOp)}</td>
                   <td className="px-3 py-2 text-right">
-                    <span className={`font-mono text-sm font-bold ${semana.totDiferencia > 0 ? "text-orange-400" : semana.totDiferencia < 0 ? "text-blue-400" : "text-green-400"}`}>
+                    <span className={`font-mono text-sm font-bold ${signedColorClassDark(semana.totDiferencia)}`}>
                       {semana.totDiferencia > 0 ? "+" : ""}{fmtN(semana.totDiferencia)}
                     </span>
                   </td>
@@ -940,8 +938,9 @@ export function PulsosAuditoriaPage() {
             <div className="flex items-center gap-1.5"><CheckCircle className="h-3 w-3 text-green-500" /><span className="text-green-400 font-semibold">OK</span> — Diferencia ≤ 5%</div>
             <div className="flex items-center gap-1.5"><AlertTriangle className="h-3 w-3 text-yellow-500" /><span className="text-yellow-400 font-semibold">Advertencia</span> — 5–15%</div>
             <div className="flex items-center gap-1.5"><XCircle className="h-3 w-3 text-red-500" /><span className="text-red-400 font-semibold">Crítico</span> — &gt;15%</div>
-            <div className="flex items-center gap-1.5"><TrendingUp className="h-3 w-3 text-orange-400" /><span className="text-orange-400">Positivo</span> = operador reporta más</div>
-            <div className="flex items-center gap-1.5"><TrendingDown className="h-3 w-3 text-blue-400" /><span className="text-blue-400">Negativo</span> = uso sin registro</div>
+            <div className="flex items-center gap-1.5"><TrendingUp className="h-3 w-3 text-blue-500" /><span className="text-blue-500">Positivo</span> = operador reporta más</div>
+            <div className="flex items-center gap-1.5"><TrendingDown className="h-3 w-3 text-red-500" /><span className="text-red-500">Negativo</span> = uso sin registro</div>
+            <div className="flex items-center gap-1.5"><span className="text-emerald-500 font-semibold">Cero</span> = cuadre exacto</div>
           </div>
         </CardContent>
       </Card>
