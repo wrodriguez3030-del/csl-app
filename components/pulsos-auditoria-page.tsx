@@ -530,11 +530,93 @@ export function PulsosAuditoriaPage() {
     })
   }
 
+  /** Llama el endpoint /api/csl con manejo real de errores y retorno tipado.
+   *  syncApi() silencia errores — no usarlo para escrituras críticas. */
+  const apiCallTyped = async (params: Record<string, string>): Promise<Record<string, unknown>> => {
+    const { apiJsonp, normalizeApiUrl } = await import("@/lib/store")
+    const res = await apiJsonp(normalizeApiUrl(apiUrl), params) as Record<string, unknown>
+    if (!res || res.ok === false) {
+      const errMsg = String((res as { error?: string })?.error || "Error desconocido del servidor")
+      throw new Error(errMsg)
+    }
+    return res
+  }
+
   const saveEdit = async () => {
     if (!editRow) return
+
+    // RAMA 1: la fila viene de csl_pulse_readings (caso normal post-refactor).
+    // Actualizamos via savePulseReading pasando el id → upsert por
+    // (business_id, equipo_id, period_start, period_end).
+    if (editRow.sourceTable === "pulse_readings") {
+      const reading = (dbPulsos.pulseReadings ?? []).find(r => r.id === editRow.lecturaId)
+      if (!reading) {
+        showToast("No se encontró la lectura en csl_pulse_readings", "error")
+        return
+      }
+      const dispLaser = Math.max(0, editForm.pulsosFin - editForm.pulsosInicio)
+      const payload: Record<string, string | number> = {
+        id: reading.id,
+        equipo_id: reading.equipo_id,
+        serial: reading.serial || "",
+        sucursal: reading.sucursal,
+        cabina: reading.cabina || "",
+        operadora: editForm.operadora,
+        period_start: reading.period_start,
+        period_end: reading.period_end,
+        period_label: reading.period_label || "",
+        lectura_inicial: editForm.pulsosInicio,
+        lectura_final: editForm.pulsosFin,
+        estado_cuadre: reading.estado_cuadre || "lectura_guardada",
+        estado_mantenimiento: reading.estado_mantenimiento || "",
+        fallas: reading.fallas || "",
+        source_file: reading.source_file || "",
+        source_type: reading.source_type || "manual",
+        observaciones: reading.observaciones || "",
+      }
+      if (editForm.dispOperador > 0) {
+        payload.disp_operador = editForm.dispOperador
+        if (dispLaser > 0) {
+          payload.diferencia_pct = Math.round(((editForm.dispOperador - dispLaser) / dispLaser) * 10000) / 100
+        }
+      }
+
+      try {
+        const res = await apiCallTyped({
+          action: "savePulseReading",
+          data: JSON.stringify(payload),
+        })
+        const updated = res.record as typeof reading | undefined
+        // Actualizar store con el record del servidor (incluye disp_laser
+        // que es columna generada) o fallback a los valores locales.
+        setDbPulsos({
+          ...dbPulsos,
+          pulseReadings: (dbPulsos.pulseReadings ?? []).map(r =>
+            r.id === reading.id
+              ? (updated ?? {
+                  ...r,
+                  operadora: editForm.operadora,
+                  lectura_inicial: editForm.pulsosInicio,
+                  lectura_final: editForm.pulsosFin,
+                  disp_laser: dispLaser,
+                  disp_operador: editForm.dispOperador > 0 ? editForm.dispOperador : r.disp_operador,
+                })
+              : r,
+          ),
+        })
+        showToast("Auditoría actualizada", "success")
+        setEditRow(null)
+      } catch (err) {
+        showToast(`Error al guardar: ${err instanceof Error ? err.message : String(err)}`, "error")
+      }
+      return
+    }
+
+    // RAMA 2 (legacy): la fila viene de lecturasSemanales. Mantenemos el
+    // comportamiento anterior — actualiza saveLectura + sesiones manuales.
     const lectura = dbPulsos.lecturasSemanales.find(item => item.LecturaID === editRow.lecturaId)
     if (!lectura) {
-      showToast("No se encontr? la lectura para editar", "error")
+      showToast("No se encontró la lectura para editar", "error")
       return
     }
 
@@ -568,31 +650,41 @@ export function PulsosAuditoriaPage() {
       Sucursal: editRow.sucursal,
       Cabina: editRow.cabinaRaw || `Cabina ${editRow.cabina}`,
       OperadoraID: editForm.operadora,
-      Cliente: "Ajuste auditor?a",
+      Cliente: "Ajuste auditoría",
       AreaTrabajada: "PULSE",
       DisparosReportados: editForm.dispOperador,
       Duracion: undefined,
       EquipoID: editRow.equipo,
-      Observaciones: "Ajuste manual Auditor?a PULSE",
+      Observaciones: "Ajuste manual Auditoría PULSE",
     }
 
-    setDbPulsos({
-      ...dbPulsos,
-      lecturasSemanales: dbPulsos.lecturasSemanales.map(item => item.LecturaID === updatedLectura.LecturaID ? updatedLectura : item),
-      sesionesCliente: [
-        ...dbPulsos.sesionesCliente
-          .filter(item => item.SesionID !== oldManualId && item.SesionID !== manualId)
-          .filter(item => !relatedSessions.some(updated => updated.SesionID === item.SesionID)),
-        ...relatedSessions,
-        manualSesion,
-      ],
-    })
-    await syncApi({ action: "saveLectura", data: JSON.stringify(updatedLectura) })
-    if (oldManualId !== manualId) await syncApi({ action: "deleteSesion", id: oldManualId })
-    for (const sesion of relatedSessions) await syncApi({ action: "saveSesion", data: JSON.stringify(sesion) })
-    await syncApi({ action: "saveSesion", data: JSON.stringify(manualSesion) })
-    showToast("Auditor?a actualizada en todo el sistema", "success")
-    setEditRow(null)
+    try {
+      await apiCallTyped({ action: "saveLectura", data: JSON.stringify(updatedLectura) })
+      if (oldManualId !== manualId) {
+        try { await apiCallTyped({ action: "deleteSesion", id: oldManualId }) }
+        catch { /* la sesión manual previa puede no existir, no es error */ }
+      }
+      for (const sesion of relatedSessions) {
+        await apiCallTyped({ action: "saveSesion", data: JSON.stringify(sesion) })
+      }
+      await apiCallTyped({ action: "saveSesion", data: JSON.stringify(manualSesion) })
+
+      setDbPulsos({
+        ...dbPulsos,
+        lecturasSemanales: dbPulsos.lecturasSemanales.map(item => item.LecturaID === updatedLectura.LecturaID ? updatedLectura : item),
+        sesionesCliente: [
+          ...dbPulsos.sesionesCliente
+            .filter(item => item.SesionID !== oldManualId && item.SesionID !== manualId)
+            .filter(item => !relatedSessions.some(updated => updated.SesionID === item.SesionID)),
+          ...relatedSessions,
+          manualSesion,
+        ],
+      })
+      showToast("Auditoría actualizada en todo el sistema", "success")
+      setEditRow(null)
+    } catch (err) {
+      showToast(`Error al guardar: ${err instanceof Error ? err.message : String(err)}`, "error")
+    }
   }
 
   if (false && dbPulsos.lecturasSemanales.length === 0) {
