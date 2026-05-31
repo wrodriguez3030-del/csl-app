@@ -114,6 +114,7 @@ export function PulsosLecturasPage() {
   const [saving, setSaving] = useState(false)
   const [importing, setImporting] = useState(false)
   const [recalcRunning, setRecalcRunning] = useState(false)
+  const [recalcOpRunning, setRecalcOpRunning] = useState(false)
   const [collapsedPeriods, setCollapsedPeriods] = useState<Set<string>>(new Set())
 
   // Inline editing: click on lectura_final cell
@@ -452,6 +453,42 @@ export function PulsosLecturasPage() {
     }
   }
 
+  const handleRecalculateDispOperador = async () => {
+    if (!confirm(
+      "¿Recalcular DISP OPERADOR?\n\n" +
+      "Se reescribirá disp_operador en cada lectura sumando los disparos AgendaPro " +
+      "del mismo business_id + semana + sucursal + operadora (normalizadas).\n\n" +
+      "Es seguro: solo actualiza valores que difieren. No borra datos."
+    )) return
+    setRecalcOpRunning(true)
+    try {
+      const res = await apiCallLocal({ action: "recalculateDispOperador" })
+      const updated = Number(res.updated) || 0
+      const unchanged = Number(res.unchanged) || 0
+      const skipped = Number(res.skipped) || 0
+      const total = Number(res.total) || 0
+      await reloadReadings()
+      if (updated > 0) {
+        showToast(
+          `✓ ${updated} de ${total} lecturas actualizadas` +
+            (unchanged > 0 ? ` · ${unchanged} sin cambios` : "") +
+            (skipped > 0 ? ` · ${skipped} sin sucursal/operadora válida` : ""),
+          "success",
+        )
+      } else {
+        showToast(
+          `Ningún disp_operador cambió (revisadas ${total})` +
+            (skipped > 0 ? ` · ${skipped} sin sucursal/operadora válida` : ""),
+          "info",
+        )
+      }
+    } catch (err) {
+      showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error")
+    } finally {
+      setRecalcOpRunning(false)
+    }
+  }
+
   const togglePeriod = (key: string) => {
     setCollapsedPeriods(prev => {
       const next = new Set(prev)
@@ -501,6 +538,17 @@ export function PulsosLecturasPage() {
         >
           {recalcRunning ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <RotateCcw className="w-4 h-4 mr-1" />}
           {continuityIssues > 0 ? `Corregir continuidad (${continuityIssues})` : "Recalcular continuidad"}
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleRecalculateDispOperador}
+          disabled={recalcOpRunning}
+          title="Reescribe DISP Operador en cada lectura sumando AgendaPro por semana + sucursal + operadora"
+        >
+          {recalcOpRunning ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <RotateCcw className="w-4 h-4 mr-1" />}
+          Recalcular DISP Operador
         </Button>
 
         <span className="ml-auto text-sm text-muted-foreground">

@@ -41,6 +41,7 @@ import {
   CONSENT_LIST_COLS,
 } from "@/lib/server/csl-crud"
 import { runWithBusinessContext } from "@/lib/server/business-context"
+import { makeAgendaMatchKey } from "@/lib/normalize-pulse"
 import {
   clienteCosmiatriaToDb,
   consentToDb,
@@ -1255,6 +1256,112 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         }
       }
       return { ok: true, fixed }
+    }
+
+    case "recalculateDispOperador": {
+      // Recalcula disp_operador en csl_pulse_readings agregando desde
+      // csl_sesiones_cliente por (business_id, period_start..period_end,
+      // sucursal_normalizada, operadora_normalizada). Idempotente.
+      //
+      // Params opcionales (todos string):
+      //   periodStart, periodEnd   → limitar a un rango específico
+      //   sucursal                 → limitar a una sucursal (canónica)
+      // Si no se pasan, recalcula TODAS las lecturas del tenant.
+      const sb = getSupabaseAdmin()
+      const { data: profile } = await sb
+        .from("csl_user_profiles")
+        .select("business_id")
+        .eq("user_id", user.id)
+        .single()
+      if (!profile?.business_id) throw new Error("business_id no encontrado")
+
+      const filterPeriodStart = textValue(params, "periodStart") || null
+      const filterPeriodEnd = textValue(params, "periodEnd") || null
+      const filterSucursal = textValue(params, "sucursal") || null
+
+      let readingsQuery = sb
+        .from("csl_pulse_readings")
+        .select("*")
+        .eq("business_id", profile.business_id)
+      if (filterPeriodStart) readingsQuery = readingsQuery.gte("period_start", filterPeriodStart)
+      if (filterPeriodEnd) readingsQuery = readingsQuery.lte("period_end", filterPeriodEnd)
+      const { data: readings, error: rErr } = await readingsQuery
+      if (rErr) throw rErr
+
+      // Cargar sesiones del tenant cubriendo el rango de períodos a procesar.
+      // Si no se filtra por período, traer todas las sesiones del tenant.
+      const periodStarts = (readings || []).map(r => String(r.period_start)).filter(Boolean)
+      const periodEnds = (readings || []).map(r => String(r.period_end)).filter(Boolean)
+      const minDate = periodStarts.length ? periodStarts.reduce((a, b) => (a < b ? a : b)) : null
+      const maxDate = periodEnds.length ? periodEnds.reduce((a, b) => (a > b ? a : b)) : null
+
+      let sesionesQuery = sb
+        .from("csl_sesiones_cliente")
+        .select("fecha, sucursal, operadora_id, disparos_reportados")
+        .eq("business_id", profile.business_id)
+      if (minDate) sesionesQuery = sesionesQuery.gte("fecha", minDate)
+      if (maxDate) sesionesQuery = sesionesQuery.lte("fecha", maxDate)
+      const { data: sesiones, error: sErr } = await sesionesQuery
+      if (sErr) throw sErr
+
+      // Indexar sesiones por (periodKey, matchKey) → suma de disparos
+      // periodKey: "YYYY-MM-DD" — usaremos fecha cruda y filtraremos por rango por reading
+      type Sesion = { fecha: string; sucursal: string; operadora_id: string; disparos_reportados: number }
+      const sesionList: Sesion[] = (sesiones || []).map(s => ({
+        fecha: String(s.fecha || "").slice(0, 10),
+        sucursal: String(s.sucursal || ""),
+        operadora_id: String(s.operadora_id || ""),
+        disparos_reportados: Number(s.disparos_reportados) || 0,
+      }))
+
+      let updated = 0
+      let unchanged = 0
+      let skipped = 0
+      for (const r of (readings || [])) {
+        const matchKey = makeAgendaMatchKey(r.sucursal, r.operadora)
+        if (!matchKey) { skipped += 1; continue }
+        if (filterSucursal && makeAgendaMatchKey(r.sucursal, "x").split("|")[0] !== filterSucursal.toUpperCase()) {
+          skipped += 1
+          continue
+        }
+        const desde = String(r.period_start).slice(0, 10)
+        const hasta = String(r.period_end).slice(0, 10)
+
+        let suma = 0
+        for (const s of sesionList) {
+          if (!s.fecha || s.fecha < desde || s.fecha > hasta) continue
+          if (makeAgendaMatchKey(s.sucursal, s.operadora_id) !== matchKey) continue
+          suma += s.disparos_reportados
+        }
+
+        const currentValue = r.disp_operador == null ? null : Number(r.disp_operador)
+        const newValue = suma > 0 ? suma : null
+        if (currentValue === newValue) { unchanged += 1; continue }
+
+        const dispLaser = Number(r.disp_laser) || 0
+        const newPct = newValue != null && dispLaser > 0
+          ? Math.round(((newValue - dispLaser) / dispLaser) * 10000) / 100
+          : null
+
+        const { error: uErr } = await sb
+          .from("csl_pulse_readings")
+          .update({
+            disp_operador: newValue,
+            diferencia_pct: newPct,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", r.id)
+          .eq("business_id", profile.business_id)
+        if (!uErr) updated += 1
+      }
+
+      return {
+        ok: true,
+        updated,
+        unchanged,
+        skipped,
+        total: (readings || []).length,
+      }
     }
 
     default:
