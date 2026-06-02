@@ -14,6 +14,8 @@
  *   - Crítico    → rojo
  */
 
+import { getBusinessBranding, type BusinessBranding } from "@/lib/business"
+
 export interface AuditoriaPdfRow {
   sucursal: string
   cabina: string
@@ -45,7 +47,16 @@ export interface AuditoriaPdfSnapshot {
   filtroSucursal: string
   generadoEn: string
   generadoPor?: string
-  businessName?: string
+  /** Branding del tenant activo. Si falta, cae a CSL. */
+  branding?: BusinessBranding
+}
+
+/** Absolutiza el logo para que cargue dentro del popup de impresión (about:blank). */
+function absoluteLogoUrl(logoUrl: string): string {
+  if (!logoUrl) return ""
+  if (/^https?:\/\//.test(logoUrl)) return logoUrl
+  if (typeof window !== "undefined") return window.location.origin + logoUrl
+  return logoUrl
 }
 
 const SUC_MAP: Record<string, string> = {
@@ -97,6 +108,9 @@ function fmtSemanaRango(fechaIso: string): string {
 }
 
 export function buildAuditoriaPdfHtml(snapshot: AuditoriaPdfSnapshot): string {
+  const branding = snapshot.branding ?? getBusinessBranding(null)
+  const brand = branding.primaryColor
+  const logoSrc = absoluteLogoUrl(branding.logoUrl)
   const allRows = snapshot.semanas.flatMap(s => s.rows)
   const totalLaser = allRows.reduce((s, r) => s + r.dispLaser, 0)
   const totalOp = allRows.reduce((s, r) => s + r.dispOperador, 0)
@@ -157,9 +171,10 @@ export function buildAuditoriaPdfHtml(snapshot: AuditoriaPdfSnapshot): string {
 <style>
   @page { size: letter landscape; margin: 12mm; }
   * { box-sizing: border-box; }
-  body { font-family: Arial, Helvetica, sans-serif; color: #111827; font-size: 10.5px; margin: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #111827; font-size: 10.5px; margin: 0; --brand: ${brand}; }
+  .logo-img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
   .header {
-    border-bottom: 3px solid #00897b;
+    border-bottom: 3px solid var(--brand);
     padding-bottom: 12px;
     margin-bottom: 16px;
     display: flex;
@@ -170,7 +185,7 @@ export function buildAuditoriaPdfHtml(snapshot: AuditoriaPdfSnapshot): string {
   .logo-circle {
     width: 48px; height: 48px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #00897b 0%, #00bfa5 100%);
+    background: linear-gradient(135deg, var(--brand) 0%, #00bfa5 100%);
     color: white;
     font-weight: 900;
     font-size: 16px;
@@ -180,7 +195,7 @@ export function buildAuditoriaPdfHtml(snapshot: AuditoriaPdfSnapshot): string {
     letter-spacing: -1px;
   }
   .brand-text { line-height: 1.2; }
-  .brand-name { font-size: 16px; font-weight: 900; color: #00897b; letter-spacing: .02em; }
+  .brand-name { font-size: 16px; font-weight: 900; color: var(--brand); letter-spacing: .02em; }
   .brand-tagline { font-size: 9px; color: #64748b; text-transform: uppercase; letter-spacing: .12em; margin-top: 1px; }
   h1 { font-size: 14px; margin: 6px 0 2px; color: #0f172a; }
   .meta { color: #475569; font-size: 9.5px; }
@@ -189,7 +204,7 @@ export function buildAuditoriaPdfHtml(snapshot: AuditoriaPdfSnapshot): string {
 
   h2 {
     font-size: 11px;
-    background: #00897b;
+    background: var(--brand);
     color: white;
     padding: 5px 10px;
     margin: 16px 0 6px;
@@ -275,10 +290,12 @@ export function buildAuditoriaPdfHtml(snapshot: AuditoriaPdfSnapshot): string {
 
 <div class="header">
   <div class="brand">
-    <div class="logo-circle">CSL</div>
+    ${logoSrc
+      ? `<img class="logo-img" src="${escapeHtml(logoSrc)}" alt="${escapeHtml(branding.name)}" />`
+      : `<div class="logo-circle">${escapeHtml(branding.shortName)}</div>`}
     <div class="brand-text">
-      <div class="brand-name">CIBAO SPA LÁSER</div>
-      <div class="brand-tagline">${escapeHtml(snapshot.businessName || "Auditoría de Pulsos GentleYAG")}</div>
+      <div class="brand-name">${escapeHtml(branding.name).toUpperCase()}</div>
+      <div class="brand-tagline">${escapeHtml(branding.subtitle)}</div>
     </div>
   </div>
   <div class="header-right">
@@ -292,7 +309,7 @@ export function buildAuditoriaPdfHtml(snapshot: AuditoriaPdfSnapshot): string {
 <h2>Resumen ejecutivo</h2>
 <div class="summary">
   <div class="stat">
-    <div class="v" style="color: #00897b">${allRows.length}</div>
+    <div class="v" style="color: var(--brand)">${allRows.length}</div>
     <div class="l">Registros</div>
   </div>
   <div class="stat">
@@ -344,7 +361,7 @@ ${semanasHtml || `<div style="text-align: center; padding: 30px; color: #94a3b8"
 </div>
 
 <div class="footer">
-  Cibao Spa Láser · Auditoría PULSE / IA · Reporte generado el ${escapeHtml(snapshot.generadoEn)} ·
+  ${escapeHtml(branding.footerText)} · Auditoría PULSE / IA · Reporte generado el ${escapeHtml(snapshot.generadoEn)} ·
   ${allRows.length} registro(s) en ${snapshot.semanas.length} semana(s)
 </div>
 

@@ -27,6 +27,7 @@ import { SEQ_HEADER_CLASS, SeqBadge } from "@/components/seq-badge"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
+import { getBusinessBranding } from "@/lib/business"
 import type { Business } from "@/lib/types"
 import { displayPhone, displayDocumento } from "@/lib/formatters"
 
@@ -626,9 +627,10 @@ function FirmaPreview({ label, value }: { label: string; value: string }) {
  */
 function buildPrintHtml(record: ReporteUnificado, business?: Business) {
   const tipo = TIPO_LABEL[record.tipo]
-  const brandName = business?.name || "Cibao Spa Laser"
-  const brandColor = business?.primaryColor || "#14B7B0"
-  const brandLogo = business?.logoUrl || "/cibao-spa-laser-logo.jpeg"
+  const branding = getBusinessBranding(business ?? null)
+  const brandName = branding.name
+  const brandColor = branding.primaryColor
+  const brandLogo = branding.logoUrl
   return `<!doctype html>
   <html>
     <head>
@@ -704,7 +706,7 @@ function buildPrintHtml(record: ReporteUnificado, business?: Business) {
       </div>
 
       <div class="footer">
-        Documento generado por Sistema Integral CSL · ${new Date().toLocaleString("es-DO")}
+        Documento generado por ${escapeHtml(branding.subtitle)} · ${new Date().toLocaleString("es-DO")}
       </div>
       <script>setTimeout(() => window.print(), 450)</script>
     </body>

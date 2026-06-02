@@ -5,6 +5,7 @@ import { Eye, Pencil, Printer, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
+import { getBusinessBranding } from "@/lib/business"
 
 type RecordActionsProps<T extends Record<string, unknown>> = {
   title: string
@@ -117,7 +118,7 @@ export function RecordActions<T extends Record<string, unknown>>({ title, record
   const handlePrintDefault = async () => {
     const full = await ensureFull()
     const printEntries = Object.entries(full).filter(([key, value]) => !key.startsWith("_") && typeof value !== "function")
-    printRecord(printTitle || title, printEntries, business.name)
+    printRecord(printTitle || title, printEntries, getBusinessBranding(business).name)
   }
 
   return (

@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge"
 import { Activity, Download, CheckCircle, AlertTriangle, XCircle, TrendingUp, TrendingDown, Upload, FileSpreadsheet, Pencil, Save, X, Trash2, Loader2, FileText } from "lucide-react"
 import { printAuditoria, type AuditoriaPdfSnapshot } from "@/lib/pulse-auditoria-pdf"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
+import { getBusinessBranding } from "@/lib/business"
 import { fmtN } from "@/lib/fmt"
 import { makeAgendaMatchKey, normalizeSucursal as canonicalSucursal } from "@/lib/normalize-pulse"
 import { signedColorClass, signedColorClassDark, signedIcon, getAlerta as getAlertaShared, alertaBadge as alertaBadgeShared } from "@/lib/pulse-colors"
@@ -391,7 +392,7 @@ export function PulsosAuditoriaPage() {
         day: "2-digit", month: "long", year: "numeric",
         hour: "2-digit", minute: "2-digit",
       }),
-      businessName: business?.displayName || business?.name || business?.shortName,
+      branding: getBusinessBranding(business),
     }
     try {
       printAuditoria(snapshot)

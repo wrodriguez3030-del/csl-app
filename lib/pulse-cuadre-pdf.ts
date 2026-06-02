@@ -8,6 +8,7 @@
 
 import type { AlertaNivel } from "@/lib/pulse-audit"
 import { fmtFechaLocal } from "@/lib/pulse-audit"
+import { getBusinessBranding, type BusinessBranding } from "@/lib/business"
 
 export interface CuadreEquipoRow {
   equipoId: string
@@ -32,6 +33,8 @@ export interface CuadreSnapshot {
   archivos: Array<{ filename: string; rows?: number }>
   fotosCount: number
   equipos: CuadreEquipoRow[]
+  /** Branding del tenant activo. Si falta, cae a CSL. */
+  branding?: BusinessBranding
 }
 
 function escapeHtml(value: unknown) {
@@ -47,6 +50,7 @@ function alertColor(a: AlertaNivel): string {
 }
 
 export function buildCuadrePdfHtml(snapshot: CuadreSnapshot): string {
+  const branding = snapshot.branding ?? getBusinessBranding(null)
   const totLaser = snapshot.equipos.reduce((s, r) => s + r.disparosLaser, 0)
   const totOperador = snapshot.equipos.reduce((s, r) => s + r.disparosOperador, 0)
   const totDif = totOperador - totLaser
@@ -95,7 +99,7 @@ export function buildCuadrePdfHtml(snapshot: CuadreSnapshot): string {
 
 <div class="header">
   <div>
-    <div class="logo">CIBAO SPA LASER</div>
+    <div class="logo">${escapeHtml(branding.name).toUpperCase()}</div>
     <h1>Cuadre semanal de disparos láser</h1>
     <div class="meta">Semana: <b>${escapeHtml(fmtFechaLocal(snapshot.semanaInicio))} → ${escapeHtml(fmtFechaLocal(snapshot.semanaFin))}</b> · Sucursal: <b>${escapeHtml(snapshot.sucursalFiltro)}</b></div>
   </div>
@@ -135,7 +139,7 @@ ${critN > 0 || warnN > 0 ? `
 ` : ""}
 
 <div class="footer">
-  Cibao Spa Láser · Cuadre semanal de PulseControl · Generado el ${escapeHtml(snapshot.generadoEn)} ·
+  ${escapeHtml(branding.footerText)} · Cuadre semanal de PulseControl · Generado el ${escapeHtml(snapshot.generadoEn)} ·
   Archivos AgendaPro: ${snapshot.archivos.length} · Fotos: ${snapshot.fotosCount}
 </div>
 

@@ -11,6 +11,7 @@
 import { loadXLSX } from "@/lib/load-xlsx"
 import type { CuadreSnapshot } from "@/lib/pulse-cuadre-pdf"
 import type { SesionCliente } from "@/lib/types"
+import { getBusinessBranding } from "@/lib/business"
 
 export interface ExportCuadreOptions {
   snapshot: CuadreSnapshot
@@ -29,6 +30,7 @@ type XLSXModule = {
 
 export async function exportCuadreXlsx({ snapshot, sesiones, filename }: ExportCuadreOptions): Promise<void> {
   const XLSX = (await loadXLSX()) as XLSXModule
+  const branding = snapshot.branding ?? getBusinessBranding(null)
 
   // Hoja 1 — Resumen
   const totLaser = snapshot.equipos.reduce((s, r) => s + r.disparosLaser, 0)
@@ -38,7 +40,7 @@ export async function exportCuadreXlsx({ snapshot, sesiones, filename }: ExportC
   const critN = snapshot.equipos.filter((r) => r.alerta === "Critico").length
 
   const resumen: unknown[][] = [
-    ["Cuadre semanal de disparos láser — Cibao Spa Láser"],
+    [`Cuadre semanal de disparos láser — ${branding.name}`],
     [],
     ["Semana", `${snapshot.semanaInicio} → ${snapshot.semanaFin}`],
     ["Sucursal", snapshot.sucursalFiltro],
