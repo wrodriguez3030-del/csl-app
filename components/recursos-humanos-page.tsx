@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
+import { businessIdForSlug } from "@/lib/business"
 import { SuperadminBusinessFilter, filterValueToBusinessId, type BusinessFilterValue } from "@/components/superadmin-business-filter"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -400,7 +401,14 @@ export function RecursosHumanosPage() {
     const response = await fetch("/api/public-form-links", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-      body: JSON.stringify({ formType: "solicitud_empleo", clienteNombre: clienteNombre || undefined, clienteTelefono: clienteTelefono || undefined }),
+      body: JSON.stringify({
+        formType: "solicitud_empleo",
+        clienteNombre: clienteNombre || undefined,
+        clienteTelefono: clienteTelefono || undefined,
+        // Business activo: para que un superadmin genere el link del tenant
+        // correcto (no el de su propio perfil).
+        activeBusinessId: businessIdForSlug(business.slug) ?? undefined,
+      }),
     })
     const result = (await response.json().catch(() => ({}))) as { ok?: boolean; url?: string; whatsappUrl?: string; error?: string }
     if (!result.ok || !result.url) throw new Error(result.error || "Error generando link")
@@ -441,7 +449,7 @@ export function RecursosHumanosPage() {
     try {
       const { url } = await generateSolicitudLink()
       await navigator.clipboard.writeText(url)
-      showToast("Link de solicitud generado y copiado. Este enlace solo puede usarse una vez.", "success")
+      showToast("Link único copiado. Vence en 12 horas y solo puede usarse una vez.", "success")
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Error generando link", "error")
     }

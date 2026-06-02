@@ -57,10 +57,12 @@ const emptyForm: FormState = {
 // re-valida y aplica MENU_ID_SET).
 const SUGGESTED_MENUS_CSL: MenuPermission[] = [
   "panel", "pulse-mantenimiento", "sucursales", "equipos", "tecnicos", "reporte", "reportes", "historial-equipos", "inventario",
+  "rrhh-empleados", "rrhh-solicitudes",
 ]
 const SUGGESTED_MENUS_DEPICENTER: MenuPermission[] = [
   "panel", "sucursales", "equipos", "tecnicos", "credenciales", "reporte", "reportes",
   "historial-equipos", "inventario", "errores", "cliente-certificados-depicenter",
+  "rrhh-empleados", "rrhh-solicitudes",
 ]
 
 function roleFrom(user: AdminUserRow): RoleKey {

@@ -9,6 +9,7 @@
 import { NextResponse } from "next/server"
 import { requireAuthenticatedUser } from "@/lib/server/supabase"
 import { loadBusinessContext } from "@/lib/server/csl-crud"
+import { applyActiveBusiness } from "@/lib/server/business-context"
 import {
   createPublicFormLink,
   isFormType,
@@ -67,7 +68,7 @@ function buildWhatsappUrl(
       "",
       publicUrl,
       "",
-      "Este enlace es personal y solo puede utilizarse una vez.",
+      "Este enlace es de un solo uso y vence en 12 horas.",
       "",
       "Gracias.",
     ].join("\n")
@@ -95,7 +96,11 @@ export async function POST(request: Request) {
       return json({ ok: false, error: "formType inválido" }, 400)
     }
 
-    const ctx = await loadBusinessContext(user.id)
+    const baseCtx = await loadBusinessContext(user.id)
+    // Respeta el business activo que manda la UI: un superadmin genera el link
+    // del tenant ACTIVO (no el de su propio perfil). Usuario normal: sin efecto.
+    const activeBusinessId = typeof body.activeBusinessId === "string" ? body.activeBusinessId : undefined
+    const ctx = applyActiveBusiness(baseCtx, activeBusinessId)
     if (!ctx) {
       return json({ ok: false, error: "No se pudo cargar el contexto de negocio" }, 403)
     }

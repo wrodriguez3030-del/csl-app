@@ -41,6 +41,10 @@ export const MENU_OPTIONS: MenuOption[] = [
   // RR.HH. — Personal
   { id: "rrhh-dashboard", label: "Dashboard RR.HH.", section: "RR.HH. · Personal" },
   { id: "rrhh-empleados", label: "Empleados", section: "RR.HH. · Personal" },
+  // Solicitudes de empleo es el módulo OPERATIVO histórico (pantalla
+  // RecursosHumanosPage). Vive en Personal, junto a Empleados — NO en
+  // Desarrollo. Reclutamiento (Desarrollo) es módulo futuro y NO lo sustituye.
+  { id: "rrhh-solicitudes", label: "Solicitudes de empleo", section: "RR.HH. · Personal" },
   { id: "rrhh-contratos", label: "Contratos laborales", section: "RR.HH. · Personal" },
   { id: "rrhh-documentos", label: "Documentos empleados", section: "RR.HH. · Personal" },
   // RR.HH. — Asistencia
@@ -60,7 +64,6 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "rrhh-liquidaciones", label: "Liquidaciones y prestaciones RD", section: "RR.HH. · Prestaciones" },
   { id: "rrhh-pdf-prestaciones", label: "PDF de prestaciones", section: "RR.HH. · Prestaciones" },
   // RR.HH. — Desarrollo
-  { id: "rrhh-solicitudes", label: "Solicitudes de empleo", section: "RR.HH. · Desarrollo" },
   { id: "rrhh-reclutamiento", label: "Reclutamiento", section: "RR.HH. · Desarrollo" },
   { id: "rrhh-onboarding", label: "Onboarding", section: "RR.HH. · Desarrollo" },
   { id: "rrhh-evaluacion", label: "Evaluación de desempeño", section: "RR.HH. · Desarrollo" },
