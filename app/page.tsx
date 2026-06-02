@@ -20,6 +20,17 @@ import { PiezasPolizaPage } from "@/components/piezas-poliza-page"
 import { CredencialesPage } from "@/components/credenciales-page"
 import { RecursosHumanosPage } from "@/components/recursos-humanos-page"
 import { EmpleadosPage } from "@/components/empleados-page"
+import { RrhhDashboardPage } from "@/components/hr/rrhh-dashboard-page"
+import {
+  RrhhContratosPage, RrhhDocumentosPage,
+  RrhhPonchePage, RrhhAsistenciaPage, RrhhHorariosPage, RrhhPermisosPage,
+  RrhhNominaPage, RrhhDiasLaboradosPage, RrhhIncentivosPage, RrhhVacacionesPage,
+  RrhhDobleSueldoPage, RrhhPrestamosPage, RrhhTxtBancariosPage,
+  RrhhLiquidacionesPage, RrhhPdfPrestacionesPage,
+  RrhhReclutamientoPage, RrhhOnboardingPage, RrhhEvaluacionPage,
+  RrhhDisciplinaPage, RrhhCapacitacionPage, RrhhComunicacionPage,
+  RrhhReportesPage, RrhhAuditoriaPage,
+} from "@/components/hr/rrhh-skeletons"
 import { PulsosOperadorasPage } from "@/components/pulsos-operadoras-page"
 import { PulsosLecturasPage } from "@/components/pulsos-lecturas-page"
 import { PulsosSesionesPage } from "@/components/pulsos-sesiones-page"
@@ -248,6 +259,54 @@ export default function HomePage() {
         return <RecursosHumanosPage />
       case "rrhh-empleados":
         return <EmpleadosPage />
+      case "rrhh-dashboard":
+        return <RrhhDashboardPage />
+      case "rrhh-contratos":
+        return <RrhhContratosPage />
+      case "rrhh-documentos":
+        return <RrhhDocumentosPage />
+      case "rrhh-ponche":
+        return <RrhhPonchePage />
+      case "rrhh-asistencia":
+        return <RrhhAsistenciaPage />
+      case "rrhh-horarios":
+        return <RrhhHorariosPage />
+      case "rrhh-permisos":
+        return <RrhhPermisosPage />
+      case "rrhh-nomina":
+        return <RrhhNominaPage />
+      case "rrhh-dias-laborados":
+        return <RrhhDiasLaboradosPage />
+      case "rrhh-incentivos":
+        return <RrhhIncentivosPage />
+      case "rrhh-vacaciones":
+        return <RrhhVacacionesPage />
+      case "rrhh-doble-sueldo":
+        return <RrhhDobleSueldoPage />
+      case "rrhh-prestamos":
+        return <RrhhPrestamosPage />
+      case "rrhh-txt-bancarios":
+        return <RrhhTxtBancariosPage />
+      case "rrhh-liquidaciones":
+        return <RrhhLiquidacionesPage />
+      case "rrhh-pdf-prestaciones":
+        return <RrhhPdfPrestacionesPage />
+      case "rrhh-reclutamiento":
+        return <RrhhReclutamientoPage />
+      case "rrhh-onboarding":
+        return <RrhhOnboardingPage />
+      case "rrhh-evaluacion":
+        return <RrhhEvaluacionPage />
+      case "rrhh-disciplina":
+        return <RrhhDisciplinaPage />
+      case "rrhh-capacitacion":
+        return <RrhhCapacitacionPage />
+      case "rrhh-comunicacion":
+        return <RrhhComunicacionPage />
+      case "rrhh-reportes":
+        return <RrhhReportesPage />
+      case "rrhh-auditoria":
+        return <RrhhAuditoriaPage />
       case "pulsos-operadoras":
         return <PulsosOperadorasPage />
       case "pulsos-lecturas":

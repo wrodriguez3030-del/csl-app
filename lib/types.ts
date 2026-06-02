@@ -389,9 +389,38 @@ export type TabId =
   | "pulsos-auditoria"
   | "pulsos-operadoras"
   | "pulsos-cuadre"
-  // Módulo Recursos Humanos
-  | "rrhh-solicitudes"
+  // Módulo Recursos Humanos — Personal
+  | "rrhh-dashboard"
   | "rrhh-empleados"
+  | "rrhh-contratos"
+  | "rrhh-documentos"
+  // RR.HH. — Asistencia
+  | "rrhh-ponche"
+  | "rrhh-asistencia"
+  | "rrhh-horarios"
+  | "rrhh-permisos"
+  // RR.HH. — Pagos
+  | "rrhh-nomina"
+  | "rrhh-dias-laborados"
+  | "rrhh-incentivos"
+  | "rrhh-vacaciones"
+  | "rrhh-doble-sueldo"
+  | "rrhh-prestamos"
+  | "rrhh-txt-bancarios"
+  // RR.HH. — Prestaciones
+  | "rrhh-liquidaciones"
+  | "rrhh-pdf-prestaciones"
+  // RR.HH. — Desarrollo
+  | "rrhh-solicitudes"
+  | "rrhh-reclutamiento"
+  | "rrhh-onboarding"
+  | "rrhh-evaluacion"
+  | "rrhh-disciplina"
+  | "rrhh-capacitacion"
+  | "rrhh-comunicacion"
+  // RR.HH. — Reportes
+  | "rrhh-reportes"
+  | "rrhh-auditoria"
   | "cosmiatria-clientes"
   | "cosmiatria-ficha"
   | "consent-masajes"

@@ -84,10 +84,59 @@ const PULSE_ITEMS: NavItem[] = [
 
 const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
   {
-    label: "Recursos humanos",
+    label: "RR.HH. · Personal",
+    items: [
+      { id: "rrhh-dashboard", label: "Dashboard RR.HH.", icon: <LayoutDashboard className="h-4 w-4" /> },
+      { id: "rrhh-empleados", label: "Empleados", icon: <Users className="h-4 w-4" /> },
+      { id: "rrhh-contratos", label: "Contratos laborales", icon: <FileSignature className="h-4 w-4" /> },
+      { id: "rrhh-documentos", label: "Documentos empleados", icon: <Files className="h-4 w-4" /> },
+    ],
+  },
+  {
+    label: "RR.HH. · Asistencia",
+    items: [
+      { id: "rrhh-ponche", label: "Ponche / Reloj checador", icon: <ClipboardCheck className="h-4 w-4" /> },
+      { id: "rrhh-asistencia", label: "Asistencia", icon: <ClipboardList className="h-4 w-4" /> },
+      { id: "rrhh-horarios", label: "Horarios y turnos", icon: <BookOpen className="h-4 w-4" /> },
+      { id: "rrhh-permisos", label: "Permisos y licencias", icon: <FileText className="h-4 w-4" /> },
+    ],
+  },
+  {
+    label: "RR.HH. · Pagos",
+    items: [
+      { id: "rrhh-nomina", label: "Nómina", icon: <FileText className="h-4 w-4" /> },
+      { id: "rrhh-dias-laborados", label: "Días laborados", icon: <FileText className="h-4 w-4" /> },
+      { id: "rrhh-incentivos", label: "Incentivos y comisiones", icon: <Sparkles className="h-4 w-4" /> },
+      { id: "rrhh-vacaciones", label: "Vacaciones", icon: <FileText className="h-4 w-4" /> },
+      { id: "rrhh-doble-sueldo", label: "Doble sueldo", icon: <Gift className="h-4 w-4" /> },
+      { id: "rrhh-prestamos", label: "Préstamos y avances", icon: <FileText className="h-4 w-4" /> },
+      { id: "rrhh-txt-bancarios", label: "Archivos TXT bancarios", icon: <FileText className="h-4 w-4" /> },
+    ],
+  },
+  {
+    label: "RR.HH. · Prestaciones",
+    items: [
+      { id: "rrhh-liquidaciones", label: "Liquidaciones y prestaciones RD", icon: <FileSignature className="h-4 w-4" /> },
+      { id: "rrhh-pdf-prestaciones", label: "PDF de prestaciones", icon: <FileText className="h-4 w-4" /> },
+    ],
+  },
+  {
+    label: "RR.HH. · Desarrollo",
     items: [
       { id: "rrhh-solicitudes", label: "Solicitudes de empleo", icon: <Users className="h-4 w-4" /> },
-      { id: "rrhh-empleados", label: "Empleados", icon: <Users className="h-4 w-4" /> },
+      { id: "rrhh-reclutamiento", label: "Reclutamiento", icon: <Users className="h-4 w-4" /> },
+      { id: "rrhh-onboarding", label: "Onboarding", icon: <ClipboardCheck className="h-4 w-4" /> },
+      { id: "rrhh-evaluacion", label: "Evaluación de desempeño", icon: <Sparkles className="h-4 w-4" /> },
+      { id: "rrhh-disciplina", label: "Disciplina", icon: <ShieldCheck className="h-4 w-4" /> },
+      { id: "rrhh-capacitacion", label: "Capacitación", icon: <BookOpen className="h-4 w-4" /> },
+      { id: "rrhh-comunicacion", label: "Comunicación interna", icon: <FileText className="h-4 w-4" /> },
+    ],
+  },
+  {
+    label: "RR.HH. · Reportes",
+    items: [
+      { id: "rrhh-reportes", label: "Reportes RR.HH.", icon: <BarChart3 className="h-4 w-4" /> },
+      { id: "rrhh-auditoria", label: "Auditoría RR.HH.", icon: <ShieldCheck className="h-4 w-4" /> },
     ],
   },
   {
