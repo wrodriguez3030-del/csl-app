@@ -1,7 +1,7 @@
 "use client"
 
 import {
-  Wallet, TrendingUp, Plane, Gift, PiggyBank, FileText,
+  Wallet, TrendingUp, Plane, Gift, FileText,
   Scale, FileCheck, Users2, ListChecks, Star, ShieldAlert, GraduationCap,
   Megaphone, BarChart3, Shield,
 } from "lucide-react"
@@ -97,21 +97,7 @@ export const RrhhDobleSueldoPage = () => (
   />
 )
 
-export const RrhhPrestamosPage = () => (
-  <HrPageShell
-    icon={PiggyBank}
-    title="Préstamos y avances"
-    section="RR.HH. · Pagos"
-    phase={3}
-    description="Préstamos al personal y avances de quincena, con descuento automático por nómina."
-    features={[
-      "Principal + cuotas + monto por cuota",
-      "Descuento automático en cada nómina",
-      "Balance pendiente en tiempo real",
-      "Registrar pagos extra y cierre anticipado",
-    ]}
-  />
-)
+// RrhhPrestamosPage tiene componente real: components/hr/rrhh-prestamos-page.tsx
 
 export const RrhhTxtBancariosPage = () => (
   <HrPageShell

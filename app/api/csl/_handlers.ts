@@ -771,6 +771,111 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true }
     }
 
+    // ── HR · Fase 3 · Préstamos y avances ────────────────────────────────
+    case "getHrLoans": {
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_loans").select("*").order("created_at", { ascending: false })
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const emp = textValue(params, "employee_id"); if (emp) q = q.eq("employee_id", emp)
+      const est = textValue(params, "status"); if (est) q = q.eq("status", est)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: data || [] }
+    }
+    case "getHrLoanPayments": {
+      const loanId = textValue(params, "loan_id")
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_loan_payments").select("*").order("fecha", { ascending: false })
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      if (loanId) q = q.eq("loan_id", loanId)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: data || [] }
+    }
+    case "saveHrLoan": {
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const employeeId = textFrom(record, "employee_id")
+      if (!employeeId) throw new Error("Empleado obligatorio")
+      const principal = round2(numberFrom(record, "principal"))
+      if (principal <= 0) throw new Error("El monto del préstamo debe ser mayor a 0")
+      const cuotas = Math.max(1, Math.round(numberFrom(record, "cuotas") || 1))
+      const montoCuota = record.monto_cuota != null && Number(record.monto_cuota) > 0
+        ? round2(numberFrom(record, "monto_cuota")) : round2(principal / cuotas)
+      const sb = getSupabaseAdmin()
+      const id = textFrom(record, "id")
+      let nombre = textFrom(record, "employee_nombre")
+      if (!nombre) {
+        const { data: emp } = await sb.from("csl_empleados").select("nombre, apellido").eq("business_id", businessId).eq("empleado_id", employeeId).maybeSingle()
+        const e = emp as { nombre?: string; apellido?: string } | null
+        nombre = e ? `${e.nombre ?? ""} ${e.apellido ?? ""}`.trim() : employeeId
+      }
+      let oldValues: unknown = null
+      let paid = 0
+      if (id) {
+        const { data: prev } = await sb.from("hr_loans").select("*").eq("id", id).maybeSingle()
+        oldValues = prev ?? null
+        const { data: pays } = await sb.from("hr_loan_payments").select("monto").eq("loan_id", id)
+        paid = (pays || []).reduce((s, p) => s + Number((p as { monto?: number }).monto || 0), 0)
+      }
+      const balance = round2(Math.max(0, principal - paid))
+      const status = textFrom(record, "status") || (balance <= 0 && id ? "pagado" : "activo")
+      const row: Record<string, unknown> = {
+        business_id: businessId, employee_id: employeeId, employee_nombre: nombre,
+        principal, cuotas, monto_cuota: montoCuota, balance,
+        descripcion: textFrom(record, "descripcion") || null,
+        status,
+        start_date: textFrom(record, "start_date") || new Date().toISOString().slice(0, 10),
+        created_by: textFrom(record, "created_by") || user.id,
+        updated_at: new Date().toISOString(),
+      }
+      if (id) row.id = id
+      const { data, error } = await sb.from("hr_loans").upsert(row, { onConflict: "id" }).select().single()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+      const saved = data as { id: string }
+      await hrAudit(user, "prestamos", id ? "update" : "create", "hr_loans", String(saved.id), oldValues, data)
+      return { ok: true, record: data }
+    }
+    case "addHrLoanPayment": {
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const loanId = textFrom(record, "loan_id")
+      const monto = round2(numberFrom(record, "monto"))
+      if (!loanId || monto <= 0) throw new Error("Préstamo y monto válidos son obligatorios")
+      const sb = getSupabaseAdmin()
+      const { data: loan } = await sb.from("hr_loans").select("principal, status, business_id").eq("id", loanId).maybeSingle()
+      if (!loan) throw new Error("Préstamo no encontrado")
+      const l = loan as { principal: number; status: string; business_id: string }
+      if (shouldScopeTenant() && l.business_id !== businessId) throw new Error("Préstamo de otro negocio")
+      const { error: insErr } = await sb.from("hr_loan_payments").insert({
+        business_id: l.business_id, loan_id: loanId, monto,
+        fecha: textFrom(record, "fecha") || new Date().toISOString().slice(0, 10),
+        tipo: textFrom(record, "tipo") || "extra",
+        notes: textFrom(record, "notes") || null,
+        created_by: user.id,
+      })
+      if (insErr) { if (isMissingTable(insErr)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw insErr }
+      const { data: pays } = await sb.from("hr_loan_payments").select("monto").eq("loan_id", loanId)
+      const paid = (pays || []).reduce((s, p) => s + Number((p as { monto?: number }).monto || 0), 0)
+      const balance = round2(Math.max(0, Number(l.principal) - paid))
+      const newStatus = l.status === "cancelado" ? "cancelado" : (balance <= 0 ? "pagado" : "activo")
+      await sb.from("hr_loans").update({ balance, status: newStatus, updated_at: new Date().toISOString() }).eq("id", loanId)
+      await hrAudit(user, "prestamos", "payment", "hr_loans", loanId, { balance_anterior: round2(Number(l.principal) - (paid - monto)) }, { monto, balance, status: newStatus })
+      return { ok: true, balance, status: newStatus }
+    }
+    case "deleteHrLoan": {
+      const id = textValue(params, "id")
+      if (!id) throw new Error("id obligatorio")
+      let q = getSupabaseAdmin().from("hr_loans").delete().eq("id", id)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
+      await hrAudit(user, "prestamos", "delete", "hr_loans", id, null, null)
+      return { ok: true }
+    }
+
     case "getCredenciales":
       return { ok: true, records: await getRows("credenciales") }
     case "getSolicitudesEmpleo":
