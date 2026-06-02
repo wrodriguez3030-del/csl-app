@@ -59,13 +59,39 @@ export function parseEquiposDashboard(XLSX: any, workbook: any, filename: string
     return { period_start: "", period_end: "", period_label: "", rows: [], warnings, period_detected_from: 'manual' }
   }
 
-  const rawRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" }) as Record<string, unknown>[]
-  const rows = rawRows.map(r =>
-    Object.entries(r).reduce<Record<string, unknown>>((acc, [k, v]) => {
-      acc[k.trim().toLowerCase()] = v
-      return acc
-    }, {})
-  )
+  // Detectar fila de headers buscando "Equipo" en columna A.
+  // Cibao: headers en fila 1.
+  // Depicenter: título en fila 1, instrucciones en fila 2, fila 3 vacía,
+  // headers en fila 4. Sin esta búsqueda dinámica, el parser tomaba el
+  // título como header y nada se reconocía.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const matrix = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: "" }) as any[][]
+  let headerRowIdx = -1
+  for (let i = 0; i < Math.min(matrix.length, 10); i++) {
+    const row = matrix[i] || []
+    const first = String(row[0] ?? "").trim().toLowerCase()
+    if (first === "equipo" || first === "equipo_id" || first === "equipoid") {
+      headerRowIdx = i
+      break
+    }
+  }
+  if (headerRowIdx < 0) {
+    warnings.push("No se encontró la fila de encabezados (esperaba 'Equipo' en columna A entre filas 1-10)")
+    return { period_start: "", period_end: "", period_label: "", rows: [], warnings, period_detected_from: 'manual' }
+  }
+
+  const headers = (matrix[headerRowIdx] || []).map((h: unknown) => String(h ?? "").trim().toLowerCase())
+  const rows: Record<string, unknown>[] = []
+  for (let i = headerRowIdx + 1; i < matrix.length; i++) {
+    const rawRow = matrix[i] || []
+    // Saltar filas completamente vacías
+    if (rawRow.every((c: unknown) => c === "" || c === null || c === undefined)) continue
+    const obj: Record<string, unknown> = {}
+    for (let j = 0; j < headers.length; j++) {
+      if (headers[j]) obj[headers[j]] = rawRow[j] ?? ""
+    }
+    rows.push(obj)
+  }
 
   const period = detectPeriodFromFilename(filename)
   const period_start = period?.start ?? ""

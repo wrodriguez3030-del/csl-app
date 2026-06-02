@@ -39,21 +39,39 @@ const HEADER_SKIP = new Set([
  * Normaliza sucursal a forma canónica (MAYÚSCULAS, sin prefijo de marca).
  * Devuelve "" si el valor es un encabezado / fila basura.
  *
- * Entradas soportadas:
- *   "Cibao Spa Láser - Los Jardines"  → "LOS JARDINES"
- *   "JARDINES"                         → "LOS JARDINES"
- *   "Los Jardines"                     → "LOS JARDINES"
- *   "Cibao Spa Láser - Plaza Mediterránea" → "RAFAEL VIDAL"
- *   "Plaza Mediterránea"               → "RAFAEL VIDAL"
- *   "Rafael Vidal" / "R VIDAL"         → "RAFAEL VIDAL"
- *   "Cibao Spa Laser Villa Olga"       → "VILLA OLGA"
- *   "Villa Olga" / "V OLGA"            → "VILLA OLGA"
- *   "La Vega"                          → "LA VEGA"
- *   "SUCURSAL" (cabecera)              → ""
+ * Entradas soportadas (multi-tenant):
+ *   CIBAO:
+ *     "Cibao Spa Láser - Los Jardines"  → "LOS JARDINES"
+ *     "JARDINES" / "Los Jardines"        → "LOS JARDINES"
+ *     "Cibao Spa Láser - Plaza Mediterránea" → "RAFAEL VIDAL"
+ *     "Plaza Mediterránea" / "Rafael Vidal" / "R VIDAL" → "RAFAEL VIDAL"
+ *     "Cibao Spa Laser Villa Olga"       → "VILLA OLGA"
+ *     "Villa Olga" / "V OLGA"            → "VILLA OLGA"
+ *     "La Vega"                          → "LA VEGA"
+ *   DEPICENTER:
+ *     "Depicenter"                       → "DEPICENTER"
+ *     "Depicenter Skin Láser"            → "DEPICENTER"
+ *     "Skin Láser" / "SKIN LASER"        → "DEPICENTER"
+ *
+ *   "SUCURSAL" (cabecera)                → ""
+ *
+ * Nota: los keys se usan dentro del scope de un business_id (filtrado en
+ * backend), así que no colisionan entre tenants. Por eso "DEPICENTER"
+ * puede coexistir como key canónico sin ambigüedad.
  */
 export function normalizeSucursal(value: unknown): string {
   const s = String(value || "").trim()
   if (!s) return ""
+  const upRaw = cleanUpper(s)
+  if (!upRaw || HEADER_SKIP.has(upRaw)) return ""
+
+  // ── DEPICENTER: detectar ANTES de strip de brand prefix porque
+  // "Depicenter" ES el nombre canónico de la sucursal (no un prefijo
+  // a quitar como en Cibao Spa Láser).
+  if (upRaw.includes("DEPICENTER")) return "DEPICENTER"
+  if (upRaw.includes("SKIN") && upRaw.includes("LASER")) return "DEPICENTER"
+
+  // ── CIBAO: stripear brand prefix y mapear sucursal interna
   const stripped = s.replace(BRAND_PREFIX_RE, "").trim() || s
   const up = cleanUpper(stripped)
   if (!up || HEADER_SKIP.has(up)) return ""
@@ -67,7 +85,6 @@ export function normalizeSucursal(value: unknown): string {
   ) return "RAFAEL VIDAL"
   if ((up.includes("VILLA") && up.includes("OLGA")) || up === "V OLGA") return "VILLA OLGA"
   if (up.includes("LA VEGA")) return "LA VEGA"
-  if (up === "DEPICENTER") return "LA VEGA"
   return up
 }
 
