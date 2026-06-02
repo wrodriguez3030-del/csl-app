@@ -1,7 +1,6 @@
 "use client"
 
 import {
-  Plane, Gift,
   Scale, FileCheck, Users2, ListChecks, Star, ShieldAlert, GraduationCap,
   Megaphone, BarChart3, Shield,
 } from "lucide-react"
@@ -36,37 +35,8 @@ import { HrPageShell } from "@/components/hr-page-shell"
 
 // RrhhIncentivosPage tiene componente real: components/hr/rrhh-incentivos-page.tsx
 
-export const RrhhVacacionesPage = () => (
-  <HrPageShell
-    icon={Plane}
-    title="Vacaciones"
-    section="RR.HH. · Pagos"
-    phase={3}
-    description="Balance acumulado/usado/pendiente, solicitud, aprobación y pago de vacaciones con constancia PDF."
-    features={[
-      "Balance por empleado con cálculo automático según fecha de ingreso",
-      "Solicitud con calendario consolidado por sucursal",
-      "Aprobación con cálculo de monto a pagar",
-      "Generar constancia PDF + TXT bancario si aplica",
-    ]}
-  />
-)
-
-export const RrhhDobleSueldoPage = () => (
-  <HrPageShell
-    icon={Gift}
-    title="Doble sueldo"
-    section="RR.HH. · Pagos"
-    phase={3}
-    description="Salario de Navidad anual o proporcional según fecha de ingreso/salida, con bloqueo de doble pago en el mismo año."
-    features={[
-      "Cálculo anual o proporcional",
-      "Bloqueo automático de doble pago en el mismo año fiscal",
-      "Ajustes autorizados con motivo",
-      "Recibo PDF + TXT bancario separado",
-    ]}
-  />
-)
+// RrhhVacacionesPage tiene componente real: components/hr/rrhh-vacaciones-page.tsx
+// RrhhDobleSueldoPage tiene componente real: components/hr/rrhh-doble-sueldo-page.tsx
 
 // RrhhPrestamosPage tiene componente real: components/hr/rrhh-prestamos-page.tsx
 

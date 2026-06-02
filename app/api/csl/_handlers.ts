@@ -1244,6 +1244,122 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true, id: (ins as { id: string }).id, filename, content, total, lineas: lines.length, omitidos }
     }
 
+    // ── HR · Fase 3 · Vacaciones ─────────────────────────────────────────
+    case "getHrVacations": {
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_vacations").select("*").order("created_at", { ascending: false })
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const emp = textValue(params, "employee_id"); if (emp) q = q.eq("employee_id", emp)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: data || [] }
+    }
+    case "saveHrVacation": {
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const employeeId = textFrom(record, "employee_id")
+      if (!employeeId) throw new Error("Empleado obligatorio")
+      const dias = numberFrom(record, "dias")
+      if (dias <= 0) throw new Error("Los días deben ser mayores a 0")
+      const sb = getSupabaseAdmin()
+      const sueldoMensual = round2(await salarioVigente(businessId, employeeId))
+      const sueldoDiario = round2(sueldoMensual / HR_DAILY_BASE)
+      const monto = round2(sueldoDiario * dias)
+      const id = textFrom(record, "id")
+      let nombre = textFrom(record, "employee_nombre")
+      if (!nombre) {
+        const { data: emp } = await sb.from("csl_empleados").select("nombre, apellido").eq("business_id", businessId).eq("empleado_id", employeeId).maybeSingle()
+        const e = emp as { nombre?: string; apellido?: string } | null
+        nombre = e ? `${e.nombre ?? ""} ${e.apellido ?? ""}`.trim() : employeeId
+      }
+      const status = textFrom(record, "status") || "solicitado"
+      const row: Record<string, unknown> = {
+        business_id: businessId, employee_id: employeeId, employee_nombre: nombre,
+        periodo: textFrom(record, "periodo") || String(new Date().getFullYear()),
+        dias, fecha_inicio: textFrom(record, "fecha_inicio") || null, fecha_fin: textFrom(record, "fecha_fin") || null,
+        sueldo_diario: sueldoDiario, monto, status,
+        observations: textFrom(record, "observations") || null,
+        created_by: textFrom(record, "created_by") || user.id,
+        updated_at: new Date().toISOString(),
+      }
+      if (status === "aprobado" || status === "pagado") { row.approved_by = user.id; row.approved_at = new Date().toISOString() }
+      if (id) row.id = id
+      const { data, error } = await sb.from("hr_vacations").upsert(row, { onConflict: "id" }).select().single()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+      await hrAudit(user, "vacaciones", status === "aprobado" ? "approve" : (id ? "update" : "create"), "hr_vacations", String((data as { id: string }).id), null, data)
+      return { ok: true, record: data }
+    }
+    case "deleteHrVacation": {
+      const id = textValue(params, "id")
+      if (!id) throw new Error("id obligatorio")
+      let q = getSupabaseAdmin().from("hr_vacations").delete().eq("id", id)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
+      await hrAudit(user, "vacaciones", "delete", "hr_vacations", id, null, null)
+      return { ok: true }
+    }
+
+    // ── HR · Fase 3 · Doble sueldo (Salario de Navidad) ──────────────────
+    case "getHrChristmasBonus": {
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_christmas_bonus").select("*").order("anio", { ascending: false })
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const emp = textValue(params, "employee_id"); if (emp) q = q.eq("employee_id", emp)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: data || [] }
+    }
+    case "saveHrChristmasBonus": {
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const employeeId = textFrom(record, "employee_id")
+      if (!employeeId) throw new Error("Empleado obligatorio")
+      const anio = Math.round(numberFrom(record, "anio") || new Date().getFullYear())
+      const sb = getSupabaseAdmin()
+      const sueldoMensual = round2(await salarioVigente(businessId, employeeId))
+      const proporcional = Boolean(record.proporcional)
+      const meses = proporcional ? Math.min(12, Math.max(0, numberFrom(record, "meses") || 12)) : 12
+      const monto = round2(proporcional ? sueldoMensual * meses / 12 : sueldoMensual)
+      const id = textFrom(record, "id")
+      let nombre = textFrom(record, "employee_nombre")
+      if (!nombre) {
+        const { data: emp } = await sb.from("csl_empleados").select("nombre, apellido").eq("business_id", businessId).eq("empleado_id", employeeId).maybeSingle()
+        const e = emp as { nombre?: string; apellido?: string } | null
+        nombre = e ? `${e.nombre ?? ""} ${e.apellido ?? ""}`.trim() : employeeId
+      }
+      const status = textFrom(record, "status") || "calculado"
+      const row: Record<string, unknown> = {
+        business_id: businessId, employee_id: employeeId, employee_nombre: nombre,
+        anio, sueldo_mensual: sueldoMensual, proporcional, meses, monto, status,
+        observations: textFrom(record, "observations") || null,
+        created_by: textFrom(record, "created_by") || user.id,
+        updated_at: new Date().toISOString(),
+      }
+      if (status === "aprobado" || status === "pagado") { row.approved_by = user.id; row.approved_at = new Date().toISOString() }
+      if (id) row.id = id
+      const { data, error } = await sb.from("hr_christmas_bonus").upsert(row, { onConflict: "id" }).select().single()
+      if (error) {
+        if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }
+        if ((error as { code?: string }).code === "23505") return { ok: false, error: `Ya existe doble sueldo de ${anio} para este empleado (bloqueo de doble pago)` }
+        throw error
+      }
+      await hrAudit(user, "doble_sueldo", status === "aprobado" ? "approve" : (id ? "update" : "create"), "hr_christmas_bonus", String((data as { id: string }).id), null, data)
+      return { ok: true, record: data }
+    }
+    case "deleteHrChristmasBonus": {
+      const id = textValue(params, "id")
+      if (!id) throw new Error("id obligatorio")
+      let q = getSupabaseAdmin().from("hr_christmas_bonus").delete().eq("id", id)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
+      await hrAudit(user, "doble_sueldo", "delete", "hr_christmas_bonus", id, null, null)
+      return { ok: true }
+    }
+
     case "getCredenciales":
       return { ok: true, records: await getRows("credenciales") }
     case "getSolicitudesEmpleo":
