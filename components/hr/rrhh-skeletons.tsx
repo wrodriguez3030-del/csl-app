@@ -1,7 +1,7 @@
 "use client"
 
 import {
-  Plane, Gift, FileText,
+  Plane, Gift,
   Scale, FileCheck, Users2, ListChecks, Star, ShieldAlert, GraduationCap,
   Megaphone, BarChart3, Shield,
 } from "lucide-react"
@@ -70,22 +70,7 @@ export const RrhhDobleSueldoPage = () => (
 
 // RrhhPrestamosPage tiene componente real: components/hr/rrhh-prestamos-page.tsx
 
-export const RrhhTxtBancariosPage = () => (
-  <HrPageShell
-    icon={FileText}
-    title="Archivos TXT bancarios"
-    section="RR.HH. · Pagos"
-    phase={3}
-    description="Generación de TXT bancario en formato: CUENTA_ORIGEN,CUENTA_DESTINO,MONTO,NOMBRE_EMPLEADO. Sin encabezado, montos con 2 decimales, nombres en mayúsculas."
-    features={[
-      "Origen: nómina, incentivos, vacaciones, doble sueldo, días laborados, liquidaciones",
-      "Solo se genera si el pago está aprobado",
-      "Validación de totales contra monto aprobado",
-      "Hash único por archivo para evitar duplicados",
-      "Nombrado estándar: TIPO_TENANT_SUCURSAL_YYYY-MM-DD.txt",
-    ]}
-  />
-)
+// RrhhTxtBancariosPage tiene componente real: components/hr/rrhh-txt-bancarios-page.tsx
 
 // ── FASE 4 · Prestaciones ──────────────────────────────────────────────────
 

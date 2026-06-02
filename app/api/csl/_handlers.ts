@@ -969,6 +969,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         afp_cap: record.afp_cap != null ? numberFrom(record, "afp_cap") : 0,
         sfs_cap: record.sfs_cap != null ? numberFrom(record, "sfs_cap") : 0,
         verificado: Boolean(record.verificado),
+        bank_origin_account: textFrom(record, "bank_origin_account") || null,
+        bank_origin_name: textFrom(record, "bank_origin_name") || null,
         updated_by: user.id,
         updated_at: new Date().toISOString(),
       }
@@ -1118,6 +1120,128 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
       await hrAudit(user, "nomina", "delete", "hr_payroll_runs", id, null, null)
       return { ok: true }
+    }
+
+    // ── HR · Fase 3 · Cuentas bancarias ──────────────────────────────────
+    case "getHrBankAccounts": {
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_employee_bank_accounts").select("*").order("created_at", { ascending: false })
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const emp = textValue(params, "employee_id"); if (emp) q = q.eq("employee_id", emp)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: data || [] }
+    }
+    case "saveHrBankAccount": {
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const employeeId = textFrom(record, "employee_id")
+      if (!employeeId) throw new Error("Empleado obligatorio")
+      const account = textFrom(record, "account_number")
+      if (!account) throw new Error("Número de cuenta obligatorio")
+      const sb = getSupabaseAdmin()
+      const isPrimary = record.is_primary == null ? true : Boolean(record.is_primary)
+      // Si es primaria, desmarcar las otras del empleado.
+      if (isPrimary) {
+        await sb.from("hr_employee_bank_accounts").update({ is_primary: false }).eq("business_id", businessId).eq("employee_id", employeeId)
+      }
+      const row: Record<string, unknown> = {
+        business_id: businessId, employee_id: employeeId,
+        bank_name: textFrom(record, "bank_name") || "—",
+        account_number: account,
+        account_type: textFrom(record, "account_type") || "Ahorro",
+        beneficiary: textFrom(record, "beneficiary") || null,
+        is_primary: isPrimary,
+        active: record.active == null ? true : Boolean(record.active),
+        notes: textFrom(record, "notes") || null,
+        updated_at: new Date().toISOString(),
+      }
+      if (textFrom(record, "id")) row.id = textFrom(record, "id")
+      const { data, error } = await sb.from("hr_employee_bank_accounts").upsert(row, { onConflict: "id" }).select().single()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+      const saved = data as { id: string }
+      await hrAudit(user, "txt_bancarios", textFrom(record, "id") ? "update" : "create", "hr_employee_bank_accounts", String(saved.id), null, data)
+      return { ok: true, record: data }
+    }
+    case "deleteHrBankAccount": {
+      const id = textValue(params, "id")
+      if (!id) throw new Error("id obligatorio")
+      let q = getSupabaseAdmin().from("hr_employee_bank_accounts").delete().eq("id", id)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
+      await hrAudit(user, "txt_bancarios", "delete_account", "hr_employee_bank_accounts", id, null, null)
+      return { ok: true }
+    }
+
+    // ── HR · Fase 3 · Archivos TXT bancarios ─────────────────────────────
+    case "getHrBankTxtFiles": {
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_bank_txt_files").select("id, origen, run_id, filename, total, lineas, status, created_at").order("created_at", { ascending: false })
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: data || [] }
+    }
+    case "getHrBankTxtFile": {
+      const id = textValue(params, "id")
+      if (!id) throw new Error("id obligatorio")
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_bank_txt_files").select("*").eq("id", id)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { data, error } = await q.maybeSingle()
+      if (error) throw error
+      return { ok: true, record: data || null }
+    }
+    case "generateBankTxt": {
+      const runId = textValue(params, "run_id")
+      if (!runId) throw new Error("run_id obligatorio")
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const ctx = getBusinessContext()
+      const sb = getSupabaseAdmin()
+      const { data: run } = await sb.from("hr_payroll_runs").select("*").eq("id", runId).maybeSingle()
+      if (!run) throw new Error("Corrida no encontrada")
+      const r = run as { status: string; sucursal: string | null; period_end: string }
+      if (r.status !== "aprobada" && r.status !== "pagada") {
+        return { ok: false, error: "Solo se genera TXT de una corrida aprobada" }
+      }
+      const { data: cfg } = await sb.from("hr_payroll_config").select("bank_origin_account").eq("business_id", businessId).maybeSingle()
+      const origin = (cfg as { bank_origin_account?: string } | null)?.bank_origin_account || ""
+      if (!origin) return { ok: false, error: "Configura la cuenta origen de la empresa (Nómina → Configuración) antes de generar el TXT" }
+      const { data: items } = await sb.from("hr_payroll_items").select("employee_id, employee_nombre, neto").eq("run_id", runId)
+      const lines: string[] = []
+      const omitidos: string[] = []
+      let total = 0
+      for (const it of (items || []) as Array<{ employee_id: string; employee_nombre: string | null; neto: number }>) {
+        const neto = Number(it.neto || 0)
+        if (neto <= 0) continue
+        const { data: acct } = await sb.from("hr_employee_bank_accounts").select("account_number, beneficiary").eq("business_id", businessId).eq("employee_id", it.employee_id).eq("is_primary", true).eq("active", true).maybeSingle()
+        const a = acct as { account_number?: string; beneficiary?: string } | null
+        if (!a?.account_number) { omitidos.push(it.employee_nombre || it.employee_id); continue }
+        const nombre = (a.beneficiary || it.employee_nombre || it.employee_id).toUpperCase()
+        lines.push(`${origin},${a.account_number},${neto.toFixed(2)},${nombre}`)
+        total = round2(total + neto)
+      }
+      const content = lines.join("\n")
+      if (!lines.length) return { ok: false, error: "No hay empleados con cuenta bancaria primaria activa para esta corrida", omitidos }
+      const hash = hrSha256(content)
+      const slug = (ctx?.businessSlug || "csl").toUpperCase()
+      const suc = (r.sucursal || "TODAS").toUpperCase().replace(/\s+/g, "_")
+      const filename = `NOMINA_${slug}_${suc}_${r.period_end}.txt`
+      // Idempotencia: si ya existe ese hash, devolver el registro existente.
+      const { data: existing } = await sb.from("hr_bank_txt_files").select("id, filename, content, total, lineas").eq("business_id", businessId).eq("hash", hash).maybeSingle()
+      if (existing) {
+        const e = existing as { id: string; filename: string; content: string; total: number; lineas: number }
+        return { ok: true, duplicado: true, id: e.id, filename: e.filename, content: e.content, total: e.total, lineas: e.lineas, omitidos }
+      }
+      const { data: ins, error: insErr } = await sb.from("hr_bank_txt_files").insert({
+        business_id: businessId, origen: "nomina", run_id: runId, filename, hash, total, lineas: lines.length, content, created_by: user.id,
+      }).select("id").single()
+      if (insErr) { if (isMissingTable(insErr)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw insErr }
+      await hrAudit(user, "txt_bancarios", "generate", "hr_bank_txt_files", String((ins as { id: string }).id), null, { filename, total, lineas: lines.length, run_id: runId })
+      return { ok: true, id: (ins as { id: string }).id, filename, content, total, lineas: lines.length, omitidos }
     }
 
     case "getCredenciales":

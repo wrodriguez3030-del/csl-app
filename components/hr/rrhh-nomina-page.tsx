@@ -14,7 +14,7 @@ import { Wallet, Plus, Trash2, Save, X, Loader2, Calculator, Settings, Printer, 
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { getBusinessBranding } from "@/lib/business"
 
-interface PayrollConfig { daily_base: number; afp_rate: number; sfs_rate: number; afp_cap: number; sfs_cap: number; verificado: boolean }
+interface PayrollConfig { daily_base: number; afp_rate: number; sfs_rate: number; afp_cap: number; sfs_cap: number; verificado: boolean; bank_origin_account?: string; bank_origin_name?: string }
 interface PayrollRun { id: string; period_start: string; period_end: string; tipo: string; sucursal: string | null; status: string; totals?: { bruto?: number; deducciones?: number; neto?: number; empleados?: number } }
 interface PayrollItem {
   id: string; employee_id: string; employee_nombre: string | null
@@ -270,6 +270,11 @@ h1{font-size:14px;margin:4px 0}table{width:100%;border-collapse:collapse;margin-
                 <div className="space-y-1"><Label className="text-xs">SFS (frac.)</Label><Input type="number" step="0.0001" value={cfgForm.sfs_rate} onChange={e => setCfgForm({ ...cfgForm, sfs_rate: Number(e.target.value) })} /></div>
                 <div className="space-y-1"><Label className="text-xs">Tope AFP (0=sin)</Label><Input type="number" step="0.01" value={cfgForm.afp_cap} onChange={e => setCfgForm({ ...cfgForm, afp_cap: Number(e.target.value) })} /></div>
                 <div className="space-y-1"><Label className="text-xs">Tope SFS (0=sin)</Label><Input type="number" step="0.01" value={cfgForm.sfs_cap} onChange={e => setCfgForm({ ...cfgForm, sfs_cap: Number(e.target.value) })} /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 border-t pt-3">
+                <div className="space-y-1 col-span-2 text-xs font-semibold text-muted-foreground">Cuenta origen (para TXT bancario)</div>
+                <div className="space-y-1"><Label className="text-xs">Cuenta origen</Label><Input value={cfgForm.bank_origin_account || ""} onChange={e => setCfgForm({ ...cfgForm, bank_origin_account: e.target.value })} placeholder="0000000000" /></div>
+                <div className="space-y-1"><Label className="text-xs">Nombre origen</Label><Input value={cfgForm.bank_origin_name || ""} onChange={e => setCfgForm({ ...cfgForm, bank_origin_name: e.target.value })} placeholder="Empresa S.R.L." /></div>
               </div>
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={cfgForm.verificado} onChange={e => setCfgForm({ ...cfgForm, verificado: e.target.checked })} />Tasas verificadas por contabilidad</label>
             </div>
