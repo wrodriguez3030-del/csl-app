@@ -9,6 +9,10 @@ next.user-config.*
 
 # Environment variables
 .env*.local
+.env.local.*
+.env*.tmp
+.env.*.rollback
+.env*.cloud-rollback
 
 # Common ignores
 node_modules

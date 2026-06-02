@@ -8,9 +8,39 @@ https://csl-app-eta.vercel.app/
 
 - **Frontend:** Next.js 16 (App Router) + React 19 + Tailwind 4
 - **Backend:** Next.js API Routes (`/api/csl`, `/api/public/*`)
-- **DB / Auth:** Supabase
+- **DB / Auth:** Supabase **self-hosted** (`https://db-cls.cibao-cloude.com`)
 - **Email:** Resend
 - **Hosting:** Vercel
+
+## ⚠️ Base de datos — Supabase SELF-HOSTED (única fuente)
+
+**TODA** operación de base de datos (queries, scripts, migraciones, dev local y
+producción) va contra el **Supabase self-hosted del servidor**:
+
+```
+https://db-cls.cibao-cloude.com        (Cloudflare Tunnel → VM supabase-01 :8000 / Kong)
+```
+
+- El proyecto Cloud antiguo `pfqnyzbtwhfkemkixril.supabase.co` **NO se usa más**.
+  Queda solo como rollback de emergencia (revertir 3 env vars en Vercel + redeploy).
+  **Nunca** apuntar `.env.local`, scripts ni Vercel al Cloud salvo rollback explícito.
+- `.env.local` ya apunta al self-hosted (anon + service_role del self-hosted).
+  Backup del Cloud (rollback) en `.env.local.cloud-rollback` (gitignored).
+- Vercel `csl-app` (producción `csl-app-eta.vercel.app`) ya está repuntado a db-cls.
+- Migraciones / DDL: correr en el **SQL Editor del Studio self-hosted** (o vía
+  psql a la VM por Tailscale). NO en el dashboard del Cloud.
+
+### 🔴 Regla de borrado de datos — CONFIRMAR DOS VECES
+
+Borrar datos en la base de datos es **delicado e irreversible**. Antes de ejecutar
+cualquier `DELETE`, `TRUNCATE`, `DROP` o un `UPDATE` masivo sin `WHERE` acotado:
+
+1. Mostrar exactamente QUÉ se va a borrar (tabla, filas afectadas, condición).
+2. Pedir confirmación explícita al usuario.
+3. **Pedir una segunda confirmación** antes de ejecutar.
+
+Nunca borrar sin esa doble confirmación. Lecturas y escrituras normales (insert /
+update acotado) no requieren este paso.
 
 ## Para correr localmente
 
@@ -58,7 +88,7 @@ descartan en silencio.
 
 ## Scripts SQL — orden de ejecución en Supabase
 
-Los SQL viven en dos carpetas (`scripts/` y `supabase/`) y deben correrse en este orden en el SQL Editor de Supabase:
+Los SQL viven en dos carpetas (`scripts/` y `supabase/`) y deben correrse en este orden en el **SQL Editor del Studio self-hosted** (db-cls), NO en el Cloud:
 
 1. **`scripts/supabase-schema.sql`** — schema base, índices, triggers `updated_at`, trigger `auth.users → csl_user_profiles`, RLS habilitado y policies SELECT para usuarios `authenticated`.
 2. **`scripts/add-cosmiatria-schema.sql`** — tabla `csl_fichas_dermatologia` con índices.
