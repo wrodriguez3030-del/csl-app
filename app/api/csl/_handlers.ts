@@ -487,12 +487,22 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const pinHash = hrSha256(`${businessId}:${pin}`)
       const { data: emp, error: empErr } = await sb
         .from("csl_empleados")
-        .select("empleado_id, nombre, apellido, sucursal")
+        .select("empleado_id, nombre, apellido")
         .eq("business_id", businessId)
         .eq("hr_pin_hash", pinHash)
         .maybeSingle()
       if (empErr) throw empErr
       if (!emp) return { ok: false, error: "PIN no válido" }
+      // Sucursal: se deriva de la asignación de horario vigente (csl_empleados
+      // no tiene columna sucursal). Si no hay, queda null.
+      const { data: asg } = await sb
+        .from("hr_schedule_assignments")
+        .select("sucursal")
+        .eq("business_id", businessId)
+        .eq("employee_id", emp.empleado_id)
+        .is("end_date", null)
+        .maybeSingle()
+      const empSucursal = (asg as { sucursal?: string } | null)?.sucursal ?? null
       // Inferir el próximo tipo de marca según la última del día.
       const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)
       const { data: lastRows } = await sb
@@ -519,7 +529,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
           business_id: businessId,
           employee_id: emp.empleado_id,
           type: nextType,
-          sucursal: emp.sucursal || null,
+          sucursal: empSucursal,
           source: "kiosk",
           device_info: textValue(params, "device_info") || null,
         })
