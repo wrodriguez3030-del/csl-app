@@ -27,8 +27,9 @@ import { RrhhHorariosPage } from "@/components/hr/rrhh-horarios-page"
 import { RrhhPonchePage } from "@/components/hr/rrhh-ponche-page"
 import { RrhhAsistenciaPage } from "@/components/hr/rrhh-asistencia-page"
 import { RrhhPermisosPage } from "@/components/hr/rrhh-permisos-page"
+import { RrhhDiasLaboradosPage } from "@/components/hr/rrhh-dias-laborados-page"
 import {
-  RrhhNominaPage, RrhhDiasLaboradosPage, RrhhIncentivosPage, RrhhVacacionesPage,
+  RrhhNominaPage, RrhhIncentivosPage, RrhhVacacionesPage,
   RrhhDobleSueldoPage, RrhhPrestamosPage, RrhhTxtBancariosPage,
   RrhhLiquidacionesPage, RrhhPdfPrestacionesPage,
   RrhhReclutamientoPage, RrhhOnboardingPage, RrhhEvaluacionPage,

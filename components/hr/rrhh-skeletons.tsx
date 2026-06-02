@@ -1,7 +1,7 @@
 "use client"
 
 import {
-  Wallet, CalendarDays, TrendingUp, Plane, Gift, PiggyBank, FileText,
+  Wallet, TrendingUp, Plane, Gift, PiggyBank, FileText,
   Scale, FileCheck, Users2, ListChecks, Star, ShieldAlert, GraduationCap,
   Megaphone, BarChart3, Shield,
 } from "lucide-react"
@@ -47,21 +47,7 @@ export const RrhhNominaPage = () => (
   />
 )
 
-export const RrhhDiasLaboradosPage = () => (
-  <HrPageShell
-    icon={CalendarDays}
-    title="Días laborados"
-    section="RR.HH. · Pagos"
-    phase={3}
-    description="Pago proporcional por días efectivamente laborados según la base estándar de 23.83 días hábiles."
-    features={[
-      "Sueldo diario = sueldo mensual / 23.83",
-      "Días automáticos desde asistencia con edición manual + motivo",
-      "Ingresos adicionales y descuentos configurables",
-      "Exportar PDF · Agregar a nómina o liquidación · Generar TXT",
-    ]}
-  />
-)
+// RrhhDiasLaboradosPage tiene componente real: components/hr/rrhh-dias-laborados-page.tsx
 
 export const RrhhIncentivosPage = () => (
   <HrPageShell

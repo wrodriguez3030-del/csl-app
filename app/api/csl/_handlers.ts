@@ -80,6 +80,83 @@ function shouldScopeTenant(): boolean {
   return Boolean(ctx && !ctx.bypassTenantFilter)
 }
 
+/** Base estándar de días hábiles RD para el sueldo diario. */
+const HR_DAILY_BASE = 23.83
+const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100
+
+/**
+ * Registra una acción crítica en hr_audit_logs. Nunca rompe la operación
+ * principal si la auditoría falla (best-effort). business_id desde contexto.
+ */
+async function hrAudit(
+  user: ActionUser,
+  module: string,
+  action: string,
+  entityType: string,
+  entityId: string | null,
+  oldValues: unknown,
+  newValues: unknown,
+): Promise<void> {
+  const businessId = effectiveBusinessId()
+  if (!businessId) return
+  try {
+    await getSupabaseAdmin().from("hr_audit_logs").insert({
+      business_id: businessId,
+      user_id: user.id || null,
+      user_email: user.email || null,
+      module,
+      action,
+      entity_type: entityType,
+      entity_id: entityId,
+      old_values: oldValues ?? null,
+      new_values: newValues ?? null,
+    })
+  } catch {
+    // No bloquear la operación principal por un fallo de auditoría.
+  }
+}
+
+/** Salario mensual VIGENTE: hr_employee_salary_history (effective_to null) → fallback csl_empleados.salario. */
+async function salarioVigente(businessId: string, employeeId: string): Promise<number> {
+  const sb = getSupabaseAdmin()
+  const { data: hist } = await sb
+    .from("hr_employee_salary_history")
+    .select("salary")
+    .eq("business_id", businessId)
+    .eq("employee_id", employeeId)
+    .is("effective_to", null)
+    .order("effective_from", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (hist && (hist as { salary?: number }).salary != null) return Number((hist as { salary: number }).salary)
+  const { data: emp } = await sb
+    .from("csl_empleados")
+    .select("salario")
+    .eq("business_id", businessId)
+    .eq("empleado_id", employeeId)
+    .maybeSingle()
+  return Number((emp as { salario?: number } | null)?.salario ?? 0)
+}
+
+/** Cuenta días distintos con al menos una marca de ponche en el rango (TZ RD). */
+async function diasDesdeAsistencia(businessId: string, employeeId: string, desde: string, hasta: string): Promise<number> {
+  if (!desde || !hasta) return 0
+  const sb = getSupabaseAdmin()
+  const { data } = await sb
+    .from("hr_punches")
+    .select("punched_at")
+    .eq("business_id", businessId)
+    .eq("employee_id", employeeId)
+    .gte("punched_at", desde)
+    .lte("punched_at", `${hasta}T23:59:59`)
+  const TZ = "America/Santo_Domingo"
+  const dias = new Set<string>()
+  for (const r of (data || []) as { punched_at: string }[]) {
+    dias.add(new Date(r.punched_at).toLocaleDateString("en-CA", { timeZone: TZ }))
+  }
+  return dias.size
+}
+
 export async function handleAction(params: ActionParams, user: ActionUser) {
   const action = textValue(params, "action")
 
@@ -594,6 +671,103 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
       const { error } = await q
       if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
+      return { ok: true }
+    }
+
+    // ── HR · Fase 3 · Días laborados ─────────────────────────────────────
+    case "getHrDiasLaborados": {
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_dias_laborados").select("*").order("created_at", { ascending: false })
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const est = textValue(params, "estado"); if (est) q = q.eq("estado", est)
+      const emp = textValue(params, "employee_id"); if (emp) q = q.eq("employee_id", emp)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: data || [] }
+    }
+    case "getHrDiasSugeridos": {
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const employeeId = textValue(params, "employee_id")
+      if (!employeeId) throw new Error("employee_id obligatorio")
+      const ps = textValue(params, "period_start")
+      const pe = textValue(params, "period_end")
+      const sueldoMensual = round2(await salarioVigente(businessId, employeeId))
+      const dias = ps && pe ? await diasDesdeAsistencia(businessId, employeeId, ps, pe) : 0
+      const { data: emp } = await getSupabaseAdmin()
+        .from("csl_empleados").select("nombre, apellido")
+        .eq("business_id", businessId).eq("empleado_id", employeeId).maybeSingle()
+      const e = emp as { nombre?: string; apellido?: string } | null
+      const nombre = e ? `${e.nombre ?? ""} ${e.apellido ?? ""}`.trim() : employeeId
+      return { ok: true, employee_nombre: nombre, sueldo_mensual: sueldoMensual, sueldo_diario: round2(sueldoMensual / HR_DAILY_BASE), dias_sugeridos: dias }
+    }
+    case "saveHrDiaLaborado": {
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const employeeId = textFrom(record, "employee_id")
+      if (!employeeId) throw new Error("Empleado obligatorio")
+      const periodStart = textFrom(record, "period_start")
+      const periodEnd = textFrom(record, "period_end")
+      if (!periodStart || !periodEnd) throw new Error("Período obligatorio")
+      const diasOrigen = textFrom(record, "dias_origen") || "manual"
+      const dias = numberFrom(record, "dias_laborados")
+      const editReason = textFrom(record, "edit_reason")
+      // Edición manual de días → motivo obligatorio.
+      if (diasOrigen === "manual" && !editReason) throw new Error("La edición manual de días requiere un motivo")
+      const sueldoMensual = record.sueldo_mensual != null && Number(record.sueldo_mensual) > 0
+        ? round2(numberFrom(record, "sueldo_mensual"))
+        : round2(await salarioVigente(businessId, employeeId))
+      const sueldoDiario = round2(sueldoMensual / HR_DAILY_BASE)  // base 23.83
+      const ingresos = round2(numberFrom(record, "ingresos"))
+      const descuentos = round2(numberFrom(record, "descuentos"))
+      const pagoDias = round2(sueldoDiario * dias)
+      const total = round2(pagoDias + ingresos - descuentos)
+      const estado = textFrom(record, "estado") || "borrador"
+      let nombre = textFrom(record, "employee_nombre")
+      if (!nombre) {
+        const { data: emp } = await getSupabaseAdmin()
+          .from("csl_empleados").select("nombre, apellido")
+          .eq("business_id", businessId).eq("empleado_id", employeeId).maybeSingle()
+        const e = emp as { nombre?: string; apellido?: string } | null
+        nombre = e ? `${e.nombre ?? ""} ${e.apellido ?? ""}`.trim() : employeeId
+      }
+      const id = textFrom(record, "id")
+      let oldValues: unknown = null
+      if (id) {
+        const { data: prev } = await getSupabaseAdmin().from("hr_dias_laborados").select("*").eq("id", id).maybeSingle()
+        oldValues = prev ?? null
+      }
+      const row: Record<string, unknown> = {
+        business_id: businessId, employee_id: employeeId, employee_nombre: nombre,
+        period_start: periodStart, period_end: periodEnd,
+        sucursal: textFrom(record, "sucursal") || null,
+        sueldo_mensual: sueldoMensual, sueldo_diario: sueldoDiario,
+        dias_laborados: dias, dias_origen: diasOrigen, edit_reason: editReason || null,
+        ingresos, ingresos_detalle: textFrom(record, "ingresos_detalle") || null,
+        descuentos, descuentos_detalle: textFrom(record, "descuentos_detalle") || null,
+        pago_dias: pagoDias, total, estado,
+        observations: textFrom(record, "observations") || null,
+        created_by: textFrom(record, "created_by") || user.id,
+        updated_at: new Date().toISOString(),
+      }
+      if (estado === "aprobado") { row.approved_by = user.id; row.approved_at = new Date().toISOString() }
+      if (id) row.id = id
+      const { data, error } = await getSupabaseAdmin().from("hr_dias_laborados").upsert(row, { onConflict: "id" }).select().single()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+      const saved = data as { id: string }
+      const action = estado === "aprobado" ? "approve" : (id ? "update" : "create")
+      await hrAudit(user, "dias_laborados", action, "hr_dias_laborados", String(saved.id), oldValues, data)
+      return { ok: true, record: data }
+    }
+    case "deleteHrDiaLaborado": {
+      const id = textValue(params, "id")
+      if (!id) throw new Error("id obligatorio")
+      let q = getSupabaseAdmin().from("hr_dias_laborados").delete().eq("id", id)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
+      await hrAudit(user, "dias_laborados", "delete", "hr_dias_laborados", id, null, null)
       return { ok: true }
     }
 
