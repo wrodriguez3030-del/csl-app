@@ -61,3 +61,38 @@ export function requireBusinessContext(): BusinessContext {
   }
   return ctx
 }
+
+/**
+ * UUIDs reales de los businesses en producción (Supabase pfqnyzbtwhfkemkixril).
+ * Espejo del mapa cliente en `components/superadmin-business-filter.tsx`.
+ * Sirve para validar el `activeBusinessId` que manda la UI antes de scopear.
+ */
+const KNOWN_BUSINESS_IDS = new Set<string>([
+  "66b0cf3e-4cd7-4cfb-a7cf-0674b77fc4e6", // csl
+  "03b96698-c5df-4b4b-84df-1160a7ad56b9", // depicenter
+])
+
+/**
+ * Aplica el "business activo" que la UI envía en cada request.
+ *
+ * Regla de aislamiento end-to-end:
+ *  - Usuario normal: se ignora `activeBusinessId`; sigue scopeado a su propio
+ *    business por `bypassTenantFilter=false` (no puede saltar de tenant).
+ *  - Superadmin con `activeBusinessId` válido: se SCOPEA a ese business
+ *    (bypassTenantFilter=false) — deja de ver datos de otros tenants.
+ *  - Superadmin SIN activeBusinessId (modo "Todos" explícito): mantiene
+ *    `bypassTenantFilter=true` y ve todos los tenants.
+ *
+ * Nunca eleva privilegios: un no-superadmin jamás puede activar el bypass ni
+ * cambiar su businessId.
+ */
+export function applyActiveBusiness(
+  base: BusinessContext | null,
+  activeBusinessId: string | null | undefined,
+): BusinessContext | null {
+  if (!base) return base
+  if (!base.isSuperadmin) return base
+  const id = (activeBusinessId ?? "").trim()
+  if (!id || !KNOWN_BUSINESS_IDS.has(id)) return base // "Todos" o id inválido → sin scope
+  return { ...base, businessId: id, bypassTenantFilter: false }
+}

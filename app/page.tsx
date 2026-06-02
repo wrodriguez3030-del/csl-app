@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
+import { useAppStore, apiJsonp, normalizeApiUrl, invalidateReadCache } from "@/lib/store"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
 import { LoadingOverlay } from "@/components/loading-overlay"
@@ -71,6 +71,7 @@ export default function HomePage() {
     setLastSyncAt,
     setIsSyncing,
     formOpenCount,
+    setActiveBusinessSlug,
   } = useAppStore()
 
   const [user, setUser] = useState<SystemUser | null>(null)
@@ -107,6 +108,12 @@ export default function HomePage() {
 
       setUser(localUser)
       setIsReady(true)
+      // Inicializa el business activo al del usuario logueado SOLO si aún no
+      // hay uno fijado (primer load). Nunca arranca en "Todos". No pisa una
+      // selección hecha por el superadmin durante la sesión.
+      if (!useAppStore.getState().activeBusinessSlug && localUser.businessSlug) {
+        setActiveBusinessSlug(localUser.businessSlug)
+      }
     }
     void sync()
     const authListener = supabaseBrowser.auth.onAuthStateChange(() => {
@@ -185,6 +192,20 @@ export default function HomePage() {
       if (!silent) setIsLoading(false)
     }
   }, [apiUrl, setDb, setDbPulsos, setIsLoading, setLoadingMessage, showToast, setIsConnected, setLastSyncAt, setIsSyncing])
+
+  // ---- Cambio de business activo (switcher superadmin) ----
+  // Limpia cache + store en memoria y recarga, para que NUNCA queden datos
+  // del tenant anterior visibles ni cacheados.
+  useEffect(() => {
+    const onBusinessChange = () => {
+      invalidateReadCache()
+      setDb({ sucursales: [], equipos: [], reportes: [], piezas: [], tecnicos: [] })
+      setDbPulsos({ operadoras: [], lecturasSemanales: [], sesionesCliente: [], auditoriasSemanales: [], pulseReadings: [], operatorShots: [] })
+      void handleRefresh()
+    }
+    window.addEventListener("csl-business-changed", onBusinessChange)
+    return () => window.removeEventListener("csl-business-changed", onBusinessChange)
+  }, [handleRefresh, setDb, setDbPulsos])
 
   // ---- Auto-refresh global del sistema ----
   // - cada 60s mientras el usuario tenga la pestaña activa

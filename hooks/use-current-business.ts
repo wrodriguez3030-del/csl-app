@@ -3,6 +3,7 @@
 import { useMemo } from "react"
 import { useSessionUser } from "@/hooks/use-session-user"
 import { resolveBusinessBranding, getBusinessBySlug } from "@/lib/business"
+import { useAppStore } from "@/lib/store"
 import type { Business } from "@/lib/types"
 
 /**
@@ -20,11 +21,18 @@ import type { Business } from "@/lib/types"
  */
 export function useCurrentBusiness(): Business {
   const user = useSessionUser()
+  const activeBusinessSlug = useAppStore((s) => s.activeBusinessSlug)
 
   return useMemo(() => {
+    // Superadmin: el branding/datos siguen el business ACTIVO elegido en el
+    // switcher. Si está en "Todos" (null) cae a su propio business para el
+    // branding del header. Un usuario normal siempre ve su propio business.
+    if (user?.isSuperadmin && (activeBusinessSlug === "csl" || activeBusinessSlug === "depicenter")) {
+      return getBusinessBySlug(activeBusinessSlug)
+    }
     if (user?.businessSlug) {
       return getBusinessBySlug(user.businessSlug)
     }
     return resolveBusinessBranding(null)
-  }, [user?.businessSlug])
+  }, [user?.businessSlug, user?.isSuperadmin, activeBusinessSlug])
 }

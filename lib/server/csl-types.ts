@@ -31,10 +31,17 @@ export interface ActionUser {
  * se pasará en cada llamada y los filtros se activan.
  */
 export interface BusinessContext {
-  /** UUID del negocio del usuario (csl_user_profiles.business_id). */
+  /** UUID del negocio EFECTIVO sobre el que se filtra/inyecta. Para un
+   *  usuario normal es su propio business. Para un superadmin con un
+   *  business activo seleccionado en la UI, es ese business. */
   businessId: string
   /** Slug del negocio: "csl" | "depicenter". Útil para logs/branding. */
   businessSlug: string
-  /** Si true, el filtro por business_id se omite (acceso cross-tenant). */
+  /** Permisos: si el usuario es superadmin (independiente del scoping). */
   isSuperadmin: boolean
+  /** Si true, el filtro por business_id se OMITE (acceso cross-tenant real).
+   *  Solo es true para un superadmin que NO ha fijado un business activo
+   *  (modo "Todos"). En cuanto la UI manda un business activo, esto pasa a
+   *  false y el superadmin queda scopeado a ese tenant como cualquier user. */
+  bypassTenantFilter: boolean
 }

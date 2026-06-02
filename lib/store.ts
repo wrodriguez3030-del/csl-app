@@ -3,6 +3,7 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import { supabaseBrowser } from "./supabase-client"
+import { businessIdForSlug } from "./business"
 import type {
   Database,
   DatabasePulsos,
@@ -73,6 +74,17 @@ interface AppState {
   formOpenCount: number
   incrementFormOpen: () => void
   decrementFormOpen: () => void
+  /**
+   * Business activo (slug) que el frontend envía al backend en cada request.
+   * - Usuario normal: su propio business (no puede cambiarlo).
+   * - Superadmin: el negocio que eligió en el switcher del header. `null`
+   *   significa "Todos" (modo cross-tenant explícito).
+   * NO se persiste: en cada carga se reinicializa al business del usuario
+   *   logueado, para que el default nunca sea "Todos" ni arrastre la
+   *   selección de otro usuario.
+   */
+  activeBusinessSlug: string | null
+  setActiveBusinessSlug: (slug: string | null) => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -128,6 +140,8 @@ export const useAppStore = create<AppState>()(
       formOpenCount: 0,
       incrementFormOpen: () => set((state) => ({ formOpenCount: state.formOpenCount + 1 })),
       decrementFormOpen: () => set((state) => ({ formOpenCount: Math.max(0, state.formOpenCount - 1) })),
+      activeBusinessSlug: null,
+      setActiveBusinessSlug: (slug) => set({ activeBusinessSlug: slug }),
     }),
     {
       // v2: invalida cualquier cache pre-multitenant que tenía db.sucursales
@@ -166,10 +180,24 @@ export function normalizeApiUrl(url: string): string {
  * parámetro evita refactorizar 30+ call-sites; pasar cualquier string es
  * indistinto.
  */
+/**
+ * Inyecta el `activeBusinessId` (uuid del business activo) en los params de
+ * CADA request. Es la pieza que hace viajar el business activo de la UI al
+ * backend para el aislamiento end-to-end del superadmin. Idempotente.
+ */
+function injectActiveBusiness(
+  params: Record<string, string | number | boolean>,
+): Record<string, string | number | boolean> {
+  if (params.activeBusinessId) return params
+  const id = businessIdForSlug(useAppStore.getState().activeBusinessSlug)
+  return id ? { ...params, activeBusinessId: id } : params
+}
+
 export async function apiCall(
   apiUrl: string,
-  params: Record<string, string | number | boolean>
+  rawParams: Record<string, string | number | boolean>
 ): Promise<Record<string, unknown>> {
+  const params = injectActiveBusiness(rawParams)
   const endpoint = normalizeApiUrl(apiUrl)
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 25000)
@@ -264,8 +292,11 @@ function cacheKey(params: Record<string, unknown>): string | null {
  */
 export async function apiCallCached(
   apiUrl: string,
-  params: Record<string, string | number | boolean>,
+  rawParams: Record<string, string | number | boolean>,
 ): Promise<Record<string, unknown>> {
+  // Inyectamos el business activo ANTES de calcular la key para que la cache
+  // quede particionada por business_id (nunca devuelve datos del otro tenant).
+  const params = injectActiveBusiness(rawParams)
   const key = cacheKey(params)
   if (!key) return apiCall(apiUrl, params)
 

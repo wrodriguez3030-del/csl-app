@@ -1,14 +1,8 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import { useAppStore } from "@/lib/store"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
-import {
-  SuperadminBusinessFilter,
-  filterValueToBusinessId,
-  useIsSuperadmin,
-  type BusinessFilterValue,
-} from "@/components/superadmin-business-filter"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -17,20 +11,9 @@ import { Wrench, Pencil } from "lucide-react"
 import { SEQ_HEADER_CLASS, SeqBadge } from "@/components/seq-badge"
 import { fmtN } from "@/lib/fmt"
 
-/** El slug del business activo, normalizado al universo del filtro superadmin. */
-function slugToFilterValue(slug: string | undefined): BusinessFilterValue {
-  return slug === "csl" || slug === "depicenter" ? slug : "all"
-}
-
 export function PulsosEquiposPage() {
   const { db, dbPulsos, setActiveTab } = useAppStore()
   const business = useCurrentBusiness()
-  const isSuperadmin = useIsSuperadmin()
-
-  // Filtro superadmin: por defecto ve el negocio ACTIVO (no "Todos"), para
-  // no mezclar tenants. Un usuario normal no renderiza el banner y nunca
-  // filtra client-side: confía en el scoping por business_id del backend.
-  const [adminFilter, setAdminFilter] = useState<BusinessFilterValue>(slugToFilterValue(business.slug))
 
   const handleEdit = (equipoId: string) => {
     // El CRUD completo del equipo vive en Mantenimiento>Equipos.
@@ -44,15 +27,10 @@ export function PulsosEquiposPage() {
   }
 
   const rows = useMemo(() => {
-    // Catálogo REAL desde la BD (csl_equipos). Para usuarios normales ya viene
-    // filtrado por su business_id en el backend. Para superadmin, db.equipos
-    // trae todos los tenants y filtramos client-side por el negocio elegido.
-    const effectiveBizId = isSuperadmin ? filterValueToBusinessId(adminFilter) : null
-    const equipos = effectiveBizId
-      ? db.equipos.filter((e) => e.business_id === effectiveBizId)
-      : db.equipos
-
-    return equipos
+    // Catálogo REAL desde la BD (csl_equipos). El backend ya lo filtra por el
+    // business ACTIVO (incluido superadmin scopeado vía activeBusinessId), así
+    // que aquí no hace falta volver a filtrar por tenant.
+    return db.equipos
       .filter((e) => (e.Estado ?? "Activo") !== "Inactivo")
       .map((e) => {
         // Fuente PRIMARIA de lecturas: csl_pulse_readings (Cuadre Semanal).
@@ -87,11 +65,10 @@ export function PulsosEquiposPage() {
           ultimaDispLaser: Number(ultima?.DiferenciaReal) || 0,
         }
       })
-  }, [db.equipos, dbPulsos.pulseReadings, dbPulsos.lecturasSemanales, isSuperadmin, adminFilter])
+  }, [db.equipos, dbPulsos.pulseReadings, dbPulsos.lecturasSemanales])
 
   return (
     <div className="csl-page-shell space-y-4">
-      <SuperadminBusinessFilter value={adminFilter} onChange={setAdminFilter} />
       <Card className="overflow-hidden py-0">
         <CardHeader className="border-b border-slate-200 bg-slate-50/70 py-5">
           <CardTitle className="flex items-center gap-2 text-xl">

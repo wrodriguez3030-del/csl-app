@@ -93,7 +93,7 @@ export async function getRows(entity: string, options?: GetRowsOptions): Promise
   // Auto-aplicar filter por business_id desde el contexto del request.
   // Service Role bypasa RLS, así que el filtro EXPLÍCITO acá es la única defensa.
   const ctx = getBusinessContext()
-  const applyTenant = ctx && !ctx.isSuperadmin && !TENANT_EXEMPT_TABLES.has(config.table)
+  const applyTenant = ctx && !ctx.bypassTenantFilter && !TENANT_EXEMPT_TABLES.has(config.table)
   const select = options?.columns || "*"
   const cap = options?.limit ?? Infinity
   const pageSize = Math.min(1000, cap === Infinity ? 1000 : cap)
@@ -157,7 +157,7 @@ export async function getRowsPaged(
   const ascending = options.ascending ?? (entity !== "reportes" && entity !== "sesiones_cliente")
   // Tenant filter: idéntico patrón que getRows.
   const ctx = getBusinessContext()
-  const applyTenant = ctx && !ctx.isSuperadmin && !TENANT_EXEMPT_TABLES.has(config.table)
+  const applyTenant = ctx && !ctx.bypassTenantFilter && !TENANT_EXEMPT_TABLES.has(config.table)
 
   let query = supabase.from(config.table).select("*", { count: "exact" })
   if (applyTenant) {
@@ -190,7 +190,7 @@ export async function upsertRow(entity: string, row: Row) {
   const applyTenant = ctx && !TENANT_EXEMPT_TABLES.has(config.table)
   const payload: Row = { ...row, updated_at: new Date().toISOString() }
   if (applyTenant) {
-    if (!ctx!.isSuperadmin && payload.business_id && payload.business_id !== ctx!.businessId) {
+    if (!ctx!.bypassTenantFilter && payload.business_id && payload.business_id !== ctx!.businessId) {
       throw new Error(`Intento de escribir en business_id ajeno bloqueado`)
     }
     if (!payload.business_id) {
@@ -228,7 +228,7 @@ export async function deleteRow(entity: string, keyValue: string) {
   // Tenant verification: si hay contexto y no es superadmin, solo permite
   // borrar rows que pertenecen al business del user.
   const ctx = getBusinessContext()
-  const applyTenant = ctx && !ctx.isSuperadmin && !TENANT_EXEMPT_TABLES.has(config.table)
+  const applyTenant = ctx && !ctx.bypassTenantFilter && !TENANT_EXEMPT_TABLES.has(config.table)
 
   let query = supabase.from(config.table).delete().eq(config.key, keyValue)
   if (applyTenant) {
@@ -242,7 +242,7 @@ export async function updateRowFields(entity: string, keyValue: string, fields: 
   const supabase = getSupabaseAdmin()
   const config = tableConfig(entity)
   const ctx = getBusinessContext()
-  const applyTenant = ctx && !ctx.isSuperadmin && !TENANT_EXEMPT_TABLES.has(config.table)
+  const applyTenant = ctx && !ctx.bypassTenantFilter && !TENANT_EXEMPT_TABLES.has(config.table)
 
   // Sanitizar: no permitir cambiar business_id desde fields (sería escape de tenant).
   const safeFields = { ...fields }
@@ -359,7 +359,7 @@ export async function getAllPulsosData(opts?: { extendedDays?: number }) {
         .from("csl_pulse_readings")
         .select("*")
         .order("period_start", { ascending: false })
-      if (ctx && !ctx.isSuperadmin) q = q.eq("business_id", ctx.businessId)
+      if (ctx && !ctx.bypassTenantFilter) q = q.eq("business_id", ctx.businessId)
       return q.then(({ data, error }) => {
         if (error) { console.warn("csl_pulse_readings not available:", error.message); return [] }
         return data || []
@@ -373,7 +373,7 @@ export async function getAllPulsosData(opts?: { extendedDays?: number }) {
         .from("csl_operator_shots")
         .select("*")
         .order("period_start", { ascending: false })
-      if (ctx && !ctx.isSuperadmin) q = q.eq("business_id", ctx.businessId)
+      if (ctx && !ctx.bypassTenantFilter) q = q.eq("business_id", ctx.businessId)
       return q.then(({ data, error }) => {
         if (error) {
           const code = (error as { code?: string }).code
@@ -395,7 +395,7 @@ export async function getReporteCompleto(reportId: string): Promise<Row | null> 
   const supabase = getSupabaseAdmin()
   const config = tableConfig("reportes")
   const ctx = getBusinessContext()
-  const applyTenant = ctx && !ctx.isSuperadmin && !TENANT_EXEMPT_TABLES.has(config.table)
+  const applyTenant = ctx && !ctx.bypassTenantFilter && !TENANT_EXEMPT_TABLES.has(config.table)
   let query = supabase.from(config.table).select("*").eq(config.key, reportId)
   if (applyTenant) query = query.eq("business_id", ctx!.businessId)
   const { data, error } = await query.maybeSingle()
@@ -411,7 +411,7 @@ export async function getRecordCompleto(entity: string, idValue: string): Promis
   const supabase = getSupabaseAdmin()
   const config = tableConfig(entity)
   const ctx = getBusinessContext()
-  const applyTenant = ctx && !ctx.isSuperadmin && !TENANT_EXEMPT_TABLES.has(config.table)
+  const applyTenant = ctx && !ctx.bypassTenantFilter && !TENANT_EXEMPT_TABLES.has(config.table)
   let query = supabase.from(config.table).select("*").eq(config.key, idValue)
   if (applyTenant) query = query.eq("business_id", ctx!.businessId)
   const { data, error } = await query.maybeSingle()
@@ -591,10 +591,14 @@ export async function loadBusinessContext(userId: string): Promise<BusinessConte
     const businessId = row.business_id ? String(row.business_id) : null
     if (!businessId) return null
     const businesses = row.businesses as { slug?: string } | undefined
+    const isSuperadmin = Boolean(row.is_superadmin)
     return {
       businessId,
       businessSlug: String(businesses?.slug ?? "csl"),
-      isSuperadmin: Boolean(row.is_superadmin),
+      isSuperadmin,
+      // Por defecto el superadmin bypasea el filtro (ve todo). handleAction
+      // lo apaga en cuanto la UI manda un business activo.
+      bypassTenantFilter: isSuperadmin,
     }
   } catch {
     // Si la columna no existe (pre-migración), Supabase retorna error 42703.

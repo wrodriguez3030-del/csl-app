@@ -8,6 +8,8 @@ import type { TabId } from "@/lib/types"
 import { logout } from "@/lib/security"
 import { useSessionUser } from "@/hooks/use-session-user"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
+import { useIsSuperadmin } from "@/components/superadmin-business-filter"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { BusinessLogo } from "@/components/business-logo"
 import { cn } from "@/lib/utils"
 
@@ -131,6 +133,7 @@ export function Header({ onRefresh }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          <BusinessSwitcher />
           {onRefresh && !isPulse && (
             <Button variant="outline" size="sm" onClick={onRefresh} disabled={isLoading} className="gap-2 rounded-full">
               <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
@@ -146,5 +149,43 @@ export function Header({ onRefresh }: HeaderProps) {
       </div>
       {isPulse ? <div className="h-px bg-gradient-to-r from-transparent via-[color:var(--brand-primary)]/50 to-transparent" /> : null}
     </header>
+  )
+}
+
+/**
+ * Switcher GLOBAL de business activo. Solo se renderiza para superadmin.
+ *
+ * Es la fuente de verdad del "business activo" que se envía al backend en cada
+ * request (lib/store.ts → injectActiveBusiness). Al cambiar dispara el evento
+ * `csl-business-changed` que app/page.tsx escucha para limpiar cache/store y
+ * recargar — así un superadmin nunca ve datos mezclados de tenants.
+ *
+ * Default = el negocio del propio superadmin (nunca "Todos"). "Todos" solo si
+ * se selecciona explícitamente.
+ */
+function BusinessSwitcher() {
+  const isSuperadmin = useIsSuperadmin()
+  const activeBusinessSlug = useAppStore((s) => s.activeBusinessSlug)
+  const setActiveBusinessSlug = useAppStore((s) => s.setActiveBusinessSlug)
+  if (!isSuperadmin) return null
+  const value = activeBusinessSlug === "csl" || activeBusinessSlug === "depicenter" ? activeBusinessSlug : "all"
+  const onChange = (v: string) => {
+    setActiveBusinessSlug(v === "all" ? null : v)
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("csl-business-changed"))
+  }
+  return (
+    <div className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1">
+      <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-amber-700" />
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="h-7 w-40 border-0 bg-transparent px-1 text-xs font-semibold shadow-none focus:ring-0">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="csl">Cibao Spa Láser</SelectItem>
+          <SelectItem value="depicenter">Depicenter Skin Láser</SelectItem>
+          <SelectItem value="all">Todos los negocios</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
   )
 }

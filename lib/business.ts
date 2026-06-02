@@ -89,6 +89,25 @@ export function resolveBusinessBranding(business: Business | null | undefined): 
 export const SUPPORTED_BUSINESS_SLUGS: BusinessSlug[] = ["csl", "depicenter"]
 
 /**
+ * UUIDs REALES de los businesses en producción (Supabase pfqnyzbtwhfkemkixril).
+ *
+ * Ojo: los `id` de `BUSINESS_FALLBACK` son sentinelas ("fallback-csl") — NO se
+ * usan para comparar contra la DB. Estos sí son los uuid reales y se envían al
+ * backend en `activeBusinessId` para el aislamiento end-to-end del superadmin.
+ * El backend valida contra el mismo set (lib/server/business-context.ts).
+ */
+export const REAL_BUSINESS_ID_BY_SLUG: Record<BusinessSlug, string> = {
+  csl: "66b0cf3e-4cd7-4cfb-a7cf-0674b77fc4e6",
+  depicenter: "03b96698-c5df-4b4b-84df-1160a7ad56b9",
+}
+
+/** uuid real del business para un slug, o null si el slug no es válido. */
+export function businessIdForSlug(slug: string | null | undefined): string | null {
+  if (slug === "csl" || slug === "depicenter") return REAL_BUSINESS_ID_BY_SLUG[slug]
+  return null
+}
+
+/**
  * Branding normalizado para exportaciones (PDF, Excel, encabezados, footers).
  *
  * REGLA: ninguna exportación debe hardcodear "Cibao Spa Láser" / "CSL".

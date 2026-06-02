@@ -40,7 +40,7 @@ import {
   FICHA_LIST_COLS,
   CONSENT_LIST_COLS,
 } from "@/lib/server/csl-crud"
-import { runWithBusinessContext } from "@/lib/server/business-context"
+import { runWithBusinessContext, applyActiveBusiness } from "@/lib/server/business-context"
 import { makeAgendaMatchKey } from "@/lib/normalize-pulse"
 import {
   clienteCosmiatriaToDb,
@@ -70,7 +70,13 @@ export async function handleAction(params: ActionParams, user: ActionUser) {
   // migración garantizó backfill.
   const businessContext = await loadBusinessContext(user.id)
 
-  return runWithBusinessContext(businessContext, async () => {
+  // Aislamiento end-to-end: la UI manda el business activo en cada request.
+  // Para un superadmin con business activo, scopeamos a ese tenant (deja de
+  // ver datos cruzados). Para un usuario normal no tiene efecto.
+  const activeBusinessId = textValue(params, "activeBusinessId")
+  const effectiveContext = applyActiveBusiness(businessContext, activeBusinessId)
+
+  return runWithBusinessContext(effectiveContext, async () => {
     return dispatchAction(action, params, user)
   })
 }
