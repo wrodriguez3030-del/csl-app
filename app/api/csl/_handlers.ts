@@ -388,6 +388,81 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true }
     }
 
+    // ── HR · Fase 2 · Asistencia (consolidación on-read) ─────────────────
+    case "getHrAttendance": {
+      const sb = getSupabaseAdmin()
+      const scope = shouldScopeTenant()
+      const bid = effectiveBusinessId()
+      const desde = textValue(params, "desde")
+      const hasta = textValue(params, "hasta")
+      const empF = textValue(params, "employee_id")
+      let pq = sb.from("hr_punches").select("employee_id,type,punched_at,sucursal").order("punched_at", { ascending: true })
+      if (scope && bid) pq = pq.eq("business_id", bid)
+      if (desde) pq = pq.gte("punched_at", desde)
+      if (hasta) pq = pq.lte("punched_at", `${hasta}T23:59:59`)
+      if (empF) pq = pq.eq("employee_id", empF)
+      const { data: punches, error } = await pq
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+
+      let aq = sb.from("hr_schedule_assignments").select("employee_id,schedule_id").is("end_date", null)
+      if (scope && bid) aq = aq.eq("business_id", bid)
+      const { data: assigns } = await aq
+      let sq = sb.from("hr_schedules").select("id,entry_time,late_tolerance_min")
+      if (scope && bid) sq = sq.eq("business_id", bid)
+      const { data: scheds } = await sq
+      type Sched = { id: string; entry_time: string | null; late_tolerance_min: number }
+      const schedById = new Map<string, Sched>((scheds || []).map((s) => [String((s as Sched).id), s as Sched]))
+      const schedByEmp = new Map<string, Sched | undefined>((assigns || []).map((a) => {
+        const row = a as { employee_id: string; schedule_id: string }
+        return [String(row.employee_id), schedById.get(String(row.schedule_id))]
+      }))
+
+      const TZ = "America/Santo_Domingo"
+      type Punch = { employee_id: string; type: string; punched_at: string; sucursal: string | null }
+      const dayOf = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: TZ })
+      const minOf = (iso: string) => {
+        const t = new Date(iso).toLocaleTimeString("en-GB", { timeZone: TZ, hour12: false })
+        const [h, m] = t.split(":")
+        return Number(h) * 60 + Number(m)
+      }
+      const groups = new Map<string, { employee_id: string; fecha: string; sucursal: string | null; punches: Punch[] }>()
+      for (const raw of (punches || []) as Punch[]) {
+        const day = dayOf(raw.punched_at)
+        const key = `${raw.employee_id}|${day}`
+        if (!groups.has(key)) groups.set(key, { employee_id: raw.employee_id, fecha: day, sucursal: raw.sucursal, punches: [] })
+        groups.get(key)!.punches.push(raw)
+      }
+      const records = [] as Record<string, unknown>[]
+      for (const g of groups.values()) {
+        const ps = g.punches
+        const entrada = ps.find((x) => x.type === "entrada") || ps[0] || null
+        const salida = [...ps].reverse().find((x) => x.type === "salida") || (ps.length > 1 ? ps[ps.length - 1] : null)
+        const aIni = ps.find((x) => x.type === "almuerzo_inicio")
+        const aFin = ps.find((x) => x.type === "almuerzo_fin")
+        const entMin = entrada ? minOf(entrada.punched_at) : null
+        const salMin = salida ? minOf(salida.punched_at) : null
+        let worked = entMin != null && salMin != null ? Math.max(0, salMin - entMin) : 0
+        if (aIni && aFin) worked -= Math.max(0, minOf(aFin.punched_at) - minOf(aIni.punched_at))
+        const sched = schedByEmp.get(g.employee_id)
+        let tarde = 0
+        let estado = "presente"
+        if (sched?.entry_time && entMin != null) {
+          const [eh, em] = String(sched.entry_time).split(":")
+          const schedMin = Number(eh) * 60 + Number(em)
+          const tol = Number(sched.late_tolerance_min || 0)
+          if (entMin > schedMin + tol) { tarde = entMin - schedMin; estado = "tarde" }
+        }
+        if (!salida) estado = "incompleto"
+        records.push({
+          employee_id: g.employee_id, fecha: g.fecha, sucursal: g.sucursal,
+          entrada: entrada?.punched_at || null, salida: salida?.punched_at || null,
+          minutos_trabajados: Math.max(0, worked), tarde_min: tarde, estado, marcas: ps.length,
+        })
+      }
+      records.sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)) || String(a.employee_id).localeCompare(String(b.employee_id)))
+      return { ok: true, records }
+    }
+
     // ── HR · Fase 2 · PIN de empleado + kiosco ───────────────────────────
     case "setHrEmployeePin": {
       const employeeId = textValue(params, "employee_id")

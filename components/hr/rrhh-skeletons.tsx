@@ -1,7 +1,7 @@
 "use client"
 
 import {
-  ClipboardCheck, CalendarOff,
+  CalendarOff,
   Wallet, CalendarDays, TrendingUp, Plane, Gift, PiggyBank, FileText,
   Scale, FileCheck, Users2, ListChecks, Star, ShieldAlert, GraduationCap,
   Megaphone, BarChart3, Shield,
@@ -24,23 +24,7 @@ import { HrPageShell } from "@/components/hr-page-shell"
 
 // RrhhPonchePage tiene componente real: components/hr/rrhh-ponche-page.tsx
 
-export const RrhhAsistenciaPage = () => (
-  <HrPageShell
-    icon={ClipboardCheck}
-    title="Asistencia"
-    section="RR.HH. · Asistencia"
-    phase={2}
-    description="Consolidación diaria de ponches: presente, tarde, ausente, salida temprana, fuera de ubicación."
-    features={[
-      "Cálculo de minutos trabajados, tarde, salida temprana y horas extra",
-      "Vista diaria / semanal / mensual con filtros por sucursal y empleado",
-      "Detección de ponches incompletos para revisión",
-      "Botón 'Recalcular asistencia' del período",
-      "Aprobación de correcciones con motivo y trazabilidad",
-    ]}
-  />
-)
-
+// RrhhAsistenciaPage tiene componente real: components/hr/rrhh-asistencia-page.tsx
 // RrhhHorariosPage tiene componente real: components/hr/rrhh-horarios-page.tsx
 
 export const RrhhPermisosPage = () => (
