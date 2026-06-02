@@ -30,8 +30,9 @@ import { RrhhPermisosPage } from "@/components/hr/rrhh-permisos-page"
 import { RrhhDiasLaboradosPage } from "@/components/hr/rrhh-dias-laborados-page"
 import { RrhhPrestamosPage } from "@/components/hr/rrhh-prestamos-page"
 import { RrhhIncentivosPage } from "@/components/hr/rrhh-incentivos-page"
+import { RrhhNominaPage } from "@/components/hr/rrhh-nomina-page"
 import {
-  RrhhNominaPage, RrhhVacacionesPage,
+  RrhhVacacionesPage,
   RrhhDobleSueldoPage, RrhhTxtBancariosPage,
   RrhhLiquidacionesPage, RrhhPdfPrestacionesPage,
   RrhhReclutamientoPage, RrhhOnboardingPage, RrhhEvaluacionPage,

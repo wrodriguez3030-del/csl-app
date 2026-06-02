@@ -138,6 +138,16 @@ async function salarioVigente(businessId: string, employeeId: string): Promise<n
   return Number((emp as { salario?: number } | null)?.salario ?? 0)
 }
 
+/** ISR anual según escala de tramos [{li, ls, tasa, cuota}]. Devuelve 0 si exento. */
+function applyIsrAnnual(taxable: number, brackets: Array<{ li: number; ls: number | null; tasa: number; cuota: number }>): number {
+  if (!Array.isArray(brackets) || taxable <= 0) return 0
+  for (const b of brackets) {
+    const within = taxable >= Number(b.li) && (b.ls == null || taxable <= Number(b.ls))
+    if (within) return round2(Number(b.cuota) + (taxable - Number(b.li)) * Number(b.tasa))
+  }
+  return 0
+}
+
 /** Cuenta días distintos con al menos una marca de ponche en el rango (TZ RD). */
 async function diasDesdeAsistencia(businessId: string, employeeId: string, desde: string, hasta: string): Promise<number> {
   if (!desde || !hasta) return 0
@@ -933,6 +943,180 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const { error } = await q
       if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
       await hrAudit(user, "incentivos", "delete", "hr_incentives", id, null, null)
+      return { ok: true }
+    }
+
+    // ── HR · Fase 3 · Nómina ─────────────────────────────────────────────
+    case "getHrPayrollConfig": {
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const sb = getSupabaseAdmin()
+      const { data, error } = await sb.from("hr_payroll_config").select("*").eq("business_id", businessId).maybeSingle()
+      if (error) { if (isMissingTable(error)) return { ok: true, config: null, tableMissing: true }; throw error }
+      return { ok: true, config: data || null }
+    }
+    case "saveHrPayrollConfig": {
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const sb = getSupabaseAdmin()
+      const { data: prev } = await sb.from("hr_payroll_config").select("*").eq("business_id", businessId).maybeSingle()
+      const row: Record<string, unknown> = {
+        business_id: businessId,
+        daily_base: record.daily_base != null ? numberFrom(record, "daily_base") : 23.83,
+        afp_rate: record.afp_rate != null ? numberFrom(record, "afp_rate") : 0.0287,
+        sfs_rate: record.sfs_rate != null ? numberFrom(record, "sfs_rate") : 0.0304,
+        afp_cap: record.afp_cap != null ? numberFrom(record, "afp_cap") : 0,
+        sfs_cap: record.sfs_cap != null ? numberFrom(record, "sfs_cap") : 0,
+        verificado: Boolean(record.verificado),
+        updated_by: user.id,
+        updated_at: new Date().toISOString(),
+      }
+      if (record.isr_brackets) row.isr_brackets = record.isr_brackets
+      const { data, error } = await sb.from("hr_payroll_config").upsert(row, { onConflict: "business_id" }).select().single()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+      await hrAudit(user, "nomina", "config_update", "hr_payroll_config", businessId, prev ?? null, data)
+      return { ok: true, config: data }
+    }
+    case "getHrPayrollRuns": {
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_payroll_runs").select("*").order("period_start", { ascending: false })
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: data || [] }
+    }
+    case "getHrPayrollRun": {
+      const runId = textValue(params, "id")
+      if (!runId) throw new Error("id obligatorio")
+      const sb = getSupabaseAdmin()
+      const { data: run } = await sb.from("hr_payroll_runs").select("*").eq("id", runId).maybeSingle()
+      const { data: items } = await sb.from("hr_payroll_items").select("*").eq("run_id", runId).order("employee_nombre", { ascending: true })
+      return { ok: true, run: run || null, items: items || [] }
+    }
+    case "createHrPayrollRun": {
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const sb = getSupabaseAdmin()
+      const periodStart = textFrom(record, "period_start")
+      const periodEnd = textFrom(record, "period_end")
+      if (!periodStart || !periodEnd) throw new Error("Período obligatorio")
+      const tipo = textFrom(record, "tipo") || "quincenal"
+      const factor = tipo === "quincenal" ? 0.5 : 1
+      // Config (tasas)
+      const { data: cfg } = await sb.from("hr_payroll_config").select("*").eq("business_id", businessId).maybeSingle()
+      const c = (cfg || {}) as { afp_rate?: number; sfs_rate?: number; afp_cap?: number; sfs_cap?: number; isr_brackets?: Array<{ li: number; ls: number | null; tasa: number; cuota: number }> }
+      const afpRate = Number(c.afp_rate ?? 0.0287), sfsRate = Number(c.sfs_rate ?? 0.0304)
+      const afpCap = Number(c.afp_cap ?? 0), sfsCap = Number(c.sfs_cap ?? 0)
+      const isrBrackets = Array.isArray(c.isr_brackets) ? c.isr_brackets : []
+      // Crear (o reusar) la corrida en estado calculada
+      const runId = textFrom(record, "id")
+      let run: { id: string }
+      if (runId) {
+        const { data: existing } = await sb.from("hr_payroll_runs").select("status").eq("id", runId).maybeSingle()
+        const st = (existing as { status?: string } | null)?.status
+        if (st && !["borrador", "calculada", "revision"].includes(st)) throw new Error("Solo se puede recalcular una corrida en borrador/cálculo/revisión")
+        await sb.from("hr_payroll_items").delete().eq("run_id", runId)
+        const { data: upd } = await sb.from("hr_payroll_runs").update({ period_start: periodStart, period_end: periodEnd, tipo, sucursal: textFrom(record, "sucursal") || null, status: "calculada", updated_at: new Date().toISOString() }).eq("id", runId).select().single()
+        run = upd as { id: string }
+      } else {
+        const { data: ins, error: insErr } = await sb.from("hr_payroll_runs").insert({ business_id: businessId, period_start: periodStart, period_end: periodEnd, tipo, sucursal: textFrom(record, "sucursal") || null, status: "calculada", created_by: user.id }).select().single()
+        if (insErr) { if (isMissingTable(insErr)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw insErr }
+        run = ins as { id: string }
+      }
+      // Empleados con salario > 0
+      const { data: emps } = await sb.from("csl_empleados").select("empleado_id, nombre, apellido, salario").eq("business_id", businessId)
+      const items: Record<string, unknown>[] = []
+      const totals = { bruto: 0, deducciones: 0, neto: 0, empleados: 0 }
+      for (const e of (emps || []) as Array<{ empleado_id: string; nombre?: string; apellido?: string; salario?: number }>) {
+        const sueldoMensual = round2(await salarioVigente(businessId, e.empleado_id))
+        if (sueldoMensual <= 0) continue
+        const basePeriodo = round2(sueldoMensual * factor)
+        const afpBase = afpCap > 0 ? Math.min(sueldoMensual, afpCap) : sueldoMensual
+        const sfsBase = sfsCap > 0 ? Math.min(sueldoMensual, sfsCap) : sueldoMensual
+        const afpMensual = round2(afpBase * afpRate)
+        const sfsMensual = round2(sfsBase * sfsRate)
+        const annualTaxable = (sueldoMensual - afpMensual - sfsMensual) * 12
+        const isrMensual = round2(applyIsrAnnual(annualTaxable, isrBrackets) / 12)
+        const afp = round2(afpMensual * factor), sfs = round2(sfsMensual * factor), isr = round2(isrMensual * factor)
+        // Incentivos aprobados a nómina (no pagados)
+        const { data: incs } = await sb.from("hr_incentives").select("id, monto").eq("business_id", businessId).eq("employee_id", e.empleado_id).eq("status", "aprobado").eq("salida", "nomina")
+        const incentiveRows = (incs || []) as Array<{ id: string; monto: number }>
+        const incentivos = round2(incentiveRows.reduce((s, i) => s + Number(i.monto || 0), 0))
+        // Préstamos activos: cuota (cap balance)
+        const { data: loans } = await sb.from("hr_loans").select("id, monto_cuota, balance").eq("business_id", businessId).eq("employee_id", e.empleado_id).eq("status", "activo")
+        const loanRows = (loans || []) as Array<{ id: string; monto_cuota: number; balance: number }>
+        const loanDeductions = loanRows.map(l => ({ loan_id: l.id, monto: round2(Math.min(Number(l.monto_cuota || 0), Number(l.balance || 0))) })).filter(d => d.monto > 0)
+        const prestamos = round2(loanDeductions.reduce((s, d) => s + d.monto, 0))
+        const bruto = round2(basePeriodo + incentivos)
+        const totalDed = round2(afp + sfs + isr + prestamos)
+        const neto = round2(bruto - totalDed)
+        items.push({
+          business_id: businessId, run_id: run.id, employee_id: e.empleado_id,
+          employee_nombre: `${e.nombre ?? ""} ${e.apellido ?? ""}`.trim() || e.empleado_id,
+          sueldo_mensual: sueldoMensual, base_periodo: basePeriodo, incentivos,
+          afp, sfs, isr, prestamos, bruto, total_deducciones: totalDed, neto,
+          detalle: { incentive_ids: incentiveRows.map(i => i.id), loan_deductions: loanDeductions },
+        })
+        totals.bruto = round2(totals.bruto + bruto)
+        totals.deducciones = round2(totals.deducciones + totalDed)
+        totals.neto = round2(totals.neto + neto)
+        totals.empleados += 1
+      }
+      if (items.length) await sb.from("hr_payroll_items").insert(items)
+      await sb.from("hr_payroll_runs").update({ totals, updated_at: new Date().toISOString() }).eq("id", run.id)
+      await hrAudit(user, "nomina", runId ? "recalc" : "create", "hr_payroll_runs", run.id, null, { period: `${periodStart}/${periodEnd}`, tipo, ...totals })
+      return { ok: true, run_id: run.id, totals, empleados: totals.empleados }
+    }
+    case "setHrPayrollStatus": {
+      const runId = textValue(params, "id")
+      const status = textValue(params, "status")
+      if (!runId || !status) throw new Error("id y status obligatorios")
+      const sb = getSupabaseAdmin()
+      const { data: run } = await sb.from("hr_payroll_runs").select("*").eq("id", runId).maybeSingle()
+      if (!run) throw new Error("Corrida no encontrada")
+      const update: Record<string, unknown> = { status, updated_at: new Date().toISOString() }
+      // Al APROBAR: marcar incentivos como pagados y registrar cuotas de préstamo.
+      if (status === "aprobada") {
+        update.approved_by = user.id
+        update.approved_at = new Date().toISOString()
+        const { data: items } = await sb.from("hr_payroll_items").select("detalle").eq("run_id", runId)
+        for (const it of (items || []) as Array<{ detalle?: { incentive_ids?: string[]; loan_deductions?: Array<{ loan_id: string; monto: number }> } }>) {
+          const det = it.detalle || {}
+          for (const incId of det.incentive_ids || []) {
+            await sb.from("hr_incentives").update({ status: "pagado", updated_at: new Date().toISOString() }).eq("id", incId)
+          }
+          for (const ld of det.loan_deductions || []) {
+            await sb.from("hr_loan_payments").insert({ business_id: (run as { business_id: string }).business_id, loan_id: ld.loan_id, monto: ld.monto, tipo: "nomina", notes: `Nómina ${runId}` })
+            const { data: pays } = await sb.from("hr_loan_payments").select("monto").eq("loan_id", ld.loan_id)
+            const { data: loan } = await sb.from("hr_loans").select("principal, status").eq("id", ld.loan_id).maybeSingle()
+            const principal = Number((loan as { principal?: number } | null)?.principal ?? 0)
+            const paid = (pays || []).reduce((s, p) => s + Number((p as { monto?: number }).monto || 0), 0)
+            const balance = round2(Math.max(0, principal - paid))
+            const lstatus = (loan as { status?: string } | null)?.status === "cancelado" ? "cancelado" : (balance <= 0 ? "pagado" : "activo")
+            await sb.from("hr_loans").update({ balance, status: lstatus, updated_at: new Date().toISOString() }).eq("id", ld.loan_id)
+          }
+        }
+      }
+      const { data, error } = await sb.from("hr_payroll_runs").update(update).eq("id", runId).select().single()
+      if (error) throw error
+      await hrAudit(user, "nomina", status === "aprobada" ? "approve" : "status", "hr_payroll_runs", runId, { status: (run as { status?: string }).status }, { status })
+      return { ok: true, run: data }
+    }
+    case "deleteHrPayrollRun": {
+      const id = textValue(params, "id")
+      if (!id) throw new Error("id obligatorio")
+      const sb = getSupabaseAdmin()
+      const { data: run } = await sb.from("hr_payroll_runs").select("status").eq("id", id).maybeSingle()
+      if ((run as { status?: string } | null)?.status === "aprobada" || (run as { status?: string } | null)?.status === "pagada") {
+        return { ok: false, error: "No se puede eliminar una corrida aprobada/pagada" }
+      }
+      let q = sb.from("hr_payroll_runs").delete().eq("id", id)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
+      await hrAudit(user, "nomina", "delete", "hr_payroll_runs", id, null, null)
       return { ok: true }
     }
 

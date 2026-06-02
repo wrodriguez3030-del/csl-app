@@ -1,7 +1,7 @@
 "use client"
 
 import {
-  Wallet, Plane, Gift, FileText,
+  Plane, Gift, FileText,
   Scale, FileCheck, Users2, ListChecks, Star, ShieldAlert, GraduationCap,
   Megaphone, BarChart3, Shield,
 } from "lucide-react"
@@ -30,22 +30,7 @@ import { HrPageShell } from "@/components/hr-page-shell"
 
 // ── FASE 3 · Pagos ─────────────────────────────────────────────────────────
 
-export const RrhhNominaPage = () => (
-  <HrPageShell
-    icon={Wallet}
-    title="Nómina"
-    section="RR.HH. · Pagos"
-    phase={3}
-    description="Corridas de nómina por período y sucursal con conceptos, revisión, aprobación y generación de TXT bancario."
-    features={[
-      "Período + sucursal + tipo de pago",
-      "Conceptos: sueldo, horas extras, incentivos, bonos, ausencias, tardanzas, préstamos, descuentos",
-      "Estados: borrador → calculada → revisión → aprobada → TXT generado → pagada",
-      "Recibos individuales en PDF",
-      "Bloqueo de cierre si hay ponches incompletos sin revisar",
-    ]}
-  />
-)
+// RrhhNominaPage tiene componente real: components/hr/rrhh-nomina-page.tsx
 
 // RrhhDiasLaboradosPage tiene componente real: components/hr/rrhh-dias-laborados-page.tsx
 
