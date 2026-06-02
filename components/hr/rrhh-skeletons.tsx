@@ -1,7 +1,7 @@
 "use client"
 
 import {
-  Folder, Fingerprint, ClipboardCheck, CalendarClock, CalendarOff,
+  Fingerprint, ClipboardCheck, CalendarClock, CalendarOff,
   Wallet, CalendarDays, TrendingUp, Plane, Gift, PiggyBank, FileText,
   Scale, FileCheck, Users2, ListChecks, Star, ShieldAlert, GraduationCap,
   Megaphone, BarChart3, Shield,
@@ -16,23 +16,9 @@ import { HrPageShell } from "@/components/hr-page-shell"
  */
 
 // ── FASE 1 · Personal ──────────────────────────────────────────────────────
-// RrhhContratosPage está en components/hr/rrhh-contratos-page.tsx (CRUD real).
-
-export const RrhhDocumentosPage = () => (
-  <HrPageShell
-    icon={Folder}
-    title="Documentos empleados"
-    section="RR.HH. · Personal"
-    phase={1}
-    description="Archivo digital por empleado: cédulas, contratos, licencias, certificados médicos, amonestaciones."
-    features={[
-      "Carga de PDF/imagen por empleado y tipo",
-      "Fechas de vencimiento con alertas",
-      "Visibilidad granular (RR.HH., supervisor, empleado)",
-      "Auditoría de quién subió/eliminó cada documento",
-    ]}
-  />
-)
+// RrhhContratosPage y RrhhDocumentosPage tienen CRUD real:
+//   components/hr/rrhh-contratos-page.tsx
+//   components/hr/rrhh-documentos-page.tsx
 
 // ── FASE 2 · Asistencia ────────────────────────────────────────────────────
 

@@ -160,6 +160,77 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       }
       return { ok: true }
     }
+
+    // ── HR · Fase 1 · Documentos empleados ───────────────────────────────
+    case "getHrDocuments": {
+      const sb = getSupabaseAdmin()
+      const { data: profile } = await sb
+        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
+      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      const { data, error } = await sb
+        .from("hr_documents")
+        .select("*")
+        .eq("business_id", profile.business_id)
+        .order("uploaded_at", { ascending: false })
+      if (error) {
+        const code = (error as { code?: string }).code
+        if (code === "42P01") return { ok: true, records: [], tableMissing: true }
+        throw error
+      }
+      return { ok: true, records: data || [] }
+    }
+
+    case "saveHrDocument": {
+      const record = parsePayload(params)
+      const sb = getSupabaseAdmin()
+      const { data: profile } = await sb
+        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
+      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      const row: Record<string, unknown> = {
+        business_id: profile.business_id,
+        employee_id: textFrom(record, "employee_id"),
+        document_type: textFrom(record, "document_type") || "otros",
+        title: textFrom(record, "title"),
+        file_url: textFrom(record, "file_url") || null,
+        expires_at: textFrom(record, "expires_at") || null,
+        visibility: textFrom(record, "visibility") || "rrhh",
+        status: textFrom(record, "status") || "activo",
+        observations: textFrom(record, "observations") || null,
+        updated_at: new Date().toISOString(),
+      }
+      if (textFrom(record, "id")) row.id = textFrom(record, "id")
+      const { data, error } = await sb
+        .from("hr_documents")
+        .upsert(row, { onConflict: "id" })
+        .select()
+        .single()
+      if (error) {
+        const code = (error as { code?: string }).code
+        if (code === "42P01") return { ok: false, tableMissing: true, error: "Migración pendiente" }
+        throw error
+      }
+      return { ok: true, record: data }
+    }
+
+    case "deleteHrDocument": {
+      const id = textValue(params, "id")
+      if (!id) throw new Error("id obligatorio")
+      const sb = getSupabaseAdmin()
+      const { data: profile } = await sb
+        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
+      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      const { error } = await sb
+        .from("hr_documents")
+        .delete()
+        .eq("id", id)
+        .eq("business_id", profile.business_id)
+      if (error) {
+        const code = (error as { code?: string }).code
+        if (code === "42P01") return { ok: true, tableMissing: true }
+        throw error
+      }
+      return { ok: true }
+    }
     case "getCredenciales":
       return { ok: true, records: await getRows("credenciales") }
     case "getSolicitudesEmpleo":
