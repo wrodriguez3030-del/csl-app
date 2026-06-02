@@ -86,6 +86,80 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true, data: await getAllData() }
     case "getAllPulsosData":
       return { ok: true, ...(await getAllPulsosData()) }
+
+    // ── HR · Fase 1 · Contratos ──────────────────────────────────────────
+    case "getHrContracts": {
+      const sb = getSupabaseAdmin()
+      const { data: profile } = await sb
+        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
+      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      const { data, error } = await sb
+        .from("hr_contracts")
+        .select("*")
+        .eq("business_id", profile.business_id)
+        .order("start_date", { ascending: false })
+      if (error) {
+        const code = (error as { code?: string }).code
+        if (code === "42P01") return { ok: true, records: [], tableMissing: true }
+        throw error
+      }
+      return { ok: true, records: data || [] }
+    }
+
+    case "saveHrContract": {
+      const record = parsePayload(params)
+      const sb = getSupabaseAdmin()
+      const { data: profile } = await sb
+        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
+      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      const row: Record<string, unknown> = {
+        business_id: profile.business_id,
+        employee_id: textFrom(record, "employee_id"),
+        contract_type: textFrom(record, "contract_type") || "indefinido",
+        start_date: textFrom(record, "start_date"),
+        end_date: textFrom(record, "end_date") || null,
+        salary: record.salary != null ? numberFrom(record, "salary") : null,
+        position_name: textFrom(record, "position_name") || null,
+        schedule: textFrom(record, "schedule") || null,
+        workday: textFrom(record, "workday") || "completa",
+        status: textFrom(record, "status") || "borrador",
+        file_url: textFrom(record, "file_url") || null,
+        observations: textFrom(record, "observations") || null,
+        updated_at: new Date().toISOString(),
+      }
+      if (textFrom(record, "id")) row.id = textFrom(record, "id")
+      const { data, error } = await sb
+        .from("hr_contracts")
+        .upsert(row, { onConflict: "id" })
+        .select()
+        .single()
+      if (error) {
+        const code = (error as { code?: string }).code
+        if (code === "42P01") return { ok: false, tableMissing: true, error: "Migración pendiente" }
+        throw error
+      }
+      return { ok: true, record: data }
+    }
+
+    case "deleteHrContract": {
+      const id = textValue(params, "id")
+      if (!id) throw new Error("id obligatorio")
+      const sb = getSupabaseAdmin()
+      const { data: profile } = await sb
+        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
+      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      const { error } = await sb
+        .from("hr_contracts")
+        .delete()
+        .eq("id", id)
+        .eq("business_id", profile.business_id)
+      if (error) {
+        const code = (error as { code?: string }).code
+        if (code === "42P01") return { ok: true, tableMissing: true }
+        throw error
+      }
+      return { ok: true }
+    }
     case "getCredenciales":
       return { ok: true, records: await getRows("credenciales") }
     case "getSolicitudesEmpleo":

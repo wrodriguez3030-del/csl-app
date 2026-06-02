@@ -21,8 +21,9 @@ import { CredencialesPage } from "@/components/credenciales-page"
 import { RecursosHumanosPage } from "@/components/recursos-humanos-page"
 import { EmpleadosPage } from "@/components/empleados-page"
 import { RrhhDashboardPage } from "@/components/hr/rrhh-dashboard-page"
+import { RrhhContratosPage } from "@/components/hr/rrhh-contratos-page"
 import {
-  RrhhContratosPage, RrhhDocumentosPage,
+  RrhhDocumentosPage,
   RrhhPonchePage, RrhhAsistenciaPage, RrhhHorariosPage, RrhhPermisosPage,
   RrhhNominaPage, RrhhDiasLaboradosPage, RrhhIncentivosPage, RrhhVacacionesPage,
   RrhhDobleSueldoPage, RrhhPrestamosPage, RrhhTxtBancariosPage,

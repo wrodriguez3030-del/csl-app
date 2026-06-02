@@ -1,7 +1,7 @@
 "use client"
 
 import {
-  FileSignature, Folder, Fingerprint, ClipboardCheck, CalendarClock, CalendarOff,
+  Folder, Fingerprint, ClipboardCheck, CalendarClock, CalendarOff,
   Wallet, CalendarDays, TrendingUp, Plane, Gift, PiggyBank, FileText,
   Scale, FileCheck, Users2, ListChecks, Star, ShieldAlert, GraduationCap,
   Megaphone, BarChart3, Shield,
@@ -16,23 +16,7 @@ import { HrPageShell } from "@/components/hr-page-shell"
  */
 
 // ── FASE 1 · Personal ──────────────────────────────────────────────────────
-
-export const RrhhContratosPage = () => (
-  <HrPageShell
-    icon={FileSignature}
-    title="Contratos laborales"
-    section="RR.HH. · Personal"
-    phase={1}
-    description="Gestión de contratos: borradores, firmas, renovaciones, vencimientos y archivo PDF por empleado."
-    features={[
-      "Crear contrato desde plantilla o subir PDF firmado",
-      "Tipos: indefinido, fijo, prueba, prestación de servicios",
-      "Estados: borrador, activo, vencido, renovado, archivado, anulado",
-      "Alertas de vencimiento próximo (30/60/90 días)",
-      "Exportar PDF profesional con marca CSL",
-    ]}
-  />
-)
+// RrhhContratosPage está en components/hr/rrhh-contratos-page.tsx (CRUD real).
 
 export const RrhhDocumentosPage = () => (
   <HrPageShell
