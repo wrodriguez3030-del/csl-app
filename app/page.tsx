@@ -23,8 +23,10 @@ import { EmpleadosPage } from "@/components/empleados-page"
 import { RrhhDashboardPage } from "@/components/hr/rrhh-dashboard-page"
 import { RrhhContratosPage } from "@/components/hr/rrhh-contratos-page"
 import { RrhhDocumentosPage } from "@/components/hr/rrhh-documentos-page"
+import { RrhhHorariosPage } from "@/components/hr/rrhh-horarios-page"
+import { RrhhPonchePage } from "@/components/hr/rrhh-ponche-page"
 import {
-  RrhhPonchePage, RrhhAsistenciaPage, RrhhHorariosPage, RrhhPermisosPage,
+  RrhhAsistenciaPage, RrhhPermisosPage,
   RrhhNominaPage, RrhhDiasLaboradosPage, RrhhIncentivosPage, RrhhVacacionesPage,
   RrhhDobleSueldoPage, RrhhPrestamosPage, RrhhTxtBancariosPage,
   RrhhLiquidacionesPage, RrhhPdfPrestacionesPage,

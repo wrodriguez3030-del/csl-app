@@ -40,7 +40,8 @@ import {
   FICHA_LIST_COLS,
   CONSENT_LIST_COLS,
 } from "@/lib/server/csl-crud"
-import { runWithBusinessContext, applyActiveBusiness } from "@/lib/server/business-context"
+import { runWithBusinessContext, applyActiveBusiness, getBusinessContext } from "@/lib/server/business-context"
+import { createHash } from "node:crypto"
 import { makeAgendaMatchKey } from "@/lib/normalize-pulse"
 import {
   clienteCosmiatriaToDb,
@@ -59,6 +60,25 @@ import {
 import type { ActionParams, ActionUser, Row } from "@/lib/server/csl-types"
 
 const MENU_IDS: string[] = [...ALL_MENU_IDS]
+
+/** SHA-256 hex — usado para hashear el PIN de ponche (nunca se guarda plano). */
+function hrSha256(value: string): string {
+  return createHash("sha256").update(String(value), "utf8").digest("hex")
+}
+/** ¿El error de Supabase es "tabla no existe" (migración pendiente)? */
+function isMissingTable(error: unknown): boolean {
+  return (error as { code?: string } | null)?.code === "42P01"
+}
+/** business_id efectivo (respeta el business activo del superadmin). */
+function effectiveBusinessId(): string | null {
+  const ctx = getBusinessContext()
+  return ctx?.businessId ?? null
+}
+/** ¿Se debe filtrar por business_id? (false solo para superadmin en modo "Todos"). */
+function shouldScopeTenant(): boolean {
+  const ctx = getBusinessContext()
+  return Boolean(ctx && !ctx.bypassTenantFilter)
+}
 
 export async function handleAction(params: ActionParams, user: ActionUser) {
   const action = textValue(params, "action")
@@ -237,6 +257,208 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       }
       return { ok: true }
     }
+    // ── HR · Fase 2 · Horarios y turnos ──────────────────────────────────
+    case "getHrSchedules": {
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_schedules").select("*").order("created_at", { ascending: false })
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: data || [] }
+    }
+    case "saveHrSchedule": {
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const row: Record<string, unknown> = {
+        business_id: businessId,
+        name: textFrom(record, "name"),
+        type: textFrom(record, "type") || "fijo",
+        entry_time: textFrom(record, "entry_time") || null,
+        exit_time: textFrom(record, "exit_time") || null,
+        lunch_start: textFrom(record, "lunch_start") || null,
+        lunch_end: textFrom(record, "lunch_end") || null,
+        workdays: Array.isArray(record.workdays) ? record.workdays : stringArrayFrom(record.workdays),
+        late_tolerance_min: record.late_tolerance_min != null ? numberFrom(record, "late_tolerance_min") : 0,
+        status: textFrom(record, "status") || "activo",
+        updated_at: new Date().toISOString(),
+      }
+      if (textFrom(record, "id")) row.id = textFrom(record, "id")
+      const { data, error } = await getSupabaseAdmin().from("hr_schedules").upsert(row, { onConflict: "id" }).select().single()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+      return { ok: true, record: data }
+    }
+    case "deleteHrSchedule": {
+      const id = textValue(params, "id")
+      if (!id) throw new Error("id obligatorio")
+      let q = getSupabaseAdmin().from("hr_schedules").delete().eq("id", id)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
+      return { ok: true }
+    }
+
+    // ── HR · Fase 2 · Asignación de horario a empleado ───────────────────
+    case "getHrScheduleAssignments": {
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_schedule_assignments").select("*").order("created_at", { ascending: false })
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const employeeId = textValue(params, "employee_id")
+      if (employeeId) q = q.eq("employee_id", employeeId)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: data || [] }
+    }
+    case "saveHrScheduleAssignment": {
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const row: Record<string, unknown> = {
+        business_id: businessId,
+        employee_id: textFrom(record, "employee_id"),
+        schedule_id: textFrom(record, "schedule_id"),
+        sucursal: textFrom(record, "sucursal") || null,
+        start_date: textFrom(record, "start_date") || new Date().toISOString().slice(0, 10),
+        end_date: textFrom(record, "end_date") || null,
+        updated_at: new Date().toISOString(),
+      }
+      if (textFrom(record, "id")) row.id = textFrom(record, "id")
+      const { data, error } = await getSupabaseAdmin().from("hr_schedule_assignments").upsert(row, { onConflict: "id" }).select().single()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+      return { ok: true, record: data }
+    }
+    case "deleteHrScheduleAssignment": {
+      const id = textValue(params, "id")
+      if (!id) throw new Error("id obligatorio")
+      let q = getSupabaseAdmin().from("hr_schedule_assignments").delete().eq("id", id)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
+      return { ok: true }
+    }
+
+    // ── HR · Fase 2 · Ponche (admin) ─────────────────────────────────────
+    case "getHrPunches": {
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_punches").select("*").order("punched_at", { ascending: false }).limit(500)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const employeeId = textValue(params, "employee_id")
+      if (employeeId) q = q.eq("employee_id", employeeId)
+      const sucursal = textValue(params, "sucursal")
+      if (sucursal) q = q.eq("sucursal", sucursal)
+      const desde = textValue(params, "desde")
+      if (desde) q = q.gte("punched_at", desde)
+      const hasta = textValue(params, "hasta")
+      if (hasta) q = q.lte("punched_at", hasta)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: data || [] }
+    }
+    case "saveHrPunch": {
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const isCorrection = Boolean(record.is_correction)
+      const reason = textFrom(record, "correction_reason")
+      if (isCorrection && !reason) throw new Error("Una corrección manual requiere motivo")
+      const row: Record<string, unknown> = {
+        business_id: businessId,
+        employee_id: textFrom(record, "employee_id"),
+        type: textFrom(record, "type"),
+        punched_at: textFrom(record, "punched_at") || new Date().toISOString(),
+        sucursal: textFrom(record, "sucursal") || null,
+        source: textFrom(record, "source") || "manual",
+        is_correction: isCorrection,
+        correction_reason: reason || null,
+        approved_by: textFrom(record, "approved_by") || user.id,
+        updated_at: new Date().toISOString(),
+      }
+      if (textFrom(record, "id")) row.id = textFrom(record, "id")
+      const { data, error } = await getSupabaseAdmin().from("hr_punches").upsert(row, { onConflict: "id" }).select().single()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+      return { ok: true, record: data }
+    }
+    case "deleteHrPunch": {
+      const id = textValue(params, "id")
+      if (!id) throw new Error("id obligatorio")
+      let q = getSupabaseAdmin().from("hr_punches").delete().eq("id", id)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
+      return { ok: true }
+    }
+
+    // ── HR · Fase 2 · PIN de empleado + kiosco ───────────────────────────
+    case "setHrEmployeePin": {
+      const employeeId = textValue(params, "employee_id")
+      const pin = textValue(params, "pin")
+      if (!employeeId) throw new Error("employee_id obligatorio")
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      // pin vacío => limpiar (deshabilitar ponche por PIN para ese empleado)
+      const pinHash = pin ? hrSha256(`${businessId}:${pin}`) : null
+      let q = getSupabaseAdmin().from("csl_empleados").update({ hr_pin_hash: pinHash }).eq("empleado_id", employeeId)
+      if (shouldScopeTenant()) q = q.eq("business_id", businessId)
+      const { error } = await q
+      if (error) throw error
+      return { ok: true }
+    }
+    case "punchByPin": {
+      const pin = textValue(params, "pin")
+      const businessId = effectiveBusinessId()
+      if (!pin) throw new Error("PIN obligatorio")
+      if (!businessId) throw new Error("business_id no encontrado")
+      const sb = getSupabaseAdmin()
+      const pinHash = hrSha256(`${businessId}:${pin}`)
+      const { data: emp, error: empErr } = await sb
+        .from("csl_empleados")
+        .select("empleado_id, nombre, apellido, sucursal")
+        .eq("business_id", businessId)
+        .eq("hr_pin_hash", pinHash)
+        .maybeSingle()
+      if (empErr) throw empErr
+      if (!emp) return { ok: false, error: "PIN no válido" }
+      // Inferir el próximo tipo de marca según la última del día.
+      const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)
+      const { data: lastRows } = await sb
+        .from("hr_punches")
+        .select("type, punched_at")
+        .eq("business_id", businessId)
+        .eq("employee_id", emp.empleado_id)
+        .gte("punched_at", dayStart.toISOString())
+        .order("punched_at", { ascending: false })
+        .limit(1)
+      const last = lastRows && lastRows[0] ? String(lastRows[0].type) : null
+      const NEXT: Record<string, string> = {
+        "": "entrada",
+        entrada: "almuerzo_inicio",
+        almuerzo_inicio: "almuerzo_fin",
+        almuerzo_fin: "salida",
+        salida: "entrada",
+        salida_autorizada: "entrada",
+      }
+      const nextType = NEXT[last ?? ""] ?? "entrada"
+      const { data: punch, error: punchErr } = await sb
+        .from("hr_punches")
+        .insert({
+          business_id: businessId,
+          employee_id: emp.empleado_id,
+          type: nextType,
+          sucursal: emp.sucursal || null,
+          source: "kiosk",
+          device_info: textValue(params, "device_info") || null,
+        })
+        .select()
+        .single()
+      if (punchErr) { if (isMissingTable(punchErr)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw punchErr }
+      return {
+        ok: true,
+        record: punch,
+        empleado: `${emp.nombre ?? ""} ${emp.apellido ?? ""}`.trim(),
+        tipo: nextType,
+      }
+    }
+
     case "getCredenciales":
       return { ok: true, records: await getRows("credenciales") }
     case "getSolicitudesEmpleo":

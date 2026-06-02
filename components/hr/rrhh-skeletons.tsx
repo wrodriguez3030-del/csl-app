@@ -1,7 +1,7 @@
 "use client"
 
 import {
-  Fingerprint, ClipboardCheck, CalendarClock, CalendarOff,
+  ClipboardCheck, CalendarOff,
   Wallet, CalendarDays, TrendingUp, Plane, Gift, PiggyBank, FileText,
   Scale, FileCheck, Users2, ListChecks, Star, ShieldAlert, GraduationCap,
   Megaphone, BarChart3, Shield,
@@ -22,23 +22,7 @@ import { HrPageShell } from "@/components/hr-page-shell"
 
 // ── FASE 2 · Asistencia ────────────────────────────────────────────────────
 
-export const RrhhPonchePage = () => (
-  <HrPageShell
-    icon={Fingerprint}
-    title="Ponche / Reloj checador"
-    section="RR.HH. · Asistencia"
-    phase={2}
-    description="Reloj checador con modo kiosco, PIN/QR/código, captura de foto, GPS opcional y registro de dispositivo."
-    features={[
-      "Modo kiosco: pantalla grande con botones Entrada/Salida/Almuerzo",
-      "Identificación por PIN, QR o código empleado",
-      "Captura de foto + ubicación opcional",
-      "Tipos: entrada, salida, almuerzo (inicio/fin), salida autorizada",
-      "Corrección manual con motivo obligatorio y aprobación",
-      "Registro de IP, dispositivo y sucursal por ponche",
-    ]}
-  />
-)
+// RrhhPonchePage tiene componente real: components/hr/rrhh-ponche-page.tsx
 
 export const RrhhAsistenciaPage = () => (
   <HrPageShell
@@ -57,22 +41,7 @@ export const RrhhAsistenciaPage = () => (
   />
 )
 
-export const RrhhHorariosPage = () => (
-  <HrPageShell
-    icon={CalendarClock}
-    title="Horarios y turnos"
-    section="RR.HH. · Asistencia"
-    phase={2}
-    description="Definición de horarios fijos/rotativos por empleado, sucursal o cargo, con tolerancia de tardanza."
-    features={[
-      "Crear horarios con entrada/salida/almuerzo y días laborables",
-      "Asignación por empleado, sucursal o cargo",
-      "Turnos rotativos con calendario",
-      "Días libres y feriados configurables",
-      "Tolerancia de tardanza en minutos por horario",
-    ]}
-  />
-)
+// RrhhHorariosPage tiene componente real: components/hr/rrhh-horarios-page.tsx
 
 export const RrhhPermisosPage = () => (
   <HrPageShell
