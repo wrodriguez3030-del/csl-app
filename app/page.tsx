@@ -34,11 +34,12 @@ import { RrhhNominaPage } from "@/components/hr/rrhh-nomina-page"
 import { RrhhTxtBancariosPage } from "@/components/hr/rrhh-txt-bancarios-page"
 import { RrhhVacacionesPage } from "@/components/hr/rrhh-vacaciones-page"
 import { RrhhDobleSueldoPage } from "@/components/hr/rrhh-doble-sueldo-page"
+import { RrhhReportesPage } from "@/components/hr/rrhh-reportes-page"
+import { RrhhAuditoriaPage } from "@/components/hr/rrhh-auditoria-page"
 import {
   RrhhLiquidacionesPage, RrhhPdfPrestacionesPage,
   RrhhReclutamientoPage, RrhhOnboardingPage, RrhhEvaluacionPage,
   RrhhDisciplinaPage, RrhhCapacitacionPage, RrhhComunicacionPage,
-  RrhhReportesPage, RrhhAuditoriaPage,
 } from "@/components/hr/rrhh-skeletons"
 import { PulsosOperadorasPage } from "@/components/pulsos-operadoras-page"
 import { PulsosLecturasPage } from "@/components/pulsos-lecturas-page"

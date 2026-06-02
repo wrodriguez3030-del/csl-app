@@ -2,7 +2,7 @@
 
 import {
   Scale, FileCheck, Users2, ListChecks, Star, ShieldAlert, GraduationCap,
-  Megaphone, BarChart3, Shield,
+  Megaphone,
 } from "lucide-react"
 import { HrPageShell } from "@/components/hr-page-shell"
 
@@ -180,37 +180,5 @@ export const RrhhComunicacionPage = () => (
 )
 
 // ── FASE 6 · Reportes ──────────────────────────────────────────────────────
-
-export const RrhhReportesPage = () => (
-  <HrPageShell
-    icon={BarChart3}
-    title="Reportes RR.HH."
-    section="RR.HH. · Reportes"
-    phase={6}
-    description="Reportes consolidados: empleados, asistencia, nómina, incentivos, vacaciones, préstamos, liquidaciones, archivos bancarios."
-    features={[
-      "Empleados activos/inactivos · Asistencia diaria · Tardanzas y ausencias",
-      "Nómina por período · Incentivos · Vacaciones · Préstamos",
-      "Liquidaciones · Archivos bancarios · Auditoría completa",
-      "Exportar Excel · PDF · TXT cuando aplique",
-      "Filtros: empresa, sucursal, empleado, cargo, departamento, período, estado",
-    ]}
-  />
-)
-
-export const RrhhAuditoriaPage = () => (
-  <HrPageShell
-    icon={Shield}
-    title="Auditoría RR.HH."
-    section="RR.HH. · Reportes"
-    phase={6}
-    description="Log de acciones críticas con usuario, módulo, acción, valores anteriores/nuevos, IP y timestamp."
-    features={[
-      "Crear/editar empleado · Cambio de sueldo · Cambio de cuenta bancaria",
-      "Crear/editar ponche manual · Aprobar correcciones",
-      "Crear/aprobar nómina · Generar TXT · Generar PDF",
-      "Crear/aprobar liquidación · Eliminar/inactivar registros",
-      "Trazabilidad completa con valores anteriores y nuevos",
-    ]}
-  />
-)
+// RrhhReportesPage tiene componente real: components/hr/rrhh-reportes-page.tsx
+// RrhhAuditoriaPage tiene componente real: components/hr/rrhh-auditoria-page.tsx

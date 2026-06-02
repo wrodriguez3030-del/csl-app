@@ -1360,6 +1360,55 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true }
     }
 
+    // ── HR · Fase 6 · Auditoría RR.HH. ───────────────────────────────────
+    case "getHrAuditLogs": {
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_audit_logs").select("*").order("created_at", { ascending: false }).limit(500)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const mod = textValue(params, "module"); if (mod) q = q.eq("module", mod)
+      const act = textValue(params, "action"); if (act) q = q.eq("action", act)
+      const desde = textValue(params, "desde"); if (desde) q = q.gte("created_at", desde)
+      const hasta = textValue(params, "hasta"); if (hasta) q = q.lte("created_at", `${hasta}T23:59:59`)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: data || [] }
+    }
+
+    // ── HR · Fase 6 · Reportes RR.HH. (resumen consolidado) ──────────────
+    case "getHrReportSummary": {
+      const sb = getSupabaseAdmin()
+      const scope = shouldScopeTenant()
+      const bid = effectiveBusinessId() as string
+      const countOf = async (table: string, status?: string): Promise<number> => {
+        let q = sb.from(table).select("*", { count: "exact", head: true })
+        if (scope) q = q.eq("business_id", bid)
+        if (status) q = q.eq("status", status)
+        const { count, error } = await q
+        return error ? 0 : (count ?? 0)
+      }
+      const sumBalanceActivos = async (): Promise<number> => {
+        let q = sb.from("hr_loans").select("balance").eq("status", "activo")
+        if (scope) q = q.eq("business_id", bid)
+        const { data } = await q
+        return round2((data || []).reduce((s, r) => s + Number((r as { balance?: number }).balance || 0), 0))
+      }
+      const [empleados, contratos, documentos, permisosPend, prestamosActivos, prestamosBalance, incentivosPend, corridas, vacacionesPend] = await Promise.all([
+        countOf("csl_empleados"),
+        countOf("hr_contracts"),
+        countOf("hr_documents"),
+        countOf("hr_leave_requests", "pendiente"),
+        countOf("hr_loans", "activo"),
+        sumBalanceActivos(),
+        countOf("hr_incentives", "pendiente"),
+        countOf("hr_payroll_runs"),
+        countOf("hr_vacations", "solicitado"),
+      ])
+      return {
+        ok: true,
+        summary: { empleados, contratos, documentos, permisosPend, prestamosActivos, prestamosBalance, incentivosPend, corridas, vacacionesPend },
+      }
+    }
+
     case "getCredenciales":
       return { ok: true, records: await getRows("credenciales") }
     case "getSolicitudesEmpleo":
