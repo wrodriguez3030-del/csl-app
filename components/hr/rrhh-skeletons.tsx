@@ -1,7 +1,6 @@
 "use client"
 
 import {
-  CalendarOff,
   Wallet, CalendarDays, TrendingUp, Plane, Gift, PiggyBank, FileText,
   Scale, FileCheck, Users2, ListChecks, Star, ShieldAlert, GraduationCap,
   Megaphone, BarChart3, Shield,
@@ -27,21 +26,7 @@ import { HrPageShell } from "@/components/hr-page-shell"
 // RrhhAsistenciaPage tiene componente real: components/hr/rrhh-asistencia-page.tsx
 // RrhhHorariosPage tiene componente real: components/hr/rrhh-horarios-page.tsx
 
-export const RrhhPermisosPage = () => (
-  <HrPageShell
-    icon={CalendarOff}
-    title="Permisos y licencias"
-    section="RR.HH. · Asistencia"
-    phase={2}
-    description="Solicitudes de permisos personales, médicas, duelo, emergencias, maternidad, etc."
-    features={[
-      "Tipos: personal con/sin disfrute, médica, duelo, emergencia, maternidad",
-      "Adjuntar evidencia (certificado médico, etc.)",
-      "Aprobación con definición de impacto en nómina/asistencia",
-      "Calendario consolidado del equipo",
-    ]}
-  />
-)
+// RrhhPermisosPage tiene componente real: components/hr/rrhh-permisos-page.tsx
 
 // ── FASE 3 · Pagos ─────────────────────────────────────────────────────────
 

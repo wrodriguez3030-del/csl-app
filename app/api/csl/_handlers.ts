@@ -534,6 +534,59 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       }
     }
 
+    // ── HR · Fase 2 · Permisos y licencias ───────────────────────────────
+    case "getHrLeaves": {
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_leave_requests").select("*").order("start_date", { ascending: false })
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const employeeId = textValue(params, "employee_id")
+      if (employeeId) q = q.eq("employee_id", employeeId)
+      const status = textValue(params, "status")
+      if (status) q = q.eq("status", status)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: data || [] }
+    }
+    case "saveHrLeave": {
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const status = textFrom(record, "status") || "pendiente"
+      const row: Record<string, unknown> = {
+        business_id: businessId,
+        employee_id: textFrom(record, "employee_id"),
+        leave_type: textFrom(record, "leave_type") || "personal_con_disfrute",
+        start_date: textFrom(record, "start_date"),
+        end_date: textFrom(record, "end_date"),
+        days: record.days != null ? numberFrom(record, "days") : 0,
+        reason: textFrom(record, "reason") || null,
+        evidence_url: textFrom(record, "evidence_url") || null,
+        impact: textFrom(record, "impact") || "no_aplica",
+        status,
+        observations: textFrom(record, "observations") || null,
+        created_by: textFrom(record, "created_by") || user.id,
+        updated_at: new Date().toISOString(),
+      }
+      // Al aprobar/rechazar, sellar quién y cuándo.
+      if (status === "aprobado" || status === "rechazado") {
+        row.approved_by = user.id
+        row.approved_at = new Date().toISOString()
+      }
+      if (textFrom(record, "id")) row.id = textFrom(record, "id")
+      const { data, error } = await getSupabaseAdmin().from("hr_leave_requests").upsert(row, { onConflict: "id" }).select().single()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+      return { ok: true, record: data }
+    }
+    case "deleteHrLeave": {
+      const id = textValue(params, "id")
+      if (!id) throw new Error("id obligatorio")
+      let q = getSupabaseAdmin().from("hr_leave_requests").delete().eq("id", id)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
+      return { ok: true }
+    }
+
     case "getCredenciales":
       return { ok: true, records: await getRows("credenciales") }
     case "getSolicitudesEmpleo":
