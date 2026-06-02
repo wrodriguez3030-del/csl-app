@@ -1,7 +1,7 @@
 "use client"
 
 import {
-  Wallet, TrendingUp, Plane, Gift, FileText,
+  Wallet, Plane, Gift, FileText,
   Scale, FileCheck, Users2, ListChecks, Star, ShieldAlert, GraduationCap,
   Megaphone, BarChart3, Shield,
 } from "lucide-react"
@@ -49,21 +49,7 @@ export const RrhhNominaPage = () => (
 
 // RrhhDiasLaboradosPage tiene componente real: components/hr/rrhh-dias-laborados-page.tsx
 
-export const RrhhIncentivosPage = () => (
-  <HrPageShell
-    icon={TrendingUp}
-    title="Incentivos y comisiones"
-    section="RR.HH. · Pagos"
-    phase={3}
-    description="Comisiones, bonos por meta y ajustes manuales, pagaderos en nómina o en TXT separado."
-    features={[
-      "Importar Excel con asignaciones por empleado o sucursal",
-      "Tipos: comisión, bono fijo, bono por meta, incentivo especial, ajuste manual",
-      "Aprobación previa al pago",
-      "Salida a nómina o a TXT separado",
-    ]}
-  />
-)
+// RrhhIncentivosPage tiene componente real: components/hr/rrhh-incentivos-page.tsx
 
 export const RrhhVacacionesPage = () => (
   <HrPageShell

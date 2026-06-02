@@ -876,6 +876,66 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true }
     }
 
+    // ── HR · Fase 3 · Incentivos y comisiones ────────────────────────────
+    case "getHrIncentives": {
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_incentives").select("*").order("created_at", { ascending: false })
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const emp = textValue(params, "employee_id"); if (emp) q = q.eq("employee_id", emp)
+      const est = textValue(params, "status"); if (est) q = q.eq("status", est)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: data || [] }
+    }
+    case "saveHrIncentive": {
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const employeeId = textFrom(record, "employee_id")
+      if (!employeeId) throw new Error("Empleado obligatorio")
+      const monto = round2(numberFrom(record, "monto"))
+      if (monto <= 0) throw new Error("El monto debe ser mayor a 0")
+      const sb = getSupabaseAdmin()
+      const id = textFrom(record, "id")
+      let nombre = textFrom(record, "employee_nombre")
+      if (!nombre) {
+        const { data: emp } = await sb.from("csl_empleados").select("nombre, apellido").eq("business_id", businessId).eq("empleado_id", employeeId).maybeSingle()
+        const e = emp as { nombre?: string; apellido?: string } | null
+        nombre = e ? `${e.nombre ?? ""} ${e.apellido ?? ""}`.trim() : employeeId
+      }
+      let oldValues: unknown = null
+      if (id) { const { data: prev } = await sb.from("hr_incentives").select("*").eq("id", id).maybeSingle(); oldValues = prev ?? null }
+      const status = textFrom(record, "status") || "pendiente"
+      const row: Record<string, unknown> = {
+        business_id: businessId, employee_id: employeeId, employee_nombre: nombre,
+        tipo: textFrom(record, "tipo") || "comision",
+        monto,
+        periodo: textFrom(record, "periodo") || null,
+        descripcion: textFrom(record, "descripcion") || null,
+        salida: textFrom(record, "salida") || "nomina",
+        status,
+        created_by: textFrom(record, "created_by") || user.id,
+        updated_at: new Date().toISOString(),
+      }
+      if (status === "aprobado") { row.approved_by = user.id; row.approved_at = new Date().toISOString() }
+      if (id) row.id = id
+      const { data, error } = await sb.from("hr_incentives").upsert(row, { onConflict: "id" }).select().single()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+      const saved = data as { id: string }
+      await hrAudit(user, "incentivos", status === "aprobado" ? "approve" : (id ? "update" : "create"), "hr_incentives", String(saved.id), oldValues, data)
+      return { ok: true, record: data }
+    }
+    case "deleteHrIncentive": {
+      const id = textValue(params, "id")
+      if (!id) throw new Error("id obligatorio")
+      let q = getSupabaseAdmin().from("hr_incentives").delete().eq("id", id)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
+      await hrAudit(user, "incentivos", "delete", "hr_incentives", id, null, null)
+      return { ok: true }
+    }
+
     case "getCredenciales":
       return { ok: true, records: await getRows("credenciales") }
     case "getSolicitudesEmpleo":
