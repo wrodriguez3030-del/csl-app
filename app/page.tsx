@@ -36,8 +36,9 @@ import { RrhhVacacionesPage } from "@/components/hr/rrhh-vacaciones-page"
 import { RrhhDobleSueldoPage } from "@/components/hr/rrhh-doble-sueldo-page"
 import { RrhhReportesPage } from "@/components/hr/rrhh-reportes-page"
 import { RrhhAuditoriaPage } from "@/components/hr/rrhh-auditoria-page"
+import { RrhhLiquidacionesPage } from "@/components/hr/rrhh-liquidaciones-page"
+import { RrhhPdfPrestacionesPage } from "@/components/hr/rrhh-pdf-prestaciones-page"
 import {
-  RrhhLiquidacionesPage, RrhhPdfPrestacionesPage,
   RrhhReclutamientoPage, RrhhOnboardingPage, RrhhEvaluacionPage,
   RrhhDisciplinaPage, RrhhCapacitacionPage, RrhhComunicacionPage,
 } from "@/components/hr/rrhh-skeletons"

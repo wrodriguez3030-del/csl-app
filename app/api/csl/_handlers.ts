@@ -138,6 +138,39 @@ async function salarioVigente(businessId: string, employeeId: string): Promise<n
   return Number((emp as { salario?: number } | null)?.salario ?? 0)
 }
 
+/**
+ * Cálculo REFERENCIAL de prestaciones RD (Código de Trabajo). Editable y a
+ * validar legalmente. salario_diario = mensual/23.83 (mismo del sistema).
+ * Preaviso/cesantía solo aplican en desahucio y despido injustificado.
+ */
+function computeSeverance(motivo: string, fechaIngreso: string, fechaSalida: string, mensual: number) {
+  const ing = fechaIngreso ? new Date(fechaIngreso) : null
+  const sal = fechaSalida ? new Date(fechaSalida) : new Date()
+  const t = ing ? Math.max(0, (sal.getTime() - ing.getTime()) / (365.25 * 24 * 3600 * 1000)) : 0
+  const diario = round2(mensual / HR_DAILY_BASE)
+  const aplicaPreCes = motivo === "desahucio" || motivo === "despido_injustificado"
+  let preavisoDias = 0, cesantiaDias = 0
+  if (aplicaPreCes) {
+    if (t >= 1) preavisoDias = 28
+    else if (t >= 0.5) preavisoDias = 14
+    else if (t >= 0.25) preavisoDias = 7
+    if (t >= 1) { const cap5 = Math.min(t, 5); const extra = Math.max(0, t - 5); cesantiaDias = round2(cap5 * 21 + extra * 23) }
+    else if (t >= 0.5) cesantiaDias = 13
+    else if (t >= 0.25) cesantiaDias = 6
+  }
+  const preavisoMonto = round2(diario * preavisoDias)
+  const cesantiaMonto = round2(diario * cesantiaDias)
+  const vacacionesMonto = round2(diario * 14 * Math.min(1, t)) // referencial
+  const mesesAnio = sal.getMonth() + 1 // meses transcurridos del año de salida
+  const navidadMonto = round2(mensual * mesesAnio / 12)
+  return {
+    anios_servicio: round2(t), salario_diario: diario,
+    preaviso_dias: preavisoDias, preaviso_monto: preavisoMonto,
+    cesantia_dias: cesantiaDias, cesantia_monto: cesantiaMonto,
+    vacaciones_monto: vacacionesMonto, navidad_monto: navidadMonto,
+  }
+}
+
 /** ISR anual según escala de tramos [{li, ls, tasa, cuota}]. Devuelve 0 si exento. */
 function applyIsrAnnual(taxable: number, brackets: Array<{ li: number; ls: number | null; tasa: number; cuota: number }>): number {
   if (!Array.isArray(brackets) || taxable <= 0) return 0
@@ -1407,6 +1440,84 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         ok: true,
         summary: { empleados, contratos, documentos, permisosPend, prestamosActivos, prestamosBalance, incentivosPend, corridas, vacacionesPend },
       }
+    }
+
+    // ── HR · Fase 4 · Liquidaciones / prestaciones (RD, referencial) ─────
+    case "getHrSeverance": {
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_severance").select("*").order("created_at", { ascending: false })
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const emp = textValue(params, "employee_id"); if (emp) q = q.eq("employee_id", emp)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: data || [] }
+    }
+    case "getHrSeveranceSuggestion": {
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const employeeId = textValue(params, "employee_id")
+      if (!employeeId) throw new Error("employee_id obligatorio")
+      const motivo = textValue(params, "motivo") || "desahucio"
+      const fechaIngreso = textValue(params, "fecha_ingreso")
+      const fechaSalida = textValue(params, "fecha_salida") || new Date().toISOString().slice(0, 10)
+      const mensual = round2(await salarioVigente(businessId, employeeId))
+      const calc = computeSeverance(motivo, fechaIngreso, fechaSalida, mensual)
+      const { data: emp } = await getSupabaseAdmin().from("csl_empleados").select("nombre, apellido").eq("business_id", businessId).eq("empleado_id", employeeId).maybeSingle()
+      const e = emp as { nombre?: string; apellido?: string } | null
+      return { ok: true, employee_nombre: e ? `${e.nombre ?? ""} ${e.apellido ?? ""}`.trim() : employeeId, sueldo_mensual: mensual, ...calc }
+    }
+    case "saveHrSeverance": {
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const employeeId = textFrom(record, "employee_id")
+      if (!employeeId) throw new Error("Empleado obligatorio")
+      const sb = getSupabaseAdmin()
+      const id = textFrom(record, "id")
+      let nombre = textFrom(record, "employee_nombre")
+      if (!nombre) {
+        const { data: emp } = await sb.from("csl_empleados").select("nombre, apellido").eq("business_id", businessId).eq("empleado_id", employeeId).maybeSingle()
+        const e = emp as { nombre?: string; apellido?: string } | null
+        nombre = e ? `${e.nombre ?? ""} ${e.apellido ?? ""}`.trim() : employeeId
+      }
+      const n = (k: string) => round2(numberFrom(record, k))
+      const preaviso = n("preaviso_monto"), cesantia = n("cesantia_monto"), vac = n("vacaciones_monto")
+      const nav = n("navidad_monto"), salPend = n("salario_pendiente"), otros = n("otros_ingresos"), desc = n("descuentos")
+      const total = round2(preaviso + cesantia + vac + nav + salPend + otros - desc)
+      const status = textFrom(record, "status") || "borrador"
+      let oldValues: unknown = null
+      if (id) { const { data: prev } = await sb.from("hr_severance").select("*").eq("id", id).maybeSingle(); oldValues = prev ?? null }
+      const row: Record<string, unknown> = {
+        business_id: businessId, employee_id: employeeId, employee_nombre: nombre,
+        motivo: textFrom(record, "motivo") || "desahucio",
+        fecha_ingreso: textFrom(record, "fecha_ingreso") || null,
+        fecha_salida: textFrom(record, "fecha_salida") || null,
+        anios_servicio: n("anios_servicio"),
+        sueldo_mensual: n("sueldo_mensual"), salario_diario: n("salario_diario"),
+        preaviso_dias: n("preaviso_dias"), preaviso_monto: preaviso,
+        cesantia_dias: n("cesantia_dias"), cesantia_monto: cesantia,
+        vacaciones_monto: vac, navidad_monto: nav, salario_pendiente: salPend,
+        otros_ingresos: otros, descuentos: desc, total, status,
+        observations: textFrom(record, "observations") || null,
+        created_by: textFrom(record, "created_by") || user.id,
+        updated_at: new Date().toISOString(),
+      }
+      if (status === "aprobado" || status === "pagado") { row.approved_by = user.id; row.approved_at = new Date().toISOString() }
+      if (id) row.id = id
+      const { data, error } = await sb.from("hr_severance").upsert(row, { onConflict: "id" }).select().single()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+      await hrAudit(user, "liquidaciones", status === "aprobado" ? "approve" : (id ? "update" : "create"), "hr_severance", String((data as { id: string }).id), oldValues, data)
+      return { ok: true, record: data }
+    }
+    case "deleteHrSeverance": {
+      const id = textValue(params, "id")
+      if (!id) throw new Error("id obligatorio")
+      let q = getSupabaseAdmin().from("hr_severance").delete().eq("id", id)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
+      await hrAudit(user, "liquidaciones", "delete", "hr_severance", id, null, null)
+      return { ok: true }
     }
 
     case "getCredenciales":

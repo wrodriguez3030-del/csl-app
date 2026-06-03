@@ -1,7 +1,7 @@
 "use client"
 
 import {
-  Scale, FileCheck, Users2, ListChecks, Star, ShieldAlert, GraduationCap,
+  Users2, ListChecks, Star, ShieldAlert, GraduationCap,
   Megaphone,
 } from "lucide-react"
 import { HrPageShell } from "@/components/hr-page-shell"
@@ -44,39 +44,8 @@ import { HrPageShell } from "@/components/hr-page-shell"
 
 // ── FASE 4 · Prestaciones ──────────────────────────────────────────────────
 
-export const RrhhLiquidacionesPage = () => (
-  <HrPageShell
-    icon={Scale}
-    title="Liquidaciones y prestaciones RD"
-    section="RR.HH. · Prestaciones"
-    phase={4}
-    description="Cálculo referencial de prestaciones laborales según legislación dominicana. Requiere validación por RR.HH., contabilidad y/o asesor legal."
-    features={[
-      "Tipos: desahucio, renuncia, despido (justificado/no), mutuo acuerdo, fin de contrato, abandono, fallecimiento",
-      "Cálculos: preaviso, cesantía, vacaciones pendientes, Navidad proporcional, días laborados",
-      "Conceptos: salario pendiente, incentivos/comisiones, bonificaciones, préstamos, descuentos",
-      "Estados: borrador → calculado → revisado → aprobado → PDF → pendiente pago → pagado → archivado",
-      "Advertencia legal en todos los cálculos",
-    ]}
-  />
-)
-
-export const RrhhPdfPrestacionesPage = () => (
-  <HrPageShell
-    icon={FileCheck}
-    title="PDF de prestaciones"
-    section="RR.HH. · Prestaciones"
-    phase={4}
-    description="Generación de PDF profesional de prestaciones con datos del empleado, conceptos, descuentos, nota legal y firmas."
-    features={[
-      "Header con logo empresa + datos completos del empleado",
-      "Tiempo laborado, salario actual, promedios mensual/diario",
-      "Detalle de conceptos aplicables y descuentos",
-      "Nota legal completa de RD",
-      "Firmas: RR.HH., representante empresa, contabilidad, empleado",
-    ]}
-  />
-)
+// RrhhLiquidacionesPage tiene componente real: components/hr/rrhh-liquidaciones-page.tsx
+// RrhhPdfPrestacionesPage tiene componente real: components/hr/rrhh-pdf-prestaciones-page.tsx
 
 // ── FASE 5 · Desarrollo ────────────────────────────────────────────────────
 
