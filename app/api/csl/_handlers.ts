@@ -116,6 +116,42 @@ async function hrAudit(
   }
 }
 
+/** CRUD genérico context-aware para módulos simples (Fase 5 Desarrollo). */
+async function devList(table: string) {
+  const sb = getSupabaseAdmin()
+  let q = sb.from(table).select("*").order("created_at", { ascending: false })
+  if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+  const { data, error } = await q
+  if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+  return { ok: true, records: data || [] }
+}
+async function devSave(table: string, module: string, user: ActionUser, record: Row, fields: string[]) {
+  const businessId = effectiveBusinessId()
+  if (!businessId) throw new Error("business_id no encontrado")
+  const row: Record<string, unknown> = {
+    business_id: businessId, updated_at: new Date().toISOString(),
+    created_by: textFrom(record, "created_by") || user.id,
+  }
+  for (const f of fields) {
+    if (record[f] !== undefined) row[f] = record[f] === "" ? null : record[f]
+  }
+  const id = textFrom(record, "id")
+  if (id) row.id = id
+  const { data, error } = await getSupabaseAdmin().from(table).upsert(row, { onConflict: "id" }).select().single()
+  if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+  await hrAudit(user, module, id ? "update" : "create", table, String((data as { id: string }).id), null, data)
+  return { ok: true, record: data }
+}
+async function devDelete(table: string, module: string, user: ActionUser, id: string) {
+  if (!id) throw new Error("id obligatorio")
+  let q = getSupabaseAdmin().from(table).delete().eq("id", id)
+  if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+  const { error } = await q
+  if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
+  await hrAudit(user, module, "delete", table, id, null, null)
+  return { ok: true }
+}
+
 /** Salario mensual VIGENTE: hr_employee_salary_history (effective_to null) → fallback csl_empleados.salario. */
 async function salarioVigente(businessId: string, employeeId: string): Promise<number> {
   const sb = getSupabaseAdmin()
@@ -1519,6 +1555,31 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       await hrAudit(user, "liquidaciones", "delete", "hr_severance", id, null, null)
       return { ok: true }
     }
+
+    // ── HR · Fase 5 · Desarrollo (CRUD genérico) ─────────────────────────
+    case "getHrRecruitment": return devList("hr_recruitment")
+    case "saveHrRecruitment": return devSave("hr_recruitment", "reclutamiento", user, parsePayload(params), ["nombre", "puesto", "sucursal", "telefono", "email", "estado", "notas"])
+    case "deleteHrRecruitment": return devDelete("hr_recruitment", "reclutamiento", user, textValue(params, "id"))
+
+    case "getHrOnboarding": return devList("hr_onboarding")
+    case "saveHrOnboarding": return devSave("hr_onboarding", "onboarding", user, parsePayload(params), ["employee_id", "employee_nombre", "checklist", "estado", "notas"])
+    case "deleteHrOnboarding": return devDelete("hr_onboarding", "onboarding", user, textValue(params, "id"))
+
+    case "getHrEvaluations": return devList("hr_evaluations")
+    case "saveHrEvaluation": return devSave("hr_evaluations", "evaluacion", user, parsePayload(params), ["employee_id", "employee_nombre", "periodo", "puntaje", "comentarios", "plan_mejora", "estado"])
+    case "deleteHrEvaluation": return devDelete("hr_evaluations", "evaluacion", user, textValue(params, "id"))
+
+    case "getHrDisciplinary": return devList("hr_disciplinary")
+    case "saveHrDisciplinary": return devSave("hr_disciplinary", "disciplina", user, parsePayload(params), ["employee_id", "employee_nombre", "tipo", "fecha", "descripcion", "evidencia_url", "estado"])
+    case "deleteHrDisciplinary": return devDelete("hr_disciplinary", "disciplina", user, textValue(params, "id"))
+
+    case "getHrTrainings": return devList("hr_trainings")
+    case "saveHrTraining": return devSave("hr_trainings", "capacitacion", user, parsePayload(params), ["employee_id", "employee_nombre", "curso", "tipo", "fecha_objetivo", "vencimiento", "certificado_url", "estado"])
+    case "deleteHrTraining": return devDelete("hr_trainings", "capacitacion", user, textValue(params, "id"))
+
+    case "getHrCommunications": return devList("hr_communications")
+    case "saveHrCommunication": return devSave("hr_communications", "comunicacion", user, parsePayload(params), ["titulo", "mensaje", "segmento", "destinatario", "fecha"])
+    case "deleteHrCommunication": return devDelete("hr_communications", "comunicacion", user, textValue(params, "id"))
 
     case "getCredenciales":
       return { ok: true, records: await getRows("credenciales") }

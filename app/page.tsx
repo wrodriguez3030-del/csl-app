@@ -41,7 +41,7 @@ import { RrhhPdfPrestacionesPage } from "@/components/hr/rrhh-pdf-prestaciones-p
 import {
   RrhhReclutamientoPage, RrhhOnboardingPage, RrhhEvaluacionPage,
   RrhhDisciplinaPage, RrhhCapacitacionPage, RrhhComunicacionPage,
-} from "@/components/hr/rrhh-skeletons"
+} from "@/components/hr/rrhh-desarrollo-pages"
 import { PulsosOperadorasPage } from "@/components/pulsos-operadoras-page"
 import { PulsosLecturasPage } from "@/components/pulsos-lecturas-page"
 import { PulsosSesionesPage } from "@/components/pulsos-sesiones-page"
