@@ -1581,6 +1581,67 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "saveHrCommunication": return devSave("hr_communications", "comunicacion", user, parsePayload(params), ["titulo", "mensaje", "segmento", "destinatario", "fecha"])
     case "deleteHrCommunication": return devDelete("hr_communications", "comunicacion", user, textValue(params, "id"))
 
+    // ── HR · Sincronizar empleados ← solicitudes APROBADAS ───────────────
+    case "syncApprovedEmpleados": {
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const sb = getSupabaseAdmin()
+      // Solicitudes aprobadas del tenant (multi-tenant estricto).
+      const { data: solsRaw, error: solErr } = await sb
+        .from("csl_solicitudes_empleo").select("*")
+        .eq("business_id", businessId).eq("estado", "Aprobado")
+      if (solErr) throw solErr
+      const sols = (solsRaw || []) as Array<Record<string, unknown>>
+      // Empleados existentes del tenant (para anti-duplicados).
+      const { data: empsRaw } = await sb
+        .from("csl_empleados").select("empleado_id, solicitud_id, cedula, email, telefono")
+        .eq("business_id", businessId)
+      const emps = (empsRaw || []) as Array<Record<string, unknown>>
+      const norm = (v: unknown) => String(v ?? "").trim().toLowerCase()
+      const findMatch = (s: Record<string, unknown>) => emps.find((e) =>
+        String(e.empleado_id) === String(s.solicitud_id) ||
+        (s.solicitud_id && String(e.solicitud_id) === String(s.solicitud_id)) ||
+        (norm(s.cedula) && norm(e.cedula) === norm(s.cedula)) ||
+        (norm(s.email) && norm(e.email) === norm(s.email)) ||
+        (norm(s.telefono) && norm(e.telefono) === norm(s.telefono)))
+      const seen = new Set<string>() // anti-dup dentro de la misma corrida (cédula/email)
+      let creados = 0, actualizados = 0, omitidos = 0, errores = 0
+      for (const s of sols) {
+        const dupKey = norm(s.cedula) || norm(s.email) || norm(s.telefono) || String(s.solicitud_id)
+        const row: Record<string, unknown> = {
+          business_id: businessId, solicitud_id: s.solicitud_id, origen: "solicitud_empleo", estado: "Activo",
+          nombre: s.nombre ?? null, apellido: s.apellido ?? null, cedula: s.cedula ?? null,
+          email: s.email ?? null, telefono: s.telefono ?? null, direccion: s.direccion ?? null,
+          puesto_solicitado: s.puesto_solicitado ?? null, salario: s.salario ?? null,
+          ciudad: s.ciudad ?? null, sector: s.sector ?? null, provincia: s.provincia ?? null,
+          sexo: s.sexo ?? null, nacionalidad: s.nacionalidad ?? null, fecha_nacimiento: s.fecha_nacimiento ?? null,
+          nivel_educacion: s.nivel_educacion ?? null, especialidad: s.especialidad ?? null,
+          fecha_solicitud: s.fecha_solicitud ?? null, observaciones: s.observaciones ?? null,
+          updated_at: new Date().toISOString(),
+        }
+        const match = findMatch(s)
+        try {
+          if (match) {
+            await sb.from("csl_empleados").update(row).eq("empleado_id", match.empleado_id).eq("business_id", businessId)
+            actualizados++
+            await hrAudit(user, "empleados", "sync_update", "csl_empleados", String(match.empleado_id), { solicitud_id: s.solicitud_id }, { origen: "solicitud_empleo", estado: "Activo" })
+          } else {
+            if (seen.has(dupKey)) { omitidos++; continue } // ya creado en esta misma corrida
+            row.empleado_id = s.solicitud_id
+            await sb.from("csl_empleados").insert(row)
+            emps.push({ empleado_id: s.solicitud_id, solicitud_id: s.solicitud_id, cedula: s.cedula, email: s.email, telefono: s.telefono })
+            creados++
+            await hrAudit(user, "empleados", "sync_create", "csl_empleados", String(s.solicitud_id), null, { from_solicitud: s.solicitud_id, nombre: s.nombre, cedula: s.cedula })
+          }
+          seen.add(dupKey)
+        } catch (e) {
+          errores++
+          console.warn("[syncApprovedEmpleados] fallo", s.solicitud_id, e instanceof Error ? e.message : e)
+        }
+      }
+      return { ok: true, aprobadas: sols.length, creados, actualizados, omitidos, errores }
+    }
+
     case "getCredenciales":
       return { ok: true, records: await getRows("credenciales") }
     case "getSolicitudesEmpleo":

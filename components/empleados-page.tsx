@@ -74,6 +74,24 @@ export function EmpleadosPage() {
     }
   }
 
+  const [syncing, setSyncing] = useState(false)
+  const syncAprobadas = async () => {
+    const normalized = normalizeApiUrl(apiUrl)
+    if (!normalized) return
+    setSyncing(true)
+    try {
+      const res = await apiJsonp(normalized, { action: "syncApprovedEmpleados" }) as
+        { ok?: boolean; aprobadas?: number; creados?: number; actualizados?: number; omitidos?: number; errores?: number; error?: string }
+      if (!res?.ok) { showToast(res?.error || "No se pudo sincronizar", "error"); return }
+      showToast(`Sincronizado: ${res.creados ?? 0} creados, ${res.actualizados ?? 0} actualizados, ${res.omitidos ?? 0} omitidos${res.errores ? `, ${res.errores} con error` : ""} (de ${res.aprobadas ?? 0} aprobadas)`, (res.errores ?? 0) > 0 ? "error" : "success")
+      await loadEmpleados()
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Error al sincronizar", "error")
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   useEffect(() => {
     void loadEmpleados()
   }, [apiUrl])
@@ -137,7 +155,10 @@ export function EmpleadosPage() {
               <CardTitle>Empleados</CardTitle>
               <p className="text-sm text-muted-foreground">Lee solicitudes con estado Aprobado desde Supabase.</p>
             </div>
-            <button onClick={() => void loadEmpleados()} className="rounded-lg border px-3 py-2 text-sm">Actualizar</button>
+            <div className="flex gap-2">
+              <button onClick={() => void syncAprobadas()} disabled={syncing} className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60">{syncing ? "Sincronizando…" : "Sincronizar aprobadas"}</button>
+              <button onClick={() => void loadEmpleados()} className="rounded-lg border px-3 py-2 text-sm">Actualizar</button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
