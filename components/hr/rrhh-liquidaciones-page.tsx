@@ -94,6 +94,41 @@ function clientNavidad(ing: string | null | undefined, sal: string | null | unde
 const fmtTiempo = (anios: number, dias: number) => `${anios} año(s) y ${dias} día(s)`
 const fmtNav = (m: number, d: number) => `${m} mes(es) y ${d} día(s)`
 
+/** Días legales preaviso/cesantía (mismo criterio que el backend). */
+function legalDias(motivo: string, t: number): { preaviso: number; cesantia: number } {
+  const ac = Math.floor(t + 1e-9)
+  const aplica = motivo === "desahucio" || motivo === "despido_injustificado"
+  if (!aplica) return { preaviso: 0, cesantia: 0 }
+  const preaviso = t >= 1 ? 28 : t >= 0.5 ? 14 : t >= 0.25 ? 7 : 0
+  const cesantia = t > 5 ? 23 * ac : t >= 1 ? 21 * ac : t >= 0.5 ? 13 : t >= 0.25 ? 6 : 0
+  return { preaviso, cesantia }
+}
+/** Recalcula salario diario y TODOS los montos desde el salario mensual + días. */
+function recalc(e: Partial<Severance>): Partial<Severance> {
+  const sueldo = Number(e.sueldo_mensual || 0)
+  const diarioFull = sueldo / DAILY_BASE
+  const navFrac = Number(e.navidad_meses || 0) + Number(e.navidad_dias || 0) / 30
+  return {
+    ...e,
+    salario_diario: round2(diarioFull),
+    preaviso_monto: round2(diarioFull * Number(e.preaviso_dias || 0)),
+    cesantia_monto: round2(diarioFull * Number(e.cesantia_dias || 0)),
+    vacaciones_monto: round2(diarioFull * Number(e.vacaciones_dias || 0)),
+    navidad_monto: round2(sueldo * navFrac / 12),
+  }
+}
+/** Recalcula días legales + navidad + tiempo desde las fechas y luego los montos. */
+function recalcFromDates(e: Partial<Severance>): Partial<Severance> {
+  const ti = clientTiempo(e.fecha_ingreso, e.fecha_salida)
+  const ld = legalDias(e.motivo || "desahucio", ti.t)
+  const nav = clientNavidad(e.fecha_ingreso, e.fecha_salida, Number(e.sueldo_mensual || 0))
+  return recalc({
+    ...e, anios_servicio: round2(ti.t), tiempo_anios: ti.anios, tiempo_dias: ti.dias,
+    preaviso_dias: ld.preaviso, cesantia_dias: ld.cesantia, vacaciones_dias: diasVacacionesRD(ti.t),
+    navidad_meses: nav.meses, navidad_dias: nav.dias,
+  })
+}
+
 export function RrhhLiquidacionesPage() {
   const { apiUrl, showToast } = useAppStore()
   const business = useCurrentBusiness()
@@ -375,14 +410,14 @@ ${Number(r.descuentos || 0) ? `<tr><td>Descuentos</td><td class="num">− ${rd(r
                 <div className="space-y-1"><Label className="text-xs">Empresa</Label><Input value={empresa} readOnly className="bg-muted/40" /></div>
                 <div className="space-y-1">
                   <Label className="text-xs">Motivo</Label>
-                  <Select value={editing.motivo || "desahucio"} onValueChange={v => setEditing({ ...editing, motivo: v })}>
+                  <Select value={editing.motivo || "desahucio"} onValueChange={v => setEditing(recalcFromDates({ ...editing, motivo: v }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>{Object.entries(MOTIVOS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1"><Label className="text-xs">Salario promedio mensual (RD$)</Label><Input type="number" step="0.01" value={editing.sueldo_mensual ?? 0} onChange={e => setEditing({ ...editing, sueldo_mensual: Number(e.target.value) })} /></div>
-                <div className="space-y-1"><Label className="text-xs">Fecha ingreso</Label><Input type="date" value={editing.fecha_ingreso || ""} onChange={e => setEditing({ ...editing, fecha_ingreso: e.target.value })} /></div>
-                <div className="space-y-1"><Label className="text-xs">Fecha salida</Label><Input type="date" value={editing.fecha_salida || ""} onChange={e => setEditing({ ...editing, fecha_salida: e.target.value })} /></div>
+                <div className="space-y-1"><Label className="text-xs">Salario promedio mensual (RD$)</Label><Input type="number" step="0.01" value={editing.sueldo_mensual ?? 0} onChange={e => setEditing(recalc({ ...editing, sueldo_mensual: Number(e.target.value) }))} /></div>
+                <div className="space-y-1"><Label className="text-xs">Fecha ingreso</Label><Input type="date" value={editing.fecha_ingreso || ""} onChange={e => setEditing(recalcFromDates({ ...editing, fecha_ingreso: e.target.value }))} /></div>
+                <div className="space-y-1"><Label className="text-xs">Fecha salida</Label><Input type="date" value={editing.fecha_salida || ""} onChange={e => setEditing(recalcFromDates({ ...editing, fecha_salida: e.target.value }))} /></div>
               </div>
 
               <div className="rounded-lg border bg-muted/30 p-3 text-sm grid grid-cols-2 gap-x-4 gap-y-1">
@@ -391,13 +426,13 @@ ${Number(r.descuentos || 0) ? `<tr><td>Descuentos</td><td class="num">− ${rd(r
               </div>
 
               <Button type="button" variant="outline" size="sm" onClick={() => calcular()} disabled={calcing}>
-                {calcing ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Calculator className="w-4 h-4 mr-1" />}Recalcular legal (Ministerio)
+                {calcing ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Calculator className="w-4 h-4 mr-1" />}Actualizar desde empleado (salario vigente + legal)
               </Button>
 
               <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1"><Label className="text-xs">Preaviso días</Label><Input type="number" step="1" value={editing.preaviso_dias ?? 0} onChange={e => setEditing({ ...editing, preaviso_dias: Number(e.target.value) })} /></div>
+                <div className="space-y-1"><Label className="text-xs">Preaviso días</Label><Input type="number" step="1" value={editing.preaviso_dias ?? 0} onChange={e => setEditing(recalc({ ...editing, preaviso_dias: Number(e.target.value) }))} /></div>
                 <div className="space-y-1"><Label className="text-xs">Preaviso monto</Label><Input type="number" step="0.01" value={editing.preaviso_monto ?? 0} onChange={e => setEditing({ ...editing, preaviso_monto: Number(e.target.value) })} /></div>
-                <div className="space-y-1"><Label className="text-xs">Cesantía días</Label><Input type="number" step="1" value={editing.cesantia_dias ?? 0} onChange={e => setEditing({ ...editing, cesantia_dias: Number(e.target.value) })} /></div>
+                <div className="space-y-1"><Label className="text-xs">Cesantía días</Label><Input type="number" step="1" value={editing.cesantia_dias ?? 0} onChange={e => setEditing(recalc({ ...editing, cesantia_dias: Number(e.target.value) }))} /></div>
                 <div className="space-y-1"><Label className="text-xs">Cesantía monto</Label><Input type="number" step="0.01" value={editing.cesantia_monto ?? 0} onChange={e => setEditing({ ...editing, cesantia_monto: Number(e.target.value) })} /></div>
                 <div className="space-y-1"><Label className="text-xs">Vacaciones días</Label><Input type="number" step="1" value={editing.vacaciones_dias ?? diasVacacionesRD(Number(editing.anios_servicio || 0))} readOnly className="bg-muted/40" /></div>
                 <div className="space-y-1"><Label className="text-xs">Vacaciones monto</Label><Input type="number" step="0.01" value={editing.vacaciones_monto ?? 0} onChange={e => setEditing({ ...editing, vacaciones_monto: Number(e.target.value) })} /></div>

@@ -1671,8 +1671,11 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       // Fecha de ingreso laboral: la oficial del empleado; el param solo si se editó.
       const fechaIngreso = textValue(params, "fecha_ingreso") || info.fecha_ingreso
       const fechaSalida = textValue(params, "fecha_salida") || new Date().toISOString().slice(0, 10)
+      // Fuente oficial del salario (prioridad): historial salarial vigente /
+      // csl_empleados (salarioVigente) → salario de solicitud aprobada → param.
       const mensualParam = numberValue(params, "sueldo_mensual")
-      const mensual = mensualParam > 0 ? round2(mensualParam) : (info.salario > 0 ? round2(info.salario) : round2(await salarioVigente(businessId, employeeId)))
+      const vigente = round2(await salarioVigente(businessId, employeeId))
+      const mensual = vigente > 0 ? vigente : (info.salario > 0 ? round2(info.salario) : round2(mensualParam))
       const calc = computeSeverance(motivo, fechaIngreso, fechaSalida, mensual)
       return {
         ok: true,
