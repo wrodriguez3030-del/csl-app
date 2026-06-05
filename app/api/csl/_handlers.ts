@@ -43,6 +43,7 @@ import {
 import { runWithBusinessContext, applyActiveBusiness, getBusinessContext } from "@/lib/server/business-context"
 import { createHash } from "node:crypto"
 import { makeAgendaMatchKey } from "@/lib/normalize-pulse"
+import { toUpperField, toUpperFieldOrNull } from "@/lib/normalize-fields"
 import {
   clienteCosmiatriaToDb,
   consentToDb,
@@ -1936,8 +1937,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         observaciones: textValue(params, "observaciones"),
         // Columnas añadidas por 202605280001_equipos_cabina_operadora.sql.
         // Nombre de la operadora simplificado a `operadora` (no `operadora_nombre`).
-        cabina: cabinaRaw ? cabinaRaw : null,
-        operadora: operadoraRaw ? operadoraRaw : null,
+        cabina: toUpperFieldOrNull(cabinaRaw),
+        operadora: toUpperFieldOrNull(operadoraRaw),
         operadora_id: operadoraIdRaw ? operadoraIdRaw : null,
       }
       // Columnas añadidas por 202605280002_equipos_pulsos_audit.sql.
@@ -1984,6 +1985,9 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         const v = params[camel]
         if (typeof v === "string" && v.length > 0) fields[snake] = v
       }
+      // CABINA / OPERADORA siempre en MAYÚSCULA (regla global del sistema).
+      if (typeof fields.cabina === "string") fields.cabina = toUpperField(fields.cabina)
+      if (typeof fields.operadora === "string") fields.operadora = toUpperField(fields.operadora)
       // Numéricos: el frontend los manda como string. Solo aplicamos si
       // vino una cadena no vacía (string "0" sí vale → permite resetear).
       const mapNum: Array<[string, string]> = [
@@ -2557,7 +2561,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "updateOperadora":
     case "saveOperadora": {
       const record = parsePayload(params)
-      const row = { operadora_id: String(record.OperadoraID ?? params.id ?? `op_${Date.now()}`), nombre: record.Nombre ?? "", sucursal: record.Sucursal ?? "", estado: record.Estado ?? "Activa", notas: record.Notas ?? "" }
+      const row = { operadora_id: String(record.OperadoraID ?? params.id ?? `op_${Date.now()}`), nombre: toUpperField(record.Nombre), sucursal: record.Sucursal ?? "", estado: record.Estado ?? "Activa", notas: record.Notas ?? "" }
       await upsertRow("operadoras", row)
       return { ok: true, record: fromDb("operadoras", row) }
     }
@@ -2568,7 +2572,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "updateLectura":
     case "saveLectura": {
       const record = parsePayload(params)
-      const row = { lectura_id: String(record.LecturaID ?? params.id ?? `lec_${Date.now()}`), fecha_semana: dateValue(record.FechaSemana), equipo_id: record.EquipoID ?? "", sucursal: record.Sucursal ?? "", cabina: record.Cabina ?? "", operadora_id: record.OperadoraID ?? "", lectura_inicial: numberFrom(record, "LecturaInicial"), lectura_final: numberFrom(record, "LecturaFinal"), diferencia_real: numberFrom(record, "DiferenciaReal"), observaciones: record.Observaciones ?? "" }
+      const row = { lectura_id: String(record.LecturaID ?? params.id ?? `lec_${Date.now()}`), fecha_semana: dateValue(record.FechaSemana), equipo_id: record.EquipoID ?? "", sucursal: record.Sucursal ?? "", cabina: toUpperField(record.Cabina), operadora_id: record.OperadoraID ?? "", lectura_inicial: numberFrom(record, "LecturaInicial"), lectura_final: numberFrom(record, "LecturaFinal"), diferencia_real: numberFrom(record, "DiferenciaReal"), observaciones: record.Observaciones ?? "" }
       await upsertRow("lecturas_semanales", row)
       return { ok: true, record: fromDb("lecturas_semanales", row) }
     }
@@ -2585,7 +2589,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         sesion_id: String(record.SesionID ?? params.id ?? `ses_${Date.now()}`),
         fecha: dateValue(record.Fecha),
         sucursal: record.Sucursal ?? "",
-        cabina: record.Cabina ?? "",
+        cabina: toUpperField(record.Cabina),
         operadora_id: record.OperadoraID ?? "",
         cliente: record.Cliente ?? "",
         area_trabajada: record.AreaTrabajada ?? "",
@@ -2647,7 +2651,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         alerta: record.Alerta ?? "OK",
         observaciones: record.Observaciones ?? "",
         // Columnas agregadas por 010_pulse_cuadre_semanal_auditoria.sql
-        cabina: typeof record.Cabina === "string" && record.Cabina ? record.Cabina : null,
+        cabina: toUpperFieldOrNull(record.Cabina),
         semana_fin: record.SemanaFin ? dateValue(record.SemanaFin) : null,
         lectura_inicial: record.LecturaInicial !== undefined && record.LecturaInicial !== null && record.LecturaInicial !== ""
           ? numberFrom(record, "LecturaInicial") : null,
@@ -2710,8 +2714,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         equipo_id: textFrom(record, "equipo_id"),
         serial: textFrom(record, "serial") || null,
         sucursal: textFrom(record, "sucursal"),
-        cabina: textFrom(record, "cabina") || null,
-        operadora: textFrom(record, "operadora") || null,
+        cabina: toUpperFieldOrNull(textFrom(record, "cabina")),
+        operadora: toUpperFieldOrNull(textFrom(record, "operadora")),
         period_start: textFrom(record, "period_start"),
         period_end: textFrom(record, "period_end"),
         period_label: textFrom(record, "period_label") || null,

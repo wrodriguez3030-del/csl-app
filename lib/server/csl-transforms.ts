@@ -11,6 +11,7 @@
 
 import { ALL_MENU_IDS } from "@/lib/menus"
 import { fichaDermoFromDb, fichaDermoToDb } from "@/lib/dermo-server"
+import { toUpperField } from "@/lib/normalize-fields"
 import {
   dateValue,
   moneyNumber,
@@ -39,7 +40,7 @@ export function fromDb(entity: string, row: Row): Row {
         // Columnas añadidas por 202605280001_equipos_cabina_operadora.sql.
         // Nombre simplificado: `operadora` (no `operadora_nombre`) para que coincida
         // con la nomenclatura de la base de equipos importada y reducir aliasing.
-        Cabina: row.cabina, Operadora: row.operadora, OperadoraID: row.operadora_id,
+        Cabina: toUpperField(row.cabina), Operadora: toUpperField(row.operadora), OperadoraID: row.operadora_id,
         // Columnas añadidas por 202605280002_equipos_pulsos_audit.sql.
         UltimaActualizacionPulsos: row.ultima_actualizacion_pulsos,
         UltimaSemanaPulsos: row.ultima_semana_pulsos,
@@ -54,12 +55,12 @@ export function fromDb(entity: string, row: Row): Row {
     case "inventario":
       return { ItemID: row.item_id, CodigoBarras: row.codigo_barras, Pieza: row.pieza, Categoria: row.categoria, Marca: row.marca, Modelo: row.modelo, NumeroParte: row.numero_parte, PrecioCompra: row.precio_compra, PrecioCompraMercado: row.precio_compra_mercado, PrecioVenta: row.precio_venta, StockRafaelVidal: row.stock_rafael_vidal, StockLosJardines: row.stock_los_jardines, StockVillaOlga: row.stock_villa_olga, StockLaVega: row.stock_la_vega, StockMinimo: row.stock_minimo, Proveedor: row.proveedor, Estado: row.estado, Observaciones: row.observaciones }
     case "operadoras":
-      return { OperadoraID: row.operadora_id, Nombre: row.nombre, Sucursal: row.sucursal, Estado: row.estado, Notas: row.notas }
+      return { OperadoraID: row.operadora_id, Nombre: toUpperField(row.nombre), Sucursal: row.sucursal, Estado: row.estado, Notas: row.notas }
     case "lecturas_semanales":
-      return { LecturaID: row.lectura_id, FechaSemana: row.fecha_semana, EquipoID: row.equipo_id, Sucursal: row.sucursal, Cabina: row.cabina, OperadoraID: row.operadora_id, LecturaInicial: row.lectura_inicial, LecturaFinal: row.lectura_final, DiferenciaReal: row.diferencia_real, Observaciones: row.observaciones }
+      return { LecturaID: row.lectura_id, FechaSemana: row.fecha_semana, EquipoID: row.equipo_id, Sucursal: row.sucursal, Cabina: toUpperField(row.cabina), OperadoraID: row.operadora_id, LecturaInicial: row.lectura_inicial, LecturaFinal: row.lectura_final, DiferenciaReal: row.diferencia_real, Observaciones: row.observaciones }
     case "sesiones_cliente":
       return {
-        SesionID: row.sesion_id, Fecha: row.fecha, Sucursal: row.sucursal, Cabina: row.cabina,
+        SesionID: row.sesion_id, Fecha: row.fecha, Sucursal: row.sucursal, Cabina: toUpperField(row.cabina),
         OperadoraID: row.operadora_id, Cliente: row.cliente, AreaTrabajada: row.area_trabajada,
         DisparosReportados: row.disparos_reportados, Duracion: row.duracion, EquipoID: row.equipo_id,
         Observaciones: row.observaciones,
@@ -77,7 +78,7 @@ export function fromDb(entity: string, row: Row): Row {
         Diferencia: row.diferencia, PorcentajeDesviacion: row.porcentaje_desviacion,
         Alerta: row.alerta, Observaciones: row.observaciones,
         // Campos agregados por 010_pulse_cuadre_semanal_auditoria.sql
-        Cabina: row.cabina, SemanaFin: row.semana_fin,
+        Cabina: toUpperField(row.cabina), SemanaFin: row.semana_fin,
         LecturaInicial: row.lectura_inicial, LecturaFinal: row.lectura_final,
         CreadoPor: row.creado_por, ArchivoExcel: row.archivo_excel,
         FotosCount: row.fotos_count, Fuente: row.fuente,

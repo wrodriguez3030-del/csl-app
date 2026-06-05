@@ -13,6 +13,8 @@
  * Helper agnóstico de React/store — usado por components/pulsos-cuadre-semanal-page.tsx.
  */
 
+import { toUpperField } from "@/lib/normalize-fields"
+
 // ─── Tipos públicos ──────────────────────────────────────────────────────────
 
 export interface ParsedLecturaRow {
@@ -208,8 +210,8 @@ export function parseLecturasWorkbook(wb: WorkbookLike, xlsx: XlsxUtilsLike): Pa
     if (!row || row.every((c) => c === "" || c === null || c === undefined)) continue
 
     const sucResult = normalizeSucursalFromLecturas(row[map.sucursal])
-    const cabina = normalizeCabina(row[map.cabina])
-    const operador = map.operador !== -1 ? normalizeOperador(row[map.operador]) : ""
+    const cabina = toUpperField(normalizeCabina(row[map.cabina]))
+    const operador = toUpperField(map.operador !== -1 ? normalizeOperador(row[map.operador]) : "")
     const equipo = normalizeEquipo(row[map.equipo])
     const serial = map.serial !== -1 ? normalizeText(row[map.serial]) : ""
     const lecturaRawCell = row[map.lectura]

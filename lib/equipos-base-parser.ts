@@ -13,6 +13,8 @@
  * Helper agnóstico de UI/store.
  */
 
+import { toUpperField } from "@/lib/normalize-fields"
+
 // ─── Tipos públicos ──────────────────────────────────────────────────────────
 
 export interface ParsedEquipoBaseRow {
@@ -174,8 +176,8 @@ export function parseEquiposBaseWorkbook(wb: WorkbookLike, xlsx: XlsxUtilsLike):
     if (!row || row.every((c) => c === "" || c === null || c === undefined)) continue
 
     const sucResult = normalizeSucursalFromBase(row[map.sucursal])
-    const cabina = map.cabina !== -1 ? normalizeCabina(row[map.cabina]) : ""
-    const operadora = map.operadora !== -1 ? normalizeOperadora(row[map.operadora]) : ""
+    const cabina = toUpperField(map.cabina !== -1 ? normalizeCabina(row[map.cabina]) : "")
+    const operadora = toUpperField(map.operadora !== -1 ? normalizeOperadora(row[map.operadora]) : "")
     const equipo = normalizeEquipo(row[map.equipo])
     const serial = map.serial !== -1 ? normalizeText(row[map.serial]) : ""
 

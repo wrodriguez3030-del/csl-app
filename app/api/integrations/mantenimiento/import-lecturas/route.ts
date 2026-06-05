@@ -16,6 +16,7 @@ import { requireAuthenticatedUser, getSupabaseAdmin } from "@/lib/server/supabas
 import { loadBusinessContext } from "@/lib/server/csl-crud"
 import { runWithBusinessContext } from "@/lib/server/business-context"
 import type { MantenimientoEquipoRow } from "@/lib/mantenimiento-dashboard-excel"
+import { toUpperFieldOrNull } from "@/lib/normalize-fields"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -88,8 +89,8 @@ export async function POST(request: Request) {
       const fields: Record<string, unknown> = { ultima_actualizacion_pulsos: now }
       if (row.pulsos > 0) fields.p_cabeza = row.pulsos
       if (row.serie) fields.serie = row.serie
-      if (row.cabina) fields.cabina = row.cabina
-      if (row.operadora) fields.operadora = row.operadora
+      if (row.cabina) fields.cabina = toUpperFieldOrNull(row.cabina)
+      if (row.operadora) fields.operadora = toUpperFieldOrNull(row.operadora)
       if (row.fallasRaw !== undefined) fields.fallas_recientes = row.fallasRaw || null
       if (periodoFin) fields.ultima_semana_pulsos = periodoFin
 
@@ -111,8 +112,8 @@ export async function POST(request: Request) {
         equipo_id:       row.equipoId,
         serie:           row.serie || null,
         sucursal:        row.sucursal || null,
-        cabina:          row.cabina || null,
-        operadora:       row.operadora || null,
+        cabina:          toUpperFieldOrNull(row.cabina),
+        operadora:       toUpperFieldOrNull(row.operadora),
         lectura_final:   row.pulsos || null,
         estado:          row.estadoExcel || null,
         fallas:          row.fallasRaw || null,
