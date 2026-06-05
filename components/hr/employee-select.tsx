@@ -29,9 +29,12 @@ export interface EmployeeOption {
   puesto: string
   sucursal: string
   sueldo: number
+  /** Fecha de ingreso laboral (YYYY-MM-DD). "" si el empleado no la tiene. */
+  fecha_ingreso: string
 }
 
 const str = (v: unknown) => (v == null ? "" : String(v))
+const firstStr = (...vals: unknown[]) => { for (const v of vals) { const s = v == null ? "" : String(v).trim(); if (s) return s } return "" }
 
 function toOption(r: Record<string, unknown>): EmployeeOption {
   const nombre = `${str(r.Nombre ?? r.nombre)} ${str(r.Apellido ?? r.apellido)}`.replace(/\s+/g, " ").trim()
@@ -40,9 +43,11 @@ function toOption(r: Record<string, unknown>): EmployeeOption {
     empleado_id: id,
     nombre: nombre || id,
     cedula: str(r.Cedula ?? r.cedula),
-    puesto: str(r.PuestoSolicitado ?? r.Puesto ?? r.puesto),
-    sucursal: str(r.Sucursal ?? r.sucursal),
+    puesto: firstStr(r.PuestoSolicitado, r.puesto_solicitado, r.Puesto, r.puesto),
+    sucursal: firstStr(r.Sucursal, r.sucursal),
     sueldo: Number(r.Salario ?? r.salario ?? r.sueldo_mensual ?? 0) || 0,
+    // Fecha de ingreso laboral — fuente oficial: empleado; fallback solicitud aprobada.
+    fecha_ingreso: firstStr(r.fechaIngresoLaboral, r.FechaIngresoLaboral, r.fecha_ingreso, r.fecha_ingreso_laboral, r.ingreso_laboral, r.start_date, r.fechaIngreso, r.FechaSolicitud, r.fecha_solicitud),
   }
 }
 

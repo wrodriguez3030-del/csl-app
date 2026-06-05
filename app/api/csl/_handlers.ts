@@ -241,6 +241,27 @@ async function diasDesdeAsistencia(businessId: string, employeeId: string, desde
 function diasVacacionesRD(anios: number): number {
   return anios >= 5 ? 18 : anios >= 1 ? 14 : 0
 }
+/**
+ * Meses trabajados dentro de un año (para doble sueldo / salario de Navidad).
+ * Desde el mes de ingreso (si ingresó ese año) hasta diciembre, o hasta el mes
+ * de salida si existe. Año completo = 12.
+ */
+function mesesTrabajadosAnio(fechaIngreso: string, anio: number, fechaSalida?: string): number {
+  if (!fechaIngreso) return 12
+  const ing = new Date(fechaIngreso)
+  if (Number.isNaN(ing.getTime())) return 12
+  if (ing.getUTCFullYear() > anio) return 0
+  const startMonth = ing.getUTCFullYear() === anio ? ing.getUTCMonth() + 1 : 1
+  let endMonth = 12
+  if (fechaSalida) {
+    const sal = new Date(fechaSalida)
+    if (!Number.isNaN(sal.getTime())) {
+      if (sal.getUTCFullYear() < anio) return 0
+      if (sal.getUTCFullYear() === anio) endMonth = sal.getUTCMonth() + 1
+    }
+  }
+  return Math.max(0, Math.min(12, endMonth - startMonth + 1))
+}
 /** Antigüedad en años (decimal) entre fecha de ingreso y una fecha de referencia. */
 function antiguedadAnios(fechaIngreso: string, ref: Date): number {
   if (!fechaIngreso) return 0
@@ -1473,6 +1494,26 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
       return { ok: true, records: data || [] }
     }
+    case "getHrDobleSugerido": {
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const employeeId = textValue(params, "employee_id")
+      if (!employeeId) throw new Error("employee_id obligatorio")
+      const anio = Math.round(numberValue(params, "anio") || new Date().getFullYear())
+      const fechaSalida = textValue(params, "fecha_salida")
+      const info = await vacEmpInfo(businessId, employeeId)
+      const sueldoMensual = info.salario > 0 ? round2(info.salario) : round2(await salarioVigente(businessId, employeeId))
+      const meses = info.fecha_ingreso ? mesesTrabajadosAnio(info.fecha_ingreso, anio, fechaSalida) : 12
+      return {
+        ok: true,
+        employee_nombre: info.nombre || employeeId,
+        cedula: info.cedula, puesto: info.puesto, sucursal: info.sucursal,
+        fecha_ingreso: info.fecha_ingreso,
+        sueldo_mensual: sueldoMensual,
+        antiguedad_anios: round2(antiguedadAnios(info.fecha_ingreso, new Date())),
+        meses_trabajados: meses, completo: meses >= 12,
+      }
+    }
     case "saveHrChristmasBonus": {
       const record = parsePayload(params)
       const businessId = effectiveBusinessId()
@@ -1481,7 +1522,10 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (!employeeId) throw new Error("Empleado obligatorio")
       const anio = Math.round(numberFrom(record, "anio") || new Date().getFullYear())
       const sb = getSupabaseAdmin()
-      const sueldoMensual = round2(await salarioVigente(businessId, employeeId))
+      // Sueldo del formulario (empleado real) si viene; si no, salario vigente.
+      const sueldoMensual = record.sueldo_mensual != null && Number(record.sueldo_mensual) > 0
+        ? round2(numberFrom(record, "sueldo_mensual"))
+        : round2(await salarioVigente(businessId, employeeId))
       const proporcional = Boolean(record.proporcional)
       const meses = proporcional ? Math.min(12, Math.max(0, numberFrom(record, "meses") || 12)) : 12
       const monto = round2(proporcional ? sueldoMensual * meses / 12 : sueldoMensual)
@@ -1587,13 +1631,19 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const employeeId = textValue(params, "employee_id")
       if (!employeeId) throw new Error("employee_id obligatorio")
       const motivo = textValue(params, "motivo") || "desahucio"
-      const fechaIngreso = textValue(params, "fecha_ingreso")
+      const info = await vacEmpInfo(businessId, employeeId)
+      // Fecha de ingreso laboral: la oficial del empleado; el param solo si se editó.
+      const fechaIngreso = textValue(params, "fecha_ingreso") || info.fecha_ingreso
       const fechaSalida = textValue(params, "fecha_salida") || new Date().toISOString().slice(0, 10)
-      const mensual = round2(await salarioVigente(businessId, employeeId))
+      const mensualParam = numberValue(params, "sueldo_mensual")
+      const mensual = mensualParam > 0 ? round2(mensualParam) : (info.salario > 0 ? round2(info.salario) : round2(await salarioVigente(businessId, employeeId)))
       const calc = computeSeverance(motivo, fechaIngreso, fechaSalida, mensual)
-      const { data: emp } = await getSupabaseAdmin().from("csl_empleados").select("nombre, apellido").eq("business_id", businessId).eq("empleado_id", employeeId).maybeSingle()
-      const e = emp as { nombre?: string; apellido?: string } | null
-      return { ok: true, employee_nombre: e ? `${e.nombre ?? ""} ${e.apellido ?? ""}`.trim() : employeeId, sueldo_mensual: mensual, ...calc }
+      return {
+        ok: true,
+        employee_nombre: info.nombre || employeeId,
+        cedula: info.cedula, puesto: info.puesto, sucursal: info.sucursal,
+        fecha_ingreso: fechaIngreso, sueldo_mensual: mensual, ...calc,
+      }
     }
     case "saveHrSeverance": {
       const record = parsePayload(params)

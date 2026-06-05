@@ -11,9 +11,10 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Scale, Plus, Pencil, Trash2, Save, X, Loader2, Calculator, Printer, AlertTriangle } from "lucide-react"
+import { Scale, Plus, Pencil, Trash2, Save, X, Loader2, Calculator, Printer, AlertTriangle, FileSpreadsheet } from "lucide-react"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { getBusinessBranding } from "@/lib/business"
+import { exportHrReportExcel } from "@/lib/hr-report-excel"
 
 interface Severance {
   id: string; employee_id: string; employee_nombre: string | null; motivo: string
@@ -41,6 +42,18 @@ const STATUS_CLASS: Record<string, string> = {
 }
 const rd = (n: number) => `RD$ ${(Number(n) || 0).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100
+const pick = (...vals: unknown[]) => { for (const v of vals) { const s = v == null ? "" : String(v).trim(); if (s) return s } return "" }
+interface Emp { id: string; nombre: string; cedula: string; puesto: string; sucursal: string; sueldo: number; fecha_ingreso: string }
+function toEmp(r: Record<string, unknown>): Emp {
+  return {
+    id: pick(r.SolicitudID, r.empleado_id, r.EmpleadoID, r.id),
+    nombre: `${pick(r.Nombre, r.nombre)} ${pick(r.Apellido, r.apellido)}`.replace(/\s+/g, " ").trim() || pick(r.SolicitudID, r.empleado_id),
+    cedula: pick(r.Cedula, r.cedula), puesto: pick(r.PuestoSolicitado, r.puesto_solicitado, r.Puesto, r.puesto),
+    sucursal: pick(r.Sucursal, r.sucursal),
+    fecha_ingreso: pick(r.fechaIngresoLaboral, r.FechaIngresoLaboral, r.fecha_ingreso, r.start_date, r.fechaIngreso, r.FechaSolicitud, r.fecha_solicitud),
+    sueldo: Number(r.Salario ?? r.salario ?? 0) || 0,
+  }
+}
 
 function emptyForm(): Partial<Severance> {
   return { motivo: "desahucio", fecha_salida: new Date().toISOString().slice(0, 10), status: "borrador",
@@ -51,6 +64,7 @@ export function RrhhLiquidacionesPage() {
   const { apiUrl, showToast } = useAppStore()
   const business = useCurrentBusiness()
   const [records, setRecords] = useState<Severance[]>([])
+  const [empMap, setEmpMap] = useState<Record<string, Emp>>({})
   const [tableMissing, setTableMissing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<Partial<Severance> | null>(null)
@@ -63,8 +77,14 @@ export function RrhhLiquidacionesPage() {
   const reload = async () => {
     setLoading(true)
     try {
-      const res = await call({ action: "getHrSeverance" }) as { ok?: boolean; records?: Severance[]; tableMissing?: boolean }
-      setTableMissing(Boolean(res?.tableMissing)); setRecords(res?.records ?? [])
+      const [sev, emp] = await Promise.all([
+        call({ action: "getHrSeverance" }) as Promise<{ ok?: boolean; records?: Severance[]; tableMissing?: boolean }>,
+        call({ action: "getEmpleados" }) as Promise<{ ok?: boolean; records?: Record<string, unknown>[] }>,
+      ])
+      setTableMissing(Boolean(sev?.tableMissing)); setRecords(sev?.records ?? [])
+      const map: Record<string, Emp> = {}
+      for (const r of (emp?.records ?? [])) { const e = toEmp(r); if (e.id) map[e.id] = e }
+      setEmpMap(map)
     } catch (err) { showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error") } finally { setLoading(false) }
   }
   useEffect(() => { reload() }, [])
@@ -78,23 +98,45 @@ export function RrhhLiquidacionesPage() {
 
   const totalCalc = editing ? round2(Number(editing.preaviso_monto || 0) + Number(editing.cesantia_monto || 0) + Number(editing.vacaciones_monto || 0) + Number(editing.navidad_monto || 0) + Number(editing.salario_pendiente || 0) + Number(editing.otros_ingresos || 0) - Number(editing.descuentos || 0)) : 0
 
-  const calcular = async () => {
-    if (!editing?.employee_id?.trim()) { showToast("Ingresa el ID del empleado", "error"); return }
+  const calcular = async (overrideEmpId?: string) => {
+    const empId = (overrideEmpId || editing?.employee_id || "").trim()
+    if (!empId) { showToast("Selecciona el empleado", "error"); return }
     setCalcing(true)
     try {
-      const res = await call({ action: "getHrSeveranceSuggestion", employee_id: editing.employee_id.trim(), motivo: editing.motivo || "desahucio", fecha_ingreso: editing.fecha_ingreso || "", fecha_salida: editing.fecha_salida || "" }) as
-        { ok?: boolean; employee_nombre?: string; sueldo_mensual?: number; anios_servicio?: number; salario_diario?: number; preaviso_dias?: number; preaviso_monto?: number; cesantia_dias?: number; cesantia_monto?: number; vacaciones_monto?: number; navidad_monto?: number; error?: string }
+      const res = await call({ action: "getHrSeveranceSuggestion", employee_id: empId, motivo: editing?.motivo || "desahucio", fecha_ingreso: editing?.fecha_ingreso || "", fecha_salida: editing?.fecha_salida || "" }) as
+        { ok?: boolean; employee_nombre?: string; fecha_ingreso?: string; sueldo_mensual?: number; anios_servicio?: number; salario_diario?: number; preaviso_dias?: number; preaviso_monto?: number; cesantia_dias?: number; cesantia_monto?: number; vacaciones_monto?: number; navidad_monto?: number; error?: string }
       if (!res?.ok) { showToast(`Error: ${res?.error || "no se pudo calcular"}`, "error"); return }
       setEditing(prev => prev ? {
         ...prev,
         employee_nombre: res.employee_nombre ?? prev.employee_nombre,
+        fecha_ingreso: res.fecha_ingreso || prev.fecha_ingreso,
         sueldo_mensual: res.sueldo_mensual, anios_servicio: res.anios_servicio, salario_diario: res.salario_diario,
         preaviso_dias: res.preaviso_dias, preaviso_monto: res.preaviso_monto,
         cesantia_dias: res.cesantia_dias, cesantia_monto: res.cesantia_monto,
         vacaciones_monto: res.vacaciones_monto, navidad_monto: res.navidad_monto,
       } : prev)
-      showToast("Cálculo referencial aplicado. Revisa y ajusta los montos.", "success")
+      if (!res.fecha_ingreso) showToast("Este empleado no tiene fecha de ingreso laboral registrada.", "error")
+      else showToast(`Ingreso ${res.fecha_ingreso} · ${res.anios_servicio} año(s). Revisa y ajusta los montos.`, "success")
     } catch (err) { showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error") } finally { setCalcing(false) }
+  }
+
+  const exportExcel = () => {
+    const headers = ["No.", "Empleado", "Cédula", "Puesto", "Sucursal", "Fecha ingreso", "Antigüedad", "Sueldo mensual", "Sueldo diario", "Motivo", "Total", "Estado", "Observaciones"]
+    const rows = records.map((r, i) => {
+      const e = empMap[r.employee_id]
+      return [
+        i + 1, r.employee_nombre || e?.nombre || r.employee_id, pick(e?.cedula), pick(e?.puesto), pick(e?.sucursal),
+        pick(r.fecha_ingreso, e?.fecha_ingreso), `${r.anios_servicio} años`, rd(r.sueldo_mensual), rd(r.salario_diario),
+        MOTIVOS[r.motivo] || r.motivo, rd(r.total), r.status, r.observations || "",
+      ]
+    })
+    const totalMonto = records.reduce((s, r) => s + (Number(r.total) || 0), 0)
+    exportHrReportExcel(business, {
+      title: "Reporte de Prestaciones / Liquidaciones RD", headers, rows,
+      footer: ["", "Empleados: " + records.length, "", "", "", "", "", "", "", "TOTAL", rd(totalMonto), "", ""],
+      filename: `Prestaciones_${new Date().toISOString().slice(0, 10)}.xls`,
+    })
+    showToast(`Excel generado (${rows.length} fila(s))`, "success")
   }
 
   const buildPayload = (r: Partial<Severance>): Record<string, string | number> => {
@@ -186,7 +228,10 @@ ${fila("Otros ingresos", r.otros_ingresos)}
             <p className="mt-1 text-sm text-muted-foreground">Cálculo referencial de prestaciones laborales (desahucio, cesantía, preaviso, vacaciones, Navidad).</p>
           </div>
         </div>
-        <Button onClick={() => setEditing(emptyForm())} className="shrink-0"><Plus className="w-4 h-4 mr-1" />Nueva liquidación</Button>
+        <div className="flex gap-2 shrink-0">
+          <Button variant="outline" onClick={exportExcel}><FileSpreadsheet className="w-4 h-4 mr-1" />Exportar Excel</Button>
+          <Button onClick={() => setEditing(emptyForm())}><Plus className="w-4 h-4 mr-1" />Nueva liquidación</Button>
+        </div>
       </div>
 
       <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start gap-2">
@@ -252,7 +297,13 @@ ${fila("Otros ingresos", r.otros_ingresos)}
           {editing && (
             <div className="space-y-3 py-2">
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1 col-span-2"><Label className="text-xs">Empleado *</Label><EmployeeSelect value={editing.employee_id} onSelect={emp => setEditing({ ...editing, employee_id: emp?.empleado_id || "", employee_nombre: emp?.nombre || "", sueldo_mensual: emp?.sueldo || editing.sueldo_mensual || 0 })} /></div>
+                <div className="space-y-1 col-span-2"><Label className="text-xs">Empleado *</Label>
+                  <EmployeeSelect value={editing.employee_id} onSelect={emp => {
+                    if (!emp) { setEditing({ ...editing, employee_id: "" }); return }
+                    setEditing(prev => prev ? { ...prev, employee_id: emp.empleado_id, employee_nombre: emp.nombre, sueldo_mensual: emp.sueldo || prev.sueldo_mensual, fecha_ingreso: emp.fecha_ingreso || prev.fecha_ingreso } : prev)
+                    if (!emp.fecha_ingreso) showToast("Este empleado no tiene fecha de ingreso laboral registrada.", "error")
+                    calcular(emp.empleado_id)
+                  }} /></div>
                 <div className="space-y-1">
                   <Label className="text-xs">Motivo</Label>
                   <Select value={editing.motivo || "desahucio"} onValueChange={v => setEditing({ ...editing, motivo: v })}>
@@ -263,7 +314,7 @@ ${fila("Otros ingresos", r.otros_ingresos)}
                 <div className="space-y-1"><Label className="text-xs">Fecha ingreso</Label><Input type="date" value={editing.fecha_ingreso || ""} onChange={e => setEditing({ ...editing, fecha_ingreso: e.target.value })} /></div>
                 <div className="space-y-1"><Label className="text-xs">Fecha salida</Label><Input type="date" value={editing.fecha_salida || ""} onChange={e => setEditing({ ...editing, fecha_salida: e.target.value })} /></div>
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={calcular} disabled={calcing}>
+              <Button type="button" variant="outline" size="sm" onClick={() => calcular()} disabled={calcing}>
                 {calcing ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Calculator className="w-4 h-4 mr-1" />}Calcular referencial
               </Button>
               <div className="grid grid-cols-2 gap-2">
