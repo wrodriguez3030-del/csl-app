@@ -46,7 +46,7 @@ export function RrhhOnboardingPage() {
     addLabel="Nuevo onboarding" defaults={{ estado: "en_progreso", checklist: {} }} statusKey="estado" statusClass={ESTADO_CLASS}
     columns={[{ key: "employee_nombre", label: "Empleado" }, { key: "employee_id", label: "ID" }, { key: "estado", label: "Estado", kind: "badge" }]}
     fields={[
-      { key: "employee_id", label: "ID Empleado", required: true }, { key: "employee_nombre", label: "Nombre" },
+      { key: "employee_id", label: "Empleado", required: true, type: "employee", full: true },
       { key: "checklist", label: "Checklist de ingreso", type: "checklist", items: [
         { key: "cedula", label: "Cédula recibida" }, { key: "contrato", label: "Contrato firmado" },
         { key: "cuenta_banco", label: "Cuenta bancaria" }, { key: "uniforme", label: "Uniforme" },
@@ -65,7 +65,7 @@ export function RrhhEvaluacionPage() {
     addLabel="Nueva evaluación" defaults={{ estado: "borrador" }} statusKey="estado" statusClass={ESTADO_CLASS}
     columns={[{ key: "employee_nombre", label: "Empleado" }, { key: "periodo", label: "Período" }, { key: "puntaje", label: "Puntaje" }, { key: "estado", label: "Estado", kind: "badge" }]}
     fields={[
-      { key: "employee_id", label: "ID Empleado", required: true }, { key: "employee_nombre", label: "Nombre" },
+      { key: "employee_id", label: "Empleado", required: true, type: "employee", full: true },
       { key: "periodo", label: "Período" }, { key: "puntaje", label: "Puntaje (0-100)", type: "number" },
       { key: "comentarios", label: "Comentarios", type: "textarea" }, { key: "plan_mejora", label: "Plan de mejora", type: "textarea" },
       { key: "estado", label: "Estado", type: "select", options: ["borrador", "finalizada"] },
@@ -79,7 +79,7 @@ export function RrhhDisciplinaPage() {
     addLabel="Nuevo registro" defaults={{ tipo: "amonestacion_verbal", estado: "borrador" }} statusKey="estado" statusClass={ESTADO_CLASS}
     columns={[{ key: "employee_nombre", label: "Empleado" }, { key: "tipo", label: "Tipo" }, { key: "fecha", label: "Fecha", kind: "date" }, { key: "estado", label: "Estado", kind: "badge" }]}
     fields={[
-      { key: "employee_id", label: "ID Empleado", required: true }, { key: "employee_nombre", label: "Nombre" },
+      { key: "employee_id", label: "Empleado", required: true, type: "employee", full: true },
       { key: "tipo", label: "Tipo", type: "select", options: ["amonestacion_verbal", "amonestacion_escrita", "suspension", "incidencia"] },
       { key: "fecha", label: "Fecha", type: "date" },
       { key: "descripcion", label: "Descripción", type: "textarea" }, { key: "evidencia_url", label: "Evidencia (URL)" },
@@ -95,7 +95,7 @@ export function RrhhCapacitacionPage() {
     columns={[{ key: "employee_nombre", label: "Empleado" }, { key: "curso", label: "Curso" }, { key: "tipo", label: "Tipo" }, { key: "estado", label: "Estado", kind: "badge" }]}
     fields={[
       { key: "curso", label: "Curso", required: true, full: true },
-      { key: "employee_id", label: "ID Empleado" }, { key: "employee_nombre", label: "Nombre" },
+      { key: "employee_id", label: "Empleado", type: "employee", full: true },
       { key: "tipo", label: "Tipo", type: "select", options: ["interno", "externo"] },
       { key: "fecha_objetivo", label: "Fecha objetivo", type: "date" }, { key: "vencimiento", label: "Vencimiento", type: "date" },
       { key: "certificado_url", label: "Certificado (URL)" },

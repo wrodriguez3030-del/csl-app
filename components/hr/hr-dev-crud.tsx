@@ -5,6 +5,7 @@ import { apiCall, normalizeApiUrl, useAppStore } from "@/lib/store"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { EmployeeSelect } from "@/components/hr/employee-select"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -14,7 +15,7 @@ import { Plus, Pencil, Trash2, Save, X, Loader2, AlertCircle } from "lucide-reac
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 
 type Row = Record<string, unknown>
-export interface FieldDef { key: string; label: string; type?: "text" | "number" | "date" | "select" | "textarea" | "checklist"; options?: string[]; items?: { key: string; label: string }[]; required?: boolean; full?: boolean }
+export interface FieldDef { key: string; label: string; type?: "text" | "number" | "date" | "select" | "textarea" | "checklist" | "employee"; options?: string[]; items?: { key: string; label: string }[]; required?: boolean; full?: boolean }
 export interface ColDef { key: string; label: string; kind?: "text" | "badge" | "date" }
 
 export interface HrDevCrudProps {
@@ -157,7 +158,9 @@ export function HrDevCrud(props: HrDevCrudProps) {
               {props.fields.map(f => (
                 <div key={f.key} className={`space-y-1 ${f.full || f.type === "textarea" || f.type === "checklist" ? "col-span-2" : ""}`}>
                   <Label className="text-xs">{f.label}{f.required ? " *" : ""}</Label>
-                  {f.type === "select" ? (
+                  {f.type === "employee" ? (
+                    <EmployeeSelect value={String(editing[f.key] ?? "")} onSelect={emp => setEditing({ ...editing, [f.key]: emp?.empleado_id ?? "", employee_nombre: emp?.nombre ?? "" })} />
+                  ) : f.type === "select" ? (
                     <Select value={String(editing[f.key] ?? f.options?.[0] ?? "")} onValueChange={v => setEditing({ ...editing, [f.key]: v })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>{(f.options || []).map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>

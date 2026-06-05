@@ -5,6 +5,7 @@ import { apiCall, normalizeApiUrl, useAppStore } from "@/lib/store"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { EmployeeSelect } from "@/components/hr/employee-select"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -108,7 +109,7 @@ export function RrhhAsistenciaPage() {
       <div className="flex flex-wrap gap-3 items-end">
         <div><Label className="text-xs">Desde</Label><Input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="h-8" /></div>
         <div><Label className="text-xs">Hasta</Label><Input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="h-8" /></div>
-        <div><Label className="text-xs">Empleado</Label><Input value={empFilter} onChange={e => setEmpFilter(e.target.value)} placeholder="ID empleado" className="h-8 w-40" /></div>
+        <div className="w-56"><Label className="text-xs">Empleado</Label><div className="flex items-center gap-1"><EmployeeSelect value={empFilter} onSelect={emp => setEmpFilter(emp?.empleado_id || "")} placeholder="Todos" />{empFilter && <button type="button" className="text-xs text-muted-foreground underline shrink-0" onClick={() => setEmpFilter("")}>limpiar</button>}</div></div>
         <Button onClick={reload} disabled={loading} className="h-8"><RefreshCw className={`w-4 h-4 mr-1 ${loading ? "animate-spin" : ""}`} />Aplicar</Button>
       </div>
 

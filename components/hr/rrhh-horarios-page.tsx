@@ -5,6 +5,7 @@ import { apiCall, normalizeApiUrl, useAppStore } from "@/lib/store"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { EmployeeSelect } from "@/components/hr/employee-select"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -344,8 +345,8 @@ export function RrhhHorariosPage() {
           {assigning && (
             <div className="space-y-3 py-2">
               <div className="space-y-1">
-                <Label className="text-xs">ID Empleado *</Label>
-                <Input value={assigning.employee_id || ""} onChange={e => setAssigning({ ...assigning, employee_id: e.target.value })} placeholder="EMP-001" />
+                <Label className="text-xs">Empleado *</Label>
+                <EmployeeSelect value={assigning.employee_id} onSelect={emp => setAssigning({ ...assigning, employee_id: emp?.empleado_id || "", sucursal: emp?.sucursal || assigning.sucursal || "" })} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Horario *</Label>

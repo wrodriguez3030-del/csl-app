@@ -5,6 +5,7 @@ import { apiCall, normalizeApiUrl, useAppStore } from "@/lib/store"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { EmployeeSelect } from "@/components/hr/employee-select"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -251,7 +252,7 @@ ${fila("Otros ingresos", r.otros_ingresos)}
           {editing && (
             <div className="space-y-3 py-2">
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1 col-span-2"><Label className="text-xs">ID Empleado *</Label><Input value={editing.employee_id || ""} onChange={e => setEditing({ ...editing, employee_id: e.target.value })} placeholder="sol_... o EMP-001" /></div>
+                <div className="space-y-1 col-span-2"><Label className="text-xs">Empleado *</Label><EmployeeSelect value={editing.employee_id} onSelect={emp => setEditing({ ...editing, employee_id: emp?.empleado_id || "", employee_nombre: emp?.nombre || "", sueldo_mensual: emp?.sueldo || editing.sueldo_mensual || 0 })} /></div>
                 <div className="space-y-1">
                   <Label className="text-xs">Motivo</Label>
                   <Select value={editing.motivo || "desahucio"} onValueChange={v => setEditing({ ...editing, motivo: v })}>

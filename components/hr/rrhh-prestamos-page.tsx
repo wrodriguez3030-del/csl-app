@@ -5,6 +5,7 @@ import { apiCall, normalizeApiUrl, useAppStore } from "@/lib/store"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { EmployeeSelect } from "@/components/hr/employee-select"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -235,7 +236,7 @@ export function RrhhPrestamosPage() {
           <DialogHeader><DialogTitle>{editing?.id ? "Editar préstamo" : "Nuevo préstamo"}</DialogTitle></DialogHeader>
           {editing && (
             <div className="space-y-3 py-2">
-              <div className="space-y-1"><Label className="text-xs">ID Empleado *</Label><Input value={editing.employee_id || ""} onChange={e => setEditing({ ...editing, employee_id: e.target.value })} placeholder="sol_... o EMP-001" /></div>
+              <div className="space-y-1"><Label className="text-xs">Empleado *</Label><EmployeeSelect value={editing.employee_id} onSelect={emp => setEditing({ ...editing, employee_id: emp?.empleado_id || "", employee_nombre: emp?.nombre || "" })} /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1"><Label className="text-xs">Monto principal (RD$) *</Label><Input type="number" step="0.01" value={editing.principal ?? 0} onChange={e => setEditing({ ...editing, principal: Number(e.target.value) })} /></div>
                 <div className="space-y-1"><Label className="text-xs">Cuotas</Label><Input type="number" min="1" value={editing.cuotas ?? 1} onChange={e => setEditing({ ...editing, cuotas: Number(e.target.value) })} /></div>

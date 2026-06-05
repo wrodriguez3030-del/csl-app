@@ -5,6 +5,7 @@ import { apiCall, normalizeApiUrl, useAppStore } from "@/lib/store"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { EmployeeSelect } from "@/components/hr/employee-select"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -206,7 +207,7 @@ export function RrhhPonchePage() {
           <DialogHeader><DialogTitle>Marca manual (corrección)</DialogTitle></DialogHeader>
           {correction && (
             <div className="space-y-3 py-2">
-              <div className="space-y-1"><Label className="text-xs">ID Empleado *</Label><Input value={correction.employee_id || ""} onChange={e => setCorrection({ ...correction, employee_id: e.target.value })} placeholder="EMP-001" /></div>
+              <div className="space-y-1"><Label className="text-xs">Empleado *</Label><EmployeeSelect value={correction.employee_id} onSelect={emp => setCorrection({ ...correction, employee_id: emp?.empleado_id || "" })} /></div>
               <div className="space-y-1">
                 <Label className="text-xs">Tipo *</Label>
                 <Select value={correction.type || "entrada"} onValueChange={v => setCorrection({ ...correction, type: v })}>
@@ -234,7 +235,7 @@ export function RrhhPonchePage() {
           <DialogHeader><DialogTitle>PIN de empleado</DialogTitle></DialogHeader>
           {pinDialog && (
             <div className="space-y-3 py-2">
-              <div className="space-y-1"><Label className="text-xs">ID Empleado *</Label><Input value={pinDialog.employee_id} onChange={e => setPinDialog({ ...pinDialog, employee_id: e.target.value })} placeholder="EMP-001" /></div>
+              <div className="space-y-1"><Label className="text-xs">Empleado *</Label><EmployeeSelect value={pinDialog.employee_id} onSelect={emp => setPinDialog({ ...pinDialog, employee_id: emp?.empleado_id || "" })} /></div>
               <div className="space-y-1"><Label className="text-xs">PIN (4-6 dígitos · vacío para quitar)</Label><Input value={pinDialog.pin} inputMode="numeric" onChange={e => setPinDialog({ ...pinDialog, pin: e.target.value.replace(/\D/g, "").slice(0, 6) })} placeholder="1234" /></div>
               <p className="text-xs text-muted-foreground">El PIN se guarda cifrado (hash). Sirve para que el empleado marque en el modo kiosco.</p>
             </div>
