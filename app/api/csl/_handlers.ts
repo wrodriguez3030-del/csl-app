@@ -41,7 +41,8 @@ import {
   CONSENT_LIST_COLS,
 } from "@/lib/server/csl-crud"
 import { runWithBusinessContext, applyActiveBusiness, getBusinessContext } from "@/lib/server/business-context"
-import { createHash } from "node:crypto"
+import { createHash, randomBytes } from "node:crypto"
+import { haversineMeters } from "@/lib/hr-geo"
 import { makeAgendaMatchKey } from "@/lib/normalize-pulse"
 import { toUpperField, toUpperFieldOrNull } from "@/lib/normalize-fields"
 import {
@@ -637,6 +638,178 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const { error } = await q
       if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
       return { ok: true }
+    }
+
+    // ── HR · Ponche QR + geocerca + dispositivos autorizados ─────────────
+    case "getHrEmployeeQr": {
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const employeeId = textValue(params, "employee_id")
+      if (!employeeId) throw new Error("employee_id obligatorio")
+      const regenerate = textValue(params, "regenerate") === "true" || params.regenerate === true
+      const sb = getSupabaseAdmin()
+      const { data: existing, error: selErr } = await sb.from("hr_employee_qr_tokens").select("*").eq("business_id", businessId).eq("employee_id", employeeId).maybeSingle()
+      if (selErr && isMissingTable(selErr)) return { ok: false, tableMissing: true, error: "Migración pendiente" }
+      if (!existing || regenerate) {
+        const token = `CSLQR:${randomBytes(24).toString("hex")}`
+        const row = { business_id: businessId, employee_id: employeeId, token, token_hash: hrSha256(token), active: true, regenerated_by: user.id, revoked_at: null, created_at: new Date().toISOString() }
+        const { error } = await sb.from("hr_employee_qr_tokens").upsert(row, { onConflict: "business_id,employee_id" })
+        if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+        await hrAudit(user, "ponche", existing ? "qr_regenerate" : "qr_create", "hr_employee_qr_tokens", employeeId, null, { regenerated: Boolean(existing) })
+        return { ok: true, token, regenerated: Boolean(existing) }
+      }
+      return { ok: true, token: existing.active ? existing.token : null, inactive: !existing.active }
+    }
+    case "resolveHrQr": {
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const qrToken = textValue(params, "qr_token")
+      if (!qrToken) throw new Error("qr_token obligatorio")
+      const { data: qr } = await getSupabaseAdmin().from("hr_employee_qr_tokens").select("employee_id, active").eq("business_id", businessId).eq("token_hash", hrSha256(qrToken)).maybeSingle()
+      const q = qr as { employee_id: string; active: boolean } | null
+      if (!q || !q.active) return { ok: false, error: "QR inválido o regenerado" }
+      const info = await vacEmpInfo(businessId, q.employee_id)
+      return { ok: true, employee_id: q.employee_id, employee_nombre: info.nombre || q.employee_id, cedula: info.cedula, sucursal: info.sucursal }
+    }
+    case "getHrPunchDevices": {
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_punch_devices").select("*").order("created_at", { ascending: false })
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: data || [] }
+    }
+    case "authorizeHrPunchDevice": {
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const token = `CSLDEV:${randomBytes(24).toString("hex")}`
+      const row = {
+        business_id: businessId,
+        sucursal: textFrom(record, "sucursal") || null,
+        device_name: textFrom(record, "device_name") || "Kiosco de ponche",
+        device_token_hash: hrSha256(token),
+        active: true, device_info: textFrom(record, "device_info") || null,
+        last_seen_at: new Date().toISOString(), created_by: user.id,
+        updated_at: new Date().toISOString(),
+      }
+      const { data, error } = await getSupabaseAdmin().from("hr_punch_devices").insert(row).select().single()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+      await hrAudit(user, "ponche", "device_authorize", "hr_punch_devices", String((data as { id: string }).id), null, { sucursal: row.sucursal, device_name: row.device_name })
+      return { ok: true, device_token: token, device: data }
+    }
+    case "setHrPunchDeviceActive": {
+      const id = textValue(params, "id"); if (!id) throw new Error("id obligatorio")
+      const active = textValue(params, "active") === "true" || params.active === true
+      let q = getSupabaseAdmin().from("hr_punch_devices").update({ active, updated_at: new Date().toISOString() }).eq("id", id)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
+      await hrAudit(user, "ponche", active ? "device_enable" : "device_disable", "hr_punch_devices", id, null, null)
+      return { ok: true }
+    }
+    case "deleteHrPunchDevice": {
+      const id = textValue(params, "id"); if (!id) throw new Error("id obligatorio")
+      let q = getSupabaseAdmin().from("hr_punch_devices").delete().eq("id", id)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, tableMissing: true }; throw error }
+      await hrAudit(user, "ponche", "device_delete", "hr_punch_devices", id, null, null)
+      return { ok: true }
+    }
+    case "getHrBranchGeofences": {
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_branch_geofences").select("*").order("sucursal", { ascending: true })
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: data || [] }
+    }
+    case "saveHrBranchGeofence": {
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const sucursal = textFrom(record, "sucursal")
+      if (!sucursal) throw new Error("Sucursal obligatoria")
+      const row = {
+        business_id: businessId, sucursal,
+        latitude: numberFrom(record, "latitude"), longitude: numberFrom(record, "longitude"),
+        radius_meters: Math.max(1, Math.round(numberFrom(record, "radius_meters") || 80)),
+        active: record.active === undefined ? true : Boolean(record.active),
+        updated_at: new Date().toISOString(),
+      }
+      const { data, error } = await getSupabaseAdmin().from("hr_branch_geofences").upsert(row, { onConflict: "business_id,sucursal" }).select().single()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+      await hrAudit(user, "ponche", "geofence_update", "hr_branch_geofences", sucursal, null, row)
+      return { ok: true, record: data }
+    }
+    case "punchByQr": {
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const sb = getSupabaseAdmin()
+      const qrToken = textFrom(record, "qr_token")
+      const deviceToken = textFrom(record, "device_token")
+      const punchType = textFrom(record, "punch_type") || "entrada"
+      const lat = record.latitude != null && record.latitude !== "" ? Number(record.latitude) : null
+      const lng = record.longitude != null && record.longitude !== "" ? Number(record.longitude) : null
+      const deviceInfo = textFrom(record, "device_info") || null
+      const ip = textFrom(record, "ip") || null
+
+      // Resolver dispositivo autorizado.
+      let deviceId: string | null = null, deviceSucursal: string | null = null
+      if (deviceToken) {
+        const { data: dev } = await sb.from("hr_punch_devices").select("*").eq("business_id", businessId).eq("device_token_hash", hrSha256(deviceToken)).maybeSingle()
+        const d = dev as { id: string; active: boolean; sucursal: string | null } | null
+        if (d && d.active) { deviceId = d.id; deviceSucursal = d.sucursal; await sb.from("hr_punch_devices").update({ last_seen_at: new Date().toISOString() }).eq("id", d.id) }
+      }
+      // Resolver empleado por QR.
+      let employeeId = "", inactive = false
+      if (qrToken) {
+        const { data: qr } = await sb.from("hr_employee_qr_tokens").select("*").eq("business_id", businessId).eq("token_hash", hrSha256(qrToken)).maybeSingle()
+        const q = qr as { employee_id: string; active: boolean } | null
+        if (q) { if (q.active) employeeId = q.employee_id; else inactive = true }
+      }
+      const info = employeeId ? await vacEmpInfo(businessId, employeeId) : { nombre: "", cedula: "", puesto: "", sucursal: "", fecha_ingreso: "", salario: 0 }
+      const nombre = info.nombre || employeeId
+      const sucursal = deviceSucursal || info.sucursal || null
+
+      // Validaciones → motivo de rechazo (si aplica).
+      let status = "approved", reason: string | null = null, distance: number | null = null
+      if (!employeeId) { status = "rejected"; reason = inactive ? "QR inactivo: el empleado o su QR fue regenerado" : "QR inválido o no reconocido" }
+      else if (!deviceId) { status = "rejected"; reason = "Dispositivo no autorizado" }
+      else {
+        // Geocerca de la sucursal del dispositivo.
+        const { data: geo } = await sb.from("hr_branch_geofences").select("*").eq("business_id", businessId).eq("sucursal", sucursal || "").maybeSingle()
+        const g = geo as { latitude: number; longitude: number; radius_meters: number; active: boolean } | null
+        if (g && g.active && (Number(g.latitude) !== 0 || Number(g.longitude) !== 0)) {
+          if (lat == null || lng == null) { status = "rejected"; reason = "Ubicación no disponible (activa el GPS y otorga permiso)" }
+          else {
+            distance = haversineMeters(lat, lng, Number(g.latitude), Number(g.longitude))
+            if (distance > Number(g.radius_meters)) { status = "rejected"; reason = `Fuera de la ubicación autorizada (${Math.round(distance)} m > ${g.radius_meters} m)` }
+          }
+        }
+      }
+      // Consistencia básica entrada/salida (solo si va a aprobarse).
+      if (status === "approved") {
+        const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)
+        const { data: lastRows } = await sb.from("hr_punches").select("type").eq("business_id", businessId).eq("employee_id", employeeId).eq("status", "approved").gte("punched_at", dayStart.toISOString()).order("punched_at", { ascending: false }).limit(1)
+        const last = lastRows && lastRows[0] ? String((lastRows[0] as { type: string }).type) : ""
+        if (punchType === "entrada" && last === "entrada") { status = "rejected"; reason = "Ya existe una entrada sin salida (corrige desde el panel)" }
+        else if (punchType === "salida" && (last === "" || last === "salida")) { status = "rejected"; reason = "No hay una entrada previa registrada hoy" }
+      }
+
+      const punchRow: Record<string, unknown> = {
+        business_id: businessId, employee_id: employeeId || "(desconocido)",
+        type: punchType, punched_at: new Date().toISOString(), sucursal,
+        source: "qr_kiosk", is_correction: false,
+        latitude: lat, longitude: lng, distance_meters: distance, device_id: deviceId,
+        status, rejection_reason: reason, ip, device_info: deviceInfo,
+      }
+      const { error: insErr } = await sb.from("hr_punches").insert(punchRow)
+      if (insErr) { if (isMissingTable(insErr)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw insErr }
+      await hrAudit(user, "ponche", status === "approved" ? "punch_qr" : "punch_rejected", "hr_punches", employeeId || null, null, { type: punchType, status, reason, distance })
+      return { ok: status === "approved", status, reason, employee_nombre: nombre, sucursal, distance_meters: distance, type: punchType }
     }
 
     // ── HR · Fase 2 · Asistencia (consolidación on-read) ─────────────────
