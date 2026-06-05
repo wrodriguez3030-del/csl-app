@@ -180,31 +180,67 @@ async function salarioVigente(businessId: string, employeeId: string): Promise<n
  * validar legalmente. salario_diario = mensual/23.83 (mismo del sistema).
  * Preaviso/cesantía solo aplican en desahucio y despido injustificado.
  */
+/**
+ * Salario de Navidad proporcional (art. 219 C.T.): salario ordinario devengado
+ * en el año / 12. Periodo: 1-ene (o ingreso si fue ese año) → fecha de salida.
+ * Devuelve meses y días en el formato del Ministerio (mes = 30 días).
+ */
+function navidadProporcional(ing: Date | null, sal: Date, mensual: number) {
+  const y = sal.getUTCFullYear()
+  const sameYear = ing && !Number.isNaN(ing.getTime()) && ing.getUTCFullYear() === y
+  const startMonth = sameYear ? (ing as Date).getUTCMonth() + 1 : 1
+  const startDay = sameYear ? (ing as Date).getUTCDate() : 1
+  let months = (sal.getUTCMonth() + 1) - startMonth
+  let days = sal.getUTCDate() - startDay + 1 // inclusivo (criterio Ministerio)
+  while (days >= 30) { months += 1; days -= 30 }
+  while (days < 0) { months -= 1; days += 30 }
+  if (months < 0) { months = 0; days = 0 }
+  const fraction = months + days / 30
+  return { meses: months, dias: days, monto: round2(mensual * fraction / 12) }
+}
+
+/**
+ * Cálculo de prestaciones laborales RD (formato Ministerio de Trabajo).
+ * Usa salario diario a precisión completa (mensual/23.83) y redondea solo al
+ * final, para cuadrar con la calculadora oficial.
+ *   - Preaviso (art. 76): >1 año = 28 días.
+ *   - Cesantía (art. 80): 1-5 años = 21 días/año; >5 años = 23 días/año (todos).
+ *   - Vacaciones (art. 177): 1-5 años = 14 días; >=5 años = 18 días.
+ *   - Navidad (art. 219): proporcional al año.
+ */
 function computeSeverance(motivo: string, fechaIngreso: string, fechaSalida: string, mensual: number) {
   const ing = fechaIngreso ? new Date(fechaIngreso) : null
   const sal = fechaSalida ? new Date(fechaSalida) : new Date()
-  const t = ing ? Math.max(0, (sal.getTime() - ing.getTime()) / (365.25 * 24 * 3600 * 1000)) : 0
-  const diario = round2(mensual / HR_DAILY_BASE)
+  const t = ing && !Number.isNaN(ing.getTime()) ? Math.max(0, (sal.getTime() - ing.getTime()) / (365.25 * 24 * 3600 * 1000)) : 0
+  const aniosCompletos = Math.floor(t + 1e-9)
+  const diarioFull = mensual / HR_DAILY_BASE // sin redondear: precisión Ministerio
   const aplicaPreCes = motivo === "desahucio" || motivo === "despido_injustificado"
   let preavisoDias = 0, cesantiaDias = 0
   if (aplicaPreCes) {
     if (t >= 1) preavisoDias = 28
     else if (t >= 0.5) preavisoDias = 14
     else if (t >= 0.25) preavisoDias = 7
-    if (t >= 1) { const cap5 = Math.min(t, 5); const extra = Math.max(0, t - 5); cesantiaDias = round2(cap5 * 21 + extra * 23) }
+    if (t > 5) cesantiaDias = 23 * aniosCompletos
+    else if (t >= 1) cesantiaDias = 21 * aniosCompletos
     else if (t >= 0.5) cesantiaDias = 13
     else if (t >= 0.25) cesantiaDias = 6
   }
-  const preavisoMonto = round2(diario * preavisoDias)
-  const cesantiaMonto = round2(diario * cesantiaDias)
-  const vacacionesMonto = round2(diario * 14 * Math.min(1, t)) // referencial
-  const mesesAnio = sal.getMonth() + 1 // meses transcurridos del año de salida
-  const navidadMonto = round2(mensual * mesesAnio / 12)
+  const vacacionesDias = diasVacacionesRD(t)
+  const nav = navidadProporcional(ing, sal, mensual)
+  // Días sobre los años completos, por calendario e inclusivo (criterio Ministerio).
+  let diasTrabajados = 0
+  if (ing && !Number.isNaN(ing.getTime())) {
+    const anchor = Date.UTC(ing.getUTCFullYear() + aniosCompletos, ing.getUTCMonth(), ing.getUTCDate())
+    diasTrabajados = Math.max(0, Math.round((sal.getTime() - anchor) / 86400000) + 1)
+  }
   return {
-    anios_servicio: round2(t), salario_diario: diario,
-    preaviso_dias: preavisoDias, preaviso_monto: preavisoMonto,
-    cesantia_dias: cesantiaDias, cesantia_monto: cesantiaMonto,
-    vacaciones_monto: vacacionesMonto, navidad_monto: navidadMonto,
+    anios_servicio: round2(t),
+    tiempo_anios: aniosCompletos, tiempo_dias: diasTrabajados,
+    salario_diario: round2(diarioFull),
+    preaviso_dias: preavisoDias, preaviso_monto: round2(diarioFull * preavisoDias),
+    cesantia_dias: cesantiaDias, cesantia_monto: round2(diarioFull * cesantiaDias),
+    vacaciones_dias: vacacionesDias, vacaciones_monto: round2(diarioFull * vacacionesDias),
+    navidad_meses: nav.meses, navidad_dias: nav.dias, navidad_monto: nav.monto,
   }
 }
 
