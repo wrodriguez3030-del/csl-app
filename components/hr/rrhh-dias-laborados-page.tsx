@@ -52,10 +52,21 @@ const ESTADO_CLASS: Record<string, string> = {
 const rd = (n: number) => `RD$ ${(Number(n) || 0).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100
 
+/** Días de calendario INCLUSIVOS entre dos fechas YYYY-MM-DD (22 May → 31 May = 10). */
+function diasCalendario(desde?: string, hasta?: string): number {
+  if (!desde || !hasta) return 0
+  const a = Date.parse(`${desde}T00:00:00Z`)
+  const b = Date.parse(`${hasta}T00:00:00Z`)
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return 0
+  return Math.floor((b - a) / 86400000) + 1
+}
+
+const ORIGEN_LABEL: Record<string, string> = { calendario: "por calendario", asistencia: "desde asistencia", manual: "ajuste manual" }
+
 function emptyForm(): Partial<DiaLaborado> {
   const today = new Date().toISOString().slice(0, 10)
   const first = today.slice(0, 8) + "01"
-  return { employee_id: "", period_start: first, period_end: today, sueldo_mensual: 0, dias_laborados: 0, dias_origen: "manual", ingresos: 0, descuentos: 0, estado: "borrador" }
+  return { employee_id: "", period_start: first, period_end: today, sueldo_mensual: 0, dias_laborados: diasCalendario(first, today), dias_origen: "calendario", ingresos: 0, descuentos: 0, estado: "borrador" }
 }
 
 export function RrhhDiasLaboradosPage() {
@@ -96,6 +107,20 @@ export function RrhhDiasLaboradosPage() {
   const sueldoDiario = editing ? round2(Number(editing.sueldo_mensual || 0) / DAILY_BASE) : 0
   const pagoDias = editing ? round2(sueldoDiario * Number(editing.dias_laborados || 0)) : 0
   const totalCalc = editing ? round2(pagoDias + Number(editing.ingresos || 0) - Number(editing.descuentos || 0)) : 0
+
+  // Al cambiar Desde/Hasta: recalcular días por calendario (inclusivo) y, en
+  // cascada, pago por días y total (se derivan en el render). Sustituye un
+  // valor previo de asistencia porque correspondía al rango anterior.
+  const setPeriodo = (patch: { period_start?: string; period_end?: string }) => {
+    setEditing(prev => {
+      if (!prev) return prev
+      const next = { ...prev, ...patch }
+      next.dias_laborados = diasCalendario(next.period_start, next.period_end)
+      next.dias_origen = "calendario"
+      next.edit_reason = ""
+      return next
+    })
+  }
 
   const calcularDesdeAsistencia = async () => {
     if (!editing?.employee_id?.trim()) { showToast("Ingresa el ID del empleado primero", "error"); return }
@@ -315,8 +340,8 @@ ${r.edit_reason ? `<p style="margin-top:8px;font-size:10px">Motivo de ajuste man
             <div className="space-y-3 py-2">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1 col-span-2"><Label className="text-xs">ID Empleado *</Label><Input value={editing.employee_id || ""} onChange={e => setEditing({ ...editing, employee_id: e.target.value })} placeholder="sol_... o EMP-001" /></div>
-                <div className="space-y-1"><Label className="text-xs">Desde *</Label><Input type="date" value={editing.period_start || ""} onChange={e => setEditing({ ...editing, period_start: e.target.value })} /></div>
-                <div className="space-y-1"><Label className="text-xs">Hasta *</Label><Input type="date" value={editing.period_end || ""} onChange={e => setEditing({ ...editing, period_end: e.target.value })} /></div>
+                <div className="space-y-1"><Label className="text-xs">Desde *</Label><Input type="date" value={editing.period_start || ""} onChange={e => setPeriodo({ period_start: e.target.value })} /></div>
+                <div className="space-y-1"><Label className="text-xs">Hasta *</Label><Input type="date" value={editing.period_end || ""} onChange={e => setPeriodo({ period_end: e.target.value })} /></div>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={calcularDesdeAsistencia} disabled={calcing}>
                 {calcing ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Calculator className="w-4 h-4 mr-1" />}Calcular desde asistencia
@@ -325,7 +350,7 @@ ${r.edit_reason ? `<p style="margin-top:8px;font-size:10px">Motivo de ajuste man
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1"><Label className="text-xs">Sueldo mensual (RD$)</Label><Input type="number" step="0.01" value={editing.sueldo_mensual ?? 0} onChange={e => setEditing({ ...editing, sueldo_mensual: Number(e.target.value) })} /></div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Días laborados</Label>
+                  <Label className="text-xs">Días laborados <span className="text-muted-foreground font-normal">({ORIGEN_LABEL[editing.dias_origen || "calendario"] || editing.dias_origen})</span></Label>
                   <Input type="number" step="0.5" value={editing.dias_laborados ?? 0}
                     onChange={e => setEditing({ ...editing, dias_laborados: Number(e.target.value), dias_origen: "manual" })} />
                 </div>
