@@ -14,7 +14,10 @@ import { Wallet, Plus, Trash2, Save, X, Loader2, Calculator, Settings, Printer, 
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { getBusinessBranding } from "@/lib/business"
 
-interface PayrollConfig { daily_base: number; afp_rate: number; sfs_rate: number; afp_cap: number; sfs_cap: number; verificado: boolean; bank_origin_account?: string; bank_origin_name?: string }
+interface PayrollConfig { daily_base: number; afp_rate: number; sfs_rate: number; afp_cap: number; sfs_cap: number; verificado: boolean; bank_origin_account?: string; bank_origin_name?: string; srl_cap?: number; afp_employer_rate?: number; sfs_employer_rate?: number; srl_employer_rate?: number; infotep_employer_rate?: number }
+
+// Tasas base verificadas RD 2026 — defaults del formulario de Configuración.
+const RD2026 = { daily_base: 23.83, afp_rate: 0.0287, sfs_rate: 0.0304, afp_cap: 464460, sfs_cap: 232230, srl_cap: 92892, afp_employer_rate: 0.0710, sfs_employer_rate: 0.0709, srl_employer_rate: 0.0110, infotep_employer_rate: 0.0100 }
 interface PayrollRun { id: string; period_start: string; period_end: string; tipo: string; sucursal: string | null; status: string; totals?: { bruto?: number; deducciones?: number; neto?: number; empleados?: number } }
 interface PayrollItem {
   id: string; employee_id: string; employee_nombre: string | null
@@ -196,7 +199,7 @@ h1{font-size:14px;margin:4px 0}table{width:100%;border-collapse:collapse;margin-
           </div>
         </div>
         <div className="flex gap-2 shrink-0">
-          <Button variant="outline" onClick={() => { setCfgForm(config ?? { daily_base: 23.83, afp_rate: 0.0287, sfs_rate: 0.0304, afp_cap: 0, sfs_cap: 0, verificado: false }); setShowConfig(true) }}><Settings className="w-4 h-4 mr-1" />Configuración</Button>
+          <Button variant="outline" onClick={() => { setCfgForm(config ?? { ...RD2026, verificado: true }); setShowConfig(true) }}><Settings className="w-4 h-4 mr-1" />Configuración</Button>
           <Button onClick={() => { const f = defaultFortnight(); setCreating({ period_start: f.start, period_end: f.end, tipo: "quincenal", sucursal: "" }) }}><Plus className="w-4 h-4 mr-1" />Nueva corrida</Button>
         </div>
       </div>
@@ -270,6 +273,14 @@ h1{font-size:14px;margin:4px 0}table{width:100%;border-collapse:collapse;margin-
                 <div className="space-y-1"><Label className="text-xs">SFS (frac.)</Label><Input type="number" step="0.0001" value={cfgForm.sfs_rate} onChange={e => setCfgForm({ ...cfgForm, sfs_rate: Number(e.target.value) })} /></div>
                 <div className="space-y-1"><Label className="text-xs">Tope AFP (0=sin)</Label><Input type="number" step="0.01" value={cfgForm.afp_cap} onChange={e => setCfgForm({ ...cfgForm, afp_cap: Number(e.target.value) })} /></div>
                 <div className="space-y-1"><Label className="text-xs">Tope SFS (0=sin)</Label><Input type="number" step="0.01" value={cfgForm.sfs_cap} onChange={e => setCfgForm({ ...cfgForm, sfs_cap: Number(e.target.value) })} /></div>
+                <div className="space-y-1"><Label className="text-xs">Tope SRL (0=sin)</Label><Input type="number" step="0.01" value={cfgForm.srl_cap ?? RD2026.srl_cap} onChange={e => setCfgForm({ ...cfgForm, srl_cap: Number(e.target.value) })} /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 border-t pt-3">
+                <div className="space-y-1 col-span-2 text-xs font-semibold text-muted-foreground">Tasas patronales (empleador, frac.)</div>
+                <div className="space-y-1"><Label className="text-xs">AFP patronal</Label><Input type="number" step="0.0001" value={cfgForm.afp_employer_rate ?? RD2026.afp_employer_rate} onChange={e => setCfgForm({ ...cfgForm, afp_employer_rate: Number(e.target.value) })} /></div>
+                <div className="space-y-1"><Label className="text-xs">SFS patronal</Label><Input type="number" step="0.0001" value={cfgForm.sfs_employer_rate ?? RD2026.sfs_employer_rate} onChange={e => setCfgForm({ ...cfgForm, sfs_employer_rate: Number(e.target.value) })} /></div>
+                <div className="space-y-1"><Label className="text-xs">SRL patronal</Label><Input type="number" step="0.0001" value={cfgForm.srl_employer_rate ?? RD2026.srl_employer_rate} onChange={e => setCfgForm({ ...cfgForm, srl_employer_rate: Number(e.target.value) })} /></div>
+                <div className="space-y-1"><Label className="text-xs">INFOTEP patronal</Label><Input type="number" step="0.0001" value={cfgForm.infotep_employer_rate ?? RD2026.infotep_employer_rate} onChange={e => setCfgForm({ ...cfgForm, infotep_employer_rate: Number(e.target.value) })} /></div>
               </div>
               <div className="grid grid-cols-2 gap-3 border-t pt-3">
                 <div className="space-y-1 col-span-2 text-xs font-semibold text-muted-foreground">Cuenta origen (para TXT bancario)</div>

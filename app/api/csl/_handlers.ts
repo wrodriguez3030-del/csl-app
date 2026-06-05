@@ -1045,7 +1045,23 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         updated_at: new Date().toISOString(),
       }
       if (record.isr_brackets) row.isr_brackets = record.isr_brackets
-      const { data, error } = await sb.from("hr_payroll_config").upsert(row, { onConflict: "business_id" }).select().single()
+      // Columnas TSS 2026 (202606050001) — tope SRL y tasas patronales. Solo se
+      // incluyen si el caller las envía; si la migración aún no se aplicó en este
+      // entorno, el upsert se reintenta sin ellas (fallback defensivo).
+      const extra: Record<string, unknown> = {}
+      if (record.srl_cap != null) extra.srl_cap = numberFrom(record, "srl_cap")
+      if (record.afp_employer_rate != null) extra.afp_employer_rate = numberFrom(record, "afp_employer_rate")
+      if (record.sfs_employer_rate != null) extra.sfs_employer_rate = numberFrom(record, "sfs_employer_rate")
+      if (record.srl_employer_rate != null) extra.srl_employer_rate = numberFrom(record, "srl_employer_rate")
+      if (record.infotep_employer_rate != null) extra.infotep_employer_rate = numberFrom(record, "infotep_employer_rate")
+      let { data, error } = await sb.from("hr_payroll_config").upsert({ ...row, ...extra }, { onConflict: "business_id" }).select().single()
+      if (error && Object.keys(extra).length) {
+        const code = (error as { code?: string }).code
+        // 42703 = columna inexistente · PGRST204 = columna fuera del schema cache
+        if (code === "42703" || code === "PGRST204") {
+          ({ data, error } = await sb.from("hr_payroll_config").upsert(row, { onConflict: "business_id" }).select().single())
+        }
+      }
       if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
       await hrAudit(user, "nomina", "config_update", "hr_payroll_config", businessId, prev ?? null, data)
       return { ok: true, config: data }
