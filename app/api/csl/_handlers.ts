@@ -237,6 +237,43 @@ async function diasDesdeAsistencia(businessId: string, employeeId: string, desde
   return dias.size
 }
 
+/** Días de vacaciones legales RD según antigüedad (Código de Trabajo). */
+function diasVacacionesRD(anios: number): number {
+  return anios >= 5 ? 18 : anios >= 1 ? 14 : 0
+}
+/** Antigüedad en años (decimal) entre fecha de ingreso y una fecha de referencia. */
+function antiguedadAnios(fechaIngreso: string, ref: Date): number {
+  if (!fechaIngreso) return 0
+  const ing = new Date(fechaIngreso)
+  if (Number.isNaN(ing.getTime())) return 0
+  const years = (ref.getTime() - ing.getTime()) / (365.25 * 24 * 3600 * 1000)
+  return years > 0 ? years : 0
+}
+/**
+ * Datos del empleado para vacaciones: csl_empleados → fallback a solicitudes de
+ * empleo APROBADAS. La fecha de ingreso vive en payload_json.fechaIngresoLaboral.
+ */
+async function vacEmpInfo(businessId: string, employeeId: string) {
+  const sb = getSupabaseAdmin()
+  const t = (...vals: unknown[]) => { for (const v of vals) { const s = v == null ? "" : String(v).trim(); if (s) return s } return "" }
+  const pick = (row: Record<string, unknown>) => {
+    const pj = (row.payload_json || {}) as Record<string, unknown>
+    return {
+      nombre: `${t(row.nombre, pj.nombre, pj.Nombre)} ${t(row.apellido, pj.apellido, pj.Apellido)}`.trim(),
+      cedula: t(row.cedula, pj.cedula, pj.Cedula),
+      puesto: t(row.puesto_solicitado, row.puesto, pj.puestoSolicitado, pj.PuestoSolicitado, pj.puesto),
+      sucursal: t(row.sucursal, pj.sucursal, pj.Sucursal),
+      fecha_ingreso: t(pj.fechaIngresoLaboral, pj.FechaIngresoLaboral, row.fecha_ingreso, pj.fechaIngreso, row.fecha_solicitud),
+      salario: Number(row.salario ?? pj.salario ?? pj.Salario ?? 0) || 0,
+    }
+  }
+  const { data: emp } = await sb.from("csl_empleados").select("*").eq("business_id", businessId).eq("empleado_id", employeeId).maybeSingle()
+  if (emp) return pick(emp as Record<string, unknown>)
+  const { data: sol } = await sb.from("csl_solicitudes_empleo").select("*").eq("business_id", businessId).eq("solicitud_id", employeeId).maybeSingle()
+  if (sol) return pick(sol as Record<string, unknown>)
+  return { nombre: "", cedula: "", puesto: "", sucursal: "", fecha_ingreso: "", salario: 0 }
+}
+
 export async function handleAction(params: ActionParams, user: ActionUser) {
   const action = textValue(params, "action")
 
@@ -1340,6 +1377,26 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
       return { ok: true, records: data || [] }
     }
+    case "getHrVacacionSugerida": {
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const employeeId = textValue(params, "employee_id")
+      if (!employeeId) throw new Error("employee_id obligatorio")
+      const refStr = textValue(params, "fecha_fin") || textValue(params, "period_end")
+      const ref = refStr ? new Date(refStr) : new Date()
+      const info = await vacEmpInfo(businessId, employeeId)
+      const sueldoMensual = info.salario > 0 ? round2(info.salario) : round2(await salarioVigente(businessId, employeeId))
+      const anios = round2(antiguedadAnios(info.fecha_ingreso, ref))
+      const diasLegales = diasVacacionesRD(anios)
+      return {
+        ok: true,
+        employee_nombre: info.nombre || employeeId,
+        cedula: info.cedula, puesto: info.puesto, sucursal: info.sucursal,
+        fecha_ingreso: info.fecha_ingreso,
+        sueldo_mensual: sueldoMensual, sueldo_diario: round2(sueldoMensual / HR_DAILY_BASE),
+        antiguedad_anios: anios, dias_legales: diasLegales,
+      }
+    }
     case "saveHrVacation": {
       const record = parsePayload(params)
       const businessId = effectiveBusinessId()
@@ -1349,31 +1406,50 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const dias = numberFrom(record, "dias")
       if (dias <= 0) throw new Error("Los días deben ser mayores a 0")
       const sb = getSupabaseAdmin()
-      const sueldoMensual = round2(await salarioVigente(businessId, employeeId))
+      // Sueldo: usa el del formulario (empleado real) si viene; si no, salario vigente.
+      const sueldoMensual = record.sueldo_mensual != null && Number(record.sueldo_mensual) > 0
+        ? round2(numberFrom(record, "sueldo_mensual"))
+        : round2(await salarioVigente(businessId, employeeId))
       const sueldoDiario = round2(sueldoMensual / HR_DAILY_BASE)
       const monto = round2(sueldoDiario * dias)
+      // Snapshot del empleado + cálculo legal de antigüedad (del payload o computado).
+      const info = await vacEmpInfo(businessId, employeeId)
+      const ref = textFrom(record, "fecha_fin") ? new Date(textFrom(record, "fecha_fin")) : new Date()
+      const fechaIngreso = textFrom(record, "fecha_ingreso") || info.fecha_ingreso || ""
+      const antiguedad = record.antiguedad_anios != null ? round2(numberFrom(record, "antiguedad_anios")) : round2(antiguedadAnios(fechaIngreso, ref))
+      const diasLegales = record.dias_legales != null ? numberFrom(record, "dias_legales") : diasVacacionesRD(antiguedad)
+      const nombre = textFrom(record, "employee_nombre") || info.nombre || employeeId
+      const status = textFrom(record, "status") || "borrador"
+      const isApproved = ["aprobada", "aprobado", "pagada", "pagado"].includes(status)
       const id = textFrom(record, "id")
-      let nombre = textFrom(record, "employee_nombre")
-      if (!nombre) {
-        const { data: emp } = await sb.from("csl_empleados").select("nombre, apellido").eq("business_id", businessId).eq("empleado_id", employeeId).maybeSingle()
-        const e = emp as { nombre?: string; apellido?: string } | null
-        nombre = e ? `${e.nombre ?? ""} ${e.apellido ?? ""}`.trim() : employeeId
-      }
-      const status = textFrom(record, "status") || "solicitado"
+      let oldValues: unknown = null
+      if (id) { const { data: prev } = await sb.from("hr_vacations").select("*").eq("id", id).maybeSingle(); oldValues = prev ?? null }
       const row: Record<string, unknown> = {
         business_id: businessId, employee_id: employeeId, employee_nombre: nombre,
-        periodo: textFrom(record, "periodo") || String(new Date().getFullYear()),
+        periodo: textFrom(record, "periodo") || String(ref.getFullYear()),
         dias, fecha_inicio: textFrom(record, "fecha_inicio") || null, fecha_fin: textFrom(record, "fecha_fin") || null,
         sueldo_diario: sueldoDiario, monto, status,
         observations: textFrom(record, "observations") || null,
         created_by: textFrom(record, "created_by") || user.id,
         updated_at: new Date().toISOString(),
       }
-      if (status === "aprobado" || status === "pagado") { row.approved_by = user.id; row.approved_at = new Date().toISOString() }
+      if (isApproved) { row.approved_by = user.id; row.approved_at = new Date().toISOString() }
       if (id) row.id = id
-      const { data, error } = await sb.from("hr_vacations").upsert(row, { onConflict: "id" }).select().single()
+      // Columnas legales (202606050002). Fallback si el DDL aún no se aplicó en este entorno.
+      const extra: Record<string, unknown> = {
+        sueldo_mensual: sueldoMensual, fecha_ingreso: fechaIngreso || null,
+        antiguedad_anios: antiguedad, dias_legales: diasLegales,
+        cedula: info.cedula || null, puesto: info.puesto || null, sucursal: info.sucursal || null,
+      }
+      let { data, error } = await sb.from("hr_vacations").upsert({ ...row, ...extra }, { onConflict: "id" }).select().single()
+      if (error) {
+        const code = (error as { code?: string }).code
+        if (code === "42703" || code === "PGRST204") {
+          ({ data, error } = await sb.from("hr_vacations").upsert(row, { onConflict: "id" }).select().single())
+        }
+      }
       if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
-      await hrAudit(user, "vacaciones", status === "aprobado" ? "approve" : (id ? "update" : "create"), "hr_vacations", String((data as { id: string }).id), null, data)
+      await hrAudit(user, "vacaciones", isApproved ? "approve" : (id ? "update" : "create"), "hr_vacations", String((data as { id: string }).id), oldValues, data)
       return { ok: true, record: data }
     }
     case "deleteHrVacation": {
