@@ -57,8 +57,22 @@ export function EmpleadosPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
   const [qrEmp, setQrEmp] = useState<EmpleadoRecord | null>(null)
   const [qrUrl, setQrUrl] = useState("")
+  const [qrToken, setQrToken] = useState("")
   const [qrBusy, setQrBusy] = useState(false)
   const [schedEmp, setSchedEmp] = useState<EmpleadoRecord | null>(null)
+
+  const qrLink = (token: string) => `${typeof window !== "undefined" ? window.location.origin : ""}/qr/${encodeURIComponent(token)}`
+  const shareWhatsapp = () => {
+    if (!qrToken || !qrEmp) return
+    const nombre = `${qrEmp.nombre} ${qrEmp.apellido}`.trim()
+    const msg = `Hola ${nombre} 👋\n\nEste es tu QR personal para el ponche de asistencia.\n\nDebes presentarlo en el kiosco autorizado de tu sucursal para registrar entrada y salida.\n\nImportante:\nEste QR solo funciona dentro de la geocerca de la sucursal y desde un dispositivo autorizado.\n\n${qrLink(qrToken)}`
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank")
+  }
+  const copyLink = async () => {
+    if (!qrToken) return
+    try { await navigator.clipboard.writeText(qrLink(qrToken)); showToast("Link del QR copiado", "success") }
+    catch { showToast(qrLink(qrToken), "info") }
+  }
 
   const openQr = async (emp: EmpleadoRecord, regenerate = false) => {
     setQrEmp(emp); setQrBusy(true); if (!regenerate) setQrUrl("")
@@ -68,6 +82,7 @@ export function EmpleadosPage() {
       const res = await apiCall(normalizeApiUrl(apiUrl), params) as { ok?: boolean; token?: string | null; tableMissing?: boolean; error?: string }
       if (res?.tableMissing) { showToast("Falta aplicar la migración del ponche QR en db-cls", "error"); return }
       if (!res?.ok || !res.token) { showToast(res?.error || "No se pudo generar el QR", "error"); return }
+      setQrToken(res.token)
       setQrUrl(await QRCode.toDataURL(res.token, { width: 320, margin: 1 }))
       if (regenerate) showToast("QR regenerado. El anterior quedó inválido.", "success")
     } catch (e) { showToast(e instanceof Error ? e.message : "Error generando QR", "error") } finally { setQrBusy(false) }
@@ -257,7 +272,7 @@ export function EmpleadosPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={!!qrEmp} onOpenChange={(o) => { if (!o) { setQrEmp(null); setQrUrl("") } }}>
+      <Dialog open={!!qrEmp} onOpenChange={(o) => { if (!o) { setQrEmp(null); setQrUrl(""); setQrToken("") } }}>
         <DialogContent className="max-w-xs">
           <DialogHeader><DialogTitle>QR · {qrEmp?.nombre} {qrEmp?.apellido}</DialogTitle></DialogHeader>
           <div className="flex flex-col items-center gap-3 py-2">
@@ -269,8 +284,10 @@ export function EmpleadosPage() {
               <div className="py-12 text-sm text-muted-foreground">Sin QR</div>
             )}
             <p className="text-[11px] text-muted-foreground text-center">El empleado presenta este QR en el kiosco de ponche. Solo funciona dentro de la sucursal (geocerca) y en un dispositivo autorizado.</p>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2 w-full">
               <button onClick={downloadQr} disabled={!qrUrl} className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">Descargar</button>
+              <button onClick={shareWhatsapp} disabled={!qrToken} className="rounded-lg bg-[#25D366] px-3 py-2 text-sm font-medium text-white disabled:opacity-50">WhatsApp</button>
+              <button onClick={copyLink} disabled={!qrToken} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">Copiar link</button>
               <button onClick={() => qrEmp && void openQr(qrEmp, true)} disabled={qrBusy} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">Regenerar</button>
             </div>
           </div>
