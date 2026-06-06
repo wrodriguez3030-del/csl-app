@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Fingerprint, Plus, Trash2, Save, X, Loader2, Monitor, ArrowLeft, AlertCircle, MapPin, Smartphone, ScanLine, FileSpreadsheet, CheckCircle2, XCircle, LocateFixed, Power, QrCode, Users, RefreshCw, Search } from "lucide-react"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { exportHrReportExcel } from "@/lib/hr-report-excel"
+import { haversineMeters } from "@/lib/hr-geo"
 import QRCode from "qrcode"
 
 interface HrPunch {
@@ -23,7 +24,13 @@ interface HrPunch {
   device_id?: string | null; status?: string; rejection_reason?: string | null
 }
 interface Device { id: string; sucursal: string | null; device_name: string; active: boolean; last_seen_at: string | null; device_info: string | null }
-interface Geofence { id: string; sucursal: string; latitude: number; longitude: number; radius_meters: number; active: boolean }
+interface Geofence { id: string; sucursal: string; latitude: number; longitude: number; radius_meters: number; active: boolean; google_maps_url?: string; direccion?: string; timezone?: string; telefono?: string; email?: string }
+/** Extrae lat/lng de un link de Google Maps (@lat,lng / q=lat,lng / !3d!4d). */
+function parseLatLng(url: string): { lat: number; lng: number } | null {
+  const pats = [/@(-?\d+\.\d+),(-?\d+\.\d+)/, /[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/, /[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)/, /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, /(-?\d{1,2}\.\d{4,}),\s*(-?\d{1,3}\.\d{4,})/]
+  for (const re of pats) { const m = url.match(re); if (m) return { lat: Number(m[1]), lng: Number(m[2]) } }
+  return null
+}
 interface Emp { id: string; nombre: string; cedula: string; sucursal: string; puesto: string }
 
 const TYPES = ["entrada", "salida", "inicio_descanso", "fin_descanso"]
@@ -168,7 +175,7 @@ export function RrhhPonchePage() {
     if (!geoEdit?.sucursal) { showToast("Sucursal obligatoria", "error"); return }
     setSaving(true)
     try {
-      const res = await call({ action: "saveHrBranchGeofence", data: JSON.stringify({ sucursal: geoEdit.sucursal, latitude: geoEdit.latitude || 0, longitude: geoEdit.longitude || 0, radius_meters: geoEdit.radius_meters || 80, active: geoEdit.active !== false }) }) as { ok?: boolean; error?: string; tableMissing?: boolean }
+      const res = await call({ action: "saveHrBranchGeofence", data: JSON.stringify({ sucursal: geoEdit.sucursal, latitude: geoEdit.latitude || 0, longitude: geoEdit.longitude || 0, radius_meters: geoEdit.radius_meters || 80, active: geoEdit.active !== false, google_maps_url: geoEdit.google_maps_url || "", direccion: geoEdit.direccion || "", timezone: geoEdit.timezone || "America/Santo_Domingo", telefono: geoEdit.telefono || "", email: geoEdit.email || "" }) }) as { ok?: boolean; error?: string; tableMissing?: boolean }
       if (res?.tableMissing) { showToast("Falta aplicar la migración del ponche QR en db-cls", "error"); return }
       if (!res?.ok) { showToast(`Error: ${res?.error}`, "error"); return }
       showToast("Geocerca guardada", "success"); setGeoEdit(null); reload()
@@ -179,6 +186,19 @@ export function RrhhPonchePage() {
     navigator.geolocation.getCurrentPosition(
       pos => setGeoEdit(prev => prev ? { ...prev, latitude: Math.round(pos.coords.latitude * 1e7) / 1e7, longitude: Math.round(pos.coords.longitude * 1e7) / 1e7 } : prev),
       () => showToast("No se pudo obtener la ubicación", "error"), { enableHighAccuracy: true, timeout: 10000 })
+  }
+  const aplicarMapsUrl = () => {
+    const c = parseLatLng(geoEdit?.google_maps_url || "")
+    if (!c) { showToast("No pude extraer lat/lng del link. Pega un enlace con coordenadas o usa 'Usar mi ubicación'.", "error"); return }
+    setGeoEdit(prev => prev ? { ...prev, latitude: c.lat, longitude: c.lng } : prev)
+    showToast(`Coordenadas extraídas: ${c.lat}, ${c.lng}`, "success")
+  }
+  const probarGeocerca = () => {
+    if (!geoEdit || (!geoEdit.latitude && !geoEdit.longitude)) { showToast("Configura lat/lng primero", "error"); return }
+    if (!navigator.geolocation) { showToast("Geolocalización no disponible", "error"); return }
+    navigator.geolocation.getCurrentPosition(
+      pos => { const d = haversineMeters(pos.coords.latitude, pos.coords.longitude, Number(geoEdit.latitude), Number(geoEdit.longitude)); const r = Number(geoEdit.radius_meters || 80); showToast(`Estás a ${Math.round(d)} m del centro → ${d <= r ? "DENTRO ✓" : "FUERA ✗"} del radio (${r} m)`, d <= r ? "success" : "error") },
+      () => showToast("No se pudo obtener tu ubicación", "error"), { enableHighAccuracy: true, timeout: 10000 })
   }
   const authorizeDevice = async () => {
     if (!authDev) return
@@ -387,14 +407,25 @@ export function RrhhPonchePage() {
                 <Input list="sucursales-geo" value={geoEdit.sucursal || ""} onChange={e => setGeoEdit({ ...geoEdit, sucursal: e.target.value })} placeholder="RAFAEL VIDAL" />
                 <datalist id="sucursales-geo">{sucursales.map(s => <option key={s} value={s} />)}</datalist>
               </div>
+              <div className="space-y-1"><Label className="text-xs">Dirección</Label><Input value={geoEdit.direccion || ""} onChange={e => setGeoEdit({ ...geoEdit, direccion: e.target.value })} placeholder="Av. Rafael Vidal, Plaza Mediterránea Módulo H-1" /></div>
+              <div className="space-y-1"><Label className="text-xs">Link de Google Maps</Label>
+                <div className="flex gap-1"><Input value={geoEdit.google_maps_url || ""} onChange={e => setGeoEdit({ ...geoEdit, google_maps_url: e.target.value })} placeholder="https://maps.google.com/...@19.45,-70.69..." />
+                  <Button type="button" variant="outline" size="sm" onClick={aplicarMapsUrl}>Extraer</Button></div>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1"><Label className="text-xs">Latitud</Label><Input type="number" step="0.0000001" value={geoEdit.latitude ?? 0} onChange={e => setGeoEdit({ ...geoEdit, latitude: Number(e.target.value) })} /></div>
                 <div className="space-y-1"><Label className="text-xs">Longitud</Label><Input type="number" step="0.0000001" value={geoEdit.longitude ?? 0} onChange={e => setGeoEdit({ ...geoEdit, longitude: Number(e.target.value) })} /></div>
                 <div className="space-y-1"><Label className="text-xs">Radio (metros)</Label><Input type="number" step="1" value={geoEdit.radius_meters ?? 80} onChange={e => setGeoEdit({ ...geoEdit, radius_meters: Number(e.target.value) })} /></div>
-                <div className="space-y-1 flex items-end"><Button type="button" variant="outline" size="sm" className="w-full" onClick={useMyLocation}><LocateFixed className="w-4 h-4 mr-1" />Usar mi ubicación</Button></div>
+                <div className="space-y-1"><Label className="text-xs">Zona horaria</Label><Input value={geoEdit.timezone || "America/Santo_Domingo"} onChange={e => setGeoEdit({ ...geoEdit, timezone: e.target.value })} /></div>
+                <div className="space-y-1"><Label className="text-xs">Teléfono</Label><Input value={geoEdit.telefono || ""} onChange={e => setGeoEdit({ ...geoEdit, telefono: e.target.value })} /></div>
+                <div className="space-y-1"><Label className="text-xs">Email</Label><Input value={geoEdit.email || ""} onChange={e => setGeoEdit({ ...geoEdit, email: e.target.value })} /></div>
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" className="flex-1" onClick={useMyLocation}><LocateFixed className="w-4 h-4 mr-1" />Usar mi ubicación</Button>
+                <Button type="button" variant="outline" size="sm" className="flex-1" onClick={probarGeocerca}><MapPin className="w-4 h-4 mr-1" />Probar geocerca</Button>
               </div>
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={geoEdit.active !== false} onChange={e => setGeoEdit({ ...geoEdit, active: e.target.checked })} />Geocerca activa (valida ubicación al ponchar)</label>
-              <p className="text-[11px] text-muted-foreground">Abre Google Maps en la sucursal, copia lat/long, o usa “Usar mi ubicación” estando físicamente allí.</p>
+              <p className="text-[11px] text-muted-foreground">Pega el link de Google Maps y pulsa “Extraer”, escribe lat/long, o usa “Usar mi ubicación” estando en la sucursal. “Probar geocerca” mide tu distancia al centro.</p>
             </div>
           )}
           <DialogFooter>

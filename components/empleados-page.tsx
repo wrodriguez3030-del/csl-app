@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import QRCode from "qrcode"
+import { EmployeeScheduleDialog } from "@/components/hr/employee-schedule-dialog"
+import { Clock } from "lucide-react"
 import { RecordActions } from "@/components/record-actions"
 
 interface EmpleadoRecord {
@@ -56,6 +58,7 @@ export function EmpleadosPage() {
   const [qrEmp, setQrEmp] = useState<EmpleadoRecord | null>(null)
   const [qrUrl, setQrUrl] = useState("")
   const [qrBusy, setQrBusy] = useState(false)
+  const [schedEmp, setSchedEmp] = useState<EmpleadoRecord | null>(null)
 
   const openQr = async (emp: EmpleadoRecord, regenerate = false) => {
     setQrEmp(emp); setQrBusy(true); if (!regenerate) setQrUrl("")
@@ -235,6 +238,7 @@ export function EmpleadosPage() {
                         <div><b>Nacionalidad:</b> {empleado.nacionalidad || "—"}</div>
                         <div><b>Nacimiento:</b> {empleado.fechaNacimiento || "—"}</div>
                         <div className="mt-3 flex gap-2 lg:justify-end">
+                          <button onClick={() => setSchedEmp(empleado)} className="rounded-lg border px-3 py-1.5 text-xs flex items-center gap-1 hover:bg-muted/50"><Clock className="h-3.5 w-3.5" />Horario</button>
                           <button onClick={() => void openQr(empleado)} className="rounded-lg border px-3 py-1.5 text-xs flex items-center gap-1 hover:bg-muted/50"><QrCode className="h-3.5 w-3.5" />Ver QR</button>
                         </div>
                       </div>
@@ -272,6 +276,15 @@ export function EmpleadosPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {schedEmp && (
+        <EmployeeScheduleDialog
+          employeeId={schedEmp.id}
+          employeeName={`${schedEmp.nombre} ${schedEmp.apellido}`.trim()}
+          sucursal={(schedEmp as unknown as { sucursal?: string }).sucursal}
+          onClose={() => setSchedEmp(null)}
+        />
+      )}
     </div>
   )
 }

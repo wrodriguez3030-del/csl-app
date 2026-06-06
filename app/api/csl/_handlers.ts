@@ -332,6 +332,43 @@ async function vacEmpInfo(businessId: string, employeeId: string) {
   return { nombre: "", cedula: "", puesto: "", sucursal: "", fecha_ingreso: "", salario: 0 }
 }
 
+/** "HH:MM" → minutos desde medianoche (null si vacío/ inválido). */
+function hhmmToMin(hhmm: unknown): number | null {
+  const s = String(hhmm ?? "").trim()
+  if (!s) return null
+  const [h, m] = s.split(":")
+  const n = Number(h) * 60 + Number(m || 0)
+  return Number.isFinite(n) ? n : null
+}
+type SchedDay = { source: "employee" | "branch"; sucursal: string | null; is_working_day: boolean; start_time: string | null; end_time: string | null; break_minutes: number }
+/** Horario efectivo de un empleado para una fecha (YYYY-MM-DD); fallback a la sucursal. */
+async function empScheduleForDate(businessId: string, employeeId: string, dateStr: string, sucursalFallback: string | null): Promise<SchedDay | null> {
+  const sb = getSupabaseAdmin()
+  const dow = new Date(`${dateStr}T00:00:00Z`).getUTCDay() // 0=Dom … 6=Sáb
+  const { data: scheds } = await sb.from("hr_employee_schedules")
+    .select("id, sucursal, effective_from, effective_to")
+    .eq("business_id", businessId).eq("employee_id", employeeId).eq("active", true)
+    .order("effective_from", { ascending: false })
+  for (const s of ((scheds || []) as Array<{ id: string; sucursal: string | null; effective_from: string | null; effective_to: string | null }>)) {
+    const from = s.effective_from ? String(s.effective_from).slice(0, 10) : null
+    const to = s.effective_to ? String(s.effective_to).slice(0, 10) : null
+    if (from && dateStr < from) continue
+    if (to && dateStr > to) continue
+    const { data: day } = await sb.from("hr_employee_schedule_days").select("*").eq("schedule_id", s.id).eq("day_of_week", dow).maybeSingle()
+    const d = day as { is_working_day?: boolean; start_time?: string; end_time?: string; break_minutes?: number } | null
+    if (d) return { source: "employee", sucursal: s.sucursal, is_working_day: d.is_working_day !== false, start_time: d.start_time ?? null, end_time: d.end_time ?? null, break_minutes: Number(d.break_minutes || 0) }
+    return { source: "employee", sucursal: s.sucursal, is_working_day: false, start_time: null, end_time: null, break_minutes: 0 }
+  }
+  const suc = sucursalFallback || ""
+  if (suc) {
+    const { data: geo } = await sb.from("hr_branch_geofences").select("workday_config").eq("business_id", businessId).eq("sucursal", suc).maybeSingle()
+    const cfg = (geo as { workday_config?: Record<string, { working?: boolean; start?: string; end?: string; break?: number }> } | null)?.workday_config
+    const dc = cfg ? cfg[String(dow)] : null
+    if (dc) return { source: "branch", sucursal: suc, is_working_day: dc.working !== false, start_time: dc.start ?? null, end_time: dc.end ?? null, break_minutes: Number(dc.break || 0) }
+  }
+  return null
+}
+
 export async function handleAction(params: ActionParams, user: ActionUser) {
   const action = textValue(params, "action")
 
@@ -731,13 +768,19 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (!businessId) throw new Error("business_id no encontrado")
       const sucursal = textFrom(record, "sucursal")
       if (!sucursal) throw new Error("Sucursal obligatoria")
-      const row = {
+      const row: Record<string, unknown> = {
         business_id: businessId, sucursal,
         latitude: numberFrom(record, "latitude"), longitude: numberFrom(record, "longitude"),
         radius_meters: Math.max(1, Math.round(numberFrom(record, "radius_meters") || 80)),
         active: record.active === undefined ? true : Boolean(record.active),
+        google_maps_url: textFrom(record, "google_maps_url") || null,
+        timezone: textFrom(record, "timezone") || "America/Santo_Domingo",
+        direccion: textFrom(record, "direccion") || null,
+        telefono: textFrom(record, "telefono") || null,
+        email: textFrom(record, "email") || null,
         updated_at: new Date().toISOString(),
       }
+      if (record.workday_config !== undefined) row.workday_config = record.workday_config
       const { data, error } = await getSupabaseAdmin().from("hr_branch_geofences").upsert(row, { onConflict: "business_id,sucursal" }).select().single()
       if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
       await hrAudit(user, "ponche", "geofence_update", "hr_branch_geofences", sucursal, null, row)
@@ -799,17 +842,153 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         else if (punchType === "salida" && (last === "" || last === "salida")) { status = "rejected"; reason = "No hay una entrada previa registrada hoy" }
       }
 
+      // Horario del empleado → tardanza / horas trabajadas (TZ RD).
+      const TZRD = "America/Santo_Domingo"
+      const nowDate = new Date()
+      const nowMin = (() => { const [h, m] = nowDate.toLocaleTimeString("en-GB", { timeZone: TZRD, hour12: false }).split(":"); return Number(h) * 60 + Number(m) })()
+      let scheduledStart: string | null = null, scheduledEnd: string | null = null, scheduleSource: string | null = null
+      let lateMin: number | null = null, workedMin: number | null = null, earlyMin: number | null = null, overtimeMin: number | null = null, expectedMin: number | null = null
+      if (employeeId && status === "approved") {
+        const dateStr = nowDate.toLocaleDateString("en-CA", { timeZone: TZRD })
+        const sd = await empScheduleForDate(businessId, employeeId, dateStr, sucursal)
+        if (sd) scheduleSource = sd.source
+        if (sd && sd.is_working_day) {
+          scheduledStart = sd.start_time; scheduledEnd = sd.end_time
+          const ss = hhmmToMin(sd.start_time), se = hhmmToMin(sd.end_time)
+          if (ss != null && se != null) expectedMin = Math.max(0, se - ss - (sd.break_minutes || 0))
+          if (punchType === "entrada" && ss != null) lateMin = Math.max(0, nowMin - ss)
+          if (punchType === "salida") {
+            if (se != null) earlyMin = Math.max(0, se - nowMin)
+            const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)
+            const { data: ent } = await sb.from("hr_punches").select("punched_at").eq("business_id", businessId).eq("employee_id", employeeId).eq("type", "entrada").eq("status", "approved").gte("punched_at", dayStart.toISOString()).order("punched_at", { ascending: true }).limit(1)
+            const entIso = ent && ent[0] ? String((ent[0] as { punched_at: string }).punched_at) : ""
+            if (entIso) {
+              const [eh, em] = new Date(entIso).toLocaleTimeString("en-GB", { timeZone: TZRD, hour12: false }).split(":")
+              const entMin = Number(eh) * 60 + Number(em)
+              workedMin = Math.max(0, nowMin - entMin - (sd.break_minutes || 0))
+              if (expectedMin != null) overtimeMin = Math.max(0, workedMin - expectedMin)
+            }
+          }
+        }
+      }
+
       const punchRow: Record<string, unknown> = {
         business_id: businessId, employee_id: employeeId || "(desconocido)",
-        type: punchType, punched_at: new Date().toISOString(), sucursal,
+        type: punchType, punched_at: nowDate.toISOString(), sucursal,
         source: "qr_kiosk", is_correction: false,
         latitude: lat, longitude: lng, distance_meters: distance, device_id: deviceId,
         status, rejection_reason: reason, ip, device_info: deviceInfo,
+        scheduled_start: scheduledStart, scheduled_end: scheduledEnd,
+        expected_minutes: expectedMin, worked_minutes: workedMin,
+        late_minutes: lateMin, early_leave_minutes: earlyMin, overtime_minutes: overtimeMin,
       }
       const { error: insErr } = await sb.from("hr_punches").insert(punchRow)
       if (insErr) { if (isMissingTable(insErr)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw insErr }
-      await hrAudit(user, "ponche", status === "approved" ? "punch_qr" : "punch_rejected", "hr_punches", employeeId || null, null, { type: punchType, status, reason, distance })
-      return { ok: status === "approved", status, reason, employee_nombre: nombre, sucursal, distance_meters: distance, type: punchType }
+      await hrAudit(user, "ponche", status === "approved" ? "punch_qr" : "punch_rejected", "hr_punches", employeeId || null, null, { type: punchType, status, reason, distance, late: lateMin, worked: workedMin })
+      return { ok: status === "approved", status, reason, employee_nombre: nombre, sucursal, distance_meters: distance, type: punchType, late_minutes: lateMin, worked_minutes: workedMin, schedule_source: scheduleSource }
+    }
+
+    // ── HR · Horario por empleado ────────────────────────────────────────
+    case "getHrEmployeeSchedule": {
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const employeeId = textValue(params, "employee_id")
+      if (!employeeId) throw new Error("employee_id obligatorio")
+      const sb = getSupabaseAdmin()
+      const { data: sched, error } = await sb.from("hr_employee_schedules").select("*").eq("business_id", businessId).eq("employee_id", employeeId).eq("active", true).order("effective_from", { ascending: false }).limit(1).maybeSingle()
+      if (error) { if (isMissingTable(error)) return { ok: true, schedule: null, days: [], tableMissing: true }; throw error }
+      if (!sched) return { ok: true, schedule: null, days: [] }
+      const { data: days } = await sb.from("hr_employee_schedule_days").select("*").eq("schedule_id", (sched as { id: string }).id).order("day_of_week", { ascending: true })
+      return { ok: true, schedule: sched, days: days || [] }
+    }
+    case "saveHrEmployeeSchedule": {
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const employeeId = textFrom(record, "employee_id")
+      if (!employeeId) throw new Error("Empleado obligatorio")
+      const sb = getSupabaseAdmin()
+      const id = textFrom(record, "id")
+      const schedRow: Record<string, unknown> = {
+        business_id: businessId, employee_id: employeeId,
+        sucursal: textFrom(record, "sucursal") || null, name: textFrom(record, "name") || "Horario",
+        effective_from: textFrom(record, "effective_from") || null, effective_to: textFrom(record, "effective_to") || null,
+        active: record.active === undefined ? true : Boolean(record.active), updated_at: new Date().toISOString(),
+      }
+      if (id) schedRow.id = id
+      const { data: saved, error } = await sb.from("hr_employee_schedules").upsert(schedRow, { onConflict: "id" }).select().single()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+      const schedId = (saved as { id: string }).id
+      // Días: upsert por (schedule_id, day_of_week) — sin DELETE (no destructivo).
+      const days = Array.isArray(record.days) ? record.days as Array<Record<string, unknown>> : []
+      for (const d of days) {
+        const dow = Number(d.day_of_week)
+        if (!Number.isInteger(dow) || dow < 0 || dow > 6) continue
+        await sb.from("hr_employee_schedule_days").upsert({
+          schedule_id: schedId, business_id: businessId, day_of_week: dow,
+          is_working_day: d.is_working_day === undefined ? true : Boolean(d.is_working_day),
+          start_time: d.start_time ? String(d.start_time) : null, end_time: d.end_time ? String(d.end_time) : null,
+          break_minutes: Number(d.break_minutes || 0), updated_at: new Date().toISOString(),
+        }, { onConflict: "schedule_id,day_of_week" })
+      }
+      await hrAudit(user, "horarios", id ? "update" : "create", "hr_employee_schedules", schedId, null, { employee_id: employeeId })
+      return { ok: true, schedule: saved }
+    }
+    case "getHrAttendanceHours": {
+      const businessId = effectiveBusinessId()
+      const scope = shouldScopeTenant(); const bid = businessId
+      const desde = textValue(params, "desde"); const hasta = textValue(params, "hasta")
+      const empF = textValue(params, "employee_id"); const sucF = textValue(params, "sucursal")
+      const sb = getSupabaseAdmin()
+      let pq = sb.from("hr_punches").select("employee_id,type,punched_at,sucursal,status").eq("status", "approved").order("punched_at", { ascending: true })
+      if (scope && bid) pq = pq.eq("business_id", bid)
+      if (desde) pq = pq.gte("punched_at", desde)
+      if (hasta) pq = pq.lte("punched_at", `${hasta}T23:59:59`)
+      if (empF) pq = pq.eq("employee_id", empF)
+      const { data: punches, error } = await pq
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      const empRows = await getRows("empleados").catch(() => [] as Row[])
+      const nameMap = new Map<string, { nombre: string; cedula: string; sucursal: string }>()
+      for (const r of (empRows as Row[])) { const eid = String(r.SolicitudID || r.empleado_id || ""); if (eid) nameMap.set(eid, { nombre: `${r.Nombre || ""} ${r.Apellido || ""}`.trim() || eid, cedula: String(r.Cedula || ""), sucursal: String(r.Sucursal || "") }) }
+      const TZ = "America/Santo_Domingo"
+      const dayOf = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: TZ })
+      const minOf = (iso: string) => { const [h, m] = new Date(iso).toLocaleTimeString("en-GB", { timeZone: TZ, hour12: false }).split(":"); return Number(h) * 60 + Number(m) }
+      type P = { employee_id: string; type: string; punched_at: string; sucursal: string | null }
+      const groups = new Map<string, { emp: string; day: string; sucursal: string | null; ps: P[] }>()
+      for (const raw of ((punches || []) as P[])) { const day = dayOf(raw.punched_at); const k = `${raw.employee_id}|${day}`; if (!groups.has(k)) groups.set(k, { emp: raw.employee_id, day, sucursal: raw.sucursal, ps: [] }); groups.get(k)!.ps.push(raw) }
+      const records: Record<string, unknown>[] = []
+      for (const g of groups.values()) {
+        if (sucF && (g.sucursal || "") !== sucF) continue
+        const ent = g.ps.find(x => x.type === "entrada") || g.ps[0]
+        const sal = [...g.ps].reverse().find(x => x.type === "salida")
+        const bIni = g.ps.find(x => x.type === "inicio_descanso" || x.type === "almuerzo_inicio")
+        const bFin = g.ps.find(x => x.type === "fin_descanso" || x.type === "almuerzo_fin")
+        const aStart = ent ? minOf(ent.punched_at) : null
+        const aEnd = sal ? minOf(sal.punched_at) : null
+        const breakTaken = (bIni && bFin) ? Math.max(0, minOf(bFin.punched_at) - minOf(bIni.punched_at)) : 0
+        const sd = await empScheduleForDate(bid as string, g.emp, g.day, g.sucursal)
+        const ss = sd ? hhmmToMin(sd.start_time) : null, se = sd ? hhmmToMin(sd.end_time) : null
+        const expected = (sd && sd.is_working_day && ss != null && se != null) ? Math.max(0, se - ss - (sd.break_minutes || 0)) : 0
+        const worked = (aStart != null && aEnd != null) ? Math.max(0, aEnd - aStart - breakTaken) : 0
+        const late = (aStart != null && ss != null) ? Math.max(0, aStart - ss) : 0
+        const early = (aEnd != null && se != null) ? Math.max(0, se - aEnd) : 0
+        const overtime = expected > 0 ? Math.max(0, worked - expected) : 0
+        let estado = "Presente"
+        if (sd && !sd.is_working_day) estado = "Libre"
+        else if (!ent) estado = "Ausente"
+        else if (!sal) estado = "Incompleto"
+        else if (late > 0) estado = "Tarde"
+        const nm = nameMap.get(g.emp) || { nombre: g.emp, cedula: "", sucursal: g.sucursal || "" }
+        records.push({
+          employee_id: g.emp, employee_nombre: nm.nombre, cedula: nm.cedula, sucursal: g.sucursal || nm.sucursal, fecha: g.day,
+          scheduled_start: sd?.start_time || null, scheduled_end: sd?.end_time || null,
+          actual_start: ent ? ent.punched_at : null, actual_end: sal ? sal.punched_at : null,
+          expected_minutes: expected, worked_minutes: worked, late_minutes: late, early_leave_minutes: early, overtime_minutes: overtime,
+          estado, schedule_source: sd?.source || null,
+        })
+      }
+      records.sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)) || String(a.employee_nombre).localeCompare(String(b.employee_nombre)))
+      return { ok: true, records }
     }
 
     // ── HR · Fase 2 · Asistencia (consolidación on-read) ─────────────────
