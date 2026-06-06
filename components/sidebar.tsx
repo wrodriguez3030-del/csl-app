@@ -35,6 +35,7 @@ import {
   Wrench,
   X,
   Zap,
+  Monitor,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -96,6 +97,7 @@ const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
     label: "RR.HH. · Asistencia",
     items: [
       { id: "rrhh-ponche", label: "Ponche / Reloj checador", icon: <ClipboardCheck className="h-4 w-4" /> },
+      { id: "rrhh-kiosko-ponche", label: "Kiosko Ponche", icon: <Monitor className="h-4 w-4" /> },
       { id: "rrhh-asistencia", label: "Asistencia", icon: <ClipboardList className="h-4 w-4" /> },
       { id: "rrhh-horarios", label: "Horarios y turnos", icon: <BookOpen className="h-4 w-4" /> },
       { id: "rrhh-permisos", label: "Permisos y licencias", icon: <FileText className="h-4 w-4" /> },
