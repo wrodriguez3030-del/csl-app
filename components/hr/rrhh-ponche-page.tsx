@@ -16,6 +16,7 @@ import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { exportHrReportExcel } from "@/lib/hr-report-excel"
 import { haversineMeters } from "@/lib/hr-geo"
 import QRCode from "qrcode"
+import { BrowserQRCodeReader, type IScannerControls } from "@zxing/browser"
 
 interface HrPunch {
   id: string; employee_id: string; employee_nombre?: string | null; type: string; punched_at: string
@@ -534,7 +535,9 @@ function KioskView({ onExit, apiUrl }: { onExit: () => void; apiUrl: string }) {
   const { showToast } = useAppStore()
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const readerRef = useRef<IScannerControls | null>(null)
   const scanningRef = useRef(false)
+  const startedRef = useRef(false)
   const [scanned, setScanned] = useState<{ token: string; nombre: string } | null>(null)
   const [manualToken, setManualToken] = useState("")
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
@@ -542,6 +545,8 @@ function KioskView({ onExit, apiUrl }: { onExit: () => void; apiUrl: string }) {
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; title: string; sub: string } | null>(null)
   const [camError, setCamError] = useState("")
+  const [camOn, setCamOn] = useState(false)
+  const [starting, setStarting] = useState(false)
   const [now, setNow] = useState(() => new Date())
 
   const call = (params: Record<string, string | number | boolean>) => apiCall(normalizeApiUrl(apiUrl), params)
@@ -559,35 +564,9 @@ function KioskView({ onExit, apiUrl }: { onExit: () => void; apiUrl: string }) {
     return () => navigator.geolocation.clearWatch(id)
   }, [])
 
-  // Cámara + escaneo QR con BarcodeDetector.
-  useEffect(() => {
-    const BD = (window as unknown as { BarcodeDetector?: new (o: { formats: string[] }) => BarcodeDetectorLike }).BarcodeDetector
-    if (!BD) { setCamError("Este navegador no soporta escaneo de QR con cámara. Usa la entrada manual del código."); return }
-    let detector: BarcodeDetectorLike
-    try { detector = new BD({ formats: ["qr_code"] }) } catch { setCamError("No se pudo iniciar el lector de QR"); return }
-    let cancelled = false
-    ;(async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return }
-        streamRef.current = stream
-        if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play() }
-        scanningRef.current = true
-        const tick = async () => {
-          if (cancelled) return
-          if (scanningRef.current && videoRef.current) {
-            try {
-              const codes = await detector.detect(videoRef.current)
-              if (codes && codes[0]?.rawValue) onQrFound(codes[0].rawValue)
-            } catch { /* frame sin código */ }
-          }
-          setTimeout(tick, 400)
-        }
-        tick()
-      } catch { setCamError("No se pudo acceder a la cámara. Otorga permiso o usa la entrada manual.") }
-    })()
-    return () => { cancelled = true; scanningRef.current = false; streamRef.current?.getTracks().forEach(t => t.stop()) }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Auto-intenta abrir la cámara; si el navegador lo bloquea (iOS sin gesto),
+  // el usuario la activa con el botón "Activar cámara".
+  useEffect(() => { void startCamera(); return () => stopCamera() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const onQrFound = async (raw: string) => {
     if (busy || scanned) return
@@ -623,6 +602,54 @@ function KioskView({ onExit, apiUrl }: { onExit: () => void; apiUrl: string }) {
     return "Marca rechazada"
   }
   const resetSoon = () => setTimeout(() => { setScanned(null); setResult(null); setManualToken(""); scanningRef.current = true }, 3500)
+
+  const stopCamera = () => {
+    startedRef.current = false; scanningRef.current = false
+    try { readerRef.current?.stop() } catch { /* noop */ }
+    readerRef.current = null
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    streamRef.current = null
+  }
+  const startCamera = async () => {
+    if (startedRef.current || starting || !videoRef.current) return
+    setStarting(true); setCamError("")
+    try {
+      const BD = (window as unknown as { BarcodeDetector?: new (o: { formats: string[] }) => BarcodeDetectorLike }).BarcodeDetector
+      if (BD) {
+        let detector: BarcodeDetectorLike | null = null
+        try { detector = new BD({ formats: ["qr_code"] }) } catch { detector = null }
+        if (detector) {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false })
+          streamRef.current = stream
+          videoRef.current.setAttribute("playsinline", "true")
+          videoRef.current.srcObject = stream
+          await videoRef.current.play()
+          startedRef.current = true; scanningRef.current = true; setCamOn(true); setStarting(false)
+          const det = detector
+          const tick = async () => {
+            if (!startedRef.current) return
+            if (scanningRef.current && videoRef.current) {
+              try { const codes = await det.detect(videoRef.current); if (codes && codes[0]?.rawValue) onQrFound(codes[0].rawValue) } catch { /* sin código */ }
+            }
+            setTimeout(tick, 400)
+          }
+          tick()
+          return
+        }
+      }
+      // Fallback universal (iOS Safari/Chrome, Android): @zxing/browser.
+      const reader = new BrowserQRCodeReader()
+      readerRef.current = await reader.decodeFromConstraints(
+        { video: { facingMode: { ideal: "environment" } } },
+        videoRef.current,
+        (res) => { if (res && scanningRef.current) onQrFound(res.getText()) },
+      )
+      startedRef.current = true; scanningRef.current = true; setCamOn(true); setStarting(false)
+    } catch {
+      setStarting(false); setCamOn(false)
+      setCamError("Permite el acceso a la cámara para escanear el QR. Si no aparece el permiso, pulsa “Activar cámara”.")
+    }
+  }
 
   const fmtClock = now.toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
 
@@ -662,20 +689,26 @@ function KioskView({ onExit, apiUrl }: { onExit: () => void; apiUrl: string }) {
         ) : (
           <div className="text-center w-full max-w-md">
             <div className="relative mx-auto w-72 h-72 rounded-2xl overflow-hidden border-2 border-white/20 bg-black">
-              <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
+              <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><ScanLine className="w-40 h-40 text-emerald-400/40" /></div>
-            </div>
-            <p className="mt-4 text-white/70">Muestra tu QR a la cámara para ponchar</p>
-            {geoError && <p className="mt-1 text-amber-400 text-sm">{geoError}</p>}
-            {camError && (
-              <div className="mt-4">
-                <p className="text-amber-400 text-sm mb-2">{camError}</p>
-                <div className="flex gap-2 justify-center">
-                  <input value={manualToken} onChange={e => setManualToken(e.target.value)} placeholder="Pegar código del QR" className="rounded-lg px-3 py-2 text-sm text-slate-900 w-56" />
-                  <button onClick={() => manualToken.trim() && onQrFound(manualToken.trim())} disabled={busy} className="rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium disabled:opacity-50">Validar</button>
+              {!camOn && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 gap-2">
+                  <button onClick={() => void startCamera()} disabled={starting} className="rounded-xl bg-emerald-500 px-5 py-3 text-base font-bold disabled:opacity-50">
+                    {starting ? "Abriendo cámara…" : "Activar cámara"}
+                  </button>
+                  {camError && <p className="text-amber-300 text-xs px-4 text-center">{camError}</p>}
                 </div>
+              )}
+            </div>
+            <p className="mt-4 text-white/70">{camOn ? "Muestra tu QR a la cámara para ponchar" : "Pulsa “Activar cámara” y permite el acceso"}</p>
+            {geoError && <p className="mt-1 text-amber-400 text-sm">{geoError}</p>}
+            <div className="mt-4">
+              <p className="text-white/40 text-xs mb-1">¿No funciona la cámara? Pega el código del QR:</p>
+              <div className="flex gap-2 justify-center">
+                <input value={manualToken} onChange={e => setManualToken(e.target.value)} placeholder="Código del QR" className="rounded-lg px-3 py-2 text-sm text-slate-900 w-56" />
+                <button onClick={() => manualToken.trim() && onQrFound(manualToken.trim())} disabled={busy} className="rounded-lg bg-white/15 hover:bg-white/25 px-3 py-2 text-sm font-medium disabled:opacity-50">Validar</button>
               </div>
-            )}
+            </div>
             {!deviceToken && <p className="mt-3 text-red-400 text-sm">Este navegador no está autorizado. Pídele al admin “Autorizar dispositivo”.</p>}
             {busy && <Loader2 className="w-6 h-6 animate-spin mx-auto mt-4" />}
           </div>
