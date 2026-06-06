@@ -546,6 +546,9 @@ function KioskView({ onExit }: { onExit: () => void }) {
   const readerRef = useRef<IScannerControls | null>(null)
   const scanningRef = useRef(false)
   const startedRef = useRef(false)
+  const clockRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const geoWatchRef = useRef<number | null>(null)
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [scanned, setScanned] = useState<{ token: string; nombre: string } | null>(null)
   const [manualToken, setManualToken] = useState("")
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
@@ -564,7 +567,7 @@ function KioskView({ onExit }: { onExit: () => void }) {
     return r.json() as Promise<Record<string, unknown>>
   }
 
-  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t) }, [])
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); clockRef.current = t; return () => clearInterval(t) }, [])
 
   // Geolocalización (watch).
   useEffect(() => {
@@ -573,6 +576,7 @@ function KioskView({ onExit }: { onExit: () => void }) {
       pos => { setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setGeoError("") },
       () => setGeoError("Activa el GPS y otorga permiso de ubicación"),
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 })
+    geoWatchRef.current = id
     return () => navigator.geolocation.clearWatch(id)
   }, [])
 
@@ -622,7 +626,18 @@ function KioskView({ onExit }: { onExit: () => void }) {
     } catch { setResult({ ok: false, title: "Error de red", sub: "No se pudo conectar. Verifica el internet." }) }
     finally { setBusy(false); resetSoon() }
   }
-  const resetSoon = () => setTimeout(() => { setScanned(null); setResult(null); setManualToken(""); scanningRef.current = true }, 3500)
+  const resetSoon = () => { resetTimerRef.current = setTimeout(() => { setScanned(null); setResult(null); setManualToken(""); scanningRef.current = true }, 3500) }
+
+  // Salida segura del kiosco: detiene cámara, scanner, GPS y timers, limpia el
+  // estado temporal y vuelve al panel. NO toca device_token / autorización / geocerca.
+  const handleExit = () => {
+    stopCamera()
+    if (geoWatchRef.current != null && navigator.geolocation) { try { navigator.geolocation.clearWatch(geoWatchRef.current) } catch { /* noop */ } geoWatchRef.current = null }
+    if (clockRef.current) { clearInterval(clockRef.current); clockRef.current = null }
+    if (resetTimerRef.current) { clearTimeout(resetTimerRef.current); resetTimerRef.current = null }
+    setScanned(null); setResult(null); setManualToken(""); setCamError(""); setBusy(false)
+    onExit()
+  }
 
   const stopCamera = () => {
     startedRef.current = false; scanningRef.current = false
@@ -677,7 +692,7 @@ function KioskView({ onExit }: { onExit: () => void }) {
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 text-white flex flex-col">
       <div className="flex items-center justify-between p-3 border-b border-white/10">
-        <button onClick={onExit} className="flex items-center gap-1 text-sm text-white/70 hover:text-white"><ArrowLeft className="w-4 h-4" />Salir del kiosco</button>
+        <button type="button" onClick={handleExit} aria-label="Salir del kiosco" className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20 active:bg-white/30 touch-manipulation select-none"><ArrowLeft className="w-4 h-4" />Salir del kiosco</button>
         <div className="text-2xl font-black tabular-nums">{fmtClock}</div>
         <div className="text-xs text-white/60 flex items-center gap-2">
           <span className={deviceToken ? "text-emerald-400" : "text-red-400"}>{deviceToken ? "Dispositivo autorizado" : "Dispositivo NO autorizado"}</span>
