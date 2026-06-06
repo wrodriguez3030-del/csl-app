@@ -716,10 +716,30 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
       return { ok: true, records: data || [] }
     }
+    case "getBranchOptions": {
+      // Sucursales REALES por negocio (csl_sucursales). Scoped al business activo;
+      // en modo "Todos" del superadmin devuelve todas, con su empresa, para agrupar.
+      const sb = getSupabaseAdmin()
+      const scope = shouldScopeTenant(); const bid = effectiveBusinessId()
+      const { data: bizs } = await sb.from("businesses").select("id, name, slug")
+      const bmap = new Map((bizs || []).map((b) => [String((b as { id: string }).id), b as { id: string; name: string; slug: string }]))
+      let q = sb.from("csl_sucursales").select("nombre, business_id").order("nombre", { ascending: true })
+      if (scope && bid) q = q.eq("business_id", bid)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, options: [], tableMissing: true }; throw error }
+      const options = (data || [])
+        .filter((s) => String((s as { nombre?: string }).nombre || "").trim())
+        .map((s) => {
+          const row = s as { nombre: string; business_id: string }
+          const b = bmap.get(String(row.business_id))
+          return { business_id: row.business_id, business_name: b?.name || "", sucursal: row.nombre }
+        })
+      return { ok: true, options, scoped: Boolean(scope && bid) }
+    }
     case "authorizeHrPunchDevice": {
       const record = parsePayload(params)
-      const businessId = effectiveBusinessId()
-      if (!businessId) throw new Error("business_id no encontrado")
+      const businessId = effectiveBusinessId() || textFrom(record, "business_id")
+      if (!businessId) throw new Error("Selecciona la empresa/sucursal del dispositivo")
       const token = `CSLDEV:${randomBytes(24).toString("hex")}`
       const row = {
         business_id: businessId,
@@ -764,8 +784,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     }
     case "saveHrBranchGeofence": {
       const record = parsePayload(params)
-      const businessId = effectiveBusinessId()
-      if (!businessId) throw new Error("business_id no encontrado")
+      const businessId = effectiveBusinessId() || textFrom(record, "business_id")
+      if (!businessId) throw new Error("Selecciona la empresa")
       const sucursal = textFrom(record, "sucursal")
       if (!sucursal) throw new Error("Sucursal obligatoria")
       const row: Record<string, unknown> = {

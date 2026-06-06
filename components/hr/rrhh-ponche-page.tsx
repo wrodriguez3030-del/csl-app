@@ -24,7 +24,7 @@ interface HrPunch {
   device_id?: string | null; status?: string; rejection_reason?: string | null
 }
 interface Device { id: string; sucursal: string | null; device_name: string; active: boolean; last_seen_at: string | null; device_info: string | null }
-interface Geofence { id: string; sucursal: string; latitude: number; longitude: number; radius_meters: number; active: boolean; google_maps_url?: string; direccion?: string; timezone?: string; telefono?: string; email?: string }
+interface Geofence { id: string; sucursal: string; latitude: number; longitude: number; radius_meters: number; active: boolean; google_maps_url?: string; direccion?: string; timezone?: string; telefono?: string; email?: string; business_id?: string }
 /** Extrae lat/lng de un link de Google Maps (@lat,lng / q=lat,lng / !3d!4d). */
 function parseLatLng(url: string): { lat: number; lng: number } | null {
   const pats = [/@(-?\d+\.\d+),(-?\d+\.\d+)/, /[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/, /[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)/, /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, /(-?\d{1,2}\.\d{4,}),\s*(-?\d{1,3}\.\d{4,})/]
@@ -57,8 +57,11 @@ function toEmp(r: Record<string, unknown>): Emp {
   }
 }
 
+interface BranchOption { business_id: string; business_name: string; sucursal: string }
+
 export function RrhhPonchePage() {
   const { apiUrl, showToast } = useAppStore()
+  const activeBusinessSlug = useAppStore(s => s.activeBusinessSlug)
   const business = useCurrentBusiness()
   const [view, setView] = useState<"admin" | "kiosk">("admin")
   const call = (params: Record<string, string | number | boolean>) => apiCall(normalizeApiUrl(apiUrl), params)
@@ -73,7 +76,8 @@ export function RrhhPonchePage() {
   const [search, setSearch] = useState("")
   const [correction, setCorrection] = useState<Partial<HrPunch> | null>(null)
   const [geoEdit, setGeoEdit] = useState<Partial<Geofence> | null>(null)
-  const [authDev, setAuthDev] = useState<{ device_name: string; sucursal: string } | null>(null)
+  const [authDev, setAuthDev] = useState<{ device_name: string; sucursal: string; business_id: string } | null>(null)
+  const [branchOptions, setBranchOptions] = useState<BranchOption[]>([])
   const [saving, setSaving] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [empSearch, setEmpSearch] = useState("")
@@ -85,22 +89,36 @@ export function RrhhPonchePage() {
   const reload = async () => {
     setLoading(true)
     try {
-      const [p, d, g, e] = await Promise.all([
+      const [p, d, g, e, bo] = await Promise.all([
         call({ action: "getHrPunches" }) as Promise<{ ok?: boolean; records?: HrPunch[]; tableMissing?: boolean }>,
         call({ action: "getHrPunchDevices" }) as Promise<{ ok?: boolean; records?: Device[]; tableMissing?: boolean }>,
         call({ action: "getHrBranchGeofences" }) as Promise<{ ok?: boolean; records?: Geofence[] }>,
         call({ action: "getEmpleados" }) as Promise<{ ok?: boolean; records?: Record<string, unknown>[] }>,
+        call({ action: "getBranchOptions" }) as Promise<{ ok?: boolean; options?: BranchOption[] }>,
       ])
       setTableMissing(Boolean(p?.tableMissing || d?.tableMissing))
       setPunches(p?.records ?? []); setDevices(d?.records ?? []); setGeofences(g?.records ?? [])
+      setBranchOptions(bo?.options ?? [])
       const map: Record<string, Emp> = {}
       for (const r of (e?.records ?? [])) { const em = toEmp(r); if (em.id) map[em.id] = em }
       setEmpMap(map)
     } catch (err) { showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error") } finally { setLoading(false) }
   }
-  useEffect(() => { if (view === "admin") reload() }, [view]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Recargar al entrar a admin y al CAMBIAR el negocio activo (limpia el cache del modal).
+  useEffect(() => { if (view === "admin") reload() }, [view, activeBusinessSlug]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const sucursales = useMemo(() => Array.from(new Set([...geofences.map(g => g.sucursal), ...Object.values(empMap).map(e => e.sucursal)].filter(Boolean))).sort(), [geofences, empMap])
+  // Sucursales REALES por negocio activo (csl_sucursales vía getBranchOptions).
+  const sucursales = useMemo(() => {
+    const fromBranches = branchOptions.map(o => o.sucursal).filter(Boolean)
+    if (fromBranches.length) return Array.from(new Set(fromBranches)).sort()
+    return Array.from(new Set([...geofences.map(g => g.sucursal), ...Object.values(empMap).map(e => e.sucursal)].filter(Boolean))).sort()
+  }, [branchOptions, geofences, empMap])
+  const multiBiz = useMemo(() => new Set(branchOptions.map(o => o.business_name)).size > 1, [branchOptions])
+  const bizGroups = useMemo(() => {
+    const m = new Map<string, BranchOption[]>()
+    for (const o of branchOptions) { const k = o.business_name || "—"; if (!m.has(k)) m.set(k, []); m.get(k)!.push(o) }
+    return Array.from(m.entries())
+  }, [branchOptions])
   const deviceName = (id?: string | null) => id ? (devices.find(d => d.id === id)?.device_name || "Dispositivo") : "—"
   const filtered = useMemo(() => {
     if (!search) return punches
@@ -175,7 +193,7 @@ export function RrhhPonchePage() {
     if (!geoEdit?.sucursal) { showToast("Sucursal obligatoria", "error"); return }
     setSaving(true)
     try {
-      const res = await call({ action: "saveHrBranchGeofence", data: JSON.stringify({ sucursal: geoEdit.sucursal, latitude: geoEdit.latitude || 0, longitude: geoEdit.longitude || 0, radius_meters: geoEdit.radius_meters || 80, active: geoEdit.active !== false, google_maps_url: geoEdit.google_maps_url || "", direccion: geoEdit.direccion || "", timezone: geoEdit.timezone || "America/Santo_Domingo", telefono: geoEdit.telefono || "", email: geoEdit.email || "" }) }) as { ok?: boolean; error?: string; tableMissing?: boolean }
+      const res = await call({ action: "saveHrBranchGeofence", data: JSON.stringify({ sucursal: geoEdit.sucursal, business_id: geoEdit.business_id || "", latitude: geoEdit.latitude || 0, longitude: geoEdit.longitude || 0, radius_meters: geoEdit.radius_meters || 80, active: geoEdit.active !== false, google_maps_url: geoEdit.google_maps_url || "", direccion: geoEdit.direccion || "", timezone: geoEdit.timezone || "America/Santo_Domingo", telefono: geoEdit.telefono || "", email: geoEdit.email || "" }) }) as { ok?: boolean; error?: string; tableMissing?: boolean }
       if (res?.tableMissing) { showToast("Falta aplicar la migración del ponche QR en db-cls", "error"); return }
       if (!res?.ok) { showToast(`Error: ${res?.error}`, "error"); return }
       showToast("Geocerca guardada", "success"); setGeoEdit(null); reload()
@@ -202,9 +220,10 @@ export function RrhhPonchePage() {
   }
   const authorizeDevice = async () => {
     if (!authDev) return
+    if (!authDev.sucursal) { showToast("Selecciona la sucursal del kiosco", "error"); return }
     setSaving(true)
     try {
-      const res = await call({ action: "authorizeHrPunchDevice", data: JSON.stringify({ device_name: authDev.device_name || "Kiosco de ponche", sucursal: authDev.sucursal || "", device_info: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : "" }) }) as { ok?: boolean; device_token?: string; error?: string; tableMissing?: boolean }
+      const res = await call({ action: "authorizeHrPunchDevice", data: JSON.stringify({ device_name: authDev.device_name || "Kiosco de ponche", sucursal: authDev.sucursal || "", business_id: authDev.business_id || "", device_info: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : "" }) }) as { ok?: boolean; device_token?: string; error?: string; tableMissing?: boolean }
       if (res?.tableMissing) { showToast("Falta aplicar la migración del ponche QR en db-cls", "error"); return }
       if (!res?.ok || !res.device_token) { showToast(`Error: ${res?.error || "no se pudo autorizar"}`, "error"); return }
       localStorage.setItem(DEVICE_TOKEN_KEY, res.device_token)
@@ -248,8 +267,8 @@ export function RrhhPonchePage() {
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">
           <Button onClick={() => setView("kiosk")}><Monitor className="w-4 h-4 mr-1" />Abrir kiosco</Button>
-          <Button variant="outline" onClick={() => setAuthDev({ device_name: "Kiosco de ponche", sucursal: sucursales[0] || "" })}><Smartphone className="w-4 h-4 mr-1" />Autorizar dispositivo</Button>
-          <Button variant="outline" onClick={() => setGeoEdit({ sucursal: sucursales[0] || "", latitude: 0, longitude: 0, radius_meters: 80, active: true })}><MapPin className="w-4 h-4 mr-1" />Configurar geocerca</Button>
+          <Button variant="outline" onClick={() => setAuthDev({ device_name: "Kiosco de ponche", sucursal: "", business_id: "" })}><Smartphone className="w-4 h-4 mr-1" />Autorizar dispositivo</Button>
+          <Button variant="outline" onClick={() => setGeoEdit({ sucursal: "", latitude: 0, longitude: 0, radius_meters: 80, active: true })}><MapPin className="w-4 h-4 mr-1" />Configurar geocerca</Button>
           <Button variant="outline" onClick={exportExcel}><FileSpreadsheet className="w-4 h-4 mr-1" />Exportar Excel</Button>
         </div>
       </div>
@@ -404,8 +423,15 @@ export function RrhhPonchePage() {
           {geoEdit && (
             <div className="space-y-3 py-2">
               <div className="space-y-1"><Label className="text-xs">Sucursal *</Label>
-                <Input list="sucursales-geo" value={geoEdit.sucursal || ""} onChange={e => setGeoEdit({ ...geoEdit, sucursal: e.target.value })} placeholder="RAFAEL VIDAL" />
-                <datalist id="sucursales-geo">{sucursales.map(s => <option key={s} value={s} />)}</datalist>
+                <select className="w-full h-9 rounded-md border bg-background px-2 text-sm"
+                  value={geoEdit.sucursal ? `${geoEdit.business_id || ""}|||${geoEdit.sucursal}` : ""}
+                  onChange={e => { const [bizId, suc] = e.target.value.split("|||"); setGeoEdit({ ...geoEdit, business_id: bizId || geoEdit.business_id || "", sucursal: suc || "" }) }}>
+                  <option value="">Selecciona sucursal…</option>
+                  {geoEdit.sucursal && !branchOptions.some(o => o.sucursal === geoEdit.sucursal) && <option value={`${geoEdit.business_id || ""}|||${geoEdit.sucursal}`}>{geoEdit.sucursal} (actual)</option>}
+                  {multiBiz
+                    ? bizGroups.map(([bn, opts]) => <optgroup key={bn} label={bn}>{opts.map(o => <option key={o.business_id + o.sucursal} value={`${o.business_id}|||${o.sucursal}`}>{o.sucursal}</option>)}</optgroup>)
+                    : branchOptions.map(o => <option key={o.business_id + o.sucursal} value={`${o.business_id}|||${o.sucursal}`}>{o.sucursal}</option>)}
+                </select>
               </div>
               <div className="space-y-1"><Label className="text-xs">Dirección</Label><Input value={geoEdit.direccion || ""} onChange={e => setGeoEdit({ ...geoEdit, direccion: e.target.value })} placeholder="Av. Rafael Vidal, Plaza Mediterránea Módulo H-1" /></div>
               <div className="space-y-1"><Label className="text-xs">Link de Google Maps</Label>
@@ -443,9 +469,16 @@ export function RrhhPonchePage() {
             <div className="space-y-3 py-2">
               <p className="text-xs text-muted-foreground">Autoriza el equipo (tablet/celular) que quedará fijo en la sucursal como kiosco. El permiso se guarda en este navegador.</p>
               <div className="space-y-1"><Label className="text-xs">Nombre del dispositivo</Label><Input value={authDev.device_name} onChange={e => setAuthDev({ ...authDev, device_name: e.target.value })} placeholder="Tablet recepción" /></div>
-              <div className="space-y-1"><Label className="text-xs">Sucursal</Label>
-                <Input list="sucursales-dev" value={authDev.sucursal} onChange={e => setAuthDev({ ...authDev, sucursal: e.target.value })} placeholder="RAFAEL VIDAL" />
-                <datalist id="sucursales-dev">{sucursales.map(s => <option key={s} value={s} />)}</datalist>
+              <div className="space-y-1"><Label className="text-xs">Sucursal *</Label>
+                <select className="w-full h-9 rounded-md border bg-background px-2 text-sm"
+                  value={authDev.business_id && authDev.sucursal ? `${authDev.business_id}|||${authDev.sucursal}` : ""}
+                  onChange={e => { const [bizId, suc] = e.target.value.split("|||"); setAuthDev({ ...authDev, business_id: bizId || "", sucursal: suc || "" }) }}>
+                  <option value="">Selecciona sucursal…</option>
+                  {multiBiz
+                    ? bizGroups.map(([bn, opts]) => <optgroup key={bn} label={bn}>{opts.map(o => <option key={o.business_id + o.sucursal} value={`${o.business_id}|||${o.sucursal}`}>{o.sucursal}</option>)}</optgroup>)
+                    : branchOptions.map(o => <option key={o.business_id + o.sucursal} value={`${o.business_id}|||${o.sucursal}`}>{o.sucursal}</option>)}
+                </select>
+                {branchOptions.length === 0 && <p className="text-[11px] text-amber-600">No hay sucursales para este negocio. Créalas en el módulo Sucursales.</p>}
               </div>
             </div>
           )}
