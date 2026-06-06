@@ -304,15 +304,19 @@ export function RrhhPonchePage() {
         </CardContent></Card>
         <Card><CardContent className="py-3">
           <div className="flex items-center justify-between mb-2"><h3 className="text-sm font-bold">Geocercas por sucursal</h3><MapPin className="w-4 h-4 text-muted-foreground" /></div>
-          {geofences.length === 0 ? <p className="text-xs text-muted-foreground py-2">Sin geocercas. Usa “Configurar geocerca”.</p> : (
-            <div className="space-y-1">{geofences.map(g => (
-              <div key={g.id} className="flex items-center justify-between text-xs border rounded px-2 py-1.5">
-                <div><span className="font-medium">{g.sucursal}</span><div className="text-muted-foreground">{Number(g.latitude) || Number(g.longitude) ? `${g.latitude}, ${g.longitude}` : "Sin coordenadas"} · {g.radius_meters} m</div></div>
-                <div className="flex items-center gap-1">
-                  <Badge variant="outline" className={g.active && (Number(g.latitude) || Number(g.longitude)) ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-amber-100 text-amber-700 border-amber-200"}>{Number(g.latitude) || Number(g.longitude) ? (g.active ? "Activa" : "Inactiva") : "Pendiente"}</Badge>
-                  <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setGeoEdit(g)}>Editar</Button>
-                </div>
-              </div>))}</div>
+          {branchOptions.length === 0 ? <p className="text-xs text-muted-foreground py-2">Sin sucursales para este negocio. Créalas en el módulo Sucursales.</p> : (
+            <div className="space-y-1">{branchOptions.map(o => {
+              const g = geofences.find(x => (x.sucursal || "").toUpperCase().trim() === o.sucursal.toUpperCase().trim() && (!x.business_id || x.business_id === o.business_id))
+              const hasCoords = !!g && (Number(g.latitude) !== 0 || Number(g.longitude) !== 0)
+              return (
+                <div key={o.business_id + o.sucursal} className="flex items-center justify-between text-xs border rounded px-2 py-1.5">
+                  <div><span className="font-medium">{o.sucursal}</span>{multiBiz && <span className="text-muted-foreground"> · {o.business_name}</span>}<div className="text-muted-foreground">{hasCoords ? `${g!.latitude}, ${g!.longitude} · ${g!.radius_meters} m` : "Sin coordenadas"}</div></div>
+                  <div className="flex items-center gap-1">
+                    <Badge variant="outline" className={hasCoords && g!.active ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-amber-100 text-amber-700 border-amber-200"}>{hasCoords ? (g!.active ? "Activa" : "Inactiva") : "Pendiente"}</Badge>
+                    <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setGeoEdit(g ? { ...g, business_id: o.business_id } : { sucursal: o.sucursal, business_id: o.business_id, latitude: 0, longitude: 0, radius_meters: 80, active: true })}>{hasCoords ? "Editar" : "Configurar"}</Button>
+                  </div>
+                </div>)
+            })}</div>
           )}
         </CardContent></Card>
       </div>

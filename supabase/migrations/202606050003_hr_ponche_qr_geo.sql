@@ -79,9 +79,10 @@ BEGIN
   END LOOP;
 END $$;
 
--- Seed de geocercas para sucursales conocidas (radio 80 m, lat/lng 0 a editar).
+-- Seed de geocercas SOLO desde las sucursales reales de cada negocio
+-- (csl_sucursales). Evita nombres cruzados entre tenants. Radio 80 m, lat/lng 0.
 INSERT INTO hr_branch_geofences (business_id, sucursal, latitude, longitude, radius_meters)
-SELECT b.id, s.sucursal, 0, 0, 80
-FROM businesses b
-CROSS JOIN (VALUES ('RAFAEL VIDAL'), ('LOS JARDINES'), ('VILLA OLGA'), ('LA VEGA'), ('DEPICENTER')) AS s(sucursal)
+SELECT business_id, nombre, 0, 0, 80
+FROM csl_sucursales
+WHERE nombre IS NOT NULL AND btrim(nombre) <> ''
 ON CONFLICT (business_id, sucursal) DO NOTHING;
