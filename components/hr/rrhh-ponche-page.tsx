@@ -265,7 +265,7 @@ export function RrhhPonchePage() {
     showToast(`Excel generado (${rows.length} fila(s))`, "success")
   }
 
-  if (view === "kiosk") return <KioskView onExit={() => setView("admin")} apiUrl={apiUrl} />
+  if (view === "kiosk") return <KioskView onExit={() => setView("admin")} />
 
   return (
     <div className="space-y-4">
@@ -531,8 +531,7 @@ export function RrhhPonchePage() {
 type DetectedBarcode = { rawValue: string }
 type BarcodeDetectorLike = { detect: (src: CanvasImageSource) => Promise<DetectedBarcode[]> }
 
-function KioskView({ onExit, apiUrl }: { onExit: () => void; apiUrl: string }) {
-  const { showToast } = useAppStore()
+function KioskView({ onExit }: { onExit: () => void }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const readerRef = useRef<IScannerControls | null>(null)
@@ -549,8 +548,12 @@ function KioskView({ onExit, apiUrl }: { onExit: () => void; apiUrl: string }) {
   const [starting, setStarting] = useState(false)
   const [now, setNow] = useState(() => new Date())
 
-  const call = (params: Record<string, string | number | boolean>) => apiCall(normalizeApiUrl(apiUrl), params)
   const deviceToken = typeof window !== "undefined" ? (localStorage.getItem(DEVICE_TOKEN_KEY) || "") : ""
+  // Kiosco: endpoint PÚBLICO autenticado por device_token (sin login/sesión).
+  const kioskPost = async (payload: Record<string, unknown>) => {
+    const r = await fetch("/api/public/punch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+    return r.json() as Promise<Record<string, unknown>>
+  }
 
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t) }, [])
 
@@ -568,15 +571,35 @@ function KioskView({ onExit, apiUrl }: { onExit: () => void; apiUrl: string }) {
   // el usuario la activa con el botón "Activar cámara".
   useEffect(() => { void startCamera(); return () => stopCamera() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const rejectTitle = (code?: string, reason?: string) => {
+    switch (code) {
+      case "no_device": case "device": return "Dispositivo no autorizado"
+      case "no_qr": case "qr_invalid": return "QR inválido"
+      case "qr_revoked": return "QR revocado / regenerado"
+      case "geofence": return "Fuera de ubicación"
+      case "no_gps": return "Sin ubicación (activa GPS)"
+      case "dup_in": return "Entrada duplicada"
+      case "no_in": return "Sin entrada previa"
+      case "table_missing": return "Falta migración en db-cls"
+      case "db_error": return "Error de base de datos"
+      case "bad_request": return "Solicitud inválida"
+    }
+    const r = (reason || "").toLowerCase()
+    if (r.includes("ubicaci") || r.includes("fuera")) return "Fuera de ubicación"
+    if (r.includes("dispositivo")) return "Dispositivo no autorizado"
+    if (r.includes("qr")) return "QR inválido"
+    return "Marca rechazada"
+  }
+
   const onQrFound = async (raw: string) => {
     if (busy || scanned) return
     scanningRef.current = false
     setBusy(true)
     try {
-      const res = await call({ action: "resolveHrQr", qr_token: raw }) as { ok?: boolean; employee_nombre?: string; error?: string }
-      if (!res?.ok) { setResult({ ok: false, title: "QR no válido", sub: res?.error || "Token no reconocido" }); resetSoon(); return }
+      const res = await kioskPost({ mode: "resolve", device_token: deviceToken, qr_token: raw }) as { ok?: boolean; employee_nombre?: string; code?: string; error?: string }
+      if (!res?.ok) { setResult({ ok: false, title: rejectTitle(res?.code, res?.error), sub: res?.error || "QR no reconocido" }); resetSoon(); return }
       setScanned({ token: raw, nombre: res.employee_nombre || "Empleado" })
-    } catch (e) { setResult({ ok: false, title: "Error", sub: e instanceof Error ? e.message : "—" }); resetSoon() }
+    } catch { setResult({ ok: false, title: "Error de red", sub: "No se pudo conectar. Verifica el internet del kiosco." }); resetSoon() }
     finally { setBusy(false) }
   }
 
@@ -584,22 +607,11 @@ function KioskView({ onExit, apiUrl }: { onExit: () => void; apiUrl: string }) {
     if (!scanned) return
     setBusy(true)
     try {
-      const res = await call({
-        action: "punchByQr", qr_token: scanned.token, device_token: deviceToken, punch_type: type,
-        latitude: coords?.lat ?? "", longitude: coords?.lng ?? "",
-        device_info: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : "",
-      }) as { ok?: boolean; status?: string; reason?: string; employee_nombre?: string; type?: string; distance_meters?: number | null }
-      if (res?.status === "approved") setResult({ ok: true, title: `${TYPE_LABEL[type]} registrada`, sub: `${res.employee_nombre || scanned.nombre}${res.distance_meters != null ? ` · ${Math.round(res.distance_meters)} m` : ""}` })
-      else setResult({ ok: false, title: rejectTitle(res?.reason), sub: res?.reason || "Marca rechazada" })
-    } catch (e) { setResult({ ok: false, title: "Error", sub: e instanceof Error ? e.message : "—" }) }
+      const res = await kioskPost({ mode: "punch", device_token: deviceToken, qr_token: scanned.token, punch_type: type, latitude: coords?.lat ?? "", longitude: coords?.lng ?? "", device_info: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : "" }) as { ok?: boolean; status?: string; code?: string; reason?: string; error?: string; employee_nombre?: string; distance_meters?: number | null; late_minutes?: number | null }
+      if (res?.status === "approved") setResult({ ok: true, title: `${TYPE_LABEL[type]} registrada`, sub: `${res.employee_nombre || scanned.nombre}${res.distance_meters != null ? ` · ${Math.round(res.distance_meters)} m` : ""}${res.late_minutes ? ` · tarde ${res.late_minutes}m` : ""}` })
+      else setResult({ ok: false, title: rejectTitle(res?.code, res?.reason || res?.error), sub: res?.reason || res?.error || "Marca rechazada" })
+    } catch { setResult({ ok: false, title: "Error de red", sub: "No se pudo conectar. Verifica el internet." }) }
     finally { setBusy(false); resetSoon() }
-  }
-  const rejectTitle = (reason?: string) => {
-    const r = (reason || "").toLowerCase()
-    if (r.includes("ubicaci") || r.includes("fuera")) return "Fuera de ubicación"
-    if (r.includes("dispositivo")) return "Dispositivo no autorizado"
-    if (r.includes("qr")) return "QR inválido"
-    return "Marca rechazada"
   }
   const resetSoon = () => setTimeout(() => { setScanned(null); setResult(null); setManualToken(""); scanningRef.current = true }, 3500)
 
