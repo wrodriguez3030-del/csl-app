@@ -396,6 +396,7 @@ export type TabId =
   | "rrhh-documentos"
   // RR.HH. — Asistencia
   | "rrhh-ponche"
+  | "rrhh-kiosko-ponche"
   | "rrhh-asistencia"
   | "rrhh-horarios"
   | "rrhh-permisos"

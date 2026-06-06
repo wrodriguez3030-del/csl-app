@@ -529,6 +529,13 @@ export function RrhhPonchePage() {
   )
 }
 
+/** Página dedicada "Kiosko Ponche": abre directo el kiosco a pantalla completa
+ *  (sin panel administrativo). Permiso de menú independiente: rrhh-kiosko-ponche. */
+export function KioskPonchePage() {
+  const setActiveTab = useAppStore(s => s.setActiveTab)
+  return <KioskView onExit={() => setActiveTab("rrhh-ponche")} />
+}
+
 // ─── Kiosco de ponche ──────────────────────────────────────────────────────
 type DetectedBarcode = { rawValue: string }
 type BarcodeDetectorLike = { detect: (src: CanvasImageSource) => Promise<DetectedBarcode[]> }
