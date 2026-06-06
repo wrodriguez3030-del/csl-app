@@ -11,9 +11,10 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Fingerprint, Plus, Trash2, Save, X, Loader2, Monitor, ArrowLeft, AlertCircle, MapPin, Smartphone, ScanLine, FileSpreadsheet, CheckCircle2, XCircle, LocateFixed, Power } from "lucide-react"
+import { Fingerprint, Plus, Trash2, Save, X, Loader2, Monitor, ArrowLeft, AlertCircle, MapPin, Smartphone, ScanLine, FileSpreadsheet, CheckCircle2, XCircle, LocateFixed, Power, QrCode, Users, RefreshCw, Search } from "lucide-react"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { exportHrReportExcel } from "@/lib/hr-report-excel"
+import QRCode from "qrcode"
 
 interface HrPunch {
   id: string; employee_id: string; employee_nombre?: string | null; type: string; punched_at: string
@@ -23,7 +24,7 @@ interface HrPunch {
 }
 interface Device { id: string; sucursal: string | null; device_name: string; active: boolean; last_seen_at: string | null; device_info: string | null }
 interface Geofence { id: string; sucursal: string; latitude: number; longitude: number; radius_meters: number; active: boolean }
-interface Emp { id: string; nombre: string; cedula: string; sucursal: string }
+interface Emp { id: string; nombre: string; cedula: string; sucursal: string; puesto: string }
 
 const TYPES = ["entrada", "salida", "inicio_descanso", "fin_descanso"]
 const TYPE_LABEL: Record<string, string> = {
@@ -45,6 +46,7 @@ function toEmp(r: Record<string, unknown>): Emp {
     id: pick(r.SolicitudID, r.empleado_id, r.EmpleadoID, r.id),
     nombre: `${pick(r.Nombre, r.nombre)} ${pick(r.Apellido, r.apellido)}`.replace(/\s+/g, " ").trim() || pick(r.SolicitudID, r.empleado_id),
     cedula: pick(r.Cedula, r.cedula), sucursal: pick(r.Sucursal, r.sucursal),
+    puesto: pick(r.PuestoSolicitado, r.puesto_solicitado, r.Puesto, r.puesto),
   }
 }
 
@@ -67,6 +69,11 @@ export function RrhhPonchePage() {
   const [authDev, setAuthDev] = useState<{ device_name: string; sucursal: string } | null>(null)
   const [saving, setSaving] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [empSearch, setEmpSearch] = useState("")
+  const [syncing, setSyncing] = useState(false)
+  const [qrEmp, setQrEmp] = useState<Emp | null>(null)
+  const [qrUrl, setQrUrl] = useState("")
+  const [qrBusy, setQrBusy] = useState(false)
 
   const reload = async () => {
     setLoading(true)
@@ -91,8 +98,43 @@ export function RrhhPonchePage() {
   const filtered = useMemo(() => {
     if (!search) return punches
     const q = search.toLowerCase()
-    return punches.filter(p => `${p.employee_id} ${empMap[p.employee_id]?.nombre || ""} ${p.sucursal || ""}`.toLowerCase().includes(q))
+    return punches.filter(p => { const e = empMap[p.employee_id]; return `${p.employee_id} ${e?.nombre || ""} ${e?.cedula || ""} ${e?.puesto || ""} ${p.sucursal || e?.sucursal || ""}`.toLowerCase().includes(q) })
   }, [punches, search, empMap])
+
+  // Directorio de empleados reales (tenant-scoped) para el módulo de ponche.
+  const empList = useMemo(() => Object.values(empMap).sort((a, b) => a.nombre.localeCompare(b.nombre)), [empMap])
+  const filteredEmps = useMemo(() => {
+    if (!empSearch.trim()) return empList
+    const q = empSearch.toLowerCase()
+    return empList.filter(e => `${e.nombre} ${e.cedula} ${e.sucursal} ${e.puesto}`.toLowerCase().includes(q))
+  }, [empList, empSearch])
+
+  const openQr = async (emp: Emp, regenerate = false) => {
+    setQrEmp(emp); setQrBusy(true); if (!regenerate) setQrUrl("")
+    try {
+      const params: Record<string, string> = { action: "getHrEmployeeQr", employee_id: emp.id }
+      if (regenerate) params.regenerate = "true"
+      const res = await call(params) as { ok?: boolean; token?: string | null; tableMissing?: boolean; error?: string }
+      if (res?.tableMissing) { showToast("Falta aplicar la migración del ponche QR en db-cls", "error"); return }
+      if (!res?.ok || !res.token) { showToast(res?.error || "No se pudo generar el QR", "error"); return }
+      setQrUrl(await QRCode.toDataURL(res.token, { width: 320, margin: 1 }))
+      if (regenerate) showToast("QR regenerado. El anterior quedó inválido.", "success")
+    } catch (e) { showToast(e instanceof Error ? e.message : "Error generando QR", "error") } finally { setQrBusy(false) }
+  }
+  const downloadQr = () => {
+    if (!qrUrl || !qrEmp) return
+    const a = document.createElement("a"); a.href = qrUrl; a.download = `QR_${qrEmp.nombre}.png`.replace(/\s+/g, "_")
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+  }
+  const syncEmpleados = async () => {
+    setSyncing(true)
+    try {
+      const res = await call({ action: "syncApprovedEmpleados" }) as { ok?: boolean; creados?: number; actualizados?: number; aprobadas?: number; error?: string }
+      if (!res?.ok) { showToast(res?.error || "No se pudo sincronizar", "error"); return }
+      showToast(`Sincronizado: ${res.creados ?? 0} creados, ${res.actualizados ?? 0} actualizados (de ${res.aprobadas ?? 0} aprobadas)`, "success")
+      reload()
+    } catch (e) { showToast(e instanceof Error ? e.message : "Error al sincronizar", "error") } finally { setSyncing(false) }
+  }
 
   const cards = useMemo(() => {
     const today = punches.filter(p => isToday(p.punched_at))
@@ -236,9 +278,47 @@ export function RrhhPonchePage() {
         </CardContent></Card>
       </div>
 
+      {/* Directorio de empleados reales (Solicitudes aprobadas / csl_empleados) */}
+      <Card>
+        <CardContent className="py-3">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <h3 className="text-sm font-bold flex items-center gap-1"><Users className="w-4 h-4" />Empleados</h3>
+            <Button variant="outline" size="sm" onClick={syncEmpleados} disabled={syncing}>{syncing ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-1" />}Sincronizar empleados aprobados</Button>
+          </div>
+          <div className="relative max-w-sm mb-2">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input className="pl-8 h-8" placeholder="Buscar por nombre, cédula, sucursal o puesto…" value={empSearch} onChange={e => setEmpSearch(e.target.value)} />
+          </div>
+          {loading ? (
+            <div className="py-6 text-center text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin inline mr-2" />Cargando…</div>
+          ) : empList.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              No hay empleados registrados para este negocio. Sincroniza solicitudes aprobadas o agrega un empleado.
+            </div>
+          ) : filteredEmps.length === 0 ? (
+            <div className="py-4 text-center text-sm text-muted-foreground">Sin coincidencias para “{empSearch}”.</div>
+          ) : (
+            <div className="max-h-72 overflow-y-auto divide-y">
+              {filteredEmps.map(e => (
+                <div key={e.id} className="flex items-center justify-between gap-2 py-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">{e.nombre}</div>
+                    <div className="text-[11px] text-muted-foreground truncate">{[e.cedula, e.puesto, e.sucursal].filter(Boolean).join(" · ") || "—"}</div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => openQr(e)}><QrCode className="w-3.5 h-3.5 mr-1" />Ver QR</Button>
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setCorrection({ employee_id: e.id, employee_nombre: e.nombre, sucursal: e.sucursal, type: "entrada", punched_at: new Date().toISOString().slice(0, 16) })}>Marca manual</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardContent className="p-3">
-          <Input placeholder="Buscar por empleado o sucursal…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 max-w-sm mb-2" />
+          <Input placeholder="Buscar en historial de ponches (nombre, cédula, sucursal, puesto)…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 max-w-sm mb-2" />
           <div className="overflow-x-auto">
           {loading ? <div className="py-10 text-center text-sm text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin inline mr-2" />Cargando...</div>
           : filtered.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin ponches.</div> : (
@@ -342,6 +422,22 @@ export function RrhhPonchePage() {
             <Button variant="outline" onClick={() => setAuthDev(null)} disabled={saving}><X className="w-4 h-4 mr-1" />Cancelar</Button>
             <Button onClick={authorizeDevice} disabled={saving}>{saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Smartphone className="w-4 h-4 mr-1" />}Autorizar</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog QR del empleado */}
+      <Dialog open={!!qrEmp} onOpenChange={o => { if (!o) { setQrEmp(null); setQrUrl("") } }}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader><DialogTitle>QR · {qrEmp?.nombre}</DialogTitle></DialogHeader>
+          <div className="flex flex-col items-center gap-3 py-2">
+            {qrBusy && !qrUrl ? <div className="py-12 text-sm text-muted-foreground">Generando QR…</div>
+              : qrUrl ? <img src={qrUrl} alt="QR" className="w-56 h-56" /> : <div className="py-12 text-sm text-muted-foreground">Sin QR</div>}
+            <p className="text-[11px] text-muted-foreground text-center">El empleado presenta este QR en el kiosco. Solo funciona dentro de la sucursal (geocerca) y en un dispositivo autorizado.</p>
+            <div className="flex gap-2">
+              <button onClick={downloadQr} disabled={!qrUrl} className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">Descargar</button>
+              <button onClick={() => qrEmp && openQr(qrEmp, true)} disabled={qrBusy} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">Regenerar</button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
