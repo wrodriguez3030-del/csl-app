@@ -313,7 +313,7 @@ export function RrhhPonchePage() {
                   <div><span className="font-medium">{o.sucursal}</span>{multiBiz && <span className="text-muted-foreground"> · {o.business_name}</span>}<div className="text-muted-foreground">{hasCoords ? `${g!.latitude}, ${g!.longitude} · ${g!.radius_meters} m` : "Sin coordenadas"}</div></div>
                   <div className="flex items-center gap-1">
                     <Badge variant="outline" className={hasCoords && g!.active ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-amber-100 text-amber-700 border-amber-200"}>{hasCoords ? (g!.active ? "Activa" : "Inactiva") : "Pendiente"}</Badge>
-                    <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setGeoEdit(g ? { ...g, business_id: o.business_id } : { sucursal: o.sucursal, business_id: o.business_id, latitude: 0, longitude: 0, radius_meters: 80, active: true })}>{hasCoords ? "Editar" : "Configurar"}</Button>
+                    <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setGeoEdit(g ? { ...g, sucursal: o.sucursal, business_id: o.business_id } : { sucursal: o.sucursal, business_id: o.business_id, latitude: 0, longitude: 0, radius_meters: 80, active: true })}>{hasCoords ? "Editar" : "Configurar"}</Button>
                   </div>
                 </div>)
             })}</div>
