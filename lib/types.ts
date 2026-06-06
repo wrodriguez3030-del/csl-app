@@ -334,6 +334,10 @@ export interface ClienteCosmiatria {
   Notas: string
   FichasCount?: number
   UltimaFicha?: string
+  /** "AgendaPro" si vino de la sincronización; "Manual" si se creó a mano. */
+  Origen?: string
+  AgendaProClientId?: string
+  AgendaProSyncedAt?: string
 }
 
 // =====================================================

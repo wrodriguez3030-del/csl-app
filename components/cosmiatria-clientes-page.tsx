@@ -97,6 +97,8 @@ function normalizeCliente(raw: Record<string, unknown>): ClienteCosmiatria {
     ClienteDesde: String(raw.ClienteDesde ?? raw.cliente_desde ?? today),
     Estado: (String(raw.Estado ?? raw.estado ?? "Activo") === "Inactivo" ? "Inactivo" : "Activo") as ClienteCosmiatria["Estado"],
     Notas: String(raw.Notas ?? raw.notas ?? ""),
+    Origen: String(raw.Origen ?? raw.origen ?? (raw.AgendaProClientId || raw.agendapro_client_id ? "AgendaPro" : "Manual")),
+    AgendaProClientId: (raw.AgendaProClientId || raw.agendapro_client_id) ? String(raw.AgendaProClientId ?? raw.agendapro_client_id) : undefined,
   }
 }
 
@@ -134,6 +136,7 @@ export function CosmiatriaClientesPage() {
   const canEditClientes = canMerge
   const [mergeOpen, setMergeOpen] = useState(false)
   const [agendaProSyncing, setAgendaProSyncing] = useState(false)
+  const [agendaProStatus, setAgendaProStatus] = useState<{ ready?: boolean; pending?: string | null; lastSync?: { finished_at?: string; started_at?: string; status?: string; created_count?: number; updated_count?: number; error_count?: number; error_message?: string } | null } | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importParsed, setImportParsed] = useState<{ clients: Record<string, unknown>[]; skipped: number; columnsDetected: string[]; warnings: string[] } | null>(null)
@@ -342,6 +345,15 @@ export function CosmiatriaClientesPage() {
     }
   }
 
+  const loadAgendaProStatus = useCallback(async () => {
+    try {
+      const r = await fetch("/api/integrations/agendapro/health")
+      const j = await r.json()
+      if (j?.ok) setAgendaProStatus({ ready: j.ready, pending: j.pending, lastSync: j.lastSync })
+    } catch { /* ignore */ }
+  }, [])
+  useEffect(() => { void loadAgendaProStatus() }, [loadAgendaProStatus])
+
   const runAgendaProSync = async (search: string) => {
     setAgendaProSyncing(true)
     try {
@@ -376,6 +388,7 @@ export function CosmiatriaClientesPage() {
       showToast(syncErr instanceof Error ? syncErr.message : "Error al sincronizar AgendaPro", "error")
     } finally {
       setAgendaProSyncing(false)
+      void loadAgendaProStatus()
     }
   }
 
@@ -508,6 +521,20 @@ export function CosmiatriaClientesPage() {
         </div>
       </div>
 
+      {agendaProStatus && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-xs">
+          <span className="font-semibold">AgendaPro:</span>
+          {agendaProStatus.ready
+            ? <Badge variant="outline" className="bg-green-500/15 text-green-600 border-green-300">Conectado</Badge>
+            : <Badge variant="outline" className="bg-amber-500/15 text-amber-700 border-amber-300">{agendaProStatus.pending || "Sin credenciales"}</Badge>}
+          {agendaProStatus.lastSync ? (
+            <span className="text-muted-foreground">
+              Última sync: {new Date(agendaProStatus.lastSync.finished_at || agendaProStatus.lastSync.started_at || "").toLocaleString("es-DO")} · {agendaProStatus.lastSync.created_count ?? 0} nuevos · {agendaProStatus.lastSync.updated_count ?? 0} actualizados{agendaProStatus.lastSync.error_count ? ` · ${agendaProStatus.lastSync.error_count} errores` : ""}
+            </span>
+          ) : <span className="text-muted-foreground">Sin sincronizaciones todavía</span>}
+        </div>
+      )}
+
       <MergeClientesDialog
         open={mergeOpen}
         onOpenChange={setMergeOpen}
@@ -554,6 +581,7 @@ export function CosmiatriaClientesPage() {
                 <th className="cursor-pointer px-3 py-3 text-left text-xs" onClick={() => setSort("Telefono")}>Teléfono{sortLabel("Telefono")}</th>
                 <th className="cursor-pointer px-3 py-3 text-left text-xs" onClick={() => setSort("DocumentoIdentidad")}>Documento{sortLabel("DocumentoIdentidad")}</th>
                 <th className="cursor-pointer px-3 py-3 text-left text-xs" onClick={() => setSort("Sucursal")}>Sucursal{sortLabel("Sucursal")}</th>
+                <th className="px-3 py-3 text-center text-xs">Origen</th>
                 <th className="cursor-pointer px-3 py-3 text-left text-xs" onClick={() => setSort("ClienteDesde")}>Desde{sortLabel("ClienteDesde")}</th>
                 <th className="px-3 py-3 text-center text-xs">Fichas</th>
                 <th className="px-3 py-3 text-center text-xs">Estado</th>
@@ -562,7 +590,7 @@ export function CosmiatriaClientesPage() {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={9} className="py-12 text-center text-muted-foreground">No hay clientes registrados</td></tr>
+                <tr><td colSpan={10} className="py-12 text-center text-muted-foreground">No hay clientes registrados</td></tr>
               ) : paginated.map((cliente, seqIndex) => (
                 <tr
                   key={cliente.ClienteID}
@@ -582,6 +610,7 @@ export function CosmiatriaClientesPage() {
                   <td className="px-3 py-3">{displayPhone(cliente.Telefono)}</td>
                   <td className="px-3 py-3">{displayDocumento(cliente.DocumentoIdentidad) || "—"}</td>
                   <td className="px-3 py-3">{cliente.Sucursal || "—"}</td>
+                  <td className="px-3 py-3 text-center"><Badge variant="outline" className={cliente.Origen === "AgendaPro" ? "bg-violet-500/15 text-violet-600 border-violet-300" : "text-muted-foreground"}>{cliente.Origen || "Manual"}</Badge></td>
                   <td className="px-3 py-3 text-xs">{cliente.ClienteDesde || "—"}</td>
                   <td className="px-3 py-3 text-center"><Badge variant="outline">{cliente.FichasCount || 0}</Badge></td>
                   <td className="px-3 py-3 text-center"><Badge className={cliente.Estado === "Activo" ? "bg-green-500/15 text-green-500" : ""}>{cliente.Estado}</Badge></td>

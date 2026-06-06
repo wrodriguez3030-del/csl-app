@@ -9,8 +9,8 @@
  */
 
 import { NextResponse } from "next/server"
-import { requireAuthenticatedUser } from "@/lib/server/supabase"
-import { getProfile } from "@/lib/server/csl-crud"
+import { requireAuthenticatedUser, getSupabaseAdmin } from "@/lib/server/supabase"
+import { loadBusinessContext } from "@/lib/server/csl-crud"
 import { fetchAgendaProClients, getAgendaProConfig, safeConfigSummary, validateAgendaProConfig } from "@/lib/server/agendapro"
 
 export const dynamic = "force-dynamic"
@@ -37,14 +37,26 @@ export async function GET(request: Request) {
   } catch {
     return json({ ok: false, error: "No autenticado" }, 401)
   }
-  const profile = await getProfile(user.id)
-  if (!profile?.is_admin && !profile?.is_superadmin) {
-    return json({ ok: false, error: "Solo admin o superadmin." }, 403)
-  }
   const cfg = getAgendaProConfig()
   const configError = validateAgendaProConfig(cfg)
   const url = new URL(request.url)
   const probe = url.searchParams.get("probe") === "1"
+
+  // Última sincronización del tenant activo (no expone credenciales).
+  let lastSync: Record<string, unknown> | null = null
+  try {
+    const ctx = await loadBusinessContext(user.id)
+    if (ctx?.businessId) {
+      const { data } = await getSupabaseAdmin()
+        .from("csl_agendapro_sync_logs")
+        .select("started_at, finished_at, status, total_fetched, created_count, updated_count, skipped_count, error_count, error_message")
+        .eq("business_id", ctx.businessId)
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      lastSync = (data as Record<string, unknown> | null) ?? null
+    }
+  } catch { /* tabla de logs no disponible */ }
 
   const baseResult: Record<string, unknown> = {
     ok: true,
@@ -52,6 +64,7 @@ export async function GET(request: Request) {
     pending: configError,
     config: safeConfigSummary(cfg),
     perPage: Number(process.env.AGENDAPRO_API_PER_PAGE || 100),
+    lastSync,
   }
   if (!probe || configError) return json(baseResult)
 
