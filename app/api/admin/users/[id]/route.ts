@@ -15,6 +15,7 @@ import { getSupabaseAdmin, requireAuthenticatedUser } from "@/lib/server/supabas
 import { requireSuperadmin } from "@/lib/server/csl-crud"
 import { errorMessage } from "@/lib/server/csl-helpers"
 import { ALL_MENU_IDS, MENU_ID_SET, type MenuPermission } from "@/lib/menus"
+import { normalizeSucursal } from "@/lib/normalize-pulse"
 
 export const runtime = "nodejs"
 
@@ -166,6 +167,23 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
         },
       })
       if (authError) throw authError
+    }
+
+    // Sucursales permitidas (si vienen en el payload). Revoca con active=false.
+    if (Array.isArray(body.branches)) {
+      const bizId = String((updates.business_id as string) || target.business_id || "")
+      if (bizId) {
+        const branches = Array.from(new Set((body.branches as unknown[]).map((b) => normalizeSucursal(b)).filter(Boolean)))
+        try {
+          for (const bn of branches) {
+            await supabase.from("user_branch_permissions").upsert({ business_id: bizId, user_id: targetId, branch_name: bn, active: true, updated_at: new Date().toISOString() }, { onConflict: "business_id,user_id,branch_name" })
+          }
+          const { data: ex } = await supabase.from("user_branch_permissions").select("branch_name").eq("business_id", bizId).eq("user_id", targetId).eq("active", true)
+          for (const r of ((ex || []) as { branch_name: string }[])) {
+            if (!branches.includes(r.branch_name)) await supabase.from("user_branch_permissions").update({ active: false, updated_at: new Date().toISOString() }).eq("business_id", bizId).eq("user_id", targetId).eq("branch_name", r.branch_name)
+          }
+        } catch { /* tabla no migrada */ }
+      }
     }
 
     return NextResponse.json({ ok: true, user_id: targetId })

@@ -40,10 +40,10 @@ import {
   FICHA_LIST_COLS,
   CONSENT_LIST_COLS,
 } from "@/lib/server/csl-crud"
-import { runWithBusinessContext, applyActiveBusiness, getBusinessContext } from "@/lib/server/business-context"
+import { runWithBusinessContext, applyActiveBusiness, getBusinessContext, scopeByBranch } from "@/lib/server/business-context"
 import { createHash, randomBytes } from "node:crypto"
 import { haversineMeters } from "@/lib/hr-geo"
-import { makeAgendaMatchKey } from "@/lib/normalize-pulse"
+import { makeAgendaMatchKey, normalizeSucursal } from "@/lib/normalize-pulse"
 import { toUpperField, toUpperFieldOrNull } from "@/lib/normalize-fields"
 import {
   clienteCosmiatriaToDb,
@@ -641,7 +641,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (hasta) q = q.lte("punched_at", hasta)
       const { data, error } = await q
       if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
-      return { ok: true, records: data || [] }
+      return { ok: true, records: scopeByBranch((data || []) as Row[], (p) => (p as Row).sucursal) }
     }
     case "saveHrPunch": {
       const record = parsePayload(params)
@@ -714,17 +714,20 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
       const { data, error } = await q
       if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
-      return { ok: true, records: data || [] }
+      return { ok: true, records: scopeByBranch((data || []) as Row[], (d) => (d as Row).sucursal) }
     }
     case "getBranchOptions": {
       // Sucursales REALES por negocio (csl_sucursales). Scoped al business activo;
       // en modo "Todos" del superadmin devuelve todas, con su empresa, para agrupar.
       const sb = getSupabaseAdmin()
       const scope = shouldScopeTenant(); const bid = effectiveBusinessId()
+      const ctxBO = getBusinessContext()
+      // Superadmin puede pedir TODAS las sucursales (para el modal de usuarios).
+      const wantAll = textValue(params, "all") === "true" && Boolean(ctxBO?.isSuperadmin)
       const { data: bizs } = await sb.from("businesses").select("id, name, slug")
       const bmap = new Map((bizs || []).map((b) => [String((b as { id: string }).id), b as { id: string; name: string; slug: string }]))
       let q = sb.from("csl_sucursales").select("nombre, business_id").order("nombre", { ascending: true })
-      if (scope && bid) q = q.eq("business_id", bid)
+      if (scope && bid && !wantAll) q = q.eq("business_id", bid)
       const { data, error } = await q
       if (error) { if (isMissingTable(error)) return { ok: true, options: [], tableMissing: true }; throw error }
       const options = (data || [])
@@ -734,7 +737,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
           const b = bmap.get(String(row.business_id))
           return { business_id: row.business_id, business_name: b?.name || "", sucursal: row.nombre }
         })
-      return { ok: true, options, scoped: Boolean(scope && bid) }
+      return { ok: true, options: scopeByBranch(options, (o) => o.sucursal), scoped: Boolean(scope && bid) }
     }
     case "authorizeHrPunchDevice": {
       const record = parsePayload(params)
@@ -780,7 +783,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
       const { data, error } = await q
       if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
-      return { ok: true, records: data || [] }
+      return { ok: true, records: scopeByBranch((data || []) as Row[], (g) => (g as Row).sucursal) }
     }
     case "saveHrBranchGeofence": {
       const record = parsePayload(params)
@@ -1008,7 +1011,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         })
       }
       records.sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)) || String(a.employee_nombre).localeCompare(String(b.employee_nombre)))
-      return { ok: true, records }
+      return { ok: true, records: scopeByBranch(records, (r) => (r as Row).sucursal) }
     }
 
     // ── HR · Fase 2 · Asistencia (consolidación on-read) ─────────────────
@@ -2263,13 +2266,21 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     }
     case "getEmpleados": {
       const empleados = await getRows("empleados")
-      if (empleados.length) return { ok: true, records: empleados }
+      if (empleados.length) return { ok: true, records: scopeByBranch(empleados, (e) => (e as Row).Sucursal) }
       const solicitudes = await getRows("solicitudes_empleo")
-      return { ok: true, records: solicitudes.filter((record) => String(record.Estado ?? record.estado) === "Aprobado") }
+      const aprobadas = solicitudes.filter((record) => String(record.Estado ?? record.estado) === "Aprobado")
+      return { ok: true, records: scopeByBranch(aprobadas, (e) => (e as Row).Sucursal) }
     }
     case "getCurrentUserProfile": {
       const profile = await getProfile(user.id)
-      return { ok: true, user: profile ? profileToUser(profile) : null }
+      const u = profile ? profileToUser(profile) : null
+      if (u) {
+        try {
+          const { data: bp } = await getSupabaseAdmin().from("user_branch_permissions").select("branch_name").eq("user_id", user.id).eq("active", true)
+          ;(u as Row).branches = ((bp || []) as Row[]).map((r) => String(r.branch_name))
+        } catch { /* tabla no migrada */ }
+      }
+      return { ok: true, user: u }
     }
     case "getUsers": {
       // BUG CRÍTICO DE MULTI-TENANT (fix): antes este handler devolvía TODOS
@@ -2289,7 +2300,17 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       }
       const { data, error } = await query
       if (error) throw error
-      return { ok: true, records: (data || []).map((profile) => profileToUser(profile as Row)) }
+      const records = (data || []).map((profile) => profileToUser(profile as Row))
+      try {
+        const ids = records.map((r) => String((r as Row).id)).filter(Boolean)
+        if (ids.length) {
+          const { data: bperms } = await supabase.from("user_branch_permissions").select("user_id, branch_name").eq("active", true).in("user_id", ids)
+          const byUser = new Map<string, string[]>()
+          for (const r of ((bperms || []) as Row[])) { const u = String(r.user_id); if (!byUser.has(u)) byUser.set(u, []); byUser.get(u)!.push(String(r.branch_name)) }
+          for (const rec of records) (rec as Row).branches = byUser.get(String((rec as Row).id)) || []
+        }
+      } catch { /* tabla no migrada */ }
+      return { ok: true, records }
     }
     case "saveUser": {
       const callerProfile = await requireAdmin(user.id)
@@ -2415,7 +2436,26 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         .from("csl_user_profiles")
         .upsert(profile, { onConflict: "user_id" })
       if (error) throw error
-      return { ok: true, record: profileToUser(profile as Row) }
+
+      // ---- Sucursales permitidas (user_branch_permissions) — sin DELETE ----
+      const branchesRaw = Array.isArray(record.branches) ? (record.branches as unknown[]) : []
+      const branches = Array.from(new Set(branchesRaw.map((b) => normalizeSucursal(b)).filter(Boolean)))
+      if (targetBusinessId) {
+        try {
+          for (const bn of branches) {
+            await supabase.from("user_branch_permissions").upsert(
+              { business_id: targetBusinessId, user_id: userId, branch_name: bn, active: true, updated_at: new Date().toISOString() },
+              { onConflict: "business_id,user_id,branch_name" })
+          }
+          const { data: existB } = await supabase.from("user_branch_permissions").select("branch_name").eq("business_id", targetBusinessId).eq("user_id", userId).eq("active", true)
+          for (const r of ((existB || []) as Row[])) {
+            const bn = String(r.branch_name)
+            if (!branches.includes(bn)) await supabase.from("user_branch_permissions").update({ active: false, updated_at: new Date().toISOString() }).eq("business_id", targetBusinessId).eq("user_id", userId).eq("branch_name", bn)
+          }
+        } catch { /* tabla no migrada */ }
+      }
+      await hrAudit(user, "usuarios", editingId ? "update" : "create", "user_branch_permissions", userId, null, { branches })
+      return { ok: true, record: { ...profileToUser(profile as Row), branches } }
     }
     case "deleteUser": {
       const callerProfile = await requireAdmin(user.id)

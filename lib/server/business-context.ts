@@ -19,9 +19,26 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks"
+import { normalizeSucursal } from "@/lib/normalize-pulse"
 import type { BusinessContext } from "./csl-types"
 
 const storage = new AsyncLocalStorage<BusinessContext | null>()
+
+/** Scope por sucursal del request actual (default: ve todas). */
+export function getBranchScope(): { all: boolean; branches: string[] } {
+  return getBusinessContext()?.branchScope ?? { all: true, branches: [] }
+}
+/**
+ * Filtra filas por la sucursal permitida del usuario (normalizada). Si el scope
+ * es "all" devuelve todas. Las filas sin sucursal se OCULTAN a usuarios
+ * restringidos (solo admin/superadmin las ven, que tienen all=true).
+ */
+export function scopeByBranch<T>(rows: T[], getSucursal: (r: T) => unknown): T[] {
+  const s = getBranchScope()
+  if (s.all || !s.branches.length) return rows
+  const set = new Set(s.branches)
+  return rows.filter((r) => { const n = normalizeSucursal(getSucursal(r)); return n ? set.has(n) : false })
+}
 
 /**
  * Ejecuta `fn` con el BusinessContext disponible en `getBusinessContext()`

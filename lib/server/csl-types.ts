@@ -44,4 +44,8 @@ export interface BusinessContext {
    *  (modo "Todos"). En cuanto la UI manda un business activo, esto pasa a
    *  false y el superadmin queda scopeado a ese tenant como cualquier user. */
   bypassTenantFilter: boolean
+  /** Scope por sucursal. all=true → ve todas las sucursales del business
+   *  (admin/superadmin o usuario sin restricción). Si all=false, solo ve
+   *  registros cuya sucursal normalizada esté en `branches`. */
+  branchScope?: { all: boolean; branches: string[] }
 }

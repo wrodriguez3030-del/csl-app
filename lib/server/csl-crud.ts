@@ -7,7 +7,8 @@
 
 import { getSupabaseAdmin } from "./supabase"
 import { fichaClientPatchFromCliente, fromDb, mergeClienteRows } from "./csl-transforms"
-import { getBusinessContext } from "./business-context"
+import { getBusinessContext, scopeByBranch } from "./business-context"
+import { normalizeSucursal } from "@/lib/normalize-pulse"
 import type { BusinessContext, Row } from "./csl-types"
 
 /**
@@ -333,7 +334,14 @@ export async function getAllData() {
     getRows("csl_consent_masajes", { columns: CONSENT_LIST_COLS }).catch(() => []),
     getRows("csl_consent_tatuajes_cejas", { columns: CONSENT_LIST_COLS }).catch(() => []),
   ])
-  return { sucursales, equipos, reportes, piezas, tecnicos, inventario, consentMasajes, consentTatuajesCejas }
+  return {
+    sucursales: scopeByBranch(sucursales, (s) => (s as Row).Nombre),
+    equipos: scopeByBranch(equipos, (e) => (e as Row).Sucursal),
+    reportes: scopeByBranch(reportes, (r) => (r as Row).Sucursal),
+    piezas, tecnicos, inventario,
+    consentMasajes: scopeByBranch(consentMasajes as Row[], (c) => (c as Row).sucursal),
+    consentTatuajesCejas: scopeByBranch(consentTatuajesCejas as Row[], (c) => (c as Row).sucursal),
+  }
 }
 
 /** Snapshot PulseControl.
@@ -384,7 +392,14 @@ export async function getAllPulsosData(opts?: { extendedDays?: number }) {
       })
     })(),
   ])
-  return { operadoras, lecturasSemanales, sesionesCliente, auditoriasSemanales, pulseReadings: pulseReadingsRaw, operatorShots: operatorShotsRaw }
+  return {
+    operadoras: scopeByBranch(operadoras, (o) => (o as Row).Sucursal),
+    lecturasSemanales: scopeByBranch(lecturasSemanales, (x) => (x as Row).Sucursal),
+    sesionesCliente: scopeByBranch(sesionesCliente, (x) => (x as Row).Sucursal),
+    auditoriasSemanales: scopeByBranch(auditoriasSemanales, (x) => (x as Row).Sucursal),
+    pulseReadings: scopeByBranch(pulseReadingsRaw as Row[], (x) => (x as Row).sucursal),
+    operatorShots: scopeByBranch(operatorShotsRaw as Row[], (x) => (x as Row).sucursal_normalizada),
+  }
 }
 
 /** Carga un reporte COMPLETO por ID — incluye firmas, fotos, piezas_json,
@@ -583,7 +598,7 @@ export async function loadBusinessContext(userId: string): Promise<BusinessConte
   try {
     const { data, error } = await supabase
       .from("csl_user_profiles")
-      .select("business_id, is_superadmin, businesses(slug)")
+      .select("business_id, is_superadmin, is_admin, businesses(slug)")
       .eq("user_id", userId)
       .maybeSingle()
     if (error || !data) return null
@@ -592,6 +607,20 @@ export async function loadBusinessContext(userId: string): Promise<BusinessConte
     if (!businessId) return null
     const businesses = row.businesses as { slug?: string } | undefined
     const isSuperadmin = Boolean(row.is_superadmin)
+    const isAdmin = Boolean(row.is_admin)
+    // Scope por sucursal: admin/superadmin ven todas. Un usuario normal con
+    // filas activas en user_branch_permissions queda restringido a esas.
+    let branchScope: { all: boolean; branches: string[] } = { all: true, branches: [] }
+    if (!isSuperadmin && !isAdmin) {
+      try {
+        const { data: bp } = await supabase
+          .from("user_branch_permissions")
+          .select("branch_name")
+          .eq("user_id", userId).eq("business_id", businessId).eq("active", true)
+        const branches = Array.from(new Set(((bp || []) as Row[]).map((r) => normalizeSucursal(r.branch_name)).filter(Boolean)))
+        if (branches.length) branchScope = { all: false, branches }
+      } catch { /* tabla aún no migrada → all */ }
+    }
     return {
       businessId,
       businessSlug: String(businesses?.slug ?? "csl"),
@@ -599,6 +628,7 @@ export async function loadBusinessContext(userId: string): Promise<BusinessConte
       // Por defecto el superadmin bypasea el filtro (ve todo). handleAction
       // lo apaga en cuanto la UI manda un business activo.
       bypassTenantFilter: isSuperadmin,
+      branchScope,
     }
   } catch {
     // Si la columna no existe (pre-migración), Supabase retorna error 42703.

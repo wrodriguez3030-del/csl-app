@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Plus, Pencil, Trash2, Power, PowerOff, ShieldCheck, ShieldAlert, KeyRound, Search, Save, X, Loader2, RefreshCw } from "lucide-react"
-import { useAppStore } from "@/lib/store"
+import { useAppStore, apiCall, normalizeApiUrl } from "@/lib/store"
+import { businessIdForSlug } from "@/lib/business"
+import { normalizeSucursal } from "@/lib/normalize-pulse"
 import { supabaseBrowser } from "@/lib/supabase-client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -27,6 +29,7 @@ interface AdminUserRow {
   activo: boolean
   business_id: string
   menus: string[]
+  branches?: string[]
   created_at?: string
   businesses?: { slug: string; name: string } | null
 }
@@ -40,6 +43,7 @@ interface FormState {
   role: RoleKey
   activo: boolean
   menus: MenuPermission[]
+  branches: string[]
 }
 
 const emptyForm: FormState = {
@@ -51,6 +55,7 @@ const emptyForm: FormState = {
   role: "usuario",
   activo: true,
   menus: [],
+  branches: [],
 }
 
 // Menús base sugeridos por rol/business (UX, no security — el backend
@@ -88,7 +93,9 @@ async function authedFetch(input: string, init?: RequestInit) {
 
 export function AdminUsersPage() {
   const { showToast } = useAppStore()
+  const apiUrl = useAppStore(s => s.apiUrl)
   const currentUser = useSessionUser()
+  const [branchOptions, setBranchOptions] = useState<{ business_id: string; business_name: string; sucursal: string }[]>([])
   const [users, setUsers] = useState<AdminUserRow[]>([])
   const [loading, setLoading] = useState(false)
   const [query, setQuery] = useState("")
@@ -120,6 +127,27 @@ export function AdminUsersPage() {
     void loadUsers()
   }, [loadUsers])
 
+  // Sucursales reales de ambos negocios (superadmin → all=true) para el modal.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiCall(normalizeApiUrl(apiUrl), { action: "getBranchOptions", all: "true" }) as { ok?: boolean; options?: { business_id: string; business_name: string; sucursal: string }[] }
+        setBranchOptions(res?.options || [])
+      } catch { /* ignore */ }
+    })()
+  }, [apiUrl])
+
+  const formBranches = useMemo(() => {
+    const bid = businessIdForSlug(form.businessSlug)
+    const seen = new Set<string>(); const out: { value: string; label: string }[] = []
+    for (const o of branchOptions) {
+      if (bid && o.business_id !== bid) continue
+      const v = normalizeSucursal(o.sucursal)
+      if (v && !seen.has(v)) { seen.add(v); out.push({ value: v, label: o.sucursal }) }
+    }
+    return out
+  }, [branchOptions, form.businessSlug])
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return users.filter((u) => {
@@ -147,6 +175,7 @@ export function AdminUsersPage() {
       role: roleFrom(u),
       activo: u.activo,
       menus: (u.menus || []) as MenuPermission[],
+      branches: (u.branches || []) as string[],
     })
     setFormError(null)
     setOpen(true)
@@ -165,6 +194,7 @@ export function AdminUsersPage() {
         isSuperadmin: form.role === "superadmin",
         activo: form.activo,
         menus: form.menus,
+        branches: form.role === "usuario" ? form.branches : [],
       }
       if (editing) {
         // En edit, no enviar email (es read-only); enviar password solo si se cambió
@@ -175,6 +205,7 @@ export function AdminUsersPage() {
           isSuperadmin: payload.isSuperadmin,
           activo: payload.activo,
           menus: payload.menus,
+          branches: payload.branches,
         }
         if (payload.password) patchBody.password = payload.password
         await authedFetch(`/api/admin/users/${editing.user_id}`, {
@@ -507,6 +538,29 @@ export function AdminUsersPage() {
                   ? "Superadmin: acceso a TODOS los menús + datos de TODOS los negocios. Bypasa filtros tenant."
                   : "Admin: acceso a TODOS los menús, pero sólo a los datos de su negocio."}
               </p>
+            )}
+
+            {form.role === "usuario" && (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Label className="text-sm">Sucursales permitidas · <span className="text-muted-foreground font-normal">{form.branches.length ? `${form.branches.length} seleccionadas` : "todas (sin restricción)"}</span></Label>
+                  <div className="flex gap-1">
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => setForm({ ...form, branches: formBranches.map(b => b.value) })}>Seleccionar todas</Button>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setForm({ ...form, branches: [] })}>Limpiar</Button>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/20 p-3 flex flex-wrap gap-x-5 gap-y-2">
+                  {formBranches.length === 0 ? (
+                    <span className="text-xs text-muted-foreground">No hay sucursales para este negocio (créalas en Sucursales).</span>
+                  ) : formBranches.map(b => (
+                    <label key={b.value} className="flex items-center gap-1.5 text-sm">
+                      <input type="checkbox" checked={form.branches.includes(b.value)} onChange={e => setForm({ ...form, branches: e.target.checked ? [...form.branches, b.value] : form.branches.filter(x => x !== b.value) })} />
+                      {b.label}
+                    </label>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground">Vacío = ve todas las sucursales del negocio. Selecciona una o varias para limitar.</p>
+              </div>
             )}
 
             {form.role === "usuario" && (

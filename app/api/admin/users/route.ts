@@ -22,6 +22,26 @@ import { getSupabaseAdmin, requireAuthenticatedUser } from "@/lib/server/supabas
 import { requireSuperadmin } from "@/lib/server/csl-crud"
 import { errorMessage } from "@/lib/server/csl-helpers"
 import { ALL_MENU_IDS, MENU_ID_SET, type MenuPermission } from "@/lib/menus"
+import { normalizeSucursal } from "@/lib/normalize-pulse"
+
+/** Persiste las sucursales permitidas del usuario (normalizadas). Revoca con
+ *  active=false (sin DELETE). Devuelve la lista normalizada. */
+async function persistUserBranches(supabase: ReturnType<typeof getSupabaseAdmin>, businessId: string, userId: string, input: unknown): Promise<string[]> {
+  if (!businessId || !userId) return []
+  const branches = Array.from(new Set((Array.isArray(input) ? input : []).map((b) => normalizeSucursal(b)).filter(Boolean)))
+  try {
+    for (const bn of branches) {
+      await supabase.from("user_branch_permissions").upsert(
+        { business_id: businessId, user_id: userId, branch_name: bn, active: true, updated_at: new Date().toISOString() },
+        { onConflict: "business_id,user_id,branch_name" })
+    }
+    const { data: ex } = await supabase.from("user_branch_permissions").select("branch_name").eq("business_id", businessId).eq("user_id", userId).eq("active", true)
+    for (const r of ((ex || []) as { branch_name: string }[])) {
+      if (!branches.includes(r.branch_name)) await supabase.from("user_branch_permissions").update({ active: false, updated_at: new Date().toISOString() }).eq("business_id", businessId).eq("user_id", userId).eq("branch_name", r.branch_name)
+    }
+  } catch { /* tabla aún no migrada */ }
+  return branches
+}
 
 export const runtime = "nodejs"
 
@@ -60,7 +80,17 @@ export async function GET(request: Request) {
 
     if (error) throw error
 
-    return NextResponse.json({ ok: true, users: data ?? [] })
+    const users = (data ?? []) as Record<string, unknown>[]
+    try {
+      const ids = users.map((u) => String(u.user_id)).filter(Boolean)
+      if (ids.length) {
+        const { data: bp } = await supabase.from("user_branch_permissions").select("user_id, branch_name").eq("active", true).in("user_id", ids)
+        const m = new Map<string, string[]>()
+        for (const r of ((bp || []) as { user_id: string; branch_name: string }[])) { if (!m.has(r.user_id)) m.set(r.user_id, []); m.get(r.user_id)!.push(r.branch_name) }
+        for (const u of users) u.branches = m.get(String(u.user_id)) || []
+      }
+    } catch { /* tabla no migrada */ }
+    return NextResponse.json({ ok: true, users })
   } catch (e) {
     const message = errorMessage(e)
     const status = message.includes("Acceso denegado") || message.includes("superadmin") ? 403 : 500
@@ -255,7 +285,8 @@ export async function POST(request: Request) {
       throw profileError
     }
 
-    return NextResponse.json({ ok: true, user: { ...profilePayload, user_id: userId } })
+    const branches = await persistUserBranches(supabase, businessId, userId, body.branches)
+    return NextResponse.json({ ok: true, user: { ...profilePayload, user_id: userId, branches } })
   } catch (e) {
     const message = errorMessage(e)
     const status = message.includes("Acceso denegado") || message.includes("superadmin")
