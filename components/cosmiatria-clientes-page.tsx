@@ -365,7 +365,10 @@ export function CosmiatriaClientesPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ search: search.trim() }),
+        // Con búsqueda → una página puntual. Sin búsqueda → páginas iniciales
+        // (clientes más nuevos) acotadas para no hacer timeout (la paginación
+        // completa excede el límite de la función). El cron cubre el resto a diario.
+        body: JSON.stringify(search.trim() ? { search: search.trim() } : { page: 1, pagesPerTick: 5 }),
       })
       const data = await res.json() as {
         ok?: boolean; code?: string; error?: string;

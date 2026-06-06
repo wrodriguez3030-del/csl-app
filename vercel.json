@@ -4,7 +4,7 @@
   "crons": [
     {
       "path": "/api/integrations/agendapro/cron",
-      "schedule": "0 8 * * *"
+      "schedule": "0 * * * *"
     }
   ],
   "headers": [
