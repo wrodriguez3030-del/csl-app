@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import QRCode from "qrcode"
+import { composeQrPng, downloadDataUrl } from "@/lib/qr-compose"
 
 export default function PublicQrPage() {
   const params = useParams<{ token: string }>()
@@ -21,11 +22,11 @@ export default function PublicQrPage() {
     })()
   }, [token])
 
-  const download = () => {
+  const download = async () => {
     if (!url) return
-    const a = document.createElement("a"); a.href = url
-    a.download = `QR_${(info?.employee_nombre || "empleado").replace(/\s+/g, "_")}.png`
-    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    const nombre = info?.employee_nombre || "empleado"
+    try { downloadDataUrl(await composeQrPng(url, nombre, info?.sucursal || ""), `QR_${nombre}.png`) }
+    catch { downloadDataUrl(url, `QR_${nombre}.png`) }
   }
 
   return (

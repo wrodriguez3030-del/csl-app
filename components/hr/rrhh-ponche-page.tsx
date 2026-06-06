@@ -17,6 +17,7 @@ import { exportHrReportExcel } from "@/lib/hr-report-excel"
 import { haversineMeters } from "@/lib/hr-geo"
 import QRCode from "qrcode"
 import { BrowserQRCodeReader, type IScannerControls } from "@zxing/browser"
+import { composeQrPng, downloadDataUrl } from "@/lib/qr-compose"
 
 interface HrPunch {
   id: string; employee_id: string; employee_nombre?: string | null; type: string; punched_at: string
@@ -159,10 +160,11 @@ export function RrhhPonchePage() {
       if (regenerate) showToast("QR regenerado. El anterior quedó inválido.", "success")
     } catch (e) { showToast(e instanceof Error ? e.message : "Error generando QR", "error") } finally { setQrBusy(false) }
   }
-  const downloadQr = () => {
+  const downloadQr = async () => {
     if (!qrUrl || !qrEmp) return
-    const a = document.createElement("a"); a.href = qrUrl; a.download = `QR_${qrEmp.nombre}.png`.replace(/\s+/g, "_")
-    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    const sub = [qrEmp.cedula, qrEmp.puesto].filter(Boolean).join(" · ")
+    try { downloadDataUrl(await composeQrPng(qrUrl, qrEmp.nombre, sub), `QR_${qrEmp.nombre}.png`) }
+    catch { downloadDataUrl(qrUrl, `QR_${qrEmp.nombre}.png`) }
   }
   const syncEmpleados = async () => {
     setSyncing(true)

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import QRCode from "qrcode"
+import { composeQrPng, downloadDataUrl } from "@/lib/qr-compose"
 import { EmployeeScheduleDialog } from "@/components/hr/employee-schedule-dialog"
 import { Clock } from "lucide-react"
 import { RecordActions } from "@/components/record-actions"
@@ -87,11 +88,14 @@ export function EmpleadosPage() {
       if (regenerate) showToast("QR regenerado. El anterior quedó inválido.", "success")
     } catch (e) { showToast(e instanceof Error ? e.message : "Error generando QR", "error") } finally { setQrBusy(false) }
   }
-  const downloadQr = () => {
+  const downloadQr = async () => {
     if (!qrUrl || !qrEmp) return
-    const a = document.createElement("a"); a.href = qrUrl
-    a.download = `QR_${qrEmp.nombre}_${qrEmp.apellido}.png`.replace(/\s+/g, "_")
-    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    const nombre = `${qrEmp.nombre} ${qrEmp.apellido}`.trim()
+    const sub = [qrEmp.cedula, qrEmp.puestoSolicitado].filter(Boolean).join(" · ")
+    try {
+      const png = await composeQrPng(qrUrl, nombre, sub)
+      downloadDataUrl(png, `QR_${nombre || qrEmp.id}.png`)
+    } catch { downloadDataUrl(qrUrl, `QR_${nombre || qrEmp.id}.png`) }
   }
 
   const loadEmpleados = async () => {
