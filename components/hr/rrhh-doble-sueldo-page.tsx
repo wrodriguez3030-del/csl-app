@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Gift, Plus, Pencil, Trash2, Save, X, Loader2, Check, Ban, AlertCircle, AlertTriangle, FileSpreadsheet } from "lucide-react"
+import { Gift, Plus, Pencil, Trash2, Save, X, Loader2, Check, Ban, AlertCircle, AlertTriangle, FileSpreadsheet, Calculator } from "lucide-react"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { exportHrReportExcel } from "@/lib/hr-report-excel"
 
@@ -26,7 +26,9 @@ const STATUS_CLASS: Record<string, string> = {
   aprobado: "bg-emerald-100 text-emerald-700 border-emerald-200",
   pagado: "bg-purple-100 text-purple-700 border-purple-200",
   anulado: "bg-gray-100 text-gray-500 border-gray-200",
+  pendiente: "bg-slate-100 text-slate-600 border-slate-200",
 }
+const STATUS_LABEL: Record<string, string> = { pendiente: "Pendiente de calcular" }
 const rd = (n: number) => `RD$ ${(Number(n) || 0).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100
 const pick = (...vals: unknown[]) => { for (const v of vals) { const s = v == null ? "" : String(v).trim(); if (s) return s } return "" }
@@ -54,6 +56,7 @@ export function RrhhDobleSueldoPage() {
   const [busy, setBusy] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [calcing, setCalcing] = useState(false)
+  const [year, setYear] = useState(new Date().getFullYear())
 
   const call = (params: Record<string, string | number | boolean>) => apiCall(normalizeApiUrl(apiUrl), params)
 
@@ -72,15 +75,27 @@ export function RrhhDobleSueldoPage() {
   }
   useEffect(() => { reload() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const enriched = useMemo(() => records.map(r => {
-    const e = empMap[r.employee_id]
-    return {
-      ...r,
-      _nombre: r.employee_nombre || e?.nombre || r.employee_id,
-      _cedula: pick(r.cedula, e?.cedula), _puesto: pick(r.puesto, e?.puesto), _sucursal: pick(r.sucursal, e?.sucursal),
-      _fecha_ingreso: pick(r.fecha_ingreso, e?.fecha_ingreso),
-    }
-  }), [records, empMap])
+  // UNA fila por empleado activo para el año; merge con su cálculo si existe,
+  // si no "pendiente". Así SIEMPRE salen todos los empleados.
+  const enriched = useMemo(() => {
+    const recByEmp = new Map<string, Bonus>()
+    for (const r of records) { if (Number(r.anio) !== year) continue; if (!recByEmp.has(r.employee_id)) recByEmp.set(r.employee_id, r) }
+    const build = (e: Emp | null, r: Bonus | undefined) => ({
+      ...(r || ({} as Bonus)),
+      id: r?.id || "",
+      employee_id: e?.id || r?.employee_id || "",
+      anio: r?.anio ?? year,
+      monto: r ? Number(r.monto) || 0 : 0,
+      status: r ? r.status : "pendiente",
+      _hasRecord: !!r,
+      _nombre: r?.employee_nombre || e?.nombre || r?.employee_id || "",
+      _cedula: pick(r?.cedula, e?.cedula), _puesto: pick(r?.puesto, e?.puesto), _sucursal: pick(r?.sucursal, e?.sucursal),
+      _fecha_ingreso: pick(r?.fecha_ingreso, e?.fecha_ingreso),
+    })
+    const rows = Object.values(empMap).map(e => build(e, recByEmp.get(e.id)))
+    for (const [eid, r] of recByEmp) { if (!empMap[eid]) rows.push(build(null, r)) }
+    return rows
+  }, [records, empMap, year])
 
   const counts = useMemo(() => ({
     total: records.length,
@@ -178,9 +193,15 @@ export function RrhhDobleSueldoPage() {
             <p className="mt-1 text-sm text-muted-foreground">Año completo = 1 sueldo; proporcional = sueldo × meses ÷ 12 (meses según fecha de ingreso laboral). Bloqueo de doble pago por año.</p>
           </div>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2 shrink-0 items-center">
+          <div className="flex items-center gap-1">
+            <Label className="text-xs">Año</Label>
+            <select className="h-9 rounded-md border bg-background px-2 text-sm" value={year} onChange={e => setYear(Number(e.target.value))}>
+              {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
           <Button variant="outline" onClick={exportExcel}><FileSpreadsheet className="w-4 h-4 mr-1" />Exportar Excel</Button>
-          <Button onClick={() => setEditing({ anio: new Date().getFullYear(), proporcional: false, meses: 12, status: "calculado", sueldo_mensual: 0 })}><Plus className="w-4 h-4 mr-1" />Nuevo cálculo</Button>
+          <Button onClick={() => setEditing({ anio: year, proporcional: false, meses: 12, status: "calculado", sueldo_mensual: 0 })}><Plus className="w-4 h-4 mr-1" />Nuevo cálculo</Button>
         </div>
       </div>
 
@@ -202,30 +223,36 @@ export function RrhhDobleSueldoPage() {
           {loading ? (
             <div className="py-10 text-center text-sm text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin inline mr-2" />Cargando...</div>
           ) : enriched.length === 0 ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">Sin cálculos de doble sueldo.</div>
+            <div className="py-10 text-center text-sm text-muted-foreground">No hay empleados activos en este negocio.</div>
           ) : (
             <Table>
               <TableHeader><TableRow>
+                <TableHead className="text-xs w-10 text-center">No.</TableHead>
                 <TableHead className="text-xs">Empleado</TableHead><TableHead className="text-xs">Ingreso</TableHead><TableHead className="text-xs text-center">Año</TableHead>
                 <TableHead className="text-xs">Tipo</TableHead><TableHead className="text-xs text-right">Monto</TableHead>
                 <TableHead className="text-xs">Estado</TableHead><TableHead className="text-xs text-center w-32">Acciones</TableHead>
               </TableRow></TableHeader>
               <TableBody>
-                {enriched.map(r => (
-                  <TableRow key={r.id}>
+                {enriched.map((r, i) => (
+                  <TableRow key={r.id || `emp_${r.employee_id}`}>
+                    <TableCell className="text-center text-xs text-muted-foreground tabular-nums">{i + 1}</TableCell>
                     <TableCell className="text-sm font-medium">{r._nombre}<div className="text-[11px] text-muted-foreground">{r._cedula || "—"}{r._sucursal ? ` · ${r._sucursal}` : ""}</div></TableCell>
                     <TableCell className="text-xs">{r._fecha_ingreso || "—"}</TableCell>
                     <TableCell className="text-xs text-center">{r.anio}</TableCell>
                     <TableCell className="text-xs">{r.proporcional ? `Proporcional (${r.meses} m)` : "Completo"}</TableCell>
                     <TableCell className="text-xs text-right font-mono font-bold">{rd(r.monto)}</TableCell>
-                    <TableCell><Badge variant="outline" className={STATUS_CLASS[r.status] || ""}>{r.status}</Badge></TableCell>
+                    <TableCell><Badge variant="outline" className={STATUS_CLASS[r.status] || ""}>{STATUS_LABEL[r.status] || r.status}</Badge></TableCell>
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-0.5">
+                        {!r._hasRecord ? (
+                          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { setEditing({ employee_id: r.employee_id, employee_nombre: r._nombre, anio: year, proporcional: false, meses: 12, status: "calculado", sueldo_mensual: 0 }); calcularDoble(r.employee_id, year) }}><Calculator className="h-3.5 w-3.5 mr-1" />Calcular</Button>
+                        ) : (<>
                         {r.status === "calculado" && <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600 hover:bg-emerald-50" onClick={() => setStatus(r, "aprobado")} disabled={busyId === r.id} title="Aprobar">{busyId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}</Button>}
                         {r.status === "aprobado" && <Button variant="ghost" size="icon" className="h-7 w-7 text-purple-600 hover:bg-purple-50" onClick={() => setStatus(r, "pagado")} disabled={busyId === r.id} title="Marcar pagado">$</Button>}
                         {r.status !== "anulado" && r.status !== "pagado" && <Button variant="ghost" size="icon" className="h-7 w-7 text-gray-500 hover:bg-gray-100" onClick={() => setStatus(r, "anulado")} disabled={busyId === r.id} title="Anular"><Ban className="h-3.5 w-3.5" /></Button>}
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditing(r)} title="Editar" disabled={r.status === "pagado"}><Pencil className="h-3.5 w-3.5" /></Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:bg-red-50" onClick={() => del(r.id)} disabled={busyId === r.id} title="Eliminar"><Trash2 className="h-3.5 w-3.5" /></Button>
+                        </>)}
                       </div>
                     </TableCell>
                   </TableRow>

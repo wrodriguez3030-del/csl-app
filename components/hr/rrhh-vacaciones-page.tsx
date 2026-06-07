@@ -31,6 +31,7 @@ interface Emp { id: string; nombre: string; cedula: string; puesto: string; sucu
 const ESTADOS = ["borrador", "solicitada", "en_revision", "aprobada", "pagada", "anulada"]
 const ESTADO_LABEL: Record<string, string> = {
   borrador: "Borrador", solicitada: "Solicitada", en_revision: "En revisión", aprobada: "Aprobada", pagada: "Pagada", anulada: "Anulada",
+  pendiente: "Pendiente de calcular", incompleto: "Incompleto",
 }
 const ESTADO_CLASS: Record<string, string> = {
   borrador: "bg-slate-100 text-slate-700 border-slate-200",
@@ -39,6 +40,8 @@ const ESTADO_CLASS: Record<string, string> = {
   aprobada: "bg-emerald-100 text-emerald-700 border-emerald-200",
   pagada: "bg-indigo-100 text-indigo-700 border-indigo-200",
   anulada: "bg-gray-100 text-gray-500 border-gray-200",
+  pendiente: "bg-slate-100 text-slate-600 border-slate-200",
+  incompleto: "bg-amber-100 text-amber-700 border-amber-200",
 }
 // Estados legados (masculino) → canónicos nuevos.
 const LEGACY: Record<string, string> = { solicitado: "solicitada", aprobado: "aprobada", pagado: "pagada", anulado: "anulada" }
@@ -110,28 +113,48 @@ export function RrhhVacacionesPage() {
   }
   useEffect(() => { reload() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Enriquecer cada vacación con datos del empleado + cálculo legal (cliente).
-  const enriched = useMemo(() => records.map(r => {
-    const e = empMap[r.employee_id]
-    const fechaIngreso = pick(r.fecha_ingreso, e?.fecha_ingreso)
-    const refStr = pick(r.fecha_fin) || undefined
-    const anios = r.antiguedad_anios != null ? Number(r.antiguedad_anios) : antiguedadAnios(fechaIngreso, refStr)
-    const diasLegales = r.dias_legales != null ? Number(r.dias_legales) : diasLegalesRD(anios)
-    const sueldoMensual = r.sueldo_mensual != null && Number(r.sueldo_mensual) > 0
-      ? Number(r.sueldo_mensual) : (e?.sueldo || round2((Number(r.sueldo_diario) || 0) * DAILY_BASE))
-    return {
-      ...r,
-      _nombre: r.employee_nombre || e?.nombre || r.employee_id,
-      _cedula: pick(r.cedula, e?.cedula),
-      _puesto: pick(r.puesto, e?.puesto),
-      _sucursal: pick(r.sucursal, e?.sucursal),
-      _fecha_ingreso: fechaIngreso,
-      _antiguedad: anios,
-      _dias_legales: diasLegales,
-      _sueldo_mensual: sueldoMensual,
-      _estado: normEstado(r.status),
+  // Enriquecer: UNA fila por empleado activo del tenant para el año, fusionando
+  // su registro de vacaciones si existe; si no, "Pendiente de calcular".
+  // Así SIEMPRE salen todos los empleados, tengan o no cálculo.
+  const enriched = useMemo(() => {
+    const refStr = `${year}-12-31`
+    const recByEmp = new Map<string, Vacation>()
+    for (const r of records) {
+      if (year && String(r.periodo || "") !== year) continue
+      if (!recByEmp.has(r.employee_id)) recByEmp.set(r.employee_id, r)
     }
-  }), [records, empMap])
+    const build = (e: Emp | null, r: Vacation | undefined) => {
+      const fechaIngreso = pick(r?.fecha_ingreso, e?.fecha_ingreso)
+      const anios = r?.antiguedad_anios != null ? Number(r.antiguedad_anios) : antiguedadAnios(fechaIngreso, refStr)
+      const diasLegales = r?.dias_legales != null ? Number(r.dias_legales) : diasLegalesRD(anios)
+      const sueldoMensual = (r?.sueldo_mensual != null && Number(r.sueldo_mensual) > 0) ? Number(r.sueldo_mensual) : (e?.sueldo || 0)
+      const sueldoDiario = (r?.sueldo_diario != null && Number(r.sueldo_diario) > 0) ? Number(r.sueldo_diario) : round2(sueldoMensual / DAILY_BASE)
+      const incompleto = !fechaIngreso || !(sueldoMensual > 0)
+      const dias = r ? Number(r.dias) || 0 : diasLegales
+      return {
+        ...(r || ({} as Vacation)),
+        id: r?.id || "",
+        employee_id: e?.id || r?.employee_id || "",
+        _hasRecord: !!r,
+        _nombre: r?.employee_nombre || e?.nombre || r?.employee_id || "",
+        _cedula: pick(r?.cedula, e?.cedula),
+        _puesto: pick(r?.puesto, e?.puesto),
+        _sucursal: pick(r?.sucursal, e?.sucursal),
+        _fecha_ingreso: fechaIngreso,
+        _antiguedad: anios,
+        _dias_legales: diasLegales,
+        _sueldo_mensual: sueldoMensual,
+        dias,
+        monto: r ? Number(r.monto) || 0 : round2(sueldoDiario * diasLegales),
+        sueldo_diario: sueldoDiario,
+        _estado: r ? normEstado(r.status) : (incompleto ? "incompleto" : "pendiente"),
+      }
+    }
+    const rows = Object.values(empMap).map(e => build(e, recByEmp.get(e.id)))
+    // Registros de empleados que ya no están en la lista activa (legacy) — incluir.
+    for (const [eid, r] of recByEmp) { if (!empMap[eid]) rows.push(build(null, r)) }
+    return rows
+  }, [records, empMap, year])
 
   const sucursales = useMemo(() => Array.from(new Set(enriched.map(r => r._sucursal).filter(Boolean))).sort(), [enriched])
 
@@ -346,18 +369,25 @@ export function RrhhVacacionesPage() {
           {loading ? (
             <div className="py-10 text-center text-sm text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin inline mr-2" />Cargando...</div>
           ) : filtered.length === 0 ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">{records.length === 0 ? "Sin vacaciones registradas." : "Sin resultados con esos filtros."}</div>
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              {Object.keys(empMap).length === 0 ? "No hay empleados activos en este negocio." : "No hay empleados con estos filtros."}
+              {(fEstado !== "all" || fSucursal !== "all" || fEmpleado || fDesde || fHasta) && (
+                <div className="mt-2"><Button variant="outline" size="sm" onClick={() => { setFEstado("all"); setFSucursal("all"); setFEmpleado(""); setFDesde(""); setFHasta("") }}>Limpiar filtros</Button></div>
+              )}
+            </div>
           ) : (
             <Table>
               <TableHeader><TableRow>
+                <TableHead className="text-xs w-10 text-center">No.</TableHead>
                 <TableHead className="text-xs">Empleado</TableHead><TableHead className="text-xs">Sucursal</TableHead>
                 <TableHead className="text-xs">Antigüedad</TableHead><TableHead className="text-xs text-right">Legales</TableHead>
                 <TableHead className="text-xs text-right">Solic.</TableHead><TableHead className="text-xs text-right">Monto</TableHead>
                 <TableHead className="text-xs">Estado</TableHead><TableHead className="text-xs text-center w-32">Acciones</TableHead>
               </TableRow></TableHeader>
               <TableBody>
-                {filtered.map(r => (
-                  <TableRow key={r.id}>
+                {filtered.map((r, i) => (
+                  <TableRow key={r.id || `emp_${r.employee_id}`}>
+                    <TableCell className="text-center text-xs text-muted-foreground tabular-nums">{i + 1}</TableCell>
                     <TableCell className="text-sm font-medium">{r._nombre}<div className="text-[11px] text-muted-foreground">{r._cedula || "—"}{r._puesto ? ` · ${r._puesto}` : ""}</div></TableCell>
                     <TableCell className="text-xs">{r._sucursal || "—"}</TableCell>
                     <TableCell className="text-xs">{fmtAntig(r._antiguedad)}</TableCell>
@@ -367,12 +397,16 @@ export function RrhhVacacionesPage() {
                     <TableCell><Badge variant="outline" className={ESTADO_CLASS[r._estado] || ""}>{ESTADO_LABEL[r._estado] || r._estado}</Badge></TableCell>
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-0.5">
+                        {!r._hasRecord ? (
+                          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setEditing({ employee_id: r.employee_id, employee_nombre: r._nombre, periodo: year, dias: r._dias_legales, sueldo_mensual: r._sueldo_mensual, fecha_ingreso: r._fecha_ingreso, antiguedad_anios: r._antiguedad, dias_legales: r._dias_legales, fecha_fin: `${year}-12-31`, status: "borrador" })}><Calculator className="h-3.5 w-3.5 mr-1" />Calcular</Button>
+                        ) : (<>
                         {(r._estado === "borrador" || r._estado === "solicitada") && <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600 hover:bg-blue-50" onClick={() => setStatus(r, "en_revision")} disabled={busyId === r.id} title="Enviar a revisión">↗</Button>}
                         {r._estado === "en_revision" && <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600 hover:bg-emerald-50" onClick={() => setStatus(r, "aprobada")} disabled={busyId === r.id} title="Aprobar">{busyId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}</Button>}
                         {r._estado === "aprobada" && <Button variant="ghost" size="icon" className="h-7 w-7 text-indigo-600 hover:bg-indigo-50" onClick={() => setStatus(r, "pagada")} disabled={busyId === r.id} title="Marcar pagada"><DollarSign className="h-3.5 w-3.5" /></Button>}
                         {r._estado !== "anulada" && r._estado !== "pagada" && <Button variant="ghost" size="icon" className="h-7 w-7 text-gray-500 hover:bg-gray-100" onClick={() => setStatus(r, "anulada")} disabled={busyId === r.id} title="Anular"><Ban className="h-3.5 w-3.5" /></Button>}
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditing(r)} title="Editar" disabled={r._estado === "pagada" || r._estado === "aprobada"}><Pencil className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditing(r)} title="Editar" disabled={r._estado === "pagada"}><Pencil className="h-3.5 w-3.5" /></Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:bg-red-50" onClick={() => del(r.id)} disabled={busyId === r.id} title="Eliminar"><Trash2 className="h-3.5 w-3.5" /></Button>
+                        </>)}
                       </div>
                     </TableCell>
                   </TableRow>

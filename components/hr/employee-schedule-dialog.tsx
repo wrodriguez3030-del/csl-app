@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { apiCall, normalizeApiUrl, useAppStore } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -56,6 +56,24 @@ export function EmployeeScheduleDialog({ employeeId, employeeName, sucursal, onC
 
   const setDay = (i: number, patch: Partial<DayRow>) => setDays(prev => prev.map((d, idx) => idx === i ? { ...d, ...patch } : d))
 
+  // Resumen semanal en tiempo real (cruce de medianoche soportado).
+  const resumen = useMemo(() => {
+    const toMin = (t: string) => { const m = /^(\d{1,2}):(\d{2})/.exec(t || ""); return m ? Number(m[1]) * 60 + Number(m[2]) : null }
+    let lab = 0, bruto = 0, desc = 0
+    for (const d of days) {
+      if (!d.is_working_day) continue
+      lab++
+      const s = toMin(d.start_time), e = toMin(d.end_time)
+      if (s == null || e == null) continue
+      let mins = e - s; if (mins <= 0) mins += 24 * 60 // salida < entrada → cruce de medianoche
+      bruto += mins / 60
+      desc += (Number(d.break_minutes) || 0) / 60
+    }
+    const neto = Math.max(0, bruto - desc)
+    return { lab, libres: 7 - lab, bruto, desc, neto, prom: lab > 0 ? neto / lab : 0 }
+  }, [days])
+  const h1 = (n: number) => `${(Math.round(n * 100) / 100).toLocaleString("es-DO", { maximumFractionDigits: 2 })} h`
+
   const save = async () => {
     setSaving(true)
     try {
@@ -97,6 +115,17 @@ export function EmployeeScheduleDialog({ employeeId, employeeName, sucursal, onC
                   ) : <span className="text-xs text-muted-foreground">Libre</span>}
                 </div>
               ))}
+            </div>
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <h4 className="text-sm font-bold mb-2 flex items-center gap-1.5"><Clock className="h-4 w-4 text-primary" />Resumen semanal</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                <div><span className="text-muted-foreground">Días laborables</span><div className="font-bold text-base">{resumen.lab}</div></div>
+                <div><span className="text-muted-foreground">Días libres</span><div className="font-bold text-base">{resumen.libres}</div></div>
+                <div><span className="text-muted-foreground">Horas brutas</span><div className="font-bold text-base">{h1(resumen.bruto)}</div></div>
+                <div><span className="text-muted-foreground">Descansos</span><div className="font-bold text-base">{h1(resumen.desc)}</div></div>
+                <div><span className="text-muted-foreground">Promedio diario</span><div className="font-bold text-base">{h1(resumen.prom)}</div></div>
+                <div className="rounded bg-primary/10 px-2 py-1"><span className="text-primary/80">Horas netas semanales</span><div className="font-black text-base text-primary">{h1(resumen.neto)}</div></div>
+              </div>
             </div>
             <p className="text-[11px] text-muted-foreground">Si el empleado no tiene horario, el ponche usa el horario de la sucursal (geocerca › workday_config).</p>
           </div>
