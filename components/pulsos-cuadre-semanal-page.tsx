@@ -144,7 +144,11 @@ export function PulsosCuadreSemanalPage() {
     if (!agendaFile) return []
     const buckets = new Map<string, WeekBucket>()
     for (const r of agendaFile.rows) {
-      if (r.status !== "valid") continue
+      // El resumen semanal de disparos (DISP OPERADOR) debe sumar TODAS las filas
+      // reales del archivo de la semana, NO solo las nuevas. El dedup
+      // (already_imported / duplicate_file) aplica al import de SESIONES, no al
+      // total de disparos del operador. Solo excluimos filas con error real.
+      if (r.status === "error") continue
       const week = getOperationalWeek(r.fecha)
       if (!week) continue
       const sucursalNorm = normalizeSucursal(r.sucursal)

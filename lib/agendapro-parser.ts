@@ -209,13 +209,10 @@ export async function parseAgendaProWorkbook(
   ) || wb.SheetNames[0]
   if (!targetSheet) throw new Error("El archivo no contiene hojas legibles.")
   const ws = wb.Sheets[targetSheet]
+  // raw:true (default) entrega los NÚMEROS como números (un disparo "3847" llega
+  // como 3847, no "3,847") y los TEXTOS con coma como string ("157,157"), que
+  // parseDisparos divide y suma (= 314). Así distinguimos miles vs lista.
   const raw = xlsx.utils.sheet_to_json(ws, { header: 1, defval: "" })
-  // La columna "Disparos" puede traer VARIOS valores separados por coma en una
-  // misma celda ("157,157" = 157 + 157 = 314). Con raw:true XLSX coacciona esa
-  // celda a un solo número (p. ej. 157.157 → 157) y se pierden los demás. Por eso
-  // leemos una versión con TEXTO FORMATEADO (raw:false = el texto tal como se ve
-  // en Excel, p. ej. "157,157") y la usamos SOLO para la columna de disparos.
-  const rawFmt = xlsx.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false }) as unknown[][]
 
   // 2) Detectar headerRow buscando "Secuencial" en la columna 0.
   let headerRow = -1
@@ -248,14 +245,12 @@ export async function parseAgendaProWorkbook(
     const sucursal = normalizeSucursalFromAgendaPro(row[5])
     const potencia = String(row[6] ?? "").trim()
     const spot = String(row[7] ?? "").trim()
-    // Disparos: preferimos el texto formateado (preserva "157,157"); si viene
-    // vacío caemos al valor crudo. parseDisparos suma los valores con coma.
-    const dispFmt = (rawFmt[i] as unknown[] | undefined)?.[8]
-    const dispCell = (dispFmt !== undefined && dispFmt !== null && String(dispFmt).trim() !== "") ? dispFmt : row[8]
-    const disparosRaw = String(dispCell ?? "").trim()
+    const disparosRaw = String(row[8] ?? "").trim()
     const fecha = toIsoDate(row[9])
 
-    const disp = parseDisparos(dispCell)
+    // parseDisparos: número → tal cual (3847); texto con coma/slash → suma
+    // ("157,157" = 314). Distingue miles (número) de lista (texto).
+    const disp = parseDisparos(row[8])
 
     // Validación: fecha + operadora + sucursal + disparos > 0.
     const issues: string[] = []
