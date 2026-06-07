@@ -15,9 +15,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { FileSignature, Plus, Pencil, Trash2, Save, X, Loader2, AlertTriangle } from "lucide-react"
+import { FileSignature, Plus, Pencil, Trash2, Save, X, Loader2, AlertTriangle, Printer } from "lucide-react"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { HrPageShell } from "@/components/hr-page-shell"
+import { buildContractHtml, contractFileName, type ContractData } from "@/lib/hr-contract-template"
 
 interface HrContract {
   id: string
@@ -33,6 +34,25 @@ interface HrContract {
   status: string
   file_url: string | null
   observations: string | null
+  // Campos enriquecidos para el contrato PDF (snapshot)
+  employee_nombre?: string | null
+  cedula?: string | null
+  estado_civil?: string | null
+  direccion?: string | null
+  telefono?: string | null
+  email?: string | null
+  branch?: string | null
+  payment_frequency?: string | null
+  payment_method?: string | null
+  bank?: string | null
+  account_type?: string | null
+  account_number?: string | null
+  account_holder?: string | null
+  work_days?: string | null
+  break_time?: string | null
+  weekly_rest?: string | null
+  incentive_applies?: boolean | null
+  incentive_detail?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -65,6 +85,31 @@ function emptyForm(): Partial<HrContract> {
     workday: "completa",
     status: "borrador",
     observations: "",
+    employee_nombre: "", cedula: "", estado_civil: "", direccion: "", telefono: "", email: "", branch: "",
+    payment_frequency: "Mensual", payment_method: "Transferencia bancaria",
+    bank: "", account_type: "Ahorro", account_number: "", account_holder: "",
+    work_days: "Lunes a sábado", break_time: "1 hora", weekly_rest: "1 día a la semana",
+    incentive_applies: false, incentive_detail: "",
+  }
+}
+
+const CONTRACT_TYPE_LABEL: Record<string, string> = {
+  indefinido: "Tiempo indefinido", fijo: "Tiempo definido", prueba: "Período de prueba", prestacion_servicios: "Prestación de servicios",
+}
+
+function contractToData(r: Partial<HrContract>, businessSlug: string, businessName: string): ContractData {
+  const s = (v: unknown) => (v == null ? "" : String(v))
+  return {
+    businessSlug,
+    empresaNombre: businessSlug === "csl" ? undefined : businessName,
+    empleadoNombre: s(r.employee_nombre) || s(r.employee_id),
+    cedula: s(r.cedula), estadoCivil: s(r.estado_civil), direccion: s(r.direccion), telefono: s(r.telefono), email: s(r.email),
+    cargo: s(r.position_name), branch: s(r.branch), contractType: CONTRACT_TYPE_LABEL[s(r.contract_type)] || "Tiempo indefinido",
+    startDate: s(r.start_date).slice(0, 10), salary: Number(r.salary) || 0,
+    paymentFrequency: s(r.payment_frequency) || "Mensual", paymentMethod: s(r.payment_method) || "Transferencia bancaria",
+    bank: s(r.bank), accountType: s(r.account_type), accountNumber: s(r.account_number), accountHolder: s(r.account_holder) || s(r.employee_nombre),
+    workDays: s(r.work_days) || s(r.schedule), breakTime: s(r.break_time), weeklyRest: s(r.weekly_rest),
+    incentiveApplies: Boolean(r.incentive_applies), incentiveDetail: s(r.incentive_detail), observaciones: s(r.observations),
   }
 }
 
@@ -134,12 +179,13 @@ export function RrhhContratosPage() {
     }
     setSaving(true)
     try {
-      const payload: Record<string, string | number> = {
+      const payload: Record<string, string | number | boolean> = {
         employee_id: editing.employee_id || "",
         contract_type: editing.contract_type || "indefinido",
         start_date: editing.start_date,
         status: editing.status || "borrador",
         workday: editing.workday || "completa",
+        incentive_applies: Boolean(editing.incentive_applies),
       }
       if (editing.id) payload.id = editing.id
       if (editing.end_date) payload.end_date = editing.end_date
@@ -147,6 +193,11 @@ export function RrhhContratosPage() {
       if (editing.position_name) payload.position_name = editing.position_name
       if (editing.schedule) payload.schedule = editing.schedule
       if (editing.observations) payload.observations = editing.observations
+      // Campos enriquecidos para el contrato PDF
+      for (const k of ["employee_nombre", "cedula", "estado_civil", "direccion", "telefono", "email", "branch", "payment_frequency", "payment_method", "bank", "account_type", "account_number", "account_holder", "work_days", "break_time", "weekly_rest", "incentive_detail"] as const) {
+        const v = (editing as Record<string, unknown>)[k]
+        if (v != null && String(v) !== "") payload[k] = String(v)
+      }
 
       const res = await apiCallLocal({ action: "saveHrContract", data: JSON.stringify(payload) }) as
         { ok?: boolean; record?: HrContract; tableMissing?: boolean; error?: string }
@@ -198,6 +249,14 @@ export function RrhhContratosPage() {
     } finally {
       setDeletingId(null)
     }
+  }
+
+  const generatePdf = (r: Partial<HrContract>) => {
+    if (!r.employee_id) { showToast("Selecciona un empleado primero", "error"); return }
+    const data = contractToData(r, business.slug, business.name)
+    const w = window.open("", "_blank")
+    if (!w) { showToast("Permite las ventanas emergentes para generar el PDF", "error"); return }
+    w.document.write(buildContractHtml(data)); w.document.title = contractFileName(data).replace(/\.pdf$/, ""); w.document.close()
   }
 
   // Si la tabla no existe, mostrar el shell con aviso explícito.
@@ -315,7 +374,7 @@ export function RrhhContratosPage() {
               <TableBody>
                 {filtered.map(r => (
                   <TableRow key={r.id}>
-                    <TableCell className="text-sm font-medium">{r.employee_id}</TableCell>
+                    <TableCell className="text-sm font-medium">{r.employee_nombre || r.employee_id}</TableCell>
                     <TableCell className="text-xs">{r.contract_type}</TableCell>
                     <TableCell className="text-xs">{r.position_name || "—"}</TableCell>
                     <TableCell className="text-xs">{r.start_date}</TableCell>
@@ -326,6 +385,9 @@ export function RrhhContratosPage() {
                     </TableCell>
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-0.5">
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-primary" onClick={() => generatePdf(r)} title="Generar PDF del contrato">
+                          <Printer className="h-3.5 w-3.5" />
+                        </Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditing(r)} title="Editar">
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
@@ -353,7 +415,16 @@ export function RrhhContratosPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1 col-span-2">
                   <Label className="text-xs">Empleado *</Label>
-                  <EmployeeSelect value={editing.employee_id} onSelect={emp => setEditing({ ...editing, employee_id: emp?.empleado_id || "", salary: emp?.sueldo ?? editing.salary ?? null, position_name: emp?.puesto || editing.position_name || "" })} />
+                  <EmployeeSelect value={editing.employee_id} onSelect={emp => setEditing({ ...editing,
+                    employee_id: emp?.empleado_id || "",
+                    employee_nombre: emp?.nombre || editing.employee_nombre || "",
+                    cedula: emp?.cedula || editing.cedula || "",
+                    salary: emp?.sueldo ?? editing.salary ?? null,
+                    position_name: emp?.puesto || editing.position_name || "",
+                    branch: emp?.sucursal || editing.branch || "",
+                    start_date: emp?.fecha_ingreso || editing.start_date || "",
+                    account_holder: emp?.nombre || editing.account_holder || "",
+                  })} />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Tipo *</Label>
@@ -402,6 +473,26 @@ export function RrhhContratosPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="col-span-2 mt-1 border-t pt-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Datos para el contrato (PDF)</div>
+                <div className="space-y-1"><Label className="text-xs">Cédula</Label><Input value={editing.cedula || ""} onChange={e => setEditing({ ...editing, cedula: e.target.value })} /></div>
+                <div className="space-y-1"><Label className="text-xs">Estado civil</Label><Input value={editing.estado_civil || ""} onChange={e => setEditing({ ...editing, estado_civil: e.target.value })} placeholder="Soltero/a, Casado/a…" /></div>
+                <div className="space-y-1 col-span-2"><Label className="text-xs">Dirección</Label><Input value={editing.direccion || ""} onChange={e => setEditing({ ...editing, direccion: e.target.value })} /></div>
+                <div className="space-y-1"><Label className="text-xs">Teléfono</Label><Input value={editing.telefono || ""} onChange={e => setEditing({ ...editing, telefono: e.target.value })} /></div>
+                <div className="space-y-1"><Label className="text-xs">Sucursal</Label><Input value={editing.branch || ""} onChange={e => setEditing({ ...editing, branch: e.target.value })} /></div>
+                <div className="space-y-1"><Label className="text-xs">Frecuencia de pago</Label>
+                  <Select value={editing.payment_frequency || "Mensual"} onValueChange={v => setEditing({ ...editing, payment_frequency: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Mensual", "Quincenal", "Semanal", "Diario"].map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                </div>
+                <div className="space-y-1"><Label className="text-xs">Banco</Label><Input value={editing.bank || ""} onChange={e => setEditing({ ...editing, bank: e.target.value })} /></div>
+                <div className="space-y-1"><Label className="text-xs">Tipo de cuenta</Label>
+                  <Select value={editing.account_type || "Ahorro"} onValueChange={v => setEditing({ ...editing, account_type: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Ahorro", "Corriente"].map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                </div>
+                <div className="space-y-1"><Label className="text-xs">Número de cuenta</Label><Input value={editing.account_number || ""} onChange={e => setEditing({ ...editing, account_number: e.target.value })} /></div>
+                <div className="space-y-1"><Label className="text-xs">Titular</Label><Input value={editing.account_holder || ""} onChange={e => setEditing({ ...editing, account_holder: e.target.value })} /></div>
+                <div className="space-y-1"><Label className="text-xs">Días de trabajo</Label><Input value={editing.work_days || ""} onChange={e => setEditing({ ...editing, work_days: e.target.value })} placeholder="Lunes a sábado" /></div>
+                <div className="space-y-1"><Label className="text-xs">Descanso intermedio</Label><Input value={editing.break_time || ""} onChange={e => setEditing({ ...editing, break_time: e.target.value })} placeholder="1 hora" /></div>
+                <div className="space-y-1"><Label className="text-xs">Descanso semanal</Label><Input value={editing.weekly_rest || ""} onChange={e => setEditing({ ...editing, weekly_rest: e.target.value })} placeholder="1 día a la semana" /></div>
+                <div className="space-y-1 flex items-end"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(editing.incentive_applies)} onChange={e => setEditing({ ...editing, incentive_applies: e.target.checked })} />Aplica incentivo</label></div>
+                {editing.incentive_applies && <div className="space-y-1 col-span-2"><Label className="text-xs">Detalle del incentivo</Label><Input value={editing.incentive_detail || ""} onChange={e => setEditing({ ...editing, incentive_detail: e.target.value })} /></div>}
                 <div className="space-y-1 col-span-2">
                   <Label className="text-xs">Observaciones</Label>
                   <Input value={editing.observations || ""} onChange={e => setEditing({ ...editing, observations: e.target.value })} />
@@ -412,6 +503,9 @@ export function RrhhContratosPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)} disabled={saving}>
               <X className="w-4 h-4 mr-1" />Cancelar
+            </Button>
+            <Button variant="outline" onClick={() => editing && generatePdf(editing)} disabled={!editing?.employee_id}>
+              <Printer className="w-4 h-4 mr-1" />Vista previa PDF
             </Button>
             <Button onClick={handleSave} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}

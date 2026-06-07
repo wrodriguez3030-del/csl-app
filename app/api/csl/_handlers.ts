@@ -441,8 +441,29 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         file_url: textFrom(record, "file_url") || null,
         observations: textFrom(record, "observations") || null,
         updated_at: new Date().toISOString(),
+        // Campos enriquecidos para el contrato PDF (snapshot del empleado).
+        employee_nombre: textFrom(record, "employee_nombre") || null,
+        cedula: textFrom(record, "cedula") || null,
+        estado_civil: textFrom(record, "estado_civil") || null,
+        direccion: textFrom(record, "direccion") || null,
+        telefono: textFrom(record, "telefono") || null,
+        email: textFrom(record, "email") || null,
+        branch: textFrom(record, "branch") || null,
+        payment_frequency: textFrom(record, "payment_frequency") || null,
+        payment_method: textFrom(record, "payment_method") || null,
+        bank: textFrom(record, "bank") || null,
+        account_type: textFrom(record, "account_type") || null,
+        account_number: textFrom(record, "account_number") || null,
+        account_holder: textFrom(record, "account_holder") || null,
+        work_days: textFrom(record, "work_days") || null,
+        break_time: textFrom(record, "break_time") || null,
+        weekly_rest: textFrom(record, "weekly_rest") || null,
+        incentive_applies: Boolean(record.incentive_applies),
+        incentive_detail: textFrom(record, "incentive_detail") || null,
+        template_version: "v1",
       }
       if (textFrom(record, "id")) row.id = textFrom(record, "id")
+      else row.created_by = user.id
       const { data, error } = await sb
         .from("hr_contracts")
         .upsert(row, { onConflict: "id" })
