@@ -2596,7 +2596,10 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         return { ok: true, message: "Sin campos para actualizar" }
       }
       await updateRowFields("equipos", equipoId, fields)
-      return { ok: true }
+      // Devolver el registro fresco (verdad de la DB) para que el frontend
+      // actualice el store con lo realmente persistido, no con optimista.
+      const record = await getRecordCompleto("equipos", equipoId)
+      return { ok: true, record }
     }
     case "saveTecnico": {
       const row = { codigo: textValue(params, "codigo"), nombre: textValue(params, "nombre"), telefono: textValue(params, "telefono"), correo: textValue(params, "correo"), estado: textValue(params, "estado", "Activo"), notas: textValue(params, "notas") }

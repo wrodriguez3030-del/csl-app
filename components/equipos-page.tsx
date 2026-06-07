@@ -46,6 +46,13 @@ const CABINA_OPTIONS = [
   "Backup", "Taller", "Sin asignar",
 ] as const
 
+// Operadoras conocidas por tenant — respaldo del dropdown cuando el catálogo
+// real (dbPulsos.operadoras) no está cargado. Siempre en MAYÚSCULA.
+const FALLBACK_OPERADORAS: Record<string, string[]> = {
+  csl: ["ROSA", "MADELIN", "DIANA", "NAYELI", "LILIAN", "YAMILKA", "KATHERIN", "SAHOMY", "YESSICA"],
+  depicenter: ["SELENIA", "CLARIBEL", "NOELIA", "EVELINA"],
+}
+
 /** Si la cabina viene legacy en Observaciones (texto libre tipo "CABINA 1 -
  *  YAMILKA"), intentamos detectar el valor canonical para pre-llenar el
  *  dropdown al editar. */
@@ -85,6 +92,17 @@ export function EquiposPage() {
       .filter((o) => (o.Estado || "Activa") !== "Inactiva")
       .sort((a, b) => (a.Nombre || "").localeCompare(b.Nombre || "", "es"))
   }, [dbPulsos.operadoras])
+
+  // Opciones del dropdown de operadora (SIEMPRE en MAYÚSCULA): catálogo real del
+  // tenant + lista conocida de respaldo (por si dbPulsos.operadoras no está
+  // cargado) + la operadora actual del equipo. Garantiza poder asignarla.
+  const operadoraOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const o of operadorasActivas) { const n = (o.Nombre || "").trim().toUpperCase(); if (n) set.add(n) }
+    for (const n of (FALLBACK_OPERADORAS[business.slug] || [])) set.add(n)
+    if (formData.Operadora) set.add(formData.Operadora.trim().toUpperCase())
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "es"))
+  }, [operadorasActivas, business.slug, formData.Operadora])
 
   // Reportes relacionados al equipo abierto (mostrados como extraSlot del dialog).
   const reportesEquipo = viewEquipo
@@ -157,64 +175,72 @@ export function EquiposPage() {
 
   const handleSubmit = async () => {
     if (!formData.EquipoID) { showToast("El ID del equipo es obligatorio", "error"); return }
+    const normalized = normalizeApiUrl(apiUrl)
+    if (!normalized) { showToast("API no configurada", "error"); return }
     const exists = db.equipos.find(e => e.EquipoID === formData.EquipoID)
-    setDb({
-      ...db,
-      equipos: exists
-        ? db.equipos.map(e => e.EquipoID === formData.EquipoID ? formData : e)
-        : [...db.equipos, formData]
-    })
-    setFormData(emptyEquipo); setEditingEquipo(null); setIsFormOpen(false)
-    showToast("Equipo guardado", "success")
+    const snapshot = formData
+
+    let params: Record<string, string>
     if (exists) {
-      // UPDATE PARCIAL — solo envía los campos que el form maneja con valor
-      // no vacío. Preserva en DB cualquier campo no editado (no sobreescribe
-      // con "" como hacía el upsert full-row).
-      const params: Record<string, string> = {
-        action: "updateEquipoCampos",
-        equipoId: formData.EquipoID,
-      }
-      // Helper para añadir solo si tiene valor real.
+      // UPDATE PARCIAL — solo envía campos con valor no vacío (preserva en DB
+      // lo no editado). Filtra por business_id + equipo_id en backend.
+      params = { action: "updateEquipoCampos", equipoId: snapshot.EquipoID }
       const put = (key: string, val: string | number | null | undefined) => {
         if (val === null || val === undefined) return
         const s = String(val).trim()
         if (s) params[key] = s
       }
-      put("sucursal", formData.Sucursal)
-      put("empresa", formData.Empresa)
-      put("domicilio", formData.Domicilio)
-      put("modelo", formData.Modelo)
-      put("serie", formData.Serie)
-      put("numero", formData.Numero)
-      put("pcabeza", formData.P_Cabeza)
-      put("ptotales", formData.P_Totales)
-      put("maxCabeza", formData.Max_Cabeza)
-      put("estado", formData.Estado)
-      put("observaciones", formData.Observaciones)
-      put("cabina", formData.Cabina)
-      put("operadora", formData.Operadora)
-      put("operadoraId", formData.OperadoraID)
-      syncApi(params)
+      put("sucursal", snapshot.Sucursal)
+      put("empresa", snapshot.Empresa)
+      put("domicilio", snapshot.Domicilio)
+      put("modelo", snapshot.Modelo)
+      put("serie", snapshot.Serie)
+      put("numero", snapshot.Numero)
+      put("pcabeza", snapshot.P_Cabeza)
+      put("ptotales", snapshot.P_Totales)
+      put("maxCabeza", snapshot.Max_Cabeza)
+      put("estado", snapshot.Estado)
+      put("observaciones", snapshot.Observaciones)
+      put("cabina", snapshot.Cabina)
+      put("operadora", snapshot.Operadora)
+      put("operadoraId", snapshot.OperadoraID)
     } else {
-      // INSERT nuevo — todos los campos.
-      syncApi({
+      params = {
         action: "saveEquipo",
-        equipoId: formData.EquipoID,
-        sucursal: formData.Sucursal,
-        empresa: formData.Empresa || business.name,
-        domicilio: formData.Domicilio || "",
-        modelo: formData.Modelo,
-        serie: formData.Serie || "",
-        numero: formData.Numero || "",
-        pcabeza: String(formData.P_Cabeza || 0),
-        ptotales: String(formData.P_Totales || 0),
-        maxCabeza: String(formData.Max_Cabeza || 6000000),
-        estado: formData.Estado,
-        observaciones: formData.Observaciones || "",
-        cabina: formData.Cabina || "",
-        operadora: formData.Operadora || "",
-        operadoraId: formData.OperadoraID || "",
+        equipoId: snapshot.EquipoID,
+        sucursal: snapshot.Sucursal,
+        empresa: snapshot.Empresa || business.name,
+        domicilio: snapshot.Domicilio || "",
+        modelo: snapshot.Modelo,
+        serie: snapshot.Serie || "",
+        numero: snapshot.Numero || "",
+        pcabeza: String(snapshot.P_Cabeza || 0),
+        ptotales: String(snapshot.P_Totales || 0),
+        maxCabeza: String(snapshot.Max_Cabeza || 6000000),
+        estado: snapshot.Estado,
+        observaciones: snapshot.Observaciones || "",
+        cabina: snapshot.Cabina || "",
+        operadora: snapshot.Operadora || "",
+        operadoraId: snapshot.OperadoraID || "",
+      }
+    }
+
+    // Guardado REAL: esperamos la respuesta y actualizamos el store con el
+    // registro que devuelve el backend (verdad de la DB), no con optimista.
+    // Si falla, mostramos el error y NO cerramos el modal (no se pierde el trabajo).
+    try {
+      const res = await apiJsonp(normalized, params) as { ok?: boolean; record?: Equipo; error?: string }
+      const saved = (res?.record as Equipo) || snapshot
+      setDb({
+        ...db,
+        equipos: exists
+          ? db.equipos.map(e => e.EquipoID === snapshot.EquipoID ? { ...e, ...saved } : e)
+          : [...db.equipos, saved],
       })
+      setFormData(emptyEquipo); setEditingEquipo(null); setIsFormOpen(false)
+      showToast(exists ? "Equipo actualizado" : "Equipo creado", "success")
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "No se pudo guardar el equipo", "error")
     }
   }
 
@@ -582,30 +608,20 @@ export function EquiposPage() {
             <div className="space-y-1.5">
               <Label>Operadora</Label>
               <Select
-                value={formData.OperadoraID || ""}
-                onValueChange={(v) => {
-                  if (v === "__none__") {
-                    setFormData({ ...formData, OperadoraID: "", Operadora: "" })
-                    return
-                  }
-                  const op = operadorasActivas.find((o) => o.OperadoraID === v)
-                  setFormData({ ...formData, OperadoraID: v, Operadora: op?.Nombre || "" })
+                value={formData.Operadora ? formData.Operadora.toUpperCase() : "__none__"}
+                onValueChange={(name) => {
+                  if (name === "__none__") { setFormData({ ...formData, Operadora: "", OperadoraID: "" }); return }
+                  // Resolver OperadoraID si la operadora existe en el catálogo real.
+                  const op = operadorasActivas.find((o) => (o.Nombre || "").trim().toUpperCase() === name)
+                  setFormData({ ...formData, Operadora: name, OperadoraID: op?.OperadoraID || "" })
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={operadorasActivas.length === 0 ? "Sin operadora disponible" : "Sin asignar"} />
+                  <SelectValue placeholder="Sin asignar" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">Sin asignar</SelectItem>
-                  {operadorasActivas.length === 0 ? (
-                    <SelectItem value="__no_ops__" disabled>Sin operadoras cargadas en el sistema</SelectItem>
-                  ) : (
-                    operadorasActivas.map((o) => (
-                      <SelectItem key={o.OperadoraID} value={o.OperadoraID}>
-                        {o.Nombre}{o.Sucursal ? ` · ${o.Sucursal}` : ""}
-                      </SelectItem>
-                    ))
-                  )}
+                  {operadoraOptions.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
