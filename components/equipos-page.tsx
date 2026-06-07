@@ -49,7 +49,8 @@ const CABINA_OPTIONS = [
 // Operadoras conocidas por tenant — respaldo del dropdown cuando el catálogo
 // real (dbPulsos.operadoras) no está cargado. Siempre en MAYÚSCULA.
 const FALLBACK_OPERADORAS: Record<string, string[]> = {
-  csl: ["ROSA", "MADELIN", "DIANA", "NAYELI", "LILIAN", "YAMILKA", "KATHERIN", "SAHOMY", "YESSICA"],
+  // Nombres OFICIALES (tabla de equipos): KATHERIN / EMELI / ROQUELMI.
+  csl: ["NAYELI", "LILIAN", "YAMILKA", "KATHERIN", "DIANA", "EMELI", "ROQUELMI", "MADELIN", "ROSA", "SAHOMY", "YESSICA"],
   depicenter: ["SELENIA", "CLARIBEL", "NOELIA", "EVELINA"],
 }
 

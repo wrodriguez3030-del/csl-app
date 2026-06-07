@@ -92,13 +92,14 @@ export function normalizeSucursal(value: unknown): string {
  * Aliases de operadora: nombre en fuente externa → nombre canónico.
  * Clave: normalizada (sin acentos, mayúsculas).
  */
-// Variantes de escritura (Excel/AgendaPro) → nombre OFICIAL en csl_operadoras.
-// Los oficiales son KATHERINE / EMELY / RIQUELMI (verificado en db-cls); las
-// variantes deben mapear HACIA esos, no al revés (si no, quedan "sin match").
+// Variantes de escritura (Excel/AgendaPro) → nombre OFICIAL de la tabla de
+// equipos (db-cls). Tabla oficial actualizada: KATHERIN / EMELI / ROQUELMI
+// (NO KATHERINE/EMELY/RIQUELMI). Las variantes mapean al oficial para que el
+// match Cuadre/Auditoría funcione aunque AgendaPro traiga otra escritura.
 const OPERADORA_ALIASES: Record<string, string> = {
-  KATHERIN: "KATHERINE",
-  EMELI: "EMELY",
-  ROQUELMI: "RIQUELMI",
+  KATHERINE: "KATHERIN",
+  EMELY: "EMELI",
+  RIQUELMI: "ROQUELMI",
   YESICA: "YESSICA",
   SAOMY: "SAHOMY",
 }
