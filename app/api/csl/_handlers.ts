@@ -3234,6 +3234,77 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       }
       return { ok: true, record: fromDb("sesiones_cliente", row) }
     }
+    case "saveSesionesBatch": {
+      // Guardado MASIVO de sesiones AgendaPro. Reemplaza el loop fila-a-fila
+      // (1 request por sesión). Pre-filtra duplicados por import_hash (en lote y
+      // contra la DB) e inserta por chunks. Multi-tenant por business_id.
+      const payload = parsePayload(params) as { sesiones?: unknown[] }
+      const input = Array.isArray(payload.sesiones) ? payload.sesiones : []
+      if (!input.length) return { ok: true, received: 0, inserted: 0, duplicates: 0, errors: 0 }
+      const sb = getSupabaseAdmin()
+      let businessId = effectiveBusinessId()
+      if (!businessId) {
+        const { data: prof } = await sb.from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
+        businessId = prof?.business_id ? String(prof.business_id) : null
+      }
+      if (!businessId) throw new Error("business_id no encontrado")
+      const now = new Date().toISOString()
+      const mapRow = (raw: unknown) => {
+        const r = raw as Record<string, unknown>
+        const importHash = typeof r.ImportHash === "string" && r.ImportHash.trim() ? r.ImportHash.trim() : null
+        return {
+          sesion_id: String(r.SesionID ?? `ses_${Date.now()}_${Math.floor(Math.random() * 1e9)}`),
+          business_id: businessId,
+          fecha: dateValue(r.Fecha),
+          sucursal: r.Sucursal ?? "",
+          cabina: toUpperField(r.Cabina),
+          operadora_id: r.OperadoraID ?? "",
+          cliente: r.Cliente ?? "",
+          area_trabajada: r.AreaTrabajada ?? "",
+          disparos_reportados: numberFrom(r, "DisparosReportados"),
+          duracion: r.Duracion ? Number(r.Duracion) : null,
+          equipo_id: r.EquipoID ?? "",
+          observaciones: r.Observaciones ?? "",
+          contacto_cliente: typeof r.ContactoCliente === "string" && r.ContactoCliente ? r.ContactoCliente : null,
+          tratamiento: typeof r.Tratamiento === "string" && r.Tratamiento ? r.Tratamiento : null,
+          potencia: typeof r.Potencia === "string" && r.Potencia ? r.Potencia : null,
+          spot: typeof r.Spot === "string" && r.Spot ? r.Spot : null,
+          archivo_origen: typeof r.ArchivoOrigen === "string" && r.ArchivoOrigen ? r.ArchivoOrigen : null,
+          fila_origen: typeof r.FilaOrigen === "number" ? r.FilaOrigen : null,
+          import_hash: importHash,
+          updated_at: now,
+        }
+      }
+      const rows = input.map(mapRow)
+      const received = rows.length
+      // Dedupe en-lote por import_hash.
+      const seen = new Set<string>(); const deduped: typeof rows = []
+      for (const r of rows) { if (r.import_hash) { if (seen.has(r.import_hash)) continue; seen.add(r.import_hash) } deduped.push(r) }
+      // Hashes ya existentes en DB (este tenant), por chunks.
+      const existing = new Set<string>()
+      const hashes = [...seen]
+      for (let i = 0; i < hashes.length; i += 200) {
+        const part = hashes.slice(i, i + 200)
+        const { data } = await sb.from("csl_sesiones_cliente").select("import_hash").eq("business_id", businessId).in("import_hash", part)
+        for (const d of ((data || []) as { import_hash: string | null }[])) if (d.import_hash) existing.add(d.import_hash)
+      }
+      const toInsert = deduped.filter(r => !r.import_hash || !existing.has(r.import_hash))
+      let inserted = 0, errors = 0
+      for (let i = 0; i < toInsert.length; i += 500) {
+        const chunk = toInsert.slice(i, i + 500)
+        const { data, error } = await sb.from("csl_sesiones_cliente").insert(chunk).select("sesion_id")
+        if (error) {
+          // Fallback fila-a-fila para no perder el chunk completo por 1 fila mala.
+          for (const one of chunk) {
+            const { error: e1 } = await sb.from("csl_sesiones_cliente").insert(one)
+            if (!e1) inserted++
+            else if ((e1 as { code?: string }).code !== "23505") errors++
+          }
+        } else inserted += (data?.length || 0)
+      }
+      const duplicates = Math.max(0, received - inserted - errors)
+      return { ok: true, received, inserted, duplicates, errors }
+    }
     case "deleteSesion":
       await deleteRow("sesiones_cliente", textValue(params, "id"))
       return { ok: true }

@@ -98,6 +98,7 @@ export function PulsosCuadreSemanalPage() {
   // Step 2 state
   const [reviewRows, setReviewRows] = useState<ReviewRow[]>([])
   const [saving, setSaving] = useState(false)
+  const [progressMsg, setProgressMsg] = useState("")
   const [savedCount, setSavedCount] = useState(0)
   const [savedSesionesCount, setSavedSesionesCount] = useState(0)
   const [weekPage, setWeekPage] = useState(0)
@@ -419,6 +420,7 @@ export function PulsosCuadreSemanalPage() {
     // Aceptar guardar con cualquiera de las dos fuentes (o ambas).
     if (!reviewRows.length && !agendaFile) return
     setSaving(true)
+    setProgressMsg("Preparando datos…")
     try {
       // ── 1) Persistir lecturas semanales (csl_pulse_readings) ────────────
       // Si no hay archivo de lecturas, este loop simplemente se salta.
@@ -476,6 +478,7 @@ export function PulsosCuadreSemanalPage() {
           }
         }
         if (shotsPayload.length) {
+          setProgressMsg("Guardando resumen semanal…")
           const res = await apiCallLocal({
             action: "saveOperatorShots",
             data: JSON.stringify({ rows: shotsPayload }),
@@ -511,11 +514,9 @@ export function PulsosCuadreSemanalPage() {
           }
         }
         const ts = Date.now()
-        for (let idx = 0; idx < validRows.length; idx++) {
-          const r = validRows[idx]
-          const matchKey = makeAgendaMatchKey(r.sucursal, r.operadora)
-          const assignment = equipoByKey.get(matchKey)
-          const sesion: Record<string, unknown> = {
+        const sesionesPayload: Record<string, unknown>[] = validRows.map((r, idx) => {
+          const assignment = equipoByKey.get(makeAgendaMatchKey(r.sucursal, r.operadora))
+          return {
             SesionID: `ses_${ts}_${idx}`,
             Fecha: r.fecha,
             EquipoID: assignment?.equipoId || "",
@@ -535,13 +536,20 @@ export function PulsosCuadreSemanalPage() {
             Observaciones: r.disparosRaw && r.disparosRaw !== String(r.disparos)
               ? `Disparos Excel: ${r.disparosRaw}` : "",
           }
+        })
+        // Guardado MASIVO en UNA sola llamada (el backend inserta por chunks y
+        // dedup por import_hash) — en vez de 1 request por sesión.
+        if (sesionesPayload.length) {
+          setProgressMsg(`Guardando ${sesionesPayload.length} sesiones…`)
           try {
-            const res = await apiCallLocal({ action: "saveSesion", data: JSON.stringify(sesion) }) as
-              { ok?: boolean; duplicate?: boolean }
-            if (res?.duplicate) sesionesDuplicadas += 1
-            else if (res?.ok) { sesionesInsertadas += 1; sesionesLocal.push(sesion) }
+            const res = await apiCallLocal({ action: "saveSesionesBatch", data: JSON.stringify({ sesiones: sesionesPayload }) }) as
+              { ok?: boolean; inserted?: number; duplicates?: number; errors?: number }
+            sesionesInsertadas = Number(res?.inserted) || 0
+            sesionesDuplicadas = Number(res?.duplicates) || 0
+            if (sesionesInsertadas > 0) sesionesLocal.push(...sesionesPayload)
           } catch (err) {
-            console.warn("saveSesion error:", err)
+            console.warn("saveSesionesBatch error:", err)
+            showToast("No se pudieron guardar las sesiones (ver consola)", "error")
           }
         }
       }
@@ -585,6 +593,7 @@ export function PulsosCuadreSemanalPage() {
       showToast(`Error al guardar: ${err instanceof Error ? err.message : String(err)}`, "error")
     } finally {
       setSaving(false)
+      setProgressMsg("")
     }
   }
 
@@ -1090,11 +1099,14 @@ export function PulsosCuadreSemanalPage() {
               </Table>
             </div>}
 
-            <div className="flex justify-between">
-              <Button variant="outline" onClick={() => setStep(1)}>
+            <div className="flex items-center justify-between gap-3">
+              <Button variant="outline" onClick={() => setStep(1)} disabled={saving}>
                 <ChevronLeft className="w-4 h-4 mr-1" />
                 Volver
               </Button>
+              {saving && progressMsg && (
+                <span className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" />{progressMsg}</span>
+              )}
               <Button onClick={handleGuardar} disabled={saving}>
                 {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                 {reviewRows.length > 0 && agendaFile
