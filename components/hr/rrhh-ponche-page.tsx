@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Fingerprint, Plus, Trash2, Save, X, Loader2, Monitor, ArrowLeft, AlertCircle, MapPin, Smartphone, ScanLine, FileSpreadsheet, CheckCircle2, XCircle, LocateFixed, Power, QrCode, Users, RefreshCw, Search } from "lucide-react"
+import { Fingerprint, Plus, Trash2, Save, X, Loader2, Monitor, ArrowLeft, AlertCircle, MapPin, Smartphone, ScanLine, FileSpreadsheet, CheckCircle2, XCircle, LocateFixed, Power, QrCode, Users, RefreshCw, Search, Link as LinkIcon, Copy } from "lucide-react"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { exportHrReportExcel } from "@/lib/hr-report-excel"
 import { haversineMeters } from "@/lib/hr-geo"
@@ -78,7 +78,8 @@ export function RrhhPonchePage() {
   const [search, setSearch] = useState("")
   const [correction, setCorrection] = useState<Partial<HrPunch> | null>(null)
   const [geoEdit, setGeoEdit] = useState<Partial<Geofence> | null>(null)
-  const [authDev, setAuthDev] = useState<{ device_name: string; sucursal: string; business_id: string } | null>(null)
+  const [authDev, setAuthDev] = useState<{ device_name: string; sucursal: string; business_id: string; descripcion?: string } | null>(null)
+  const [activationLink, setActivationLink] = useState<{ url: string; device_name: string; sucursal: string; regenerated?: boolean } | null>(null)
   const [branchOptions, setBranchOptions] = useState<BranchOption[]>([])
   const [saving, setSaving] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -233,18 +234,36 @@ export function RrhhPonchePage() {
       pos => { const d = haversineMeters(pos.coords.latitude, pos.coords.longitude, Number(geoEdit.latitude), Number(geoEdit.longitude)); const r = Number(geoEdit.radius_meters || 80); showToast(`Estás a ${Math.round(d)} m del centro → ${d <= r ? "DENTRO ✓" : "FUERA ✗"} del radio (${r} m)`, d <= r ? "success" : "error") },
       () => showToast("No se pudo obtener tu ubicación", "error"), { enableHighAccuracy: true, timeout: 10000 })
   }
-  const authorizeDevice = async () => {
+  const buildActivationUrl = (token: string) => `${typeof window !== "undefined" ? window.location.origin : ""}/hr/ponche/kiosko/activar?device_token=${encodeURIComponent(token)}`
+
+  // Crea el dispositivo en hr_punch_devices. Si alsoThisBrowser=true autoriza el
+  // navegador actual (flujo rápido); si no, genera un LINK de activación para
+  // abrir en la tablet del kiosco.
+  const createDevice = async (alsoThisBrowser: boolean) => {
     if (!authDev) return
     if (!authDev.sucursal) { showToast("Selecciona la sucursal del kiosco", "error"); return }
     setSaving(true)
     try {
-      const res = await call({ action: "authorizeHrPunchDevice", data: JSON.stringify({ device_name: authDev.device_name || "Kiosco de ponche", sucursal: authDev.sucursal || "", business_id: authDev.business_id || "", device_info: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : "" }) }) as { ok?: boolean; device_token?: string; error?: string; tableMissing?: boolean }
+      const res = await call({ action: "authorizeHrPunchDevice", data: JSON.stringify({ device_name: authDev.device_name || "Kiosco de ponche", sucursal: authDev.sucursal || "", business_id: authDev.business_id || "", device_info: authDev.descripcion || "" }) }) as { ok?: boolean; device_token?: string; error?: string; tableMissing?: boolean }
       if (res?.tableMissing) { showToast("Falta aplicar la migración del ponche QR en db-cls", "error"); return }
       if (!res?.ok || !res.device_token) { showToast(`Error: ${res?.error || "no se pudo autorizar"}`, "error"); return }
-      localStorage.setItem(DEVICE_TOKEN_KEY, res.device_token)
-      showToast("Dispositivo autorizado en este navegador", "success"); setAuthDev(null); reload()
+      const dev = { device_name: authDev.device_name || "Kiosco de ponche", sucursal: authDev.sucursal }
+      setAuthDev(null); reload()
+      if (alsoThisBrowser) { localStorage.setItem(DEVICE_TOKEN_KEY, res.device_token); showToast("Dispositivo autorizado en este navegador", "success") }
+      else setActivationLink({ url: buildActivationUrl(res.device_token), device_name: dev.device_name, sucursal: dev.sucursal })
     } catch (err) { showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error") } finally { setSaving(false) }
   }
+  const regenerateDevice = async (d: Device) => {
+    setBusyId(d.id)
+    try {
+      const res = await call({ action: "regenerateHrPunchDeviceToken", id: d.id }) as { ok?: boolean; device_token?: string; error?: string; tableMissing?: boolean }
+      if (!res?.ok || !res.device_token) { showToast(`Error: ${res?.error || "no se pudo regenerar"}`, "error"); return }
+      setActivationLink({ url: buildActivationUrl(res.device_token), device_name: d.device_name, sucursal: d.sucursal || "", regenerated: true })
+      reload()
+    } catch (err) { showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error") } finally { setBusyId(null) }
+  }
+  const copyActivation = async () => { if (activationLink) { try { await navigator.clipboard.writeText(activationLink.url); showToast("Link copiado", "success") } catch { showToast("No se pudo copiar", "error") } } }
+  const waActivation = () => { if (activationLink && typeof window !== "undefined") window.open(`https://wa.me/?text=${encodeURIComponent(`Activa el kiosco de ponche "${activationLink.device_name}" (${activationLink.sucursal}). Abre este link en la tablet del kiosco: ${activationLink.url}`)}`, "_blank") }
   const toggleDevice = async (d: Device) => {
     setBusyId(d.id)
     try { await call({ action: "setHrPunchDeviceActive", id: d.id, active: !d.active }); reload() }
@@ -282,7 +301,7 @@ export function RrhhPonchePage() {
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">
           <Button onClick={() => setView("kiosk")}><Monitor className="w-4 h-4 mr-1" />Abrir kiosco</Button>
-          <Button variant="outline" onClick={() => setAuthDev({ device_name: "Kiosco de ponche", sucursal: "", business_id: "" })}><Smartphone className="w-4 h-4 mr-1" />Autorizar dispositivo</Button>
+          <Button variant="outline" onClick={() => setAuthDev({ device_name: "Kiosco de ponche", sucursal: "", business_id: "" })}><Smartphone className="w-4 h-4 mr-1" />Nuevo dispositivo</Button>
           <Button variant="outline" onClick={() => setGeoEdit({ sucursal: "", latitude: 0, longitude: 0, radius_meters: 80, active: true })}><MapPin className="w-4 h-4 mr-1" />Configurar geocerca</Button>
           <Button variant="outline" onClick={exportExcel}><FileSpreadsheet className="w-4 h-4 mr-1" />Exportar Excel</Button>
         </div>
@@ -306,12 +325,13 @@ export function RrhhPonchePage() {
       <div className="grid gap-3 lg:grid-cols-2">
         <Card><CardContent className="py-3">
           <div className="flex items-center justify-between mb-2"><h3 className="text-sm font-bold">Dispositivos autorizados</h3><Smartphone className="w-4 h-4 text-muted-foreground" /></div>
-          {devices.length === 0 ? <p className="text-xs text-muted-foreground py-2">Sin dispositivos. Usa “Autorizar dispositivo” en el equipo del kiosco.</p> : (
+          {devices.length === 0 ? <p className="text-xs text-muted-foreground py-2">Sin dispositivos. Usa “Nuevo dispositivo” para crear uno y enviar el link de activación a la tablet.</p> : (
             <div className="space-y-1">{devices.map(d => (
               <div key={d.id} className="flex items-center justify-between text-xs border rounded px-2 py-1.5">
                 <div><span className="font-medium">{d.device_name}</span> · {d.sucursal || "—"}<div className="text-muted-foreground">Últ.: {d.last_seen_at ? fmtDateTime(d.last_seen_at) : "—"}</div></div>
                 <div className="flex items-center gap-1">
                   <Badge variant="outline" className={d.active ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-gray-100 text-gray-500"}>{d.active ? "Activo" : "Inactivo"}</Badge>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => regenerateDevice(d)} disabled={busyId === d.id} title="Generar link de activación (regenera token)"><LinkIcon className="h-3.5 w-3.5" /></Button>
                   <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => toggleDevice(d)} disabled={busyId === d.id} title={d.active ? "Desactivar" : "Activar"}><Power className="h-3.5 w-3.5" /></Button>
                 </div>
               </div>))}</div>
@@ -483,11 +503,11 @@ export function RrhhPonchePage() {
       {/* Dialog autorizar dispositivo */}
       <Dialog open={!!authDev} onOpenChange={o => !o && setAuthDev(null)}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Autorizar este dispositivo</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Nuevo dispositivo de kiosco</DialogTitle></DialogHeader>
           {authDev && (
             <div className="space-y-3 py-2">
-              <p className="text-xs text-muted-foreground">Autoriza el equipo (tablet/celular) que quedará fijo en la sucursal como kiosco. El permiso se guarda en este navegador.</p>
-              <div className="space-y-1"><Label className="text-xs">Nombre del dispositivo</Label><Input value={authDev.device_name} onChange={e => setAuthDev({ ...authDev, device_name: e.target.value })} placeholder="Tablet recepción" /></div>
+              <p className="text-xs text-muted-foreground">Crea el dispositivo y genera un <b>link de activación</b> para abrir en la tablet/celular del kiosco. O autoriza directamente este navegador.</p>
+              <div className="space-y-1"><Label className="text-xs">Nombre del dispositivo *</Label><Input value={authDev.device_name} onChange={e => setAuthDev({ ...authDev, device_name: e.target.value })} placeholder="Kiosko Rafael Vidal Cabina Principal" /></div>
               <div className="space-y-1"><Label className="text-xs">Sucursal *</Label>
                 <select className="w-full h-9 rounded-md border bg-background px-2 text-sm"
                   value={authDev.business_id && authDev.sucursal ? `${authDev.business_id}|||${authDev.sucursal}` : ""}
@@ -497,13 +517,38 @@ export function RrhhPonchePage() {
                     ? bizGroups.map(([bn, opts]) => <optgroup key={bn} label={bn}>{opts.map(o => <option key={o.business_id + o.sucursal} value={`${o.business_id}|||${o.sucursal}`}>{o.sucursal}</option>)}</optgroup>)
                     : branchOptions.map(o => <option key={o.business_id + o.sucursal} value={`${o.business_id}|||${o.sucursal}`}>{o.sucursal}</option>)}
                 </select>
-                {branchOptions.length === 0 && <p className="text-[11px] text-amber-600">No hay sucursales para este negocio. Créalas en el módulo Sucursales.</p>}
+                {branchOptions.length === 0 && <p className="text-[11px] text-amber-600">No hay sucursales disponibles para ti. Créalas en Sucursales o pide acceso a la sucursal.</p>}
               </div>
+              <div className="space-y-1"><Label className="text-xs">Descripción (opcional)</Label><Input value={authDev.descripcion || ""} onChange={e => setAuthDev({ ...authDev, descripcion: e.target.value })} placeholder="Tablet en recepción" /></div>
+            </div>
+          )}
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="ghost" onClick={() => setAuthDev(null)} disabled={saving}><X className="w-4 h-4 mr-1" />Cancelar</Button>
+            <Button variant="outline" onClick={() => createDevice(true)} disabled={saving}><Smartphone className="w-4 h-4 mr-1" />Autorizar este navegador</Button>
+            <Button onClick={() => createDevice(false)} disabled={saving}>{saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <LinkIcon className="w-4 h-4 mr-1" />}Generar link</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog link de activación */}
+      <Dialog open={!!activationLink} onOpenChange={o => !o && setActivationLink(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Link de activación</DialogTitle></DialogHeader>
+          {activationLink && (
+            <div className="space-y-3 py-2">
+              <p className="text-sm">Dispositivo: <b>{activationLink.device_name}</b>{activationLink.sucursal ? ` · ${activationLink.sucursal}` : ""}</p>
+              <p className="text-xs text-muted-foreground">Abre este link <b>en la tablet/celular del kiosco</b>. Ese navegador quedará autorizado para ponchar.{activationLink.regenerated ? " El token anterior quedó inválido." : ""}</p>
+              <div className="rounded-md border bg-muted/30 px-2 py-2 text-[11px] break-all select-all">{activationLink.url}</div>
+              <div className="grid grid-cols-3 gap-2">
+                <Button variant="outline" size="sm" onClick={copyActivation}><Copy className="w-4 h-4 mr-1" />Copiar</Button>
+                <Button variant="outline" size="sm" className="text-[#25D366]" onClick={waActivation}><Smartphone className="w-4 h-4 mr-1" />WhatsApp</Button>
+                <Button variant="outline" size="sm" onClick={() => { if (typeof window !== "undefined") window.open(activationLink.url, "_blank") }}><LinkIcon className="w-4 h-4 mr-1" />Abrir</Button>
+              </div>
+              <p className="text-[11px] text-amber-600">Por seguridad el token solo se muestra una vez. Si lo pierdes, usa “Generar link” de nuevo (regenera el token).</p>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAuthDev(null)} disabled={saving}><X className="w-4 h-4 mr-1" />Cancelar</Button>
-            <Button onClick={authorizeDevice} disabled={saving}>{saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Smartphone className="w-4 h-4 mr-1" />}Autorizar</Button>
+            <Button onClick={() => setActivationLink(null)}>Listo</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -540,7 +585,7 @@ export function KioskPonchePage() {
 type DetectedBarcode = { rawValue: string }
 type BarcodeDetectorLike = { detect: (src: CanvasImageSource) => Promise<DetectedBarcode[]> }
 
-function KioskView({ onExit }: { onExit: () => void }) {
+export function KioskView({ onExit }: { onExit: () => void }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const readerRef = useRef<IScannerControls | null>(null)
@@ -745,7 +790,7 @@ function KioskView({ onExit }: { onExit: () => void }) {
                 <button onClick={() => manualToken.trim() && onQrFound(manualToken.trim())} disabled={busy} className="rounded-lg bg-white/15 hover:bg-white/25 px-3 py-2 text-sm font-medium disabled:opacity-50">Validar</button>
               </div>
             </div>
-            {!deviceToken && <p className="mt-3 text-red-400 text-sm">Este navegador no está autorizado. Pídele al admin “Autorizar dispositivo”.</p>}
+            {!deviceToken && <p className="mt-3 text-red-400 text-sm">Este dispositivo no está autorizado. Solicita al administrador el link de activación.</p>}
             {busy && <Loader2 className="w-6 h-6 animate-spin mx-auto mt-4" />}
           </div>
         )}

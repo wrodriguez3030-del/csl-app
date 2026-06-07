@@ -777,6 +777,20 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       await hrAudit(user, "ponche", "device_delete", "hr_punch_devices", id, null, null)
       return { ok: true }
     }
+    case "regenerateHrPunchDeviceToken": {
+      const id = textValue(params, "id"); if (!id) throw new Error("id obligatorio")
+      const token = `CSLDEV:${randomBytes(24).toString("hex")}`
+      let q = getSupabaseAdmin().from("hr_punch_devices")
+        .update({ device_token_hash: hrSha256(token), active: true, updated_at: new Date().toISOString() })
+        .eq("id", id)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { data, error } = await q.select().maybeSingle()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+      if (!data) throw new Error("Dispositivo no encontrado")
+      await hrAudit(user, "ponche", "device_regenerate", "hr_punch_devices", id, null, { device_name: (data as { device_name?: string }).device_name })
+      // El token anterior queda inválido (cambió el hash). Se devuelve el nuevo raw 1 sola vez.
+      return { ok: true, device_token: token, device: data }
+    }
     case "getHrBranchGeofences": {
       const sb = getSupabaseAdmin()
       let q = sb.from("hr_branch_geofences").select("*").order("sucursal", { ascending: true })
