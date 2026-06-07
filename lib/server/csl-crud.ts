@@ -8,7 +8,7 @@
 import { getSupabaseAdmin } from "./supabase"
 import { fichaClientPatchFromCliente, fromDb, mergeClienteRows } from "./csl-transforms"
 import { getBusinessContext, scopeByBranch } from "./business-context"
-import { normalizeSucursal } from "@/lib/normalize-pulse"
+import { normalizeSucursal, sucursalAllowedForTenant } from "@/lib/normalize-pulse"
 import type { BusinessContext, Row } from "./csl-types"
 
 /**
@@ -392,13 +392,25 @@ export async function getAllPulsosData(opts?: { extendedDays?: number }) {
       })
     })(),
   ])
+  // GUARDIA anti-fuga por tenant: además del filtro por business_id, descarta
+  // filas cuya sucursal NO pertenece al tenant activo (datos mal etiquetados /
+  // cross-tenant). No aplica cuando el superadmin está en modo "Todos".
+  const ctxT = getBusinessContext()
+  const scopeTenantSuc = <T,>(rows: T[], getSuc: (r: T) => unknown): T[] => {
+    if (!ctxT || ctxT.bypassTenantFilter) return rows
+    return rows.filter((r) => {
+      const ok = sucursalAllowedForTenant(getSuc(r), ctxT.businessSlug)
+      if (!ok) console.warn(`cross-tenant row blocked [${ctxT.businessSlug}]:`, getSuc(r))
+      return ok
+    })
+  }
   return {
     operadoras: scopeByBranch(operadoras, (o) => (o as Row).Sucursal),
-    lecturasSemanales: scopeByBranch(lecturasSemanales, (x) => (x as Row).Sucursal),
-    sesionesCliente: scopeByBranch(sesionesCliente, (x) => (x as Row).Sucursal),
-    auditoriasSemanales: scopeByBranch(auditoriasSemanales, (x) => (x as Row).Sucursal),
-    pulseReadings: scopeByBranch(pulseReadingsRaw as Row[], (x) => (x as Row).sucursal),
-    operatorShots: scopeByBranch(operatorShotsRaw as Row[], (x) => (x as Row).sucursal_normalizada),
+    lecturasSemanales: scopeTenantSuc(scopeByBranch(lecturasSemanales, (x) => (x as Row).Sucursal), (x) => (x as Row).Sucursal),
+    sesionesCliente: scopeTenantSuc(scopeByBranch(sesionesCliente, (x) => (x as Row).Sucursal), (x) => (x as Row).Sucursal),
+    auditoriasSemanales: scopeTenantSuc(scopeByBranch(auditoriasSemanales, (x) => (x as Row).Sucursal), (x) => (x as Row).Sucursal),
+    pulseReadings: scopeTenantSuc(scopeByBranch(pulseReadingsRaw as Row[], (x) => (x as Row).sucursal), (x) => (x as Row).sucursal),
+    operatorShots: scopeTenantSuc(scopeByBranch(operatorShotsRaw as Row[], (x) => (x as Row).sucursal_normalizada), (x) => (x as Row).sucursal_normalizada),
   }
 }
 

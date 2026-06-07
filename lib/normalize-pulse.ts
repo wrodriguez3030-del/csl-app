@@ -132,6 +132,25 @@ export function normalizeOperadora(value: unknown): string {
 }
 
 /**
+ * Allow-list de sucursales (normalizadas) por tenant. Usado como GUARDIA
+ * anti-fuga: aunque una fila tenga business_id correcto, si su sucursal no
+ * pertenece al tenant se descarta (datos mal etiquetados / cross-tenant).
+ */
+const TENANT_SUCURSALES: Record<string, string[]> = {
+  csl: ["LOS JARDINES", "RAFAEL VIDAL", "VILLA OLGA"],
+  depicenter: ["DEPICENTER", "LA VEGA"],
+}
+
+/** true si la sucursal pertenece al tenant (slug). Tenant desconocido → no bloquea. */
+export function sucursalAllowedForTenant(sucursal: unknown, slug: string): boolean {
+  const allowed = TENANT_SUCURSALES[slug]
+  if (!allowed) return true
+  const norm = normalizeSucursal(sucursal)
+  if (!norm) return false
+  return allowed.includes(norm)
+}
+
+/**
  * Clave canónica para el match AgendaPro ↔ Excel equipos.
  *
  * Formato: "SUCURSAL_CANÓNICA|OPERADORA_CANÓNICA"

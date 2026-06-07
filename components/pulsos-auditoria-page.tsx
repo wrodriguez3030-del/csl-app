@@ -20,7 +20,7 @@ import { printAuditoria, type AuditoriaPdfSnapshot } from "@/lib/pulse-auditoria
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { getBusinessBranding } from "@/lib/business"
 import { fmtN } from "@/lib/fmt"
-import { makeAgendaMatchKey, normalizeSucursal as canonicalSucursal } from "@/lib/normalize-pulse"
+import { makeAgendaMatchKey, normalizeSucursal as canonicalSucursal, sucursalAllowedForTenant } from "@/lib/normalize-pulse"
 import { signedColorClass, signedColorClassDark, signedIcon, getAlerta as getAlertaShared, alertaBadge as alertaBadgeShared } from "@/lib/pulse-colors"
 
 function fmtSemanaRango(d: string) {
@@ -102,6 +102,7 @@ function auditManualSessionId(fecha: string, sucursal: string, equipo: string, o
 
 export function PulsosAuditoriaPage() {
   const { dbPulsos, setDbPulsos, apiUrl, showToast, setIsLoading, setLoadingMessage } = useAppStore()
+  const activeBusinessSlug = useAppStore((s) => s.activeBusinessSlug)
   const business = useCurrentBusiness()
   const [filterSuc, setFilterSuc] = useState("todas")
   const [filterSemana, setFilterSemana] = useState("todas")
@@ -140,6 +141,11 @@ export function PulsosAuditoriaPage() {
       const desde = String(r.period_start || "").split("T")[0].trim()
       if (!desde || !/^\d{4}-\d{2}-\d{2}$/.test(desde)) continue
       const hasta = String(r.period_end || "").split("T")[0].trim() || desde
+      // GUARDIA cross-tenant (extra al filtro de business_id del backend): si hay
+      // un negocio activo específico, descartar filas de otra sucursal/tenant.
+      if ((activeBusinessSlug === "csl" || activeBusinessSlug === "depicenter") && !sucursalAllowedForTenant(r.sucursal, activeBusinessSlug)) {
+        console.warn(`cross-tenant row blocked [${activeBusinessSlug}]:`, r.sucursal); continue
+      }
 
       // disp_operador con jerarquía de fuentes:
       //   1) reading.disp_operador (lo poblado por Cuadre semanal)
@@ -208,6 +214,9 @@ export function PulsosAuditoriaPage() {
     for (const lec of dbPulsos.lecturasSemanales) {
       const desde = String(lec.FechaSemana || "").split("T")[0].trim()
       if (!desde || !/^\d{4}-\d{2}-\d{2}$/.test(desde)) continue
+      if ((activeBusinessSlug === "csl" || activeBusinessSlug === "depicenter") && !sucursalAllowedForTenant(lec.Sucursal, activeBusinessSlug)) {
+        console.warn(`cross-tenant row blocked [${activeBusinessSlug}]:`, lec.Sucursal); continue
+      }
       const cabinaRaw = String(lec.Cabina || "").trim()
       const key = `${desde}|${lec.EquipoID || ""}|${canonicalSucursal(lec.Sucursal || "")}|${cabinaRaw}`
       if (seenKeys.has(key)) continue // ya cubierto por pulseReadings
@@ -275,7 +284,7 @@ export function PulsosAuditoriaPage() {
           totDiferencia: totDispOp - totDispLaser,
         }
       })
-  }, [dbPulsos.pulseReadings, dbPulsos.lecturasSemanales, dbPulsos.sesionesCliente])
+  }, [dbPulsos.pulseReadings, dbPulsos.lecturasSemanales, dbPulsos.sesionesCliente, activeBusinessSlug])
 
   const semanasDisponibles = semanas.map(s => s.fecha)
   const sucursales = Array.from(new Set([
