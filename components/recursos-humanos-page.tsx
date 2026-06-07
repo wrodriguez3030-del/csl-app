@@ -747,15 +747,22 @@ ${solicitud.firma ? `<div class="firma"><p><b>Firma del Solicitante:</b></p><img
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-5xl max-h-[95vh] overflow-hidden flex flex-col p-0">
-          <DialogHeader className="p-6 pb-2 border-b">
-            <DialogTitle className="flex items-center gap-2 text-lg">
-              <Users className="h-5 w-5 text-primary" />
-              Solicitud de Empleo - Cibao Spa Laser
-            </DialogTitle>
+          <DialogHeader className="p-6 pb-3 border-b">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="rounded-xl bg-primary/10 p-2.5 text-primary shrink-0"><Users className="h-6 w-6" /></div>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">RR.HH. · {business.name}</p>
+                  <DialogTitle className="text-lg leading-tight">Solicitud de Empleo</DialogTitle>
+                  <p className="mt-0.5 text-sm font-medium truncate text-muted-foreground">{`${form.nombre} ${form.apellido}`.trim() || (form.id ? "Editar solicitud" : "Nueva solicitud")}</p>
+                </div>
+              </div>
+              <Badge variant="outline" className={`shrink-0 ${estadoClasses(form.estado)}`}>{form.estado || "Pendiente"}</Badge>
+            </div>
             {/* Barra de progreso */}
-            <div className="mt-2">
+            <div className="mt-3">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-muted-foreground">Progreso</span>
+                <span className="text-xs text-muted-foreground">Progreso de la solicitud</span>
                 <span className="text-xs font-bold text-primary">{getProgreso()}%</span>
               </div>
               <div className="w-full bg-muted rounded-full h-2">
