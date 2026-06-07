@@ -90,6 +90,8 @@ export function RrhhVacacionesPage() {
   const [fDesde, setFDesde] = useState("")
   const [fHasta, setFHasta] = useState("")
   const [fEmpleado, setFEmpleado] = useState("")
+  const [year, setYear] = useState(String(new Date().getFullYear()))
+  const [calcAll, setCalcAll] = useState(false)
 
   const call = (params: Record<string, string | number | boolean>) => apiCall(normalizeApiUrl(apiUrl), params)
 
@@ -237,6 +239,51 @@ export function RrhhVacacionesPage() {
     showToast(`Excel generado (${rows.length} fila(s))`, "success")
   }
 
+  // Calcular vacaciones de TODOS los empleados activos del tenant para el año.
+  // Upsert por (employee, año) sin duplicar; respeta pagadas; marca incompletos.
+  const calcularTodos = async () => {
+    setCalcAll(true)
+    const refStr = `${year}-12-31`
+    let creados = 0, actualizados = 0, omitidos = 0, incompletos = 0
+    try {
+      for (const e of Object.values(empMap)) {
+        if (!e.fecha_ingreso || !(e.sueldo > 0)) { incompletos++; continue }
+        const anios = antiguedadAnios(e.fecha_ingreso, refStr)
+        const diasLegales = diasLegalesRD(anios)
+        if (diasLegales <= 0) { incompletos++; continue } // menos de 1 año
+        const existing = records.find(r => r.employee_id === e.id && String(r.periodo || "") === year)
+        if (existing && normEstado(existing.status) === "pagada") { omitidos++; continue }
+        await call({ action: "saveHrVacation", data: JSON.stringify({
+          id: existing?.id,
+          employee_id: e.id, employee_nombre: e.nombre, periodo: year,
+          dias: diasLegales, sueldo_mensual: e.sueldo, fecha_ingreso: e.fecha_ingreso,
+          antiguedad_anios: anios, dias_legales: diasLegales, fecha_fin: refStr,
+          status: existing && normEstado(existing.status) !== "anulada" ? existing.status : "borrador",
+        }) })
+        if (existing) actualizados++; else creados++
+      }
+      showToast(`Año ${year}: ${creados} creados · ${actualizados} actualizados · ${omitidos} pagados omitidos · ${incompletos} incompletos`, "success")
+      await reload()
+    } catch (err) { showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error") }
+    finally { setCalcAll(false) }
+  }
+
+  const generarTxt = async () => {
+    setCalcAll(true)
+    try {
+      const res = await call({ action: "getHrVacacionesTxt", year }) as { ok?: boolean; content?: string; lineas?: number; total?: number; omitidos?: string[]; error?: string }
+      if (!res?.ok) { showToast(res?.error || "No se pudo generar el TXT", "error"); return }
+      if (!res.lineas) { showToast("No hay vacaciones aprobadas con cuenta bancaria para el TXT", "info"); return }
+      const blob = new Blob([res.content || ""], { type: "text/plain;charset=utf-8" })
+      const url = URL.createObjectURL(blob); const a = document.createElement("a")
+      const emp = (business.shortName || business.name || "EMPRESA").toUpperCase().replace(/[^A-Z0-9]+/g, "_")
+      a.href = url; a.download = `VACACIONES_${emp}_${year}.txt`
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url)
+      showToast(`TXT generado: ${res.lineas} línea(s) · ${rd(res.total || 0)}${res.omitidos?.length ? ` · ${res.omitidos.length} sin cuenta omitidos` : ""}`, "success")
+    } catch (err) { showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error") }
+    finally { setCalcAll(false) }
+  }
+
   const nuevo = () => setEditing({ periodo: String(new Date().getFullYear()), status: "borrador", dias: 0, sueldo_mensual: 0 })
 
   return (
@@ -250,8 +297,16 @@ export function RrhhVacacionesPage() {
             <p className="mt-1 text-sm text-muted-foreground">Cálculo según Código de Trabajo RD: 14 días (1–5 años) · 18 días (≥5 años). Monto = sueldo diario (mensual ÷ {DAILY_BASE}) × días.</p>
           </div>
         </div>
-        <div className="flex gap-2 shrink-0">
-          <Button variant="outline" onClick={exportExcel}><FileSpreadsheet className="w-4 h-4 mr-1" />Exportar cálculo de vacaciones</Button>
+        <div className="flex flex-wrap gap-2 shrink-0 items-center">
+          <div className="flex items-center gap-1">
+            <Label className="text-xs">Año</Label>
+            <select className="h-9 rounded-md border bg-background px-2 text-sm" value={year} onChange={e => setYear(e.target.value)}>
+              {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(y => <option key={y} value={String(y)}>{y}</option>)}
+            </select>
+          </div>
+          <Button variant="outline" onClick={calcularTodos} disabled={calcAll}>{calcAll ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Calculator className="w-4 h-4 mr-1" />}Calcular todos</Button>
+          <Button variant="outline" onClick={exportExcel}><FileSpreadsheet className="w-4 h-4 mr-1" />Exportar Excel</Button>
+          <Button variant="outline" onClick={generarTxt} disabled={calcAll}><DollarSign className="w-4 h-4 mr-1" />Generar TXT bancario</Button>
           <Button onClick={nuevo}><Plus className="w-4 h-4 mr-1" />Nueva vacación</Button>
         </div>
       </div>

@@ -1929,6 +1929,33 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       await hrAudit(user, "vacaciones", "delete", "hr_vacations", id, null, null)
       return { ok: true }
     }
+    case "getHrVacacionesTxt": {
+      // TXT bancario de vacaciones aprobadas del año. Formato:
+      // CUENTA_ORIGEN,CUENTA_DESTINO,MONTO,NOMBRE (sin encabezado).
+      const sb = getSupabaseAdmin()
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const year = textValue(params, "year") || String(new Date().getFullYear())
+      const { data: cfg } = await sb.from("hr_payroll_config").select("bank_origin_account").eq("business_id", businessId).maybeSingle()
+      const origin = (cfg as { bank_origin_account?: string } | null)?.bank_origin_account || ""
+      if (!origin) return { ok: false, error: "Debe configurar la cuenta origen antes de generar el TXT bancario (Nómina → Configuración)." }
+      const { data: vacs, error } = await sb.from("hr_vacations").select("*").eq("business_id", businessId).eq("periodo", year)
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+      const approved = scopeByBranch((vacs || []) as Row[], (r) => (r as Row).sucursal)
+        .filter((v) => ["aprobada", "aprobado", "pagada", "pagado"].includes(String((v as Row).status)) && Number((v as Row).monto) > 0)
+      const lines: string[] = []; const omitidos: string[] = []; let total = 0
+      for (const v of approved as Row[]) {
+        const { data: acct } = await sb.from("hr_employee_bank_accounts").select("account_number, beneficiary").eq("business_id", businessId).eq("employee_id", String(v.employee_id)).eq("is_primary", true).eq("active", true).maybeSingle()
+        const a = acct as { account_number?: string; beneficiary?: string } | null
+        if (!a?.account_number) { omitidos.push(String(v.employee_nombre || v.employee_id)); continue }
+        const nombre = String(a.beneficiary || v.employee_nombre || v.employee_id).toUpperCase()
+        const monto = Number(v.monto || 0)
+        lines.push(`${origin},${a.account_number},${monto.toFixed(2)},${nombre}`)
+        total += monto
+      }
+      await hrAudit(user, "vacaciones", "txt_generate", "hr_vacations", year, null, { lineas: lines.length, total })
+      return { ok: true, content: lines.join("\n"), lineas: lines.length, total: round2(total), omitidos }
+    }
 
     // ── HR · Fase 3 · Doble sueldo (Salario de Navidad) ──────────────────
     case "getHrChristmasBonus": {
