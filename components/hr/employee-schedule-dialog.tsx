@@ -75,7 +75,7 @@ export function EmployeeScheduleDialog({ employeeId, employeeName, sucursal, onC
           <div className="space-y-3 py-2">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1"><Label className="text-xs">Nombre del horario</Label><Input value={name} onChange={e => setName(e.target.value)} /></div>
-              <div className="space-y-1"><Label className="text-xs">Sucursal</Label><Input value={suc} onChange={e => setSuc(e.target.value)} placeholder="RAFAEL VIDAL" /></div>
+              <div className="space-y-1"><Label className="text-xs">Sucursal</Label><Input value={suc} onChange={e => setSuc(e.target.value)} placeholder="Sin sucursal asignada" /></div>
               <div className="space-y-1"><Label className="text-xs">Efectivo desde</Label><Input type="date" value={from} onChange={e => setFrom(e.target.value)} /></div>
               <div className="space-y-1"><Label className="text-xs">Efectivo hasta (opcional)</Label><Input type="date" value={to} onChange={e => setTo(e.target.value)} /></div>
             </div>

@@ -28,6 +28,7 @@ interface EmpleadoRecord {
   fechaNacimiento: string
   nacionalidad: string
   observaciones: string
+  sucursal: string
 }
 type EmpleadoSortKey = "fecha" | "nombre" | "puestoSolicitado" | "cedula" | "ciudad"
 
@@ -47,6 +48,8 @@ function normalizeEmpleado(raw: Record<string, unknown>): EmpleadoRecord {
     fechaNacimiento: String(raw.FechaNacimiento ?? raw.fechaNacimiento ?? ""),
     nacionalidad: String(raw.Nacionalidad ?? raw.nacionalidad ?? ""),
     observaciones: String(raw.Observaciones ?? raw.observaciones ?? ""),
+    // Sucursal real del empleado (de la solicitud aprobada / ficha). NO defaultear.
+    sucursal: String(raw.Sucursal ?? raw.sucursal ?? (raw.payload_json as Record<string, unknown> | undefined)?.sucursal ?? ""),
   }
 }
 
@@ -302,7 +305,7 @@ export function EmpleadosPage() {
         <EmployeeScheduleDialog
           employeeId={schedEmp.id}
           employeeName={`${schedEmp.nombre} ${schedEmp.apellido}`.trim()}
-          sucursal={(schedEmp as unknown as { sucursal?: string }).sucursal}
+          sucursal={schedEmp.sucursal}
           onClose={() => setSchedEmp(null)}
         />
       )}
