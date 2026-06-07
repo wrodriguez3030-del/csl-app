@@ -108,7 +108,7 @@ export function PulsosAuditoriaPage() {
   const [sortCol, setSortCol] = useState<string>("")
   const [sortDir, setSortDir] = useState<"asc"|"desc">("asc")
   const [editRow, setEditRow] = useState<any | null>(null)
-  const [editForm, setEditForm] = useState({ operadora: "", pulsosInicio: 0, pulsosFin: 0, dispOperador: 0 })
+  const [editForm, setEditForm] = useState({ operadora: "", pulsosInicio: 0, pulsosFin: 0, dispOperador: 0, observaciones: "" })
   const syncApi = async (params: Record<string, string>) => {
     try {
       const { apiJsonp, normalizeApiUrl } = await import("@/lib/store")
@@ -197,6 +197,7 @@ export function PulsosAuditoriaPage() {
         diferencia,
         pct,
         alerta: getAlerta(pct),
+        observaciones: String(r.observaciones || ""),
       })
 
       const key = `${desde}|${r.equipo_id}|${canonicalSucursal(r.sucursal)}|${cabinaRaw}`
@@ -573,6 +574,7 @@ export function PulsosAuditoriaPage() {
       pulsosInicio: Number(row.pulsosInicio) || 0,
       pulsosFin: Number(row.pulsosFin) || 0,
       dispOperador: Number(row.dispOperador) || 0,
+      observaciones: String(row.observaciones || ""),
     })
   }
 
@@ -600,6 +602,12 @@ export function PulsosAuditoriaPage() {
         showToast("No se encontró la lectura en csl_pulse_readings", "error")
         return
       }
+      // Advertencia: lectura final < inicial (cambio de equipo / reset / error).
+      // No se guarda en silencio: exige una observación que lo justifique.
+      if (editForm.pulsosFin < editForm.pulsosInicio && !editForm.observaciones.trim()) {
+        showToast("La lectura final es menor que la inicial. Verifica si hubo cambio de equipo, reset o error de lectura. Agrega una observación para poder guardar.", "error")
+        return
+      }
       const dispLaser = Math.max(0, editForm.pulsosFin - editForm.pulsosInicio)
       const payload: Record<string, string | number> = {
         id: reading.id,
@@ -618,7 +626,7 @@ export function PulsosAuditoriaPage() {
         fallas: reading.fallas || "",
         source_file: reading.source_file || "",
         source_type: reading.source_type || "manual",
-        observaciones: reading.observaciones || "",
+        observaciones: editForm.observaciones || reading.observaciones || "",
       }
       if (editForm.dispOperador > 0) {
         payload.disp_operador = editForm.dispOperador
@@ -633,6 +641,7 @@ export function PulsosAuditoriaPage() {
           data: JSON.stringify(payload),
         })
         const updated = res.record as typeof reading | undefined
+        if (!updated) { showToast("El servidor no confirmó la actualización (0 filas). Revisa permisos/clave.", "error"); return }
         // Actualizar store con el record del servidor (incluye disp_laser
         // que es columna generada) o fallback a los valores locales.
         setDbPulsos({
@@ -650,7 +659,7 @@ export function PulsosAuditoriaPage() {
               : r,
           ),
         })
-        showToast("Auditoría actualizada", "success")
+        showToast("Guardado correctamente", "success")
         setEditRow(null)
       } catch (err) {
         showToast(`Error al guardar: ${err instanceof Error ? err.message : String(err)}`, "error")
@@ -984,7 +993,16 @@ export function PulsosAuditoriaPage() {
                 <Label>Disp. operador</Label>
                 <Input type="number" value={editForm.dispOperador} onChange={e => setEditForm({ ...editForm, dispOperador: Number(e.target.value) || 0 })} />
               </div>
+              <div className="space-y-1.5 col-span-2">
+                <Label>Observaciones {editForm.pulsosFin < editForm.pulsosInicio ? <span className="text-amber-500">(obligatoria)</span> : null}</Label>
+                <Input value={editForm.observaciones} onChange={e => setEditForm({ ...editForm, observaciones: e.target.value })} placeholder="Cambio de equipo, reset, corrección de lectura…" />
+              </div>
             </div>
+            {editForm.pulsosFin < editForm.pulsosInicio && (
+              <div className="mt-3 rounded-md border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-300">
+                ⚠ La lectura final ({fmtN(editForm.pulsosFin)}) es menor que la inicial ({fmtN(editForm.pulsosInicio)}). Verifica si hubo cambio de equipo, reset o error de lectura. Agrega una observación para poder guardar.
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditRow(null)}><X className="h-4 w-4 mr-2" />Cancelar</Button>

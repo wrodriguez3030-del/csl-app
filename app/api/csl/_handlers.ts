@@ -3412,7 +3412,10 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         observaciones: textFrom(record, "observaciones") || null,
         updated_at: new Date().toISOString(),
       }
-      if (textFrom(record, "id")) row.id = textFrom(record, "id")
+      // No forzamos `id`: el conflicto se resuelve por la clave compuesta
+      // (business_id, equipo_id, period_start, period_end). Incluir un id podría
+      // intentar cambiar el PK de la fila existente. En INSERT nuevo, la DB
+      // genera el id por default.
 
       const { data, error } = await sb
         .from("csl_pulse_readings")
@@ -3420,6 +3423,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         .select()
         .single()
       if (error) throw error
+      if (!data) throw new Error("La lectura no se actualizó (0 filas afectadas).")
 
       // Sincronizar campos del equipo si la lectura final es válida
       if (row.equipo_id && Number(row.lectura_final) > 0) {
