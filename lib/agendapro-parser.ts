@@ -190,7 +190,7 @@ type WorkbookLike = {
   Sheets: Record<string, unknown>
 }
 type XlsxUtilsLike = {
-  utils: { sheet_to_json: (ws: unknown, opts: { header: 1; defval: string }) => unknown[][] }
+  utils: { sheet_to_json: (ws: unknown, opts: { header: 1; defval: string; raw?: boolean }) => unknown[][] }
 }
 
 /**
@@ -210,6 +210,12 @@ export async function parseAgendaProWorkbook(
   if (!targetSheet) throw new Error("El archivo no contiene hojas legibles.")
   const ws = wb.Sheets[targetSheet]
   const raw = xlsx.utils.sheet_to_json(ws, { header: 1, defval: "" })
+  // La columna "Disparos" puede traer VARIOS valores separados por coma en una
+  // misma celda ("157,157" = 157 + 157 = 314). Con raw:true XLSX coacciona esa
+  // celda a un solo número (p. ej. 157.157 → 157) y se pierden los demás. Por eso
+  // leemos una versión con TEXTO FORMATEADO (raw:false = el texto tal como se ve
+  // en Excel, p. ej. "157,157") y la usamos SOLO para la columna de disparos.
+  const rawFmt = xlsx.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false }) as unknown[][]
 
   // 2) Detectar headerRow buscando "Secuencial" en la columna 0.
   let headerRow = -1
@@ -242,10 +248,14 @@ export async function parseAgendaProWorkbook(
     const sucursal = normalizeSucursalFromAgendaPro(row[5])
     const potencia = String(row[6] ?? "").trim()
     const spot = String(row[7] ?? "").trim()
-    const disparosRaw = String(row[8] ?? "").trim()
+    // Disparos: preferimos el texto formateado (preserva "157,157"); si viene
+    // vacío caemos al valor crudo. parseDisparos suma los valores con coma.
+    const dispFmt = (rawFmt[i] as unknown[] | undefined)?.[8]
+    const dispCell = (dispFmt !== undefined && dispFmt !== null && String(dispFmt).trim() !== "") ? dispFmt : row[8]
+    const disparosRaw = String(dispCell ?? "").trim()
     const fecha = toIsoDate(row[9])
 
-    const disp = parseDisparos(row[8])
+    const disp = parseDisparos(dispCell)
 
     // Validación: fecha + operadora + sucursal + disparos > 0.
     const issues: string[] = []
