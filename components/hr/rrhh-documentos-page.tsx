@@ -15,7 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Folder, Plus, Pencil, Trash2, Save, X, Loader2, AlertTriangle, ExternalLink } from "lucide-react"
+import { Folder, Plus, Pencil, Trash2, Save, X, Loader2, AlertTriangle, ExternalLink, Download, UploadCloud, FileText } from "lucide-react"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { HrPageShell } from "@/components/hr-page-shell"
 
@@ -26,6 +26,10 @@ interface HrDocument {
   document_type: string
   title: string
   file_url: string | null
+  file_path?: string | null
+  file_name?: string | null
+  file_size?: number | null
+  file_mime_type?: string | null
   uploaded_at: string
   expires_at: string | null
   visibility: string
@@ -74,6 +78,8 @@ export function RrhhDocumentosPage() {
   const [editing, setEditing] = useState<Partial<HrDocument> | null>(null)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [dragOver, setDragOver] = useState(false)
   const [filterStatus, setFilterStatus] = useState<string>("all")
   const [filterType, setFilterType] = useState<string>("all")
   const [search, setSearch] = useState("")
@@ -127,13 +133,32 @@ export function RrhhDocumentosPage() {
   const handleSave = async () => {
     if (!editing) return
     if (!editing.employee_id) { showToast("Empleado obligatorio", "error"); return }
-    if (!editing.title) { showToast("Título obligatorio", "error"); return }
+    if (!editing.title && !pendingFile) { showToast("Título o archivo obligatorio", "error"); return }
     setSaving(true)
     try {
+      // Si hay archivo adjunto (drag&drop o seleccionar) → subir vía endpoint multipart.
+      if (pendingFile && !editing.id) {
+        const { data: { session } } = await import("@/lib/supabase-client").then(m => m.supabaseBrowser.auth.getSession())
+        if (!session?.access_token) { showToast("Sesión no válida — vuelve a iniciar sesión", "error"); return }
+        const fd = new FormData()
+        fd.append("file", pendingFile)
+        fd.append("employee_id", editing.employee_id)
+        fd.append("document_type", editing.document_type || "otros")
+        fd.append("title", editing.title || pendingFile.name)
+        fd.append("visibility", editing.visibility || "rrhh")
+        if (editing.expires_at) fd.append("expires_at", editing.expires_at)
+        if (editing.observations) fd.append("observations", editing.observations)
+        const r = await fetch("/api/hr/documents/upload", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}` }, body: fd })
+        const res = await r.json() as { ok?: boolean; record?: HrDocument; error?: string }
+        if (!res?.ok || !res.record) { showToast(res?.error || "No se pudo subir el archivo", "error"); return }
+        setRecords(prev => [res.record!, ...prev])
+        showToast("Documento subido", "success"); setEditing(null); setPendingFile(null)
+        return
+      }
       const payload: Record<string, string> = {
         employee_id: editing.employee_id,
         document_type: editing.document_type || "otros",
-        title: editing.title,
+        title: editing.title || "",
         visibility: editing.visibility || "rrhh",
         status: editing.status || "activo",
       }
@@ -178,6 +203,17 @@ export function RrhhDocumentosPage() {
     } finally {
       setDeletingId(null)
     }
+  }
+
+  // Abrir/descargar documento mediante URL firmada (privada, scoped por tenant).
+  const openDoc = async (r: HrDocument, download: boolean) => {
+    if (!r.file_path && r.file_url) { window.open(r.file_url, "_blank", "noopener"); return }
+    if (!r.file_path) { showToast("Este documento no tiene archivo adjunto", "info"); return }
+    try {
+      const res = await apiCallLocal({ action: "getHrDocumentSignedUrl", id: r.id, download: download ? "true" : "false" }) as { ok?: boolean; url?: string; error?: string }
+      if (res?.ok && res.url) window.open(res.url, "_blank", "noopener")
+      else showToast(res?.error || "No se pudo abrir el documento", "error")
+    } catch (err) { showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error") }
   }
 
   if (tableMissing && !loading) {
@@ -314,12 +350,15 @@ export function RrhhDocumentosPage() {
                       </TableCell>
                       <TableCell className="text-center">
                         <div className="flex items-center justify-center gap-0.5">
-                          {r.file_url && (
-                            <a href={r.file_url} target="_blank" rel="noopener noreferrer">
-                              <Button variant="ghost" size="icon" className="h-7 w-7" title="Abrir archivo">
-                                <ExternalLink className="h-3.5 w-3.5" />
-                              </Button>
-                            </a>
+                          {(r.file_path || r.file_url) && (
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-primary" onClick={() => openDoc(r, false)} title="Ver">
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                          {r.file_path && (
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openDoc(r, true)} title="Descargar">
+                              <Download className="h-3.5 w-3.5" />
+                            </Button>
                           )}
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditing(r)} title="Editar">
                             <Pencil className="h-3.5 w-3.5" />
@@ -339,7 +378,7 @@ export function RrhhDocumentosPage() {
       </Card>
 
       {/* Dialog */}
-      <Dialog open={!!editing} onOpenChange={open => !open && setEditing(null)}>
+      <Dialog open={!!editing} onOpenChange={open => { if (!open) { setEditing(null); setPendingFile(null); setDragOver(false) } }}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>{editing?.id ? "Editar documento" : "Nuevo documento"}</DialogTitle>
@@ -373,9 +412,31 @@ export function RrhhDocumentosPage() {
                   <Label className="text-xs">Título *</Label>
                   <Input value={editing.title || ""} onChange={e => setEditing({ ...editing, title: e.target.value })} placeholder="Cédula 2026, Contrato indefinido..." />
                 </div>
+                {!editing.id && (
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-xs">Archivo</Label>
+                    <div
+                      onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                      onDragLeave={() => setDragOver(false)}
+                      onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) setPendingFile(f) }}
+                      onClick={() => document.getElementById("hr-doc-file")?.click()}
+                      className={`rounded-lg border-2 border-dashed p-4 text-center text-sm cursor-pointer transition ${dragOver ? "border-primary bg-primary/5" : "border-muted-foreground/30 hover:border-primary/50"}`}
+                    >
+                      <input id="hr-doc-file" type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" onChange={e => { const f = e.target.files?.[0]; if (f) setPendingFile(f); e.currentTarget.value = "" }} />
+                      {pendingFile ? (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-2 min-w-0"><FileText className="h-4 w-4 shrink-0 text-primary" /><span className="truncate">{pendingFile.name}</span><span className="text-muted-foreground shrink-0 text-xs">({(pendingFile.size / 1024 / 1024).toFixed(2)} MB)</span></span>
+                          <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={e => { e.stopPropagation(); setPendingFile(null) }}><X className="h-3.5 w-3.5 mr-1" />Quitar</Button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-1 py-2 text-muted-foreground"><UploadCloud className="h-6 w-6" /><span>Arrastra el documento aquí o haz clic para seleccionar</span><span className="text-[11px]">PDF, JPG, PNG, DOC, DOCX, XLS, XLSX · máx 10 MB</span></div>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-1 col-span-2">
-                  <Label className="text-xs">URL del archivo</Label>
-                  <Input value={editing.file_url || ""} onChange={e => setEditing({ ...editing, file_url: e.target.value })} placeholder="https://..." />
+                  <Label className="text-xs">URL del archivo {pendingFile ? "" : "(opcional · documento externo)"}</Label>
+                  <Input value={editing.file_url || ""} onChange={e => setEditing({ ...editing, file_url: e.target.value })} placeholder="https://..." disabled={!!pendingFile} />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Fecha vencimiento</Label>

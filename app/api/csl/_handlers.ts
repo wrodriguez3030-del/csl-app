@@ -567,6 +567,23 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       }
       return { ok: true }
     }
+    case "getHrDocumentSignedUrl": {
+      // URL firmada (privada, 2 min) para ver/descargar un documento. Scoped por tenant.
+      const id = textValue(params, "id"); if (!id) throw new Error("id obligatorio")
+      const wantDownload = textValue(params, "download") === "true"
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_documents").select("file_path, file_name, business_id").eq("id", id)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { data: doc, error } = await q.maybeSingle()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true }; throw error }
+      if (!doc) return { ok: false, error: "Documento no encontrado o de otro negocio" }
+      const path = String((doc as Row).file_path || "")
+      if (!path) return { ok: false, error: "Este documento solo tiene URL externa (sin archivo subido)" }
+      const opts = wantDownload ? { download: String((doc as Row).file_name || "documento") } : undefined
+      const { data: signed, error: sErr } = await sb.storage.from("hr-documents").createSignedUrl(path, 120, opts)
+      if (sErr || !signed?.signedUrl) return { ok: false, error: `No se pudo generar el enlace: ${sErr?.message || "desconocido"}` }
+      return { ok: true, url: signed.signedUrl }
+    }
     // ── HR · Fase 2 · Horarios y turnos ──────────────────────────────────
     case "getHrSchedules": {
       const sb = getSupabaseAdmin()
