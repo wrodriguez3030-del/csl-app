@@ -614,16 +614,28 @@ export function KioskView({ onExit }: { onExit: () => void }) {
 
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); clockRef.current = t; return () => clearInterval(t) }, [])
 
-  // Geolocalización (watch).
-  useEffect(() => {
+  // Pide permiso de UBICACIÓN explícitamente (one-shot) + mantiene un watch.
+  // Llamado en el montaje y también desde el gesto "Activar cámara" para que
+  // iOS/Android muestren AMBOS permisos (cámara y ubicación), no solo cámara.
+  const requestLocation = () => {
     if (!navigator.geolocation) { setGeoError("Este dispositivo no soporta geolocalización"); return }
-    const id = navigator.geolocation.watchPosition(
+    navigator.geolocation.getCurrentPosition(
       pos => { setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setGeoError("") },
-      () => setGeoError("Activa el GPS y otorga permiso de ubicación"),
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 })
-    geoWatchRef.current = id
-    return () => navigator.geolocation.clearWatch(id)
-  }, [])
+      () => setGeoError("Permite el acceso a la ubicación para ponchar. Pulsa “Activar ubicación”."),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 })
+    if (geoWatchRef.current == null) {
+      geoWatchRef.current = navigator.geolocation.watchPosition(
+        pos => { setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setGeoError("") },
+        () => setGeoError("Permite el acceso a la ubicación para ponchar. Pulsa “Activar ubicación”."),
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 })
+    }
+  }
+
+  // Geolocalización: intenta al montar (en iOS suele requerir gesto → botón).
+  useEffect(() => {
+    requestLocation()
+    return () => { if (geoWatchRef.current != null && navigator.geolocation) { navigator.geolocation.clearWatch(geoWatchRef.current); geoWatchRef.current = null } }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-intenta abrir la cámara; si el navegador lo bloquea (iOS sin gesto),
   // el usuario la activa con el botón "Activar cámara".
@@ -693,6 +705,7 @@ export function KioskView({ onExit }: { onExit: () => void }) {
   }
   const startCamera = async () => {
     if (startedRef.current || starting || !videoRef.current) return
+    requestLocation() // mismo gesto → pide cámara Y ubicación
     setStarting(true); setCamError("")
     try {
       const BD = (window as unknown as { BarcodeDetector?: new (o: { formats: string[] }) => BarcodeDetectorLike }).BarcodeDetector
@@ -775,14 +788,19 @@ export function KioskView({ onExit }: { onExit: () => void }) {
               {!camOn && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 gap-2">
                   <button onClick={() => void startCamera()} disabled={starting} className="rounded-xl bg-emerald-500 px-5 py-3 text-base font-bold disabled:opacity-50">
-                    {starting ? "Abriendo cámara…" : "Activar cámara"}
+                    {starting ? "Abriendo cámara…" : "Activar cámara y ubicación"}
                   </button>
                   {camError && <p className="text-amber-300 text-xs px-4 text-center">{camError}</p>}
                 </div>
               )}
             </div>
-            <p className="mt-4 text-white/70">{camOn ? "Muestra tu QR a la cámara para ponchar" : "Pulsa “Activar cámara” y permite el acceso"}</p>
-            {geoError && <p className="mt-1 text-amber-400 text-sm">{geoError}</p>}
+            <p className="mt-4 text-white/70">{camOn ? "Muestra tu QR a la cámara para ponchar" : "Pulsa “Activar cámara y ubicación” y permite ambos accesos"}</p>
+            {geoError && (
+              <div className="mt-1 flex flex-col items-center gap-1">
+                <p className="text-amber-400 text-sm">{geoError}</p>
+                <button onClick={requestLocation} className="rounded-lg bg-white/15 hover:bg-white/25 px-3 py-1.5 text-xs font-medium">Activar ubicación</button>
+              </div>
+            )}
             <div className="mt-4">
               <p className="text-white/40 text-xs mb-1">¿No funciona la cámara? Pega el código del QR:</p>
               <div className="flex gap-2 justify-center">
