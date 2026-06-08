@@ -598,6 +598,7 @@ export function KioskView({ onExit }: { onExit: () => void }) {
   const [manualToken, setManualToken] = useState("")
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [geoError, setGeoError] = useState("")
+  const [geoBusy, setGeoBusy] = useState(false)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; title: string; sub: string } | null>(null)
   const [camError, setCamError] = useState("")
@@ -617,17 +618,24 @@ export function KioskView({ onExit }: { onExit: () => void }) {
   // Pide permiso de UBICACIÓN explícitamente (one-shot) + mantiene un watch.
   // Llamado en el montaje y también desde el gesto "Activar cámara" para que
   // iOS/Android muestren AMBOS permisos (cámara y ubicación), no solo cámara.
+  const onGeoErr = (err: GeolocationPositionError) => {
+    setGeoBusy(false)
+    if (err.code === 1) setGeoError("El permiso de ubicación está BLOQUEADO. Actívalo en los Ajustes del navegador (Safari/Chrome → Ubicación), permite el acceso y recarga la página.")
+    else if (err.code === 3) setGeoError("La ubicación tardó demasiado. Verifica que el GPS esté encendido e intenta de nuevo.")
+    else setGeoError("No se pudo obtener la ubicación. Verifica el GPS e intenta de nuevo.")
+  }
   const requestLocation = () => {
     if (!navigator.geolocation) { setGeoError("Este dispositivo no soporta geolocalización"); return }
+    setGeoBusy(true); setGeoError("")
     navigator.geolocation.getCurrentPosition(
-      pos => { setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setGeoError("") },
-      () => setGeoError("Permite el acceso a la ubicación para ponchar. Pulsa “Activar ubicación”."),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 })
+      pos => { setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setGeoError(""); setGeoBusy(false) },
+      onGeoErr,
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 })
     if (geoWatchRef.current == null) {
       geoWatchRef.current = navigator.geolocation.watchPosition(
-        pos => { setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setGeoError("") },
-        () => setGeoError("Permite el acceso a la ubicación para ponchar. Pulsa “Activar ubicación”."),
-        { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 })
+        pos => { setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setGeoError(""); setGeoBusy(false) },
+        onGeoErr,
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 })
     }
   }
 
@@ -795,10 +803,10 @@ export function KioskView({ onExit }: { onExit: () => void }) {
               )}
             </div>
             <p className="mt-4 text-white/70">{camOn ? "Muestra tu QR a la cámara para ponchar" : "Pulsa “Activar cámara y ubicación” y permite ambos accesos"}</p>
-            {geoError && (
+            {(geoError || geoBusy) && (
               <div className="mt-1 flex flex-col items-center gap-1">
-                <p className="text-amber-400 text-sm">{geoError}</p>
-                <button onClick={requestLocation} className="rounded-lg bg-white/15 hover:bg-white/25 px-3 py-1.5 text-xs font-medium">Activar ubicación</button>
+                {geoError && <p className="text-amber-400 text-sm px-4">{geoError}</p>}
+                <button onClick={requestLocation} disabled={geoBusy} className="rounded-lg bg-white/15 hover:bg-white/25 px-3 py-1.5 text-xs font-medium disabled:opacity-60">{geoBusy ? "Solicitando ubicación…" : "Activar ubicación"}</button>
               </div>
             )}
             <div className="mt-4">
