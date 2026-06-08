@@ -286,7 +286,7 @@ export function RrhhPonchePage() {
     showToast(`Excel generado (${rows.length} fila(s))`, "success")
   }
 
-  if (view === "kiosk") return <KioskView onExit={() => setView("admin")} />
+  if (view === "kiosk") return <KioskView onExit={() => setView("admin")} showExit />
 
   return (
     <div className="space-y-4">
@@ -585,7 +585,7 @@ export function KioskPonchePage() {
 type DetectedBarcode = { rawValue: string }
 type BarcodeDetectorLike = { detect: (src: CanvasImageSource) => Promise<DetectedBarcode[]> }
 
-export function KioskView({ onExit }: { onExit: () => void }) {
+export function KioskView({ onExit, showExit = false }: { onExit: () => void; showExit?: boolean }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const readerRef = useRef<IScannerControls | null>(null)
@@ -758,7 +758,9 @@ export function KioskView({ onExit }: { onExit: () => void }) {
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 text-white flex flex-col">
       <div className="flex items-center justify-between p-3 border-b border-white/10">
-        <button type="button" onClick={handleExit} aria-label="Salir del kiosco" className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20 active:bg-white/30 touch-manipulation select-none"><ArrowLeft className="w-4 h-4" />Salir del kiosco</button>
+        {showExit
+          ? <button type="button" onClick={handleExit} aria-label="Salir del kiosco" className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20 active:bg-white/30 touch-manipulation select-none"><ArrowLeft className="w-4 h-4" />Salir del kiosco</button>
+          : <div className="w-8" />}
         <div className="text-2xl font-black tabular-nums">{fmtClock}</div>
         <div className="text-xs text-white/60 flex items-center gap-2">
           <span className={deviceToken ? "text-emerald-400" : "text-red-400"}>{deviceToken ? "Dispositivo autorizado" : "Dispositivo NO autorizado"}</span>
