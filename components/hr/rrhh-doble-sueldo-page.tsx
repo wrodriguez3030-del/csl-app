@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Gift, Plus, Pencil, Trash2, Save, X, Loader2, Check, Ban, AlertCircle, AlertTriangle, FileSpreadsheet, Calculator } from "lucide-react"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { exportHrReportExcel } from "@/lib/hr-report-excel"
+import { useTableSort, sortRows, SortLabel, estadoRank } from "@/lib/table-sort"
 
 interface Bonus {
   id: string; employee_id: string; employee_nombre: string | null; anio: number
@@ -96,6 +97,17 @@ export function RrhhDobleSueldoPage() {
     for (const [eid, r] of recByEmp) { if (!empMap[eid]) rows.push(build(null, r)) }
     return rows
   }, [records, empMap, year])
+
+  const { sort, toggle } = useTableSort("empleado")
+  const sorted = useMemo(() => sortRows(enriched, sort, {
+    no: (r) => `${r._sucursal}|${r._nombre}`.toLowerCase(),
+    empleado: (r) => (r._nombre || "").toLowerCase(),
+    ingreso: (r) => r._fecha_ingreso || "",
+    anio: (r) => Number(r.anio) || 0,
+    tipo: (r) => (r.proporcional ? 1 : 0),
+    monto: (r) => Number(r.monto) || 0,
+    estado: (r) => estadoRank(r.status),
+  }), [enriched, sort])
 
   const counts = useMemo(() => ({
     total: records.length,
@@ -227,13 +239,17 @@ export function RrhhDobleSueldoPage() {
           ) : (
             <Table>
               <TableHeader><TableRow>
-                <TableHead className="text-xs w-10 text-center">No.</TableHead>
-                <TableHead className="text-xs">Empleado</TableHead><TableHead className="text-xs">Ingreso</TableHead><TableHead className="text-xs text-center">Año</TableHead>
-                <TableHead className="text-xs">Tipo</TableHead><TableHead className="text-xs text-right">Monto</TableHead>
-                <TableHead className="text-xs">Estado</TableHead><TableHead className="text-xs text-center w-32">Acciones</TableHead>
+                <TableHead className="text-xs w-10 text-center" onClick={() => toggle("no")}><SortLabel label="No." sortKey="no" sort={sort} /></TableHead>
+                <TableHead className="text-xs" onClick={() => toggle("empleado")}><SortLabel label="Empleado" sortKey="empleado" sort={sort} /></TableHead>
+                <TableHead className="text-xs" onClick={() => toggle("ingreso")}><SortLabel label="Ingreso" sortKey="ingreso" sort={sort} /></TableHead>
+                <TableHead className="text-xs text-center" onClick={() => toggle("anio")}><SortLabel label="Año" sortKey="anio" sort={sort} /></TableHead>
+                <TableHead className="text-xs" onClick={() => toggle("tipo")}><SortLabel label="Tipo" sortKey="tipo" sort={sort} /></TableHead>
+                <TableHead className="text-xs text-right" onClick={() => toggle("monto")}><SortLabel label="Monto" sortKey="monto" sort={sort} /></TableHead>
+                <TableHead className="text-xs" onClick={() => toggle("estado")}><SortLabel label="Estado" sortKey="estado" sort={sort} /></TableHead>
+                <TableHead className="text-xs text-center w-32">Acciones</TableHead>
               </TableRow></TableHeader>
               <TableBody>
-                {enriched.map((r, i) => (
+                {sorted.map((r, i) => (
                   <TableRow key={r.id || `emp_${r.employee_id}`}>
                     <TableCell className="text-center text-xs text-muted-foreground tabular-nums">{i + 1}</TableCell>
                     <TableCell className="text-sm font-medium">{r._nombre}<div className="text-[11px] text-muted-foreground">{r._cedula || "—"}{r._sucursal ? ` · ${r._sucursal}` : ""}</div></TableCell>

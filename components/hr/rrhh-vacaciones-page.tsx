@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Plane, Plus, Pencil, Trash2, Save, X, Loader2, Check, Ban, AlertCircle, Calculator, FileSpreadsheet, DollarSign } from "lucide-react"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { exportVacacionesExcel, type VacacionExcelRow } from "@/lib/hr-vacaciones-excel"
+import { useTableSort, sortRows, SortLabel, estadoRank } from "@/lib/table-sort"
 
 const DAILY_BASE = 23.83
 
@@ -167,6 +168,18 @@ export function RrhhVacacionesPage() {
     if (fHasta && (!ref || ref > fHasta)) return false
     return true
   }), [enriched, fEstado, fSucursal, fEmpleado, fDesde, fHasta])
+
+  const { sort, toggle } = useTableSort("sucursal")
+  const sorted = useMemo(() => sortRows(filtered, sort, {
+    no: (r) => `${r._sucursal}|${r._nombre}`.toLowerCase(),
+    empleado: (r) => (r._nombre || "").toLowerCase(),
+    sucursal: (r) => `${r._sucursal}|${r._nombre}`.toLowerCase(),
+    antiguedad: (r) => Number(r._antiguedad) || 0,
+    legales: (r) => Number(r._dias_legales) || 0,
+    solic: (r) => Number(r.dias) || 0,
+    monto: (r) => Number(r.monto) || 0,
+    estado: (r) => estadoRank(r._estado),
+  }), [filtered, sort])
 
   const counts = useMemo(() => ({
     total: filtered.length,
@@ -378,14 +391,18 @@ export function RrhhVacacionesPage() {
           ) : (
             <Table>
               <TableHeader><TableRow>
-                <TableHead className="text-xs w-10 text-center">No.</TableHead>
-                <TableHead className="text-xs">Empleado</TableHead><TableHead className="text-xs">Sucursal</TableHead>
-                <TableHead className="text-xs">Antigüedad</TableHead><TableHead className="text-xs text-right">Legales</TableHead>
-                <TableHead className="text-xs text-right">Solic.</TableHead><TableHead className="text-xs text-right">Monto</TableHead>
-                <TableHead className="text-xs">Estado</TableHead><TableHead className="text-xs text-center w-32">Acciones</TableHead>
+                <TableHead className="text-xs w-10 text-center" onClick={() => toggle("no")}><SortLabel label="No." sortKey="no" sort={sort} /></TableHead>
+                <TableHead className="text-xs" onClick={() => toggle("empleado")}><SortLabel label="Empleado" sortKey="empleado" sort={sort} /></TableHead>
+                <TableHead className="text-xs" onClick={() => toggle("sucursal")}><SortLabel label="Sucursal" sortKey="sucursal" sort={sort} /></TableHead>
+                <TableHead className="text-xs" onClick={() => toggle("antiguedad")}><SortLabel label="Antigüedad" sortKey="antiguedad" sort={sort} /></TableHead>
+                <TableHead className="text-xs text-right" onClick={() => toggle("legales")}><SortLabel label="Legales" sortKey="legales" sort={sort} /></TableHead>
+                <TableHead className="text-xs text-right" onClick={() => toggle("solic")}><SortLabel label="Solic." sortKey="solic" sort={sort} /></TableHead>
+                <TableHead className="text-xs text-right" onClick={() => toggle("monto")}><SortLabel label="Monto" sortKey="monto" sort={sort} /></TableHead>
+                <TableHead className="text-xs" onClick={() => toggle("estado")}><SortLabel label="Estado" sortKey="estado" sort={sort} /></TableHead>
+                <TableHead className="text-xs text-center w-32">Acciones</TableHead>
               </TableRow></TableHeader>
               <TableBody>
-                {filtered.map((r, i) => (
+                {sorted.map((r, i) => (
                   <TableRow key={r.id || `emp_${r.employee_id}`}>
                     <TableCell className="text-center text-xs text-muted-foreground tabular-nums">{i + 1}</TableCell>
                     <TableCell className="text-sm font-medium">{r._nombre}<div className="text-[11px] text-muted-foreground">{r._cedula || "—"}{r._puesto ? ` · ${r._puesto}` : ""}</div></TableCell>
