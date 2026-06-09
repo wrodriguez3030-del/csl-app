@@ -578,7 +578,10 @@ export function RrhhPonchePage() {
  *  (sin panel administrativo). Permiso de menú independiente: rrhh-kiosko-ponche. */
 export function KioskPonchePage() {
   const setActiveTab = useAppStore(s => s.setActiveTab)
-  return <KioskView onExit={() => setActiveTab("rrhh-ponche")} />
+  // Abierto desde el menú admin → muestra "Salir del kiosco" y vuelve a
+  // Ponche / Reloj checador. (La ruta standalone /hr/ponche/kiosko de la tablet
+  // fija NO pasa showExit, así queda bloqueada sin salida.)
+  return <KioskView onExit={() => setActiveTab("rrhh-ponche")} showExit />
 }
 
 // ─── Kiosco de ponche ──────────────────────────────────────────────────────
