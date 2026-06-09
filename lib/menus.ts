@@ -38,13 +38,12 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "pulsos-sesiones", label: "Disparos operadoras", section: "Pulsos" },
   { id: "pulsos-auditoria", label: "Auditoría PULSE", section: "Pulsos" },
   { id: "pulsos-cuadre", label: "Cuadre semanal", section: "Pulsos" },
-  // RR.HH. — Personal
+  // RR.HH. — Personal. Orden: Dashboard → Solicitudes de empleo → Empleados →
+  // Contratos → Documentos. Solicitudes es el módulo OPERATIVO histórico
+  // (RecursosHumanosPage); vive en Personal, NO en Desarrollo.
   { id: "rrhh-dashboard", label: "Dashboard RR.HH.", section: "RR.HH. · Personal" },
-  { id: "rrhh-empleados", label: "Empleados", section: "RR.HH. · Personal" },
-  // Solicitudes de empleo es el módulo OPERATIVO histórico (pantalla
-  // RecursosHumanosPage). Vive en Personal, junto a Empleados — NO en
-  // Desarrollo. Reclutamiento (Desarrollo) es módulo futuro y NO lo sustituye.
   { id: "rrhh-solicitudes", label: "Solicitudes de empleo", section: "RR.HH. · Personal" },
+  { id: "rrhh-empleados", label: "Empleados", section: "RR.HH. · Personal" },
   { id: "rrhh-contratos", label: "Contratos laborales", section: "RR.HH. · Personal" },
   { id: "rrhh-documentos", label: "Documentos empleados", section: "RR.HH. · Personal" },
   // RR.HH. — Asistencia

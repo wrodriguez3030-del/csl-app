@@ -88,6 +88,7 @@ const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
     label: "RR.HH. · Personal",
     items: [
       { id: "rrhh-dashboard", label: "Dashboard RR.HH.", icon: <LayoutDashboard className="h-4 w-4" /> },
+      { id: "rrhh-solicitudes", label: "Solicitudes de empleo", icon: <Users className="h-4 w-4" /> },
       { id: "rrhh-empleados", label: "Empleados", icon: <Users className="h-4 w-4" /> },
       { id: "rrhh-contratos", label: "Contratos laborales", icon: <FileSignature className="h-4 w-4" /> },
       { id: "rrhh-documentos", label: "Documentos empleados", icon: <Files className="h-4 w-4" /> },
@@ -125,7 +126,6 @@ const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "RR.HH. · Desarrollo",
     items: [
-      { id: "rrhh-solicitudes", label: "Solicitudes de empleo", icon: <Users className="h-4 w-4" /> },
       { id: "rrhh-reclutamiento", label: "Reclutamiento", icon: <Users className="h-4 w-4" /> },
       { id: "rrhh-onboarding", label: "Onboarding", icon: <ClipboardCheck className="h-4 w-4" /> },
       { id: "rrhh-evaluacion", label: "Evaluación de desempeño", icon: <Sparkles className="h-4 w-4" /> },
