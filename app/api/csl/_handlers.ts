@@ -403,6 +403,49 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true, ...(await getAllPulsosData()) }
 
     // ── HR · Fase 1 · Contratos ──────────────────────────────────────────
+    case "getHrContractPrefill": {
+      // Autocompleta datos del contrato desde el empleado central + la solicitud
+      // de empleo aprobada (top-level + payload_json). Scoped por business_id.
+      const sb = getSupabaseAdmin()
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const employeeId = textValue(params, "employee_id")
+      if (!employeeId) throw new Error("employee_id obligatorio")
+      const { data: emp } = await sb.from("csl_empleados").select("*").eq("business_id", businessId).eq("empleado_id", employeeId).maybeSingle()
+      const solId = emp ? String((emp as Row).solicitud_id || "") : ""
+      const { data: sol } = await sb.from("csl_solicitudes_empleo").select("*").eq("business_id", businessId).eq("solicitud_id", solId || employeeId).maybeSingle()
+      if (!emp && !sol) return { ok: false, error: "No se encontró el empleado/solicitud en este negocio" }
+      const eRow = (emp || {}) as Record<string, unknown>
+      const sRow = (sol || {}) as Record<string, unknown>
+      const eP = (eRow.payload_json || {}) as Record<string, unknown>
+      const sP = (sRow.payload_json || {}) as Record<string, unknown>
+      const g = (...keys: string[]) => { for (const src of [eRow, eP, sRow, sP]) { for (const k of keys) { const v = (src as Record<string, unknown>)[k]; const s = v == null ? "" : String(v).trim(); if (s) return s } } return "" }
+      const nombre = `${g("nombre", "Nombre")} ${g("apellido", "Apellido")}`.replace(/\s+/g, " ").trim()
+      const direccionParts = [g("calle"), g("numeroDir"), g("sector", "Sector"), g("ciudad", "Ciudad", "provincia", "Provincia")].filter(Boolean)
+      const direccion = g("direccion", "Direccion") || direccionParts.join(", ")
+      const salarioStr = g("salario", "Salario", "pretensionesSalariales")
+      const prefill = {
+        employee_nombre: nombre,
+        cedula: g("cedula", "Cedula"),
+        fecha_nacimiento: g("fecha_nacimiento", "fechaNacimiento", "FechaNacimiento"),
+        sexo: g("sexo", "Sexo"),
+        estado_civil: g("estadoCivil", "estado_civil"),
+        nacionalidad: g("nacionalidad", "Nacionalidad"),
+        direccion,
+        telefono: g("telefono", "Telefono", "celular", "telefonoResidencia"),
+        email: g("email", "Email"),
+        position_name: g("puesto_solicitado", "puestoSolicitado", "PuestoSolicitado"),
+        branch: g("sucursal", "Sucursal"),
+        fecha_ingreso: g("fechaIngresoLaboral", "fecha_ingreso"),
+        salary: salarioStr ? (Number(String(salarioStr).replace(/[^0-9.]/g, "")) || null) : null,
+        bank: g("banco", "Banco"),
+        account_type: g("tipoCuenta", "tipo_cuenta"),
+        account_number: g("numeroCuenta", "numero_cuenta"),
+        account_holder: nombre,
+      }
+      await hrAudit(user, "contratos", "contract_prefill", "csl_empleados", employeeId, null, { from: emp ? "empleado" : "solicitud" })
+      return { ok: true, prefill, source: emp ? "empleado" : "solicitud" }
+    }
     case "getHrContracts": {
       const sb = getSupabaseAdmin()
       const { data: profile } = await sb

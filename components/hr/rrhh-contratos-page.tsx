@@ -15,7 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { FileSignature, Plus, Pencil, Trash2, Save, X, Loader2, AlertTriangle, Printer } from "lucide-react"
+import { FileSignature, Plus, Pencil, Trash2, Save, X, Loader2, AlertTriangle, Printer, RefreshCw } from "lucide-react"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { HrPageShell } from "@/components/hr-page-shell"
 import { buildContractHtml, contractFileName, type ContractData } from "@/lib/hr-contract-template"
@@ -124,9 +124,59 @@ export function RrhhContratosPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [filterStatus, setFilterStatus] = useState<string>("all")
   const [search, setSearch] = useState("")
+  const [prefilling, setPrefilling] = useState(false)
 
   const apiCallLocal = (params: Record<string, string | number | boolean>) =>
     apiCall(normalizeApiUrl(apiUrl), params)
+
+  // Autocompletar contrato desde empleado central + solicitud de empleo aprobada.
+  // manual=true (botón) sobreescribe; auto (al elegir empleado) solo rellena vacíos.
+  const prefillFromSolicitud = async (employeeId: string, manual = false) => {
+    if (!employeeId) return
+    setPrefilling(true)
+    try {
+      const res = await apiCallLocal({ action: "getHrContractPrefill", employee_id: employeeId }) as
+        { ok?: boolean; prefill?: Record<string, unknown>; source?: string; error?: string }
+      if (!res?.ok || !res.prefill) { if (manual) showToast(res?.error || "No se encontró solicitud/ficha de este empleado", "error"); return }
+      const p = res.prefill
+      const take = (cur: unknown, inc: unknown) => {
+        const c = cur == null ? "" : String(cur).trim()
+        const i = inc == null ? "" : String(inc).trim()
+        return manual ? (i ? inc : cur) : (c ? cur : (i ? inc : cur))
+      }
+      setEditing(prev => prev ? {
+        ...prev,
+        employee_nombre: take(prev.employee_nombre, p.employee_nombre) as string,
+        cedula: take(prev.cedula, p.cedula) as string,
+        estado_civil: take(prev.estado_civil, p.estado_civil) as string,
+        direccion: take(prev.direccion, p.direccion) as string,
+        telefono: take(prev.telefono, p.telefono) as string,
+        email: take(prev.email, p.email) as string,
+        position_name: take(prev.position_name, p.position_name) as string,
+        branch: take(prev.branch, p.branch) as string,
+        start_date: take(prev.start_date, p.fecha_ingreso) as string,
+        salary: (manual ? (p.salary ?? prev.salary) : (prev.salary ?? p.salary)) as number | null,
+        bank: take(prev.bank, p.bank) as string,
+        account_type: take(prev.account_type, p.account_type) as string,
+        account_number: take(prev.account_number, p.account_number) as string,
+        account_holder: take(prev.account_holder, p.account_holder) as string,
+      } : prev)
+      if (manual) showToast(`Datos cargados desde ${res.source === "empleado" ? "la ficha del empleado" : "la solicitud"}`, "success")
+    } catch (err) { if (manual) showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error") }
+    finally { setPrefilling(false) }
+  }
+
+  // Campos mínimos para generar el contrato.
+  const missingContractFields = (r: Partial<HrContract>): string[] => {
+    const req: [keyof HrContract, string][] = [
+      ["employee_nombre", "nombre"], ["cedula", "cédula"], ["estado_civil", "estado civil"],
+      ["direccion", "dirección"], ["telefono", "teléfono"], ["start_date", "fecha de inicio"],
+      ["branch", "sucursal"], ["position_name", "cargo"],
+    ]
+    const miss = req.filter(([k]) => !String(r[k] ?? "").trim()).map(([, l]) => l)
+    if (!(Number(r.salary) > 0)) miss.push("salario")
+    return miss
+  }
 
   const reload = async () => {
     setLoading(true)
@@ -253,6 +303,8 @@ export function RrhhContratosPage() {
 
   const generatePdf = (r: Partial<HrContract>) => {
     if (!r.employee_id) { showToast("Selecciona un empleado primero", "error"); return }
+    const miss = missingContractFields(r)
+    if (miss.length) { showToast(`Faltan datos para generar el contrato: ${miss.join(", ")}. Complétalos en el formulario o pulsa “Actualizar desde solicitud”.`, "error"); return }
     const data = contractToData(r, business.slug, business.name)
     const w = window.open("", "_blank")
     if (!w) { showToast("Permite las ventanas emergentes para generar el PDF", "error"); return }
@@ -414,17 +466,20 @@ export function RrhhContratosPage() {
             <div className="space-y-3 py-2">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1 col-span-2">
-                  <Label className="text-xs">Empleado *</Label>
-                  <EmployeeSelect value={editing.employee_id} onSelect={emp => setEditing({ ...editing,
-                    employee_id: emp?.empleado_id || "",
-                    employee_nombre: emp?.nombre || editing.employee_nombre || "",
-                    cedula: emp?.cedula || editing.cedula || "",
-                    salary: emp?.sueldo ?? editing.salary ?? null,
-                    position_name: emp?.puesto || editing.position_name || "",
-                    branch: emp?.sucursal || editing.branch || "",
-                    start_date: emp?.fecha_ingreso || editing.start_date || "",
-                    account_holder: emp?.nombre || editing.account_holder || "",
-                  })} />
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Empleado *</Label>
+                    {editing.employee_id && (
+                      <Button type="button" variant="outline" size="sm" className="h-7 text-xs" disabled={prefilling} onClick={() => prefillFromSolicitud(editing.employee_id!, true)}>
+                        {prefilling ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}Actualizar desde solicitud
+                      </Button>
+                    )}
+                  </div>
+                  <EmployeeSelect value={editing.employee_id} onSelect={emp => {
+                    const id = emp?.empleado_id || ""
+                    setEditing({ ...editing, employee_id: id, employee_nombre: emp?.nombre || editing.employee_nombre || "", account_holder: emp?.nombre || editing.account_holder || "" })
+                    if (id) prefillFromSolicitud(id)
+                  }} />
+                  {prefilling && <p className="text-[11px] text-muted-foreground">Autocompletando desde la solicitud…</p>}
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Tipo *</Label>
