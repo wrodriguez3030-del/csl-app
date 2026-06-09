@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Fingerprint, Plus, Trash2, Save, X, Loader2, Monitor, ArrowLeft, AlertCircle, MapPin, Smartphone, ScanLine, FileSpreadsheet, CheckCircle2, XCircle, LocateFixed, Power, QrCode, Users, RefreshCw, Search, Link as LinkIcon, Copy } from "lucide-react"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
+import { useSessionUser } from "@/hooks/use-session-user"
 import { exportHrReportExcel } from "@/lib/hr-report-excel"
 import { haversineMeters } from "@/lib/hr-geo"
 import QRCode from "qrcode"
@@ -24,6 +25,7 @@ interface HrPunch {
   sucursal: string | null; source: string; is_correction: boolean; correction_reason: string | null
   latitude?: number | null; longitude?: number | null; distance_meters?: number | null
   device_id?: string | null; status?: string; rejection_reason?: string | null
+  is_deleted?: boolean | null; void_reason?: string | null; deleted_at?: string | null
 }
 interface Device { id: string; sucursal: string | null; device_name: string; active: boolean; last_seen_at: string | null; device_info: string | null }
 interface Geofence { id: string; sucursal: string; latitude: number; longitude: number; radius_meters: number; active: boolean; google_maps_url?: string; direccion?: string; timezone?: string; telefono?: string; email?: string; business_id?: string }
@@ -83,6 +85,11 @@ export function RrhhPonchePage() {
   const [branchOptions, setBranchOptions] = useState<BranchOption[]>([])
   const [saving, setSaving] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [showVoided, setShowVoided] = useState(false)
+  const [voidTarget, setVoidTarget] = useState<HrPunch | null>(null)
+  const [voidReason, setVoidReason] = useState("Error de registro")
+  const sessionUser = useSessionUser()
+  const canVoid = Boolean(sessionUser?.isAdmin || sessionUser?.isSuperadmin)
   const [empSearch, setEmpSearch] = useState("")
   const [syncing, setSyncing] = useState(false)
   const [qrEmp, setQrEmp] = useState<Emp | null>(null)
@@ -104,7 +111,7 @@ export function RrhhPonchePage() {
     setLoading(true)
     try {
       const [p, d, g, e, bo] = await Promise.all([
-        call({ action: "getHrPunches" }) as Promise<{ ok?: boolean; records?: HrPunch[]; tableMissing?: boolean }>,
+        call({ action: "getHrPunches", include_voided: showVoided }) as Promise<{ ok?: boolean; records?: HrPunch[]; tableMissing?: boolean }>,
         call({ action: "getHrPunchDevices" }) as Promise<{ ok?: boolean; records?: Device[]; tableMissing?: boolean }>,
         call({ action: "getHrBranchGeofences" }) as Promise<{ ok?: boolean; records?: Geofence[] }>,
         call({ action: "getEmpleados" }) as Promise<{ ok?: boolean; records?: Record<string, unknown>[] }>,
@@ -119,7 +126,18 @@ export function RrhhPonchePage() {
     } catch (err) { showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error") } finally { setLoading(false) }
   }
   // Recargar al entrar a admin y al CAMBIAR el negocio activo (limpia el cache del modal).
-  useEffect(() => { if (view === "admin") reload() }, [view, activeBusinessSlug]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (view === "admin") reload() }, [view, activeBusinessSlug, showVoided]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const voidPunch = async () => {
+    if (!voidTarget || !voidReason.trim()) return
+    setSaving(true)
+    try {
+      const res = await call({ action: "voidHrPunch", id: voidTarget.id, void_reason: voidReason }) as { ok?: boolean; error?: string; tableMissing?: boolean }
+      if (res?.tableMissing) { showToast("Falta migración (columnas de anulación) en db-cls", "error"); return }
+      if (!res?.ok) { showToast(res?.error || "No se pudo anular", "error"); return }
+      showToast("Ponche anulado", "success"); setVoidTarget(null); reload()
+    } catch (err) { showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error") } finally { setSaving(false) }
+  }
 
   // Sucursales REALES por negocio activo (csl_sucursales vía getBranchOptions).
   const sucursales = useMemo(() => {
@@ -279,7 +297,7 @@ export function RrhhPonchePage() {
         p.punched_at ? d.toLocaleDateString("es-DO") : "", p.punched_at ? d.toLocaleTimeString("es-DO") : "",
         TYPE_LABEL[p.type] || p.type, deviceName(p.device_id),
         p.latitude ?? "", p.longitude ?? "", p.distance_meters ?? "",
-        p.status === "rejected" ? "Rechazado" : "Aprobado", p.rejection_reason || "",
+        p.is_deleted ? "Anulado" : p.status === "rejected" ? "Rechazado" : "Aprobado", p.is_deleted ? (p.void_reason || "") : (p.rejection_reason || ""),
       ]
     })
     exportHrReportExcel(business, { title: "Reporte de Ponches (Reloj checador)", headers, rows, filtros: search ? `Búsqueda: ${search}` : "", filename: `Ponches_${new Date().toISOString().slice(0, 10)}.xls` })
@@ -396,7 +414,10 @@ export function RrhhPonchePage() {
 
       <Card>
         <CardContent className="p-3">
-          <Input placeholder="Buscar en historial de ponches (nombre, cédula, sucursal, puesto)…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 max-w-sm mb-2" />
+          <div className="flex flex-wrap items-center gap-3 mb-2">
+            <Input placeholder="Buscar en historial de ponches (nombre, cédula, sucursal, puesto)…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 max-w-sm" />
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground"><input type="checkbox" checked={showVoided} onChange={e => setShowVoided(e.target.checked)} />Mostrar anulados</label>
+          </div>
           <div className="overflow-x-auto">
           {loading ? <div className="py-10 text-center text-sm text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin inline mr-2" />Cargando...</div>
           : filtered.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin ponches.</div> : (
@@ -405,10 +426,11 @@ export function RrhhPonchePage() {
                 <TableHead className="text-xs">Empleado</TableHead><TableHead className="text-xs">Sucursal</TableHead><TableHead className="text-xs">Tipo</TableHead>
                 <TableHead className="text-xs">Hora</TableHead><TableHead className="text-xs">Dispositivo</TableHead><TableHead className="text-xs">Ubicación</TableHead>
                 <TableHead className="text-xs text-right">Dist.</TableHead><TableHead className="text-xs">Estado</TableHead>
+                <TableHead className="text-xs text-center w-16">Acciones</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {filtered.slice(0, 300).map(p => (
-                  <TableRow key={p.id}>
+                  <TableRow key={p.id} className={p.is_deleted ? "opacity-60" : ""}>
                     <TableCell className="text-sm font-medium">{p.employee_nombre || empMap[p.employee_id]?.nombre || p.employee_id}</TableCell>
                     <TableCell className="text-xs">{p.sucursal || "—"}</TableCell>
                     <TableCell><Badge variant="outline" className={TYPE_CLASS[p.type] || ""}>{TYPE_LABEL[p.type] || p.type}</Badge></TableCell>
@@ -416,9 +438,16 @@ export function RrhhPonchePage() {
                     <TableCell className="text-xs">{deviceName(p.device_id)}{p.source === "manual" ? " (manual)" : ""}</TableCell>
                     <TableCell className="text-xs">{p.latitude != null && p.longitude != null ? `${Number(p.latitude).toFixed(5)}, ${Number(p.longitude).toFixed(5)}` : "—"}</TableCell>
                     <TableCell className="text-xs text-right">{p.distance_meters != null ? `${Math.round(Number(p.distance_meters))} m` : "—"}</TableCell>
-                    <TableCell>{p.status === "rejected"
+                    <TableCell>{p.is_deleted
+                      ? <Badge variant="outline" className="bg-gray-200 text-gray-600 border-gray-300" title={p.void_reason || ""}>Anulado</Badge>
+                      : p.status === "rejected"
                       ? <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200" title={p.rejection_reason || ""}>Rechazado</Badge>
                       : <Badge variant="outline" className="bg-emerald-100 text-emerald-700 border-emerald-200">Aprobado</Badge>}</TableCell>
+                    <TableCell className="text-center">
+                      {canVoid && !p.is_deleted && (
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:bg-red-50" onClick={() => { setVoidReason("Error de registro"); setVoidTarget(p) }} title="Anular ponche"><Trash2 className="h-3.5 w-3.5" /></Button>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -428,6 +457,36 @@ export function RrhhPonchePage() {
           <div className="mt-2"><Button variant="outline" size="sm" onClick={() => setCorrection({ type: "entrada", punched_at: new Date().toISOString().slice(0, 16) })}><Plus className="w-4 h-4 mr-1" />Marca manual (corrección)</Button></div>
         </CardContent>
       </Card>
+
+      {/* Dialog anular ponche (anulación lógica) */}
+      <Dialog open={!!voidTarget} onOpenChange={o => !o && setVoidTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Anular ponche</DialogTitle></DialogHeader>
+          {voidTarget && (
+            <div className="space-y-3 py-2">
+              <p className="text-sm">¿Seguro que deseas anular este ponche?</p>
+              <p className="text-xs text-muted-foreground">{voidTarget.employee_nombre || empMap[voidTarget.employee_id]?.nombre || voidTarget.employee_id} · {TYPE_LABEL[voidTarget.type] || voidTarget.type} · {fmtDateTime(voidTarget.punched_at)}{voidTarget.sucursal ? ` · ${voidTarget.sucursal}` : ""}</p>
+              <div className="space-y-1">
+                <Label className="text-xs">Motivo de anulación *</Label>
+                <select className="w-full h-9 rounded-md border bg-background px-2 text-sm" value={["Error de registro", "Ponche duplicado", "Prueba de sistema"].includes(voidReason) ? voidReason : "Otro"} onChange={e => setVoidReason(e.target.value === "Otro" ? "" : e.target.value)}>
+                  <option>Error de registro</option>
+                  <option>Ponche duplicado</option>
+                  <option>Prueba de sistema</option>
+                  <option value="Otro">Otro</option>
+                </select>
+                {!["Error de registro", "Ponche duplicado", "Prueba de sistema"].includes(voidReason) && (
+                  <Input value={voidReason} onChange={e => setVoidReason(e.target.value)} placeholder="Especifica el motivo" />
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground">No se borra físicamente: queda como “Anulado” y se puede ver con “Mostrar anulados”. Queda registrado en auditoría.</p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setVoidTarget(null)} disabled={saving}><X className="w-4 h-4 mr-1" />Cancelar</Button>
+            <Button onClick={voidPunch} disabled={saving || !voidReason.trim()} className="bg-red-600 hover:bg-red-700 text-white">{saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />}Anular ponche</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog corrección manual */}
       <Dialog open={!!correction} onOpenChange={o => !o && setCorrection(null)}>

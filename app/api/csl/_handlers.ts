@@ -677,9 +677,33 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (desde) q = q.gte("punched_at", desde)
       const hasta = textValue(params, "hasta")
       if (hasta) q = q.lte("punched_at", hasta)
+      // Por defecto se ocultan los ponches anulados (is_deleted). Con
+      // include_voided=true se incluyen (para el filtro "Mostrar anulados").
+      const includeVoided = textValue(params, "include_voided") === "true" || params.include_voided === true
+      if (!includeVoided) q = q.or("is_deleted.is.null,is_deleted.eq.false")
       const { data, error } = await q
       if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
       return { ok: true, records: scopeByBranch((data || []) as Row[], (p) => (p as Row).sucursal) }
+    }
+    case "voidHrPunch": {
+      // Anulación LÓGICA (no DELETE físico). Solo admin/superadmin.
+      await requireAdmin(user.id)
+      const id = textValue(params, "id"); if (!id) throw new Error("id obligatorio")
+      const reason = textValue(params, "void_reason").trim()
+      if (!reason) throw new Error("El motivo de anulación es obligatorio")
+      const sb = getSupabaseAdmin()
+      let selQ = sb.from("hr_punches").select("*").eq("id", id)
+      if (shouldScopeTenant()) selQ = selQ.eq("business_id", effectiveBusinessId() as string)
+      const { data: prev, error: selErr } = await selQ.maybeSingle()
+      if (selErr) { if (isMissingTable(selErr)) return { ok: false, tableMissing: true }; throw selErr }
+      if (!prev) throw new Error("Ponche no encontrado o de otro negocio")
+      let updQ = sb.from("hr_punches").update({ is_deleted: true, deleted_at: new Date().toISOString(), deleted_by: user.id, void_reason: reason, status: "anulado", updated_at: new Date().toISOString() }).eq("id", id)
+      if (shouldScopeTenant()) updQ = updQ.eq("business_id", effectiveBusinessId() as string)
+      const { data, error } = await updQ.select().maybeSingle()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true }; throw error }
+      if (!data) throw new Error("No se pudo anular el ponche")
+      await hrAudit(user, "ponche", "punch_voided", "hr_punches", id, prev, { void_reason: reason, employee_id: (prev as Row).employee_id, punched_at: (prev as Row).punched_at })
+      return { ok: true, record: data }
     }
     case "saveHrPunch": {
       const record = parsePayload(params)
