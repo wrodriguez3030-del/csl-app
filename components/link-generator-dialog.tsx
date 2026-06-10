@@ -37,6 +37,14 @@ const MOTIVO_OTRO = "__otro__"
 
 // Servicios/procedimientos por tipo de consent — espejo de lo que el
 // equipo clínico usa internamente. La opción "Otro" abre un input libre.
+const SERVICIOS_PEELING = [
+  "Peeling superficial",
+  "Peeling medio",
+  "Peeling enzimático",
+  "Peeling químico",
+  "Peeling despigmentante",
+] as const
+
 const SERVICIOS_MASAJES = [
   "Masaje relajante",
   "Masaje terapéutico",
@@ -63,6 +71,7 @@ const SERVICIO_OTRO = "__servicio_otro__"
 type FormType =
   | "ficha_dermatologica"
   | "consentimiento_masajes"
+  | "consentimiento_peeling"
   | "consentimiento_tatuajes_cejas"
 
 interface Props {
@@ -819,7 +828,7 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                           <SelectValue placeholder="Seleccionar servicio" />
                         </SelectTrigger>
                         <SelectContent>
-                          {(formType === "consentimiento_masajes" ? SERVICIOS_MASAJES : SERVICIOS_TATUAJES).map((s) => (
+                          {(formType === "consentimiento_masajes" ? SERVICIOS_MASAJES : formType === "consentimiento_peeling" ? SERVICIOS_PEELING : SERVICIOS_TATUAJES).map((s) => (
                             <SelectItem key={s} value={s}>{s}</SelectItem>
                           ))}
                           <SelectItem value={SERVICIO_OTRO}>+ Otro</SelectItem>

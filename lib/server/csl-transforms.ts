@@ -124,6 +124,36 @@ export function fromDb(entity: string, row: Row): Row {
         clienteId: row.cliente_id || null,
         fichaId: row.ficha_id || null,
       }
+    case "csl_consent_peeling":
+      // El payload_json carga el ConsentimientoRecord completo (camelCase),
+      // incluidas las listas (contraindicacionesList, instruccionesAntes,
+      // cuidadosDespuesList, riesgosAceptadosList, politicasAceptadas) y las
+      // aceptaciones. Acá sólo re-proyectamos las columnas dedicadas.
+      return {
+        ...((row.payload_json as Row) || {}),
+        id: row.consent_id,
+        fecha: row.fecha,
+        sucursal: row.sucursal,
+        nombreCliente: row.nombre_cliente || row.cliente_nombre,
+        documento: row.documento,
+        telefono: row.telefono,
+        correo: row.correo,
+        direccion: row.direccion,
+        fechaNacimiento: row.fecha_nacimiento,
+        edad: row.edad,
+        tipoPeeling: row.tipo_peeling,
+        zonaTratar: row.zona_tratar,
+        observaciones: row.observaciones,
+        observacionesMedicas: row.observaciones_medicas,
+        firmaCliente: row.firma_cliente,
+        firmaEspecialista: row.firma_especialista,
+        nombreEspecialista: row.especialista || row.especialista_nombre,
+        estado: row.estado,
+        fechaRegistro: row.fecha_registro || row.created_at,
+        pdfUrl: row.pdf_url,
+        clienteId: row.cliente_id || null,
+        fichaId: row.ficha_id || null,
+      }
     case "certificados_regalo":
       return { codigo: row.codigo, otorgadoA: row.otorgado_a, cortesiaDe: row.cortesia_de, validoPor: row.valido_por, fecha: row.fecha, sucursal: row.sucursal, tipo: row.tipo, firma: row.firma, emitidoEn: row.emitido_en, estado: row.estado, canjeadoEn: row.canjeado_en, notasEstado: row.notas_estado }
     case "piezas_poliza_lista":
@@ -230,8 +260,8 @@ function jsonArray(value: unknown) {
   return raw ? [raw] : []
 }
 
-export function consentToDb(payload: Row, kind: "masajes" | "tatuajes") {
-  const prefix = kind === "masajes" ? "CM" : "CTC"
+export function consentToDb(payload: Row, kind: "masajes" | "tatuajes" | "peeling") {
+  const prefix = kind === "masajes" ? "CM" : kind === "peeling" ? "CP" : "CTC"
   const id = String(payload.id ?? payload.ID ?? payload.consentId ?? `${prefix}-${Date.now()}`)
   const clienteId = String(payload.clienteId ?? payload.ClienteID ?? payload.cliente_id ?? "").trim() || null
   const fichaIdRaw = String(payload.fichaId ?? payload.FichaID ?? payload.ficha_id ?? "").trim()
@@ -264,6 +294,26 @@ export function consentToDb(payload: Row, kind: "masajes" | "tatuajes") {
     estado: String(payload.estado ?? payload.Estado ?? "Pendiente"),
     fecha_registro: String(payload.fechaRegistro ?? payload.FechaRegistro ?? new Date().toISOString()),
     payload_json: { ...payload, id, clienteId, fichaId },
+  }
+
+  if (kind === "peeling") {
+    return {
+      ...base,
+      tipo_peeling: String(payload.tipoPeeling ?? payload.TipoPeeling ?? ""),
+      tipo_peeling_otro: String(payload.tipoPeelingOtro ?? payload.TipoPeelingOtro ?? ""),
+      zona_tratar_otro: String(payload.zonaTratarOtro ?? payload.ZonaTratarOtro ?? ""),
+      contraindicaciones: jsonArray(payload.contraindicacionesList ?? payload.contraindicaciones ?? payload.Contraindicaciones),
+      cuidados_antes: jsonArray(payload.instruccionesAntes ?? payload.cuidadosAntes ?? payload.CuidadosAntes),
+      cuidados_despues: jsonArray(payload.cuidadosDespuesList ?? payload.cuidadosDespues ?? payload.CuidadosDespues),
+      riesgos_aceptados: jsonArray(payload.riesgosAceptadosList ?? payload.riesgosAceptados ?? payload.RiesgosAceptados),
+      politicas: jsonArray(payload.politicasAceptadas ?? payload.politicas ?? payload.Politicas),
+      acepta_procedimiento: boolValue(payload.aceptaProcedimiento ?? payload.AceptaProcedimiento),
+      acepta_riesgos: boolValue(payload.aceptaRiesgos ?? payload.AceptaRiesgos),
+      acepta_politicas: boolValue(payload.aceptaPoliticas ?? payload.AceptaPoliticas),
+      acepta_proteccion_datos: boolValue(payload.aceptaProteccionDatos ?? payload.AceptaProteccionDatos),
+      observaciones_medicas: String(payload.observacionesMedicas ?? payload.ObservacionesMedicas ?? ""),
+      created_by: String(payload.createdBy ?? payload.CreatedBy ?? "") || null,
+    }
   }
 
   if (kind === "masajes") {

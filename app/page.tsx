@@ -357,6 +357,8 @@ export default function HomePage() {
         return <CosmiatriaFichaPage />
       case "consent-masajes":
         return <ConsentimientosPage kind="masajes" />
+      case "consent-peeling":
+        return <ConsentimientosPage kind="peeling" />
       case "consent-tatuajes-cejas":
         return <ConsentimientosPage kind="tatuajes" />
       case "reportes-firmados":

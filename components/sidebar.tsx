@@ -147,6 +147,7 @@ const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
       { id: "cosmiatria-clientes", label: "Clientes", icon: <ContactRound className="h-4 w-4" /> },
       { id: "cosmiatria-ficha", label: "Ficha Dermatologia", icon: <Sparkles className="h-4 w-4" /> },
       { id: "consent-masajes", label: "Consentimiento Masajes", icon: <FileSignature className="h-4 w-4" /> },
+      { id: "consent-peeling", label: "Consentimiento Peeling", icon: <FileSignature className="h-4 w-4" /> },
       { id: "consent-tatuajes-cejas", label: "Eliminacion Tatuajes y Cejas", icon: <FileSignature className="h-4 w-4" /> },
       { id: "reportes-firmados", label: "Historial Fichas y Consentimientos", icon: <Files className="h-4 w-4" /> },
     ],
@@ -191,6 +192,10 @@ export function Sidebar() {
   }, [db])
   const pendientesConsentsTatuajes = useMemo(() => {
     const arr = (db as unknown as { consentTatuajesCejas?: Array<{ estado?: string }> }).consentTatuajesCejas || []
+    return arr.filter((r) => String(r?.estado) === "Pendiente de revisión").length
+  }, [db])
+  const pendientesConsentsPeeling = useMemo(() => {
+    const arr = (db as unknown as { consentPeeling?: Array<{ estado?: string }> }).consentPeeling || []
     return arr.filter((r) => String(r?.estado) === "Pendiente de revisión").length
   }, [db])
 
@@ -300,6 +305,9 @@ export function Sidebar() {
                 .map((item) => {
                   if (item.id === "consent-masajes" && pendientesConsentsMasajes > 0) {
                     return { ...item, count: pendientesConsentsMasajes }
+                  }
+                  if (item.id === "consent-peeling" && pendientesConsentsPeeling > 0) {
+                    return { ...item, count: pendientesConsentsPeeling }
                   }
                   if (item.id === "consent-tatuajes-cejas" && pendientesConsentsTatuajes > 0) {
                     return { ...item, count: pendientesConsentsTatuajes }

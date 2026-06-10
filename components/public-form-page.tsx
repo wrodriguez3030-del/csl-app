@@ -4,12 +4,14 @@ import { useCallback, useEffect, useState } from "react"
 import { AlertCircle, Clock, Loader2 } from "lucide-react"
 import { PublicFichaConsentForm } from "@/components/public-ficha-consent-form"
 import { PublicMasajesConsentForm } from "@/components/public-masajes-consent-form"
+import { PublicPeelingConsentForm } from "@/components/public-peeling-consent-form"
 import { PublicTatuajesConsentForm } from "@/components/public-tatuajes-consent-form"
 import { SolicitudEmpleoPublicaPage } from "@/app/solicitud-empleo/solicitud-empleo-form"
 
 type FormType =
   | "ficha_dermatologica"
   | "consentimiento_masajes"
+  | "consentimiento_peeling"
   | "consentimiento_tatuajes_cejas"
   | "solicitud_empleo"
 
@@ -231,6 +233,13 @@ export function PublicFormPage({ token }: { token: string }) {
     return (
       <main className="min-h-screen bg-background">
         <PublicMasajesConsentForm businessSlug={businessSlug} prefill={commonPrefill} onSubmit={async (value) => { await submit(value) }} />
+      </main>
+    )
+  }
+  if (formType === "consentimiento_peeling") {
+    return (
+      <main className="min-h-screen bg-background">
+        <PublicPeelingConsentForm businessSlug={businessSlug} prefill={commonPrefill} onSubmit={async (value) => { await submit(value) }} />
       </main>
     )
   }

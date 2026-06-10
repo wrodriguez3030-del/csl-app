@@ -36,6 +36,7 @@ function buildPublicUrl(request: Request, token: string): string {
 const CONSENT_NAME_BY_TYPE: Record<FormType, string> = {
   ficha_dermatologica: "Consentimiento de Ficha Dermatológica",
   consentimiento_masajes: "Consentimiento de Masajes",
+  consentimiento_peeling: "Consentimiento Informado para Peeling",
   consentimiento_tatuajes_cejas: "Consentimiento de Eliminación de Tatuajes y Cejas",
   solicitud_empleo: "Solicitud de empleo",
 }

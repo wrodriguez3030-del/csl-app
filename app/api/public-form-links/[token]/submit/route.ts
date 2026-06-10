@@ -49,7 +49,7 @@ function deriveRecordId(formType: string, payload: FormPayload): string {
   if (formType === "ficha_dermatologica") {
     return String(payload.id || payload.ID || `dermo_${Date.now()}`)
   }
-  const prefix = formType === "consentimiento_masajes" ? "CM" : "CTC"
+  const prefix = formType === "consentimiento_masajes" ? "CM" : formType === "consentimiento_peeling" ? "CP" : "CTC"
   return String(payload.id || payload.ID || `${prefix}-${Date.now()}`)
 }
 
@@ -389,7 +389,7 @@ export async function POST(
     // el cliente. Estado se fuerza a "Pendiente de revisión".
     let recordId: string
     let row: Record<string, unknown>
-    let targetTable: "csl_ficha_dermatologica" | "csl_consent_masajes" | "csl_consent_tatuajes_cejas"
+    let targetTable: "csl_ficha_dermatologica" | "csl_consent_masajes" | "csl_consent_peeling" | "csl_consent_tatuajes_cejas"
     let onConflictKey: "ficha_id" | "consent_id"
 
     const bodyConCliente = resolvedClienteId
@@ -402,12 +402,20 @@ export async function POST(
       row.business_id = businessId
       targetTable = "csl_ficha_dermatologica"
       onConflictKey = "ficha_id"
-    } else if (formType === "consentimiento_masajes" || formType === "consentimiento_tatuajes_cejas") {
+    } else if (
+      formType === "consentimiento_masajes" ||
+      formType === "consentimiento_peeling" ||
+      formType === "consentimiento_tatuajes_cejas"
+    ) {
       recordId = deriveRecordId(formType, bodyConCliente)
-      const kind = formType === "consentimiento_masajes" ? "masajes" : "tatuajes"
+      const kind = formType === "consentimiento_masajes" ? "masajes" : formType === "consentimiento_peeling" ? "peeling" : "tatuajes"
       row = consentToDb({ ...bodyConCliente, id: recordId, estado: "Pendiente de revisión" }, kind) as Record<string, unknown>
       row.business_id = businessId
-      targetTable = formType === "consentimiento_masajes" ? "csl_consent_masajes" : "csl_consent_tatuajes_cejas"
+      targetTable = formType === "consentimiento_masajes"
+        ? "csl_consent_masajes"
+        : formType === "consentimiento_peeling"
+        ? "csl_consent_peeling"
+        : "csl_consent_tatuajes_cejas"
       onConflictKey = "consent_id"
     } else {
       return json({ ok: false, error: "Tipo de formulario no soportado" }, 400)

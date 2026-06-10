@@ -429,6 +429,7 @@ export type TabId =
   | "cosmiatria-clientes"
   | "cosmiatria-ficha"
   | "consent-masajes"
+  | "consent-peeling"
   | "consent-tatuajes-cejas"
   | "reportes-firmados"
   | "cliente-certificados"

@@ -27,7 +27,7 @@ import { useCurrentBusiness } from "@/hooks/use-current-business"
 import type { Business } from "@/lib/types"
 import { displayPhone, displayDocumento, formatPhone, formatCedula } from "@/lib/formatters"
 
-export type ConsentKind = "masajes" | "tatuajes"
+export type ConsentKind = "masajes" | "tatuajes" | "peeling"
 export type ConsentStatus = "Pendiente" | "Pendiente de revisión" | "Firmado" | "Anulado"
 
 interface FichaResumen {
@@ -115,6 +115,18 @@ export interface ConsentimientoRecord {
   declaracionResultadosAceptada?: boolean
   autorizacionFotograficaAceptada?: boolean
   autorizacionProcedimientoAceptada?: boolean
+
+  // ---- Plantilla profesional CSL para Peeling ----
+  // Reutiliza: zonaTratar, zonaTratarOtro, contraindicacionesList,
+  // instruccionesAntes (cuidados antes), cuidadosDespuesList, riesgosAceptadosList,
+  // politicasAceptadas, observacionesMedicas.
+  tipoPeeling?: string
+  tipoPeelingOtro?: string
+  aceptaProcedimiento?: boolean
+  aceptaRiesgos?: boolean
+  aceptaPoliticas?: boolean
+  aceptaProteccionDatos?: boolean
+  pdfUrl?: string
   textoConsentimiento: string
   firmaCliente: string
   firmaEspecialista: string
@@ -362,6 +374,117 @@ const AUTORIZACION_FOTOGRAFICA_TATUAJES =
 const AUTORIZACION_FINAL_TATUAJES =
   "He sido informado/a sobre el procedimiento de eliminación de tatuajes, cejas, microblading o micropigmentación con láser, incluyendo sus beneficios, limitaciones, posibles riesgos, complicaciones y cuidados necesarios antes y después del tratamiento. He tenido la oportunidad de realizar preguntas y he recibido respuestas satisfactorias. Entiendo que los resultados pueden variar de una persona a otra, que pueden requerirse múltiples sesiones y que no se garantiza la eliminación completa del pigmento. Doy mi consentimiento libre, voluntario e informado para realizarme el procedimiento en Cibao Spa Laser. También declaro que la información suministrada por mí es verdadera y completa, y entiendo que el personal de Cibao Spa Laser se basará en dicha información para determinar si el procedimiento puede realizarse de forma segura."
 
+// =====================================================
+// Plantilla profesional CSL para Consentimiento Informado de PEELING.
+// Texto oficial provisto por el centro. Usada cuando kind === "peeling".
+// Todos los campos viajan por payload_json (las listas + aceptaciones) y
+// además se proyectan a columnas dedicadas en csl_consent_peeling.
+// =====================================================
+
+const PEELING_TEXT =
+  "REQUIERO y AUTORIZO a Cibao Spa Láser para que el personal calificado que se requiera realice en mi persona el tratamiento estético de PEELING, previa evaluación y según mi condición de piel. Confirmo que se me ha explicado detalladamente, en palabras comprensibles, el efecto, naturaleza, beneficios, límites, cuidados, posibles riesgos y alternativas del procedimiento de peeling, y que todas mis preguntas han sido contestadas a satisfacción. Comprendo que los procedimientos estéticos no son una ciencia exacta y que nadie puede garantizar resultados perfectos, definitivos o iguales en todos los pacientes."
+
+const PEELING_PROPOSITO: ReadonlyArray<string> = [
+  "Favorecer la renovación celular de la piel",
+  "Mejorar la textura, luminosidad y apariencia general del rostro o zona tratada",
+  "Ayudar a disminuir manchas superficiales, poros obstruidos, grasa, comedones, marcas leves de acné o líneas finas, según el tipo de piel y el protocolo aplicado",
+  "Preparar y complementar otros tratamientos estéticos cuando el personal calificado lo considere adecuado",
+]
+
+const PEELING_DESCRIPCION =
+  "El peeling consiste en la aplicación controlada de productos exfoliantes, despigmentantes, enzimáticos o químicos sobre la piel, con el objetivo de producir una renovación superficial o media según la evaluación realizada. Durante el tratamiento puedo sentir ardor, calor, picor, tirantez o molestia temporal. La intensidad del procedimiento dependerá del tipo de piel, sensibilidad, condición tratada y criterio del personal calificado."
+
+const TIPOS_PEELING: ReadonlyArray<string> = [
+  "Peeling superficial",
+  "Peeling medio",
+  "Peeling enzimático",
+  "Peeling químico",
+  "Peeling despigmentante",
+  "Otro",
+]
+
+const ZONAS_PEELING: ReadonlyArray<string> = [
+  "Rostro completo",
+  "Frente",
+  "Mejillas",
+  "Nariz",
+  "Mentón",
+  "Cuello",
+  "Escote",
+  "Espalda",
+  "Manos",
+  "Axilas",
+  "Otra zona",
+]
+
+const CONTRAINDICACIONES_PEELING: ReadonlyArray<string> = [
+  "Embarazo, sospecha de embarazo o lactancia",
+  "Uso actual o reciente de isotretinoína, retinoides, ácidos exfoliantes, despigmentantes fuertes o medicamentos fotosensibilizantes",
+  "Herpes activo, heridas abiertas, quemaduras solares, irritación severa, dermatitis, infección cutánea o enfermedad activa de la piel en la zona a tratar",
+  "Alergia conocida a ácidos, productos cosméticos, anestésicos tópicos, despigmentantes o cualquier componente del tratamiento",
+  "Tendencia a cicatrización queloide, manchas postinflamatorias o antecedentes de cicatrices anormales",
+  "Exposición solar intensa, cámaras de bronceado o bronceado reciente",
+  "Tratamientos oncológicos, inmunosupresión, diabetes no controlada, enfermedades autoinmunes, anticoagulantes o condiciones médicas que puedan contraindicar el procedimiento",
+  "Procedimientos recientes en la zona como láser, depilación con cera, microdermoabrasión, dermapen, cirugía, rellenos o toxina botulínica que deban evaluarse antes",
+  "No se realizará peeling si la zona está recién rasurada o recién depilada",
+  "Debe haber transcurrido al menos 1 semana desde el rasurado de la zona a tratar",
+  "Debe haber transcurrido un mínimo de 45 días desde cualquier tratamiento láser realizado en la zona",
+  "Suspender la depilación con cera antes y durante el protocolo de peeling, según indicación de la especialista",
+  "Zona con sensibilidad, irritación, ardor, inflamación, heridas, quemadura solar o reacción activa",
+]
+
+const CUIDADOS_ANTES_PEELING: ReadonlyArray<string> = [
+  "Evitar exposición solar intensa o bronceado antes del procedimiento",
+  "Suspender exfoliantes, retinoides, ácidos, productos irritantes o despigmentantes fuertes según indicación de la especialista",
+  "Informar si uso medicamentos, cremas medicadas, tratamientos dermatológicos o si me he realizado procedimientos recientes",
+  "Asistir con la piel limpia, sin maquillaje pesado, sin cremas irritantes y sin lesiones activas en la zona a tratar",
+  "Si tengo antecedentes de herpes labial, debo informarlo para recibir orientación preventiva antes del tratamiento",
+]
+
+const CUIDADOS_DESPUES_PEELING: ReadonlyArray<string> = [
+  "Usar protector solar de amplio espectro y reaplicarlo durante el día, especialmente si hay exposición a luz solar o calor",
+  "Evitar sol directo, bronceado, sauna, vapor, piscina, playa, ejercicio intenso o calor excesivo por el tiempo indicado por la especialista",
+  "No retirar costras, no halar la descamación y no rascar la zona tratada",
+  "Mantener la piel hidratada con los productos recomendados y evitar productos irritantes hasta recibir autorización",
+  "No usar exfoliantes, retinoides, ácidos, despigmentantes fuertes, perfumes o maquillaje irritante durante los días indicados",
+  "Informar de inmediato a Cibao Spa Láser si presento dolor intenso, ampollas, secreción, inflamación severa, manchas marcadas, fiebre, infección o cualquier reacción fuera de lo esperado",
+]
+
+const RIESGOS_PEELING: ReadonlyArray<string> = [
+  "Enrojecimiento, ardor, picor, sensibilidad, tirantez, inflamación o calor temporal en la zona tratada",
+  "Resequedad, descamación, costras superficiales o sensación de piel áspera durante los días posteriores",
+  "Oscurecimiento o aclaramiento temporal de la piel, especialmente con exposición al sol o sin protector solar",
+  "Irritación, brote de acné, dermatitis, reacción alérgica o sensibilidad a alguno de los productos utilizados",
+  "Reactivación de herpes en personas con antecedentes de herpes labial o lesiones herpéticas",
+  "Quemaduras superficiales, ampollas, infección, manchas persistentes, cicatrices o cambios de pigmentación (poco frecuentes)",
+  "Insatisfacción con los resultados o necesidad de varias sesiones para lograr el objetivo deseado",
+]
+
+// Políticas del centro — mismas que masajes/tatuajes pero con el horario de
+// peeling provisto en el texto oficial (domingos cerrado).
+const POLITICAS_PEELING: ReadonlyArray<string> = [
+  "Reservas, cancelaciones o reprogramaciones deben comunicarse con 48 horas de antelación; de lo contrario la sesión podrá darse por realizada",
+  "Horario: lunes a viernes de 9:00 a.m. a 8:00 p.m.; sábados de 9:00 a.m. a 4:00 p.m.; domingos cerrado",
+  "Los pagos se realizan en efectivo, transferencia o tarjeta de crédito. Los precios no incluyen ITBIS",
+  "El tiempo de la cita no puede extenderse bajo ningún motivo porque perjudica el itinerario programado",
+  "Si hay retraso por responsabilidad del centro, el tiempo será repuesto; si el retraso es del cliente, se atenderá solo el tiempo restante",
+  "La validez de servicios prepagados será según las políticas comerciales vigentes al momento de la compra",
+]
+
+const DECLARACION_PEELING: ReadonlyArray<string> = [
+  "Comprende que los resultados pueden variar según su tipo de piel, edad, hábitos, exposición solar, condición hormonal, antecedentes médicos y cumplimiento de las indicaciones antes y después del tratamiento.",
+  "Consiente aportar datos personales, fotografías o registros antes, durante y después del tratamiento, como material de diagnóstico, evolución y registro para su historia clínica, propiedad de Cibao Spa Láser.",
+  "Acepta que Cibao Spa Láser retrase, modifique o suspenda el procedimiento si el personal calificado entiende que existe alguna condición que pueda aumentar el riesgo o afectar su seguridad.",
+  "Se compromete a seguir fielmente las instrucciones impartidas antes, durante y después del procedimiento de peeling.",
+  "Da fe de no haber omitido ni alterado datos sobre su historial, antecedentes clínicos, medicamentos, alergias, tratamientos recientes y condiciones de salud.",
+]
+
+const PROTECCION_DATOS_PEELING =
+  "Cibao Spa Láser podrá enviar información, respuestas a consultas y contactos relacionados con nuestros servicios mientras dure nuestra relación y tengamos su consentimiento como destinatario. No se cederán datos a terceros salvo obligación legal. Correo: cibaospalaser@gmail.com"
+
+const AUTORIZACION_FINAL_PEELING =
+  "He podido aclarar todas mis dudas y he entendido totalmente este DOCUMENTO DE CONSENTIMIENTO INFORMADO PARA PEELING, reafirmándome en todos y cada uno de sus puntos. Doy mi consentimiento libre, voluntario e informado para realizarme el procedimiento en Cibao Spa Láser, y declaro que la información suministrada por mí es verdadera y completa."
+
 const KIND_CONFIG = {
   masajes: {
     title: "Consentimiento Masajes",
@@ -373,6 +496,17 @@ const KIND_CONFIG = {
     deleteAction: "deleteConsentMasaje",
     idPrefix: "CM",
     defaultText: MASAJE_TEXT,
+  },
+  peeling: {
+    title: "Consentimiento Informado para Peeling",
+    subtitle: "Autorización informada para tratamientos de peeling.",
+    badge: "Peeling",
+    getAction: "getConsentPeeling",
+    getCompletoAction: "getConsentPeelingCompleto",
+    saveAction: "saveConsentPeeling",
+    deleteAction: "deleteConsentPeeling",
+    idPrefix: "CP",
+    defaultText: PEELING_TEXT,
   },
   tatuajes: {
     title: "Consentimiento Eliminación de Tatuajes y Cejas",
@@ -470,6 +604,14 @@ export function emptyRecord(kind: ConsentKind, sucursal = ""): ConsentimientoRec
     declaracionResultadosAceptada: false,
     autorizacionFotograficaAceptada: false,
     autorizacionProcedimientoAceptada: false,
+    // Peeling
+    tipoPeeling: "",
+    tipoPeelingOtro: "",
+    aceptaProcedimiento: false,
+    aceptaRiesgos: false,
+    aceptaPoliticas: false,
+    aceptaProteccionDatos: false,
+    pdfUrl: "",
   }
 }
 
@@ -562,6 +704,14 @@ function normalizeRecord(input: Partial<ConsentimientoRecord>, kind: ConsentKind
     declaracionResultadosAceptada: Boolean(input.declaracionResultadosAceptada),
     autorizacionFotograficaAceptada: Boolean(input.autorizacionFotograficaAceptada),
     autorizacionProcedimientoAceptada: Boolean(input.autorizacionProcedimientoAceptada),
+    // Peeling (vienen serializados desde payload_json).
+    tipoPeeling: String(input.tipoPeeling ?? ""),
+    tipoPeelingOtro: String(input.tipoPeelingOtro ?? ""),
+    aceptaProcedimiento: Boolean(input.aceptaProcedimiento),
+    aceptaRiesgos: Boolean(input.aceptaRiesgos),
+    aceptaPoliticas: Boolean(input.aceptaPoliticas),
+    aceptaProteccionDatos: Boolean(input.aceptaProteccionDatos),
+    pdfUrl: String(input.pdfUrl ?? ""),
   }
 }
 
@@ -627,6 +777,12 @@ function tatuajesDisplay(record: ConsentimientoRecord) {
   return { tipo, zona, tipoPigmento, colores, embarazo, alergias, medicamentos, exposicion, queloides, sesionesPrev }
 }
 
+function peelingDisplay(record: ConsentimientoRecord) {
+  const tipo = record.tipoPeeling === "Otro" && record.tipoPeelingOtro ? `Otro · ${record.tipoPeelingOtro}` : (record.tipoPeeling || "")
+  const zona = record.zonaTratar === "Otra zona" && record.zonaTratarOtro ? `Otra · ${record.zonaTratarOtro}` : (record.zonaTratar || "")
+  return { tipo, zona }
+}
+
 function printConsent(record: ConsentimientoRecord, kind: ConsentKind, business?: Business) {
   const config = KIND_CONFIG[kind]
   const brandName = business?.name || "Cibao Spa Laser"
@@ -634,8 +790,14 @@ function printConsent(record: ConsentimientoRecord, kind: ConsentKind, business?
   const brandLogo = business?.logoUrl || "/cibao-spa-laser-logo.jpeg"
   const display = kind === "masajes" ? masajesDisplay(record) : null
   const tDisplay = kind === "tatuajes" ? tatuajesDisplay(record) : null
+  const pDisplay = kind === "peeling" ? peelingDisplay(record) : null
   const fields =
-    kind === "masajes" && display
+    kind === "peeling" && pDisplay
+      ? [
+          ["Tipo de peeling", pDisplay.tipo],
+          ["Zona a tratar", pDisplay.zona],
+        ]
+      : kind === "masajes" && display
       ? [
           ["Tipo de masaje", display.tipo],
           ["Zona a tratar", display.zona],
@@ -736,6 +898,53 @@ function printConsent(record: ConsentimientoRecord, kind: ConsentKind, business?
       </div>`
       : ""
 
+  const peelingExtraSections =
+    kind === "peeling"
+      ? `
+      <div class="section">
+        <div class="section-title">Propósito del procedimiento</div>
+        <ul class="bullet">${PEELING_PROPOSITO.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>
+        <div class="text">${escapeHtml(PEELING_DESCRIPCION)}</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Contraindicaciones declaradas</div>
+        <ul class="checklist">${checkList(record.contraindicacionesList, CONTRAINDICACIONES_PEELING)}</ul>
+        ${record.observacionesMedicas ? `<div class="text"><b>Observaciones médicas:</b> ${escapeHtml(record.observacionesMedicas)}</div>` : ""}
+      </div>
+      <div class="section">
+        <div class="section-title">Cuidados antes del peeling</div>
+        <ul class="checklist">${checkList(record.instruccionesAntes, CUIDADOS_ANTES_PEELING)}</ul>
+      </div>
+      <div class="section">
+        <div class="section-title">Cuidados después del peeling</div>
+        <ul class="checklist">${checkList(record.cuidadosDespuesList, CUIDADOS_DESPUES_PEELING)}</ul>
+      </div>
+      <div class="section">
+        <div class="section-title">Riesgos, molestias y posibles complicaciones</div>
+        <ul class="checklist">${checkList(record.riesgosAceptadosList, RIESGOS_PEELING)}</ul>
+        <div class="accept ${record.aceptaRiesgos ? "ok" : "no"}">${record.aceptaRiesgos ? "✔ El cliente acepta los riesgos descritos." : "○ Pendiente de aceptación de riesgos"}</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Declaración del cliente</div>
+        <ul class="bullet">${DECLARACION_PEELING.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>
+        <div class="accept ${record.aceptaProcedimiento ? "ok" : "no"}">${record.aceptaProcedimiento ? "✔ El cliente autoriza el procedimiento de peeling." : "○ Pendiente de autorización"}</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Políticas y procedimientos</div>
+        <ul class="checklist">${checkList(record.politicasAceptadas, POLITICAS_PEELING)}</ul>
+        <div class="accept ${record.aceptaPoliticas ? "ok" : "no"}">${record.aceptaPoliticas ? "✔ El cliente acepta las políticas." : "○ Pendiente de aceptación de políticas"}</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Protección de datos</div>
+        <div class="text">${escapeHtml(PROTECCION_DATOS_PEELING)}</div>
+        <div class="accept ${record.aceptaProteccionDatos ? "ok" : "no"}">${record.aceptaProteccionDatos ? "✔ El cliente acepta la política de protección de datos." : "○ Pendiente de aceptación"}</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Autorización final</div>
+        <div class="text">${escapeHtml(AUTORIZACION_FINAL_PEELING)}</div>
+      </div>`
+      : ""
+
   const html = `<!doctype html>
   <html>
     <head>
@@ -809,6 +1018,7 @@ function printConsent(record: ConsentimientoRecord, kind: ConsentKind, business?
       </div>
       ${masajesExtraSections}
       ${tatuajesExtraSections}
+      ${peelingExtraSections}
       <div class="section">
         <div class="section-title">Firmas</div>
         <div class="signatures">
@@ -852,9 +1062,15 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
   const [isSaving, setIsSaving] = useState(false)
   // Dialog para generar link único de envío al cliente vía WhatsApp.
   const [linkDialogOpen, setLinkDialogOpen] = useState(false)
-  const publicFormType = kind === "masajes" ? "consentimiento_masajes" : "consentimiento_tatuajes_cejas"
+  const publicFormType = kind === "masajes"
+    ? "consentimiento_masajes"
+    : kind === "peeling"
+    ? "consentimiento_peeling"
+    : "consentimiento_tatuajes_cejas"
   const publicFormTitle = kind === "masajes"
     ? "Enviar Consentimiento de Masajes a un cliente"
+    : kind === "peeling"
+    ? "Enviar Consentimiento de Peeling a un cliente"
     : "Enviar Consentimiento de Tatuajes/Cejas a un cliente"
 
   const loadRecords = useCallback(async () => {
@@ -1129,6 +1345,21 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
       // Las políticas son obligatorias: se exige al menos una marcada
       // (en la práctica todas, pero validamos lo mínimo).
       if (!form.politicasAceptadas || form.politicasAceptadas.length === 0) {
+        const msg = "El cliente debe aceptar las políticas del centro."
+        setSaveError(msg); showToast(msg, "error"); return
+      }
+    }
+    // Validaciones específicas de Peeling: aceptaciones obligatorias.
+    if (kind === "peeling") {
+      if (!form.aceptaProcedimiento) {
+        const msg = "El cliente debe autorizar el procedimiento de peeling."
+        setSaveError(msg); showToast(msg, "error"); return
+      }
+      if (!form.aceptaRiesgos) {
+        const msg = "El cliente debe aceptar los riesgos del procedimiento."
+        setSaveError(msg); showToast(msg, "error"); return
+      }
+      if (!form.aceptaPoliticas) {
         const msg = "El cliente debe aceptar las políticas del centro."
         setSaveError(msg); showToast(msg, "error"); return
       }
@@ -1559,6 +1790,10 @@ function ConsentFormDialog({
             <TatuajesTemplateSections form={form} onUpdate={onUpdate} />
           ) : null}
 
+          {kind === "peeling" ? (
+            <PeelingTemplateSections form={form} onUpdate={onUpdate} />
+          ) : null}
+
           <section className="rounded-2xl border p-4">
             <h3 className="mb-4 font-heading text-lg font-black">Firmas digitales</h3>
             <div className="grid gap-5 md:grid-cols-2">
@@ -1594,8 +1829,14 @@ function DetailDialog({ record, kind, clientes, onClose, onPrint, onEdit }: { re
   const linkedCliente = record.clienteId ? clientes.find((c) => c.ClienteID === record.clienteId) : null
   const display = kind === "masajes" ? masajesDisplay(record) : null
   const tDisplay = kind === "tatuajes" ? tatuajesDisplay(record) : null
+  const pDisplay = kind === "peeling" ? peelingDisplay(record) : null
   const extra: Array<[string, string | undefined]> =
-    kind === "masajes" && display
+    kind === "peeling" && pDisplay
+      ? [
+          ["Tipo de peeling", pDisplay.tipo],
+          ["Zona", pDisplay.zona],
+        ]
+      : kind === "masajes" && display
       ? [
           ["Tipo de masaje", display.tipo],
           ["Zona", display.zona],
@@ -1631,6 +1872,14 @@ function DetailDialog({ record, kind, clientes, onClose, onPrint, onEdit }: { re
     { title: "Cuidados después", marked: record.cuidadosDespuesList || [], total: CUIDADOS_DESPUES_TATUAJES },
     { title: "Riesgos aceptados", marked: record.riesgosAceptadosList || [], total: RIESGOS_TATUAJES },
     { title: "Políticas aceptadas", marked: record.politicasAceptadas || [], total: POLITICAS_TATUAJES },
+  ] : []
+
+  const peelingChecks = kind === "peeling" ? [
+    { title: "Contraindicaciones declaradas", marked: record.contraindicacionesList || [], total: CONTRAINDICACIONES_PEELING },
+    { title: "Cuidados antes", marked: record.instruccionesAntes || [], total: CUIDADOS_ANTES_PEELING },
+    { title: "Cuidados después", marked: record.cuidadosDespuesList || [], total: CUIDADOS_DESPUES_PEELING },
+    { title: "Riesgos aceptados", marked: record.riesgosAceptadosList || [], total: RIESGOS_PEELING },
+    { title: "Políticas aceptadas", marked: record.politicasAceptadas || [], total: POLITICAS_PEELING },
   ] : []
 
   // Nombre real del cliente. Prioridad:
@@ -1754,6 +2003,56 @@ function DetailDialog({ record, kind, clientes, onClose, onPrint, onEdit }: { re
               </div>
             </div>
           ) : null}
+          {kind === "peeling" ? peelingChecks.map((block) => (
+            <div key={block.title} className="md:col-span-2 rounded-2xl border p-4">
+              <div className="mb-2 flex items-baseline justify-between">
+                <div className="text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">{block.title}</div>
+                <span className="text-xs text-muted-foreground">
+                  {block.marked.length} de {block.total.length}
+                </span>
+              </div>
+              <ul className="space-y-1 text-sm">
+                {block.total.map((opt) => {
+                  const on = block.marked.includes(opt)
+                  return (
+                    <li key={opt} className={`flex items-start gap-2 ${on ? "text-slate-800" : "text-slate-400"}`}>
+                      <span className="font-mono text-xs">{on ? "☑" : "☐"}</span>
+                      <span className="leading-snug">{opt}</span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )) : null}
+
+          {kind === "peeling" && record.observacionesMedicas ? (
+            <div className="md:col-span-2 rounded-2xl border bg-amber-50/60 p-4">
+              <div className="text-xs font-black uppercase tracking-[0.14em] text-amber-700">Observaciones médicas</div>
+              <p className="mt-2 text-sm leading-relaxed text-slate-700">{record.observacionesMedicas}</p>
+            </div>
+          ) : null}
+
+          {kind === "peeling" ? (
+            <div className="md:col-span-2 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+              <div className={`rounded-2xl border p-3 text-sm ${record.aceptaProcedimiento ? "border-emerald-300 bg-emerald-50/60 text-emerald-700" : "border-amber-300 bg-amber-50/40 text-amber-700"}`}>
+                <div className="font-bold">Procedimiento</div>
+                <div className="text-xs">{record.aceptaProcedimiento ? "✔ Autorizado" : "○ Pendiente"}</div>
+              </div>
+              <div className={`rounded-2xl border p-3 text-sm ${record.aceptaRiesgos ? "border-emerald-300 bg-emerald-50/60 text-emerald-700" : "border-amber-300 bg-amber-50/40 text-amber-700"}`}>
+                <div className="font-bold">Riesgos</div>
+                <div className="text-xs">{record.aceptaRiesgos ? "✔ Aceptados" : "○ Pendiente"}</div>
+              </div>
+              <div className={`rounded-2xl border p-3 text-sm ${record.aceptaPoliticas ? "border-emerald-300 bg-emerald-50/60 text-emerald-700" : "border-amber-300 bg-amber-50/40 text-amber-700"}`}>
+                <div className="font-bold">Políticas</div>
+                <div className="text-xs">{record.aceptaPoliticas ? "✔ Aceptadas" : "○ Pendiente"}</div>
+              </div>
+              <div className={`rounded-2xl border p-3 text-sm ${record.aceptaProteccionDatos ? "border-emerald-300 bg-emerald-50/60 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
+                <div className="font-bold">Protección de datos</div>
+                <div className="text-xs">{record.aceptaProteccionDatos ? "✔ Aceptada" : "○ Pendiente"}</div>
+              </div>
+            </div>
+          ) : null}
+
           {kind !== "masajes" ? (
             <div className="md:col-span-2 rounded-2xl border p-4">
               <div className="text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">Consentimiento</div>
@@ -2060,6 +2359,246 @@ export function MasajesTemplateSections({
           <span className="font-semibold leading-snug">
             Autorizo a Cibao Spa Laser y a su personal a realizar el procedimiento descrito.
           </span>
+        </label>
+      </section>
+
+      {/* Observaciones libres del especialista */}
+      <section className="rounded-2xl border p-4">
+        <h3 className="mb-3 font-heading text-lg font-black">Observaciones del especialista</h3>
+        <Textarea
+          value={form.observaciones}
+          onChange={(e) => onUpdate({ observaciones: e.target.value })}
+          placeholder="Notas internas del especialista para el expediente del cliente."
+          className="min-h-20"
+        />
+      </section>
+    </>
+  )
+}
+
+/**
+ * Plantilla profesional CSL para Consentimiento Informado de Peeling.
+ *
+ * Reemplaza el bloque "Datos del procedimiento" cuando kind === "peeling".
+ * Estructura: datos del procedimiento → contraindicaciones → cuidados antes →
+ * cuidados después → riesgos → declaración → políticas → protección de datos.
+ * Todos los campos viajan por payload_json y se proyectan a columnas dedicadas.
+ */
+export function PeelingTemplateSections({
+  form,
+  onUpdate,
+}: {
+  form: ConsentimientoRecord
+  onUpdate: (patch: Partial<ConsentimientoRecord>) => void
+}) {
+  type PeelingArrayKey =
+    | "contraindicacionesList"
+    | "instruccionesAntes"
+    | "cuidadosDespuesList"
+    | "riesgosAceptadosList"
+    | "politicasAceptadas"
+
+  const toggleArrayItem = (key: PeelingArrayKey, value: string, checked: boolean) => {
+    const current = (form[key] as string[] | undefined) ?? []
+    const next = checked ? Array.from(new Set([...current, value])) : current.filter((v) => v !== value)
+    onUpdate({ [key]: next } as Partial<ConsentimientoRecord>)
+  }
+  const isChecked = (key: PeelingArrayKey, value: string) =>
+    Boolean(((form[key] as string[] | undefined) ?? []).includes(value))
+
+  const markAll = (key: PeelingArrayKey, total: ReadonlyArray<string>, all: boolean) =>
+    onUpdate({ [key]: all ? [] : [...total] } as Partial<ConsentimientoRecord>)
+
+  const checklistSection = (
+    title: string,
+    key: PeelingArrayKey,
+    total: ReadonlyArray<string>,
+    hint?: string,
+  ) => {
+    const allChecked = ((form[key] as string[] | undefined) ?? []).length === total.length
+    return (
+      <section className="rounded-2xl border p-4">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="font-heading text-lg font-black">{title}</h3>
+          <button
+            type="button"
+            onClick={() => markAll(key, total, allChecked)}
+            className="text-xs text-primary underline-offset-2 hover:underline"
+          >
+            {allChecked ? "Desmarcar todas" : "Marcar todas"}
+          </button>
+        </div>
+        {hint ? <p className="mb-3 text-xs text-muted-foreground">{hint}</p> : null}
+        <div className="grid gap-2 md:grid-cols-2">
+          {total.map((opt) => (
+            <label key={opt} className="flex cursor-pointer items-start gap-2 rounded-lg border p-2 text-sm hover:bg-muted/30">
+              <Checkbox
+                checked={isChecked(key, opt)}
+                onCheckedChange={(v) => toggleArrayItem(key, opt, !!v)}
+                className="mt-0.5"
+              />
+              <span className="leading-snug">{opt}</span>
+            </label>
+          ))}
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <>
+      {/* Datos del procedimiento */}
+      <section className="rounded-2xl border p-4">
+        <h3 className="mb-4 font-heading text-lg font-black">Datos del procedimiento</h3>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="Tipo de peeling">
+            <Select
+              value={form.tipoPeeling || ""}
+              onValueChange={(value) => onUpdate({ tipoPeeling: value, ...(value === "Otro" ? {} : { tipoPeelingOtro: "" }) })}
+            >
+              <SelectTrigger className="w-full"><SelectValue placeholder="Seleccionar tipo" /></SelectTrigger>
+              <SelectContent>
+                {TIPOS_PEELING.map((opt) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {form.tipoPeeling === "Otro" ? (
+              <Input
+                className="mt-2"
+                value={form.tipoPeelingOtro || ""}
+                onChange={(e) => onUpdate({ tipoPeelingOtro: e.target.value })}
+                placeholder="Especificar tipo de peeling…"
+              />
+            ) : null}
+          </Field>
+          <Field label="Zona a tratar">
+            <Select
+              value={form.zonaTratar || ""}
+              onValueChange={(value) => onUpdate({ zonaTratar: value, ...(value === "Otra zona" ? {} : { zonaTratarOtro: "" }) })}
+            >
+              <SelectTrigger className="w-full"><SelectValue placeholder="Seleccionar zona" /></SelectTrigger>
+              <SelectContent>
+                {ZONAS_PEELING.map((opt) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {form.zonaTratar === "Otra zona" ? (
+              <Input
+                className="mt-2"
+                value={form.zonaTratarOtro || ""}
+                onChange={(e) => onUpdate({ zonaTratarOtro: e.target.value })}
+                placeholder="Especificar zona…"
+              />
+            ) : null}
+          </Field>
+          <Field label="Especialista" className="md:col-span-2">
+            <Input
+              value={form.nombreEspecialista || ""}
+              onChange={(e) => onUpdate({ nombreEspecialista: e.target.value })}
+              placeholder="Nombre de la especialista que realiza el peeling"
+            />
+          </Field>
+        </div>
+        <div className="mt-4 rounded-xl border bg-[color:var(--brand-bg-subtle)] p-3 text-sm leading-relaxed text-muted-foreground">
+          <p className="mb-1 font-semibold text-foreground">Propósito del procedimiento</p>
+          <ul className="list-disc space-y-1 pl-5">
+            {PEELING_PROPOSITO.map((line, idx) => <li key={idx}>{line}</li>)}
+          </ul>
+          <p className="mt-2">{PEELING_DESCRIPCION}</p>
+        </div>
+      </section>
+
+      {/* Contraindicaciones */}
+      {checklistSection(
+        "Contraindicaciones / condiciones a informar",
+        "contraindicacionesList",
+        CONTRAINDICACIONES_PEELING,
+        "El cliente declara presentar una o varias de las siguientes condiciones (marcar las que apliquen).",
+      )}
+      <section className="rounded-2xl border p-4">
+        <Field label="Observaciones médicas o advertencias adicionales">
+          <Textarea
+            value={form.observacionesMedicas || ""}
+            onChange={(e) => onUpdate({ observacionesMedicas: e.target.value })}
+            placeholder="Medicamentos, antecedentes, tratamientos recientes, recomendaciones del médico tratante…"
+            className="min-h-24"
+          />
+        </Field>
+      </section>
+
+      {/* Cuidados antes */}
+      {checklistSection(
+        "Cuidados antes del peeling",
+        "instruccionesAntes",
+        CUIDADOS_ANTES_PEELING,
+        "Marca las indicaciones explicadas al cliente antes de la sesión.",
+      )}
+
+      {/* Cuidados después */}
+      {checklistSection(
+        "Cuidados después del peeling",
+        "cuidadosDespuesList",
+        CUIDADOS_DESPUES_PEELING,
+        "Marca los cuidados posteriores explicados al cliente.",
+      )}
+
+      {/* Riesgos */}
+      {checklistSection(
+        "Riesgos, molestias y posibles complicaciones",
+        "riesgosAceptadosList",
+        RIESGOS_PEELING,
+      )}
+      <section className="rounded-2xl border p-4">
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 p-3 text-sm">
+          <Checkbox
+            checked={Boolean(form.aceptaRiesgos)}
+            onCheckedChange={(v) => onUpdate({ aceptaRiesgos: !!v })}
+            className="mt-0.5"
+          />
+          <span className="font-semibold leading-snug">El cliente comprende y acepta los riesgos descritos.</span>
+        </label>
+      </section>
+
+      {/* Declaración del cliente */}
+      <section className="rounded-2xl border p-4">
+        <h3 className="mb-3 font-heading text-lg font-black">Declaración del cliente</h3>
+        <ul className="mb-4 list-disc space-y-2 pl-5 text-sm leading-relaxed text-muted-foreground">
+          {DECLARACION_PEELING.map((line, idx) => <li key={idx}>{line}</li>)}
+        </ul>
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border-2 border-dashed border-emerald-400/30 bg-emerald-50/40 p-3 text-sm">
+          <Checkbox
+            checked={Boolean(form.aceptaProcedimiento)}
+            onCheckedChange={(v) => onUpdate({ aceptaProcedimiento: !!v })}
+            className="mt-0.5"
+          />
+          <span className="font-semibold leading-snug">
+            Requiero y autorizo a Cibao Spa Láser a realizar el procedimiento de peeling descrito.
+          </span>
+        </label>
+      </section>
+
+      {/* Políticas */}
+      {checklistSection("Políticas y procedimientos", "politicasAceptadas", POLITICAS_PEELING)}
+      <section className="rounded-2xl border p-4">
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 p-3 text-sm">
+          <Checkbox
+            checked={Boolean(form.aceptaPoliticas)}
+            onCheckedChange={(v) => onUpdate({ aceptaPoliticas: !!v })}
+            className="mt-0.5"
+          />
+          <span className="font-semibold leading-snug">El cliente acepta las políticas y procedimientos del centro.</span>
+        </label>
+      </section>
+
+      {/* Protección de datos */}
+      <section className="rounded-2xl border p-4">
+        <h3 className="mb-3 font-heading text-lg font-black">Protección de datos</h3>
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{PROTECCION_DATOS_PEELING}</p>
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 p-3 text-sm">
+          <Checkbox
+            checked={Boolean(form.aceptaProteccionDatos)}
+            onCheckedChange={(v) => onUpdate({ aceptaProteccionDatos: !!v })}
+            className="mt-0.5"
+          />
+          <span className="font-semibold leading-snug">El cliente acepta la política de protección de datos.</span>
         </label>
       </section>
 

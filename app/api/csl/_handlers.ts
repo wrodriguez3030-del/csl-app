@@ -56,6 +56,7 @@ import {
 import {
   sendApprovedSolicitudEmail,
   sendConsentMasajeEmail,
+  sendConsentPeelingEmail,
   sendConsentTatuajeCejaEmail,
   sendReporteEmail,
 } from "@/lib/server/csl-email"
@@ -2378,6 +2379,12 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const record = await getRecordCompleto("csl_consent_tatuajes_cejas", id)
       return record ? { ok: true, record } : { ok: false, error: "Consentimiento no encontrado" }
     }
+    case "getConsentPeelingCompleto": {
+      const id = textValue(params, "id") || textValue(params, "consentId")
+      if (!id) throw new Error("id obligatorio")
+      const record = await getRecordCompleto("csl_consent_peeling", id)
+      return record ? { ok: true, record } : { ok: false, error: "Consentimiento no encontrado" }
+    }
     case "getClientesCosmiatria":
       return { ok: true, records: await getRows("cosmiatria_clientes") }
     case "getFichasDermatologia":
@@ -2389,6 +2396,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true, records: await getRows("csl_consent_masajes", { columns: CONSENT_LIST_COLS }) }
     case "getConsentTatuajesCejas":
       return { ok: true, records: await getRows("csl_consent_tatuajes_cejas", { columns: CONSENT_LIST_COLS }) }
+    case "getConsentPeeling":
+      return { ok: true, records: await getRows("csl_consent_peeling", { columns: CONSENT_LIST_COLS }) }
     case "getCertificadosRegalo":
       return { ok: true, records: await getRows("certificados_regalo") }
     case "getRowsPaged": {
@@ -3057,7 +3066,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const finalRow = updRes.data as Row
 
       // 2) Reasignar registros relacionados (cliente_id en las 3 tablas hijas).
-      const counts = { fichas: 0, masajes: 0, tatuajes: 0, links: 0 }
+      const counts = { fichas: 0, masajes: 0, peeling: 0, tatuajes: 0, links: 0 }
       const reassign = async (table: string, key: keyof typeof counts) => {
         const res = await supabase
           .from(table)
@@ -3070,6 +3079,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       try {
         await reassign("csl_ficha_dermatologica", "fichas")
         await reassign("csl_consent_masajes", "masajes")
+        await reassign("csl_consent_peeling", "peeling")
         await reassign("csl_consent_tatuajes_cejas", "tatuajes")
       } catch (transferError) {
         return { ok: false, error: transferError instanceof Error ? transferError.message : "Error transfiriendo registros." }
@@ -3177,6 +3187,23 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "deleteConsentTatuajeCeja":
       await deleteRow("csl_consent_tatuajes_cejas", textValue(params, "id") || textValue(params, "consentId"))
       return { ok: true }
+    case "saveConsentPeeling": {
+      const payload = parsePayload(params)
+      const clienteId = await resolveClienteId(payload)
+      const cliente = await upsertClienteCosmiatriaPreserving(clienteCosmiatriaToDb({ ...payload, ClienteID: clienteId }))
+      const row = consentToDb({ ...payload, clienteId: cliente.cliente_id }, "peeling")
+      await upsertRow("csl_consent_peeling", row)
+      await syncFichasCliente(cliente)
+      // Notificación por email — patrón idéntico a masajes / tatuajes / ficha.
+      const email = await sendConsentPeelingEmail(row).catch((error: unknown) => ({
+        sent: false,
+        warning: error instanceof Error ? error.message : "No se pudo enviar el correo",
+      }))
+      return { ok: true, record: fromDb("csl_consent_peeling", row), email }
+    }
+    case "deleteConsentPeeling":
+      await deleteRow("csl_consent_peeling", textValue(params, "id") || textValue(params, "consentId"))
+      return { ok: true }
     case "getClienteHistorial": {
       // Devuelve TODO lo relacionado con un cliente: ficha + consents.
       // Útil para la vista "Historial" del módulo Clientes y para que el
@@ -3207,8 +3234,9 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         return (res.data || []) as Row[]
       }
 
-      const [consMas, consTat] = await Promise.all([
+      const [consMas, consPeel, consTat] = await Promise.all([
         safeQueryConsents("csl_consent_masajes"),
+        safeQueryConsents("csl_consent_peeling"),
         safeQueryConsents("csl_consent_tatuajes_cejas"),
       ])
 
@@ -3238,6 +3266,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         cliente: clienteRow ? fromDb("cosmiatria_clientes", clienteRow) : null,
         fichas: ((fichas.data || []) as Row[]).map((row) => fromDb("ficha_dermatologica", row)),
         consentMasajes: consMas.map((row) => fromDb("csl_consent_masajes", row)),
+        consentPeeling: consPeel.map((row) => fromDb("csl_consent_peeling", row)),
         consentTatuajesCejas: consTat.map((row) => fromDb("csl_consent_tatuajes_cejas", row)),
         sesionesPulse: sesionesPulse.map((row) => fromDb("sesiones_cliente", row)),
       }

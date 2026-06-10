@@ -44,7 +44,7 @@ import { displayPhone, displayDocumento } from "@/lib/formatters"
  * abrir el cliente vinculado y abrir el módulo original (atajos del sidebar).
  */
 
-type TipoReporte = "ficha" | "masajes" | "tatuajes"
+type TipoReporte = "ficha" | "masajes" | "peeling" | "tatuajes"
 
 interface ReporteUnificado {
   id: string
@@ -66,30 +66,35 @@ interface ReporteUnificado {
 const TIPO_LABEL: Record<TipoReporte, string> = {
   ficha: "Ficha Dermatológica",
   masajes: "Consentimiento Masajes",
+  peeling: "Consentimiento Peeling",
   tatuajes: "Consentimiento Tatuajes y Cejas",
 }
 
 const TIPO_ICON: Record<TipoReporte, React.ReactNode> = {
   ficha: <Sparkles className="h-3.5 w-3.5" />,
   masajes: <FileSignature className="h-3.5 w-3.5" />,
+  peeling: <FileSignature className="h-3.5 w-3.5" />,
   tatuajes: <FileSignature className="h-3.5 w-3.5" />,
 }
 
 const TIPO_BADGE_CLASS: Record<TipoReporte, string> = {
   ficha: "bg-cyan-50 text-cyan-700 border-cyan-200",
   masajes: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  peeling: "bg-amber-50 text-amber-700 border-amber-200",
   tatuajes: "bg-pink-50 text-pink-700 border-pink-200",
 }
 
 const TIPO_DELETE_ACTION: Record<TipoReporte, string> = {
   ficha: "deleteFichaDermatologia",
   masajes: "deleteConsentMasaje",
+  peeling: "deleteConsentPeeling",
   tatuajes: "deleteConsentTatuajeCeja",
 }
 
-const TIPO_ROUTE: Record<TipoReporte, "cosmiatria-ficha" | "consent-masajes" | "consent-tatuajes-cejas"> = {
+const TIPO_ROUTE: Record<TipoReporte, "cosmiatria-ficha" | "consent-masajes" | "consent-peeling" | "consent-tatuajes-cejas"> = {
   ficha: "cosmiatria-ficha",
   masajes: "consent-masajes",
+  peeling: "consent-peeling",
   tatuajes: "consent-tatuajes-cejas",
 }
 
@@ -134,7 +139,7 @@ function fichaToUnified(rows: Record<string, unknown>[]): ReporteUnificado[] {
   }))
 }
 
-function consentToUnified(rows: Record<string, unknown>[], tipo: "masajes" | "tatuajes"): ReporteUnificado[] {
+function consentToUnified(rows: Record<string, unknown>[], tipo: "masajes" | "peeling" | "tatuajes"): ReporteUnificado[] {
   return rows.map((row) => ({
     id: pickString(row.id, row.consent_id, row.consentId),
     tipo,
@@ -175,14 +180,16 @@ export function ReportesFirmadosPage() {
     if (!silent) setLoading(true)
     try {
       const normalized = normalizeApiUrl(apiUrl)
-      const [fichas, masajes, tatuajes] = await Promise.all([
+      const [fichas, masajes, peeling, tatuajes] = await Promise.all([
         apiJsonp(normalized, { action: "getFichasDermatologia" }),
         apiJsonp(normalized, { action: "getConsentMasajes" }),
+        apiJsonp(normalized, { action: "getConsentPeeling" }),
         apiJsonp(normalized, { action: "getConsentTatuajesCejas" }),
       ])
       const merged: ReporteUnificado[] = [
         ...fichaToUnified((fichas.records as Record<string, unknown>[]) || []),
         ...consentToUnified((masajes.records as Record<string, unknown>[]) || [], "masajes"),
+        ...consentToUnified((peeling.records as Record<string, unknown>[]) || [], "peeling"),
         ...consentToUnified((tatuajes.records as Record<string, unknown>[]) || [], "tatuajes"),
       ].sort((a, b) => `${b.fecha}${b.id}`.localeCompare(`${a.fecha}${a.id}`))
       setItems(merged)
@@ -240,6 +247,7 @@ export function ReportesFirmadosPage() {
       total: items.length,
       ficha: items.filter((r) => r.tipo === "ficha").length,
       masajes: items.filter((r) => r.tipo === "masajes").length,
+      peeling: items.filter((r) => r.tipo === "peeling").length,
       tatuajes: items.filter((r) => r.tipo === "tatuajes").length,
       firmados: items.filter((r) => r.firmaCliente).length,
     }),
@@ -325,10 +333,11 @@ export function ReportesFirmadosPage() {
       </Card>
 
       {/* KPIs */}
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
         <Kpi label="Documentos" value={totals.total} />
         <Kpi label="Fichas" value={totals.ficha} tone="cyan" />
         <Kpi label="Masajes" value={totals.masajes} tone="emerald" />
+        <Kpi label="Peeling" value={totals.peeling} tone="amber" />
         <Kpi label="Tatuajes/Cejas" value={totals.tatuajes} tone="pink" />
         <Kpi label="Firmados" value={totals.firmados} tone="success" />
       </div>
@@ -354,6 +363,7 @@ export function ReportesFirmadosPage() {
                 <SelectItem value="todos">Todos los tipos</SelectItem>
                 <SelectItem value="ficha">Ficha Dermatológica</SelectItem>
                 <SelectItem value="masajes">Consentimiento Masajes</SelectItem>
+                <SelectItem value="peeling">Consentimiento Peeling</SelectItem>
                 <SelectItem value="tatuajes">Tatuajes y Cejas</SelectItem>
               </SelectContent>
             </Select>
@@ -512,13 +522,14 @@ export function ReportesFirmadosPage() {
   )
 }
 
-function Kpi({ label, value, tone = "default" }: { label: string; value: number; tone?: "default" | "success" | "cyan" | "emerald" | "pink" }) {
+function Kpi({ label, value, tone = "default" }: { label: string; value: number; tone?: "default" | "success" | "cyan" | "emerald" | "pink" | "amber" }) {
   const colorClass = {
     default: "text-[color:var(--brand-primary-dark)]",
     success: "text-emerald-700",
     cyan: "text-cyan-700",
     emerald: "text-emerald-700",
     pink: "text-pink-700",
+    amber: "text-amber-700",
   }[tone]
   return (
     <Card className="csl-section-card">

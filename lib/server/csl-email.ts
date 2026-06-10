@@ -383,6 +383,106 @@ export async function sendConsentTatuajeCejaEmail(row: Row) {
   return { sent: true }
 }
 
+/**
+ * Resumen HTML del consentimiento de peeling. Mismo patrón que tatuajes:
+ * columnas dedicadas + listas que viajan en payload_json.
+ */
+function consentPeelingEmailHtml(row: Row) {
+  const payload = (row.payload_json && typeof row.payload_json === "object" ? row.payload_json : {}) as Row
+  const field = (label: string, value: unknown) =>
+    `<tr><td style="font-weight:700;border-top:1px solid #e5e7eb;padding:7px;width:200px;color:#0B3442">${emailEscape(label)}</td><td style="border-top:1px solid #e5e7eb;padding:7px;color:#102A3A">${emailEscape(value)}</td></tr>`
+  const checklist = (label: string, marked: unknown) => {
+    const list = Array.isArray(marked) ? (marked as unknown[]).map((v) => String(v)) : []
+    if (list.length === 0) return field(label, "—")
+    const items = list.map((item) => `<li style="margin:2px 0">${emailEscape(item)}</li>`).join("")
+    return `<tr><td style="font-weight:700;border-top:1px solid #e5e7eb;padding:7px;vertical-align:top;color:#0B3442">${emailEscape(label)}</td><td style="border-top:1px solid #e5e7eb;padding:7px;color:#102A3A"><ul style="margin:0;padding-left:18px">${items}</ul></td></tr>`
+  }
+
+  const tipo = String(payload.tipoPeeling || row.tipo_peeling || "")
+  const tipoOtro = String(payload.tipoPeelingOtro || "")
+  const tipoTexto = tipo === "Otro" && tipoOtro ? `Otro · ${tipoOtro}` : tipo
+  const zona = String(row.zona_tratar || payload.zonaTratar || "")
+  const zonaOtro = String(payload.zonaTratarOtro || "")
+  const zonaTexto = zona === "Otra zona" && zonaOtro ? `Otra · ${zonaOtro}` : zona
+
+  return `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#102A3A;background:#F7FAFC;padding:24px">
+    <div style="max-width:760px;margin:0 auto;background:#FFFFFF;border:1px solid #E1ECF2;border-radius:14px;overflow:hidden">
+      <div style="background:linear-gradient(90deg,#14B7B0,#22C7C9);padding:18px 22px;color:#FFFFFF">
+        <div style="font-size:11px;letter-spacing:0.18em;text-transform:uppercase;opacity:0.9">${emailEscape(resolveBusinessNameForEmail(row))}</div>
+        <h1 style="margin:4px 0 0 0;font-size:22px">Consentimiento Informado para Peeling</h1>
+      </div>
+      <div style="padding:18px 22px">
+        <table cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%">
+          ${field("ID", row.consent_id)}
+          ${field("Fecha", row.fecha)}
+          ${field("Sucursal", row.sucursal)}
+          ${field("Estado", row.estado)}
+          ${field("Cliente", row.cliente_nombre)}
+          ${field("Documento", row.documento)}
+          ${field("Teléfono", row.telefono)}
+          ${field("Correo", row.correo)}
+          ${field("Especialista", row.especialista_nombre)}
+          ${field("Tipo de peeling", tipoTexto)}
+          ${field("Zona a tratar", zonaTexto)}
+          ${field("Observaciones médicas", row.observaciones_medicas)}
+          ${field("Observaciones del especialista", row.observaciones)}
+          ${checklist("Contraindicaciones declaradas", payload.contraindicacionesList)}
+          ${checklist("Cuidados antes confirmados", payload.instruccionesAntes)}
+          ${checklist("Cuidados después confirmados", payload.cuidadosDespuesList)}
+          ${checklist("Riesgos aceptados", payload.riesgosAceptadosList)}
+          ${checklist("Políticas aceptadas", payload.politicasAceptadas)}
+          ${field("Acepta el procedimiento", payload.aceptaProcedimiento ? "Sí" : "No")}
+          ${field("Acepta los riesgos", payload.aceptaRiesgos ? "Sí" : "No")}
+          ${field("Acepta las políticas", payload.aceptaPoliticas ? "Sí" : "No")}
+          ${field("Acepta protección de datos", payload.aceptaProteccionDatos ? "Sí" : "No")}
+        </table>
+        ${row.firma_cliente ? `<div style="margin-top:18px"><div style="font-size:11px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:0.14em;margin-bottom:6px">Firma del cliente</div><img src="${emailEscape(row.firma_cliente)}" alt="Firma cliente" style="max-width:320px;border:1px solid #E1ECF2;background:white;padding:6px;border-radius:8px" /></div>` : ""}
+      </div>
+      <div style="padding:14px 22px;background:#F7FAFC;border-top:1px solid #E1ECF2;font-size:11px;color:#64748B">
+        Notificación generada automáticamente por el Sistema Integral CSL.
+      </div>
+    </div>
+  </body></html>`
+}
+
+export async function sendConsentPeelingEmail(row: Row) {
+  const apiKey = cleanEnv(process.env.RESEND_API_KEY)
+  if (!apiKey) return { sent: false, warning: "Falta RESEND_API_KEY" }
+
+  const internal = getNotifyEmails("fichas")
+  const clientEmail = String(row.correo || "").trim()
+  const candidates = [...internal, /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail) ? clientEmail : ""]
+  const seen = new Set<string>()
+  const recipients = candidates
+    .map((value) => value.trim())
+    .filter((value): value is string => {
+      if (!value) return false
+      const key = value.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  if (!recipients.length) return { sent: false, warning: "Sin destinatarios configurados" }
+
+  const businessName = resolveBusinessNameForEmail(row)
+  const from = cleanEnv(process.env.EMAIL_FROM) || `${businessName} <onboarding@resend.dev>`
+  const subject = `Consentimiento Peeling · ${String(row.cliente_nombre || row.consent_id || "").trim()}`.trim()
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from,
+      to: recipients,
+      subject,
+      html: consentPeelingEmailHtml(row),
+    }),
+  })
+
+  if (!response.ok) return { sent: false, warning: await resendWarning(response) }
+  return { sent: true }
+}
+
 export async function sendReporteEmail(row: Row) {
   const apiKey = cleanEnv(process.env.RESEND_API_KEY)
   if (!apiKey) return { sent: false, warning: "Falta RESEND_API_KEY" }
