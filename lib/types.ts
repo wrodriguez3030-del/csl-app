@@ -432,6 +432,9 @@ export type TabId =
   | "consent-peeling"
   | "consent-tatuajes-cejas"
   | "reportes-firmados"
+  // Permiso de acción (no es un tab navegable): habilita el botón
+  // "Sincronizar directamente con la API" en la pantalla de Clientes.
+  | "sincronizar-api"
   | "cliente-certificados"
   | "cliente-certificados-depicenter"
   | "cliente-certificados-imprimir"

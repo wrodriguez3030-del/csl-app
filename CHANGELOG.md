@@ -18,6 +18,23 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.1] - 2026-06-09
+
+### Added
+- Botón **"Sincronizar directamente con la API"** en la barra superior de
+  Clientes (junto a Descargar datos / Unificar / Nuevo cliente). Ejecuta el sync
+  manual contra AgendaPro (`POST /api/integrations/agendapro/sync-clients`):
+  deshabilita y muestra "Sincronizando…", trae nuevos, actualiza existentes,
+  dedup (agendapro_client_id / cédula / teléfono / email), refresca la tabla y
+  muestra resumen (nuevos / actualizados / duplicados / omitidos / errores). Si
+  el negocio no tiene credenciales, avisa "No hay credenciales AgendaPro
+  configuradas para este negocio."
+- Permiso de acción **"Sincronizar API"** (`sincronizar-api`): admin/superadmin
+  lo ven por defecto; un usuario normal solo si se le asigna. Multi-tenant —
+  el token AgendaPro nunca se expone al frontend (la llamada es server-side).
+
+---
+
 ## [0.2.0] - 2026-06-09
 
 ### Added

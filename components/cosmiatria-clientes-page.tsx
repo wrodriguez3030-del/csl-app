@@ -131,6 +131,14 @@ export function CosmiatriaClientesPage() {
   // sirve para que recepción jale clientes recién registrados en AgendaPro
   // sin depender de un admin. El backend hardcodea business=CSL.
   const canSyncAgendaPro = !!sessionUser
+  // Permiso "Sincronizar API": habilita el botón "Sincronizar directamente con
+  // la API" en la barra superior. Admin/Superadmin lo ven por defecto; un
+  // usuario normal solo si tiene el permiso `sincronizar-api` asignado.
+  const canSyncApi = !!sessionUser && (
+    sessionUser.isAdmin ||
+    sessionUser.isSuperadmin ||
+    (Array.isArray(sessionUser.menus) && sessionUser.menus.includes("sincronizar-api"))
+  )
   // Rol Usuario tiene acceso solo-lectura a Clientes (no crear, no editar,
   // no eliminar). Admin y Superadmin sí pueden mutar.
   const canEditClientes = canMerge
@@ -383,7 +391,7 @@ export function CosmiatriaClientesPage() {
       const pagesMsg = data.pagesRead ? `${data.pagesRead} ${data.pagesRead === 1 ? "página leída" : "páginas leídas"} · ` : ""
       const warnPag = data.diagnostic?.ignoredPagination ? " ⚠ AgendaPro ignoró ?page — devolvió siempre los mismos clientes." : ""
       showToast(
-        `Sync OK: ${pagesMsg}${data.totalAgendaPro || 0} leídos · ${data.created || 0} creados · ${data.updated || 0} actualizados · ${data.duplicates || 0} duplicados · ${data.errors || 0} errores.${warnPag}`,
+        `Sync OK: ${pagesMsg}${data.totalAgendaPro || 0} leídos · ${data.created || 0} nuevos · ${data.updated || 0} actualizados · ${data.duplicates || 0} duplicados · ${data.skipped || 0} omitidos · ${data.errors || 0} errores.${warnPag}`,
         data.diagnostic?.ignoredPagination ? "info" : "success",
       )
       await loadData()
@@ -400,6 +408,17 @@ export function CosmiatriaClientesPage() {
     setImportParsed(null)
     setImportResult(null)
     setImportOpen(true)
+  }
+
+  // Sincronización directa contra la API de AgendaPro desde la barra superior.
+  // Si el negocio no tiene credenciales configuradas, avisamos sin llamar.
+  const runApiSyncDirect = async () => {
+    if (agendaProSyncing) return
+    if (agendaProStatus && agendaProStatus.ready === false) {
+      showToast("No hay credenciales AgendaPro configuradas para este negocio.", "error")
+      return
+    }
+    await runAgendaProSync("")
   }
 
   const handleImportFile = async (file: File) => {
@@ -516,6 +535,14 @@ export function CosmiatriaClientesPage() {
           {canMerge ? (
             <Button variant="outline" onClick={() => setMergeOpen(true)}>
               <Users className="mr-2 h-4 w-4" />Unificar clientes
+            </Button>
+          ) : null}
+          {canSyncApi ? (
+            <Button variant="secondary" onClick={runApiSyncDirect} disabled={agendaProSyncing}>
+              {agendaProSyncing
+                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                : <RefreshCw className="mr-2 h-4 w-4" />}
+              {agendaProSyncing ? "Sincronizando…" : "Sincronizar directamente con la API"}
             </Button>
           ) : null}
           {canEditClientes ? (
