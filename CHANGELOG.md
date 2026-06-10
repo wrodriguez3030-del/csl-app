@@ -18,6 +18,20 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.2] - 2026-06-09
+
+### Fixed
+- Generar link público de **Consentimiento Peeling** fallaba con
+  `csl_public_form_links_form_type_check` violado: el CHECK de `form_type` no
+  incluía `consentimiento_peeling`. Migración aditiva
+  `202606090002_public_form_links_peeling.sql` recrea el constraint con todos
+  los valores existentes (`ficha_dermatologica`, `consentimiento_masajes`,
+  `consentimiento_tatuajes_cejas`, `solicitud_empleo`) + `consentimiento_peeling`.
+  `form_type` estándar usado en front y back: **`consentimiento_peeling`**.
+  Sin borrado de datos (solo DROP CONSTRAINT del check viejo).
+
+---
+
 ## [0.2.1] - 2026-06-09
 
 ### Added
