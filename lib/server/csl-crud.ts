@@ -193,7 +193,7 @@ export async function getRowsPaged(
   }
 }
 
-export async function upsertRow(entity: string, row: Row) {
+export async function upsertRow(entity: string, row: Row, opts?: { targetBusinessId?: string }) {
   const supabase = getSupabaseAdmin()
   const config = tableConfig(entity)
   if (!row[config.key]) throw new Error(`Falta clave ${config.key}`)
@@ -205,22 +205,31 @@ export async function upsertRow(entity: string, row: Row) {
     recordKey: String(row[config.key] ?? ""),
   })
 
-  // Inyectar business_id desde contexto. Si el caller pasó uno y NO es
-  // superadmin, debe coincidir con su tenant (anti-fuga).
+  // Inyectar business_id. Si el caller pasó uno y NO es superadmin, debe
+  // coincidir con su tenant (anti-fuga).
   const ctx = getBusinessContext()
-  const applyTenant = ctx && !TENANT_EXEMPT_TABLES.has(config.table)
+  const exempt = TENANT_EXEMPT_TABLES.has(config.table)
   const payload: Row = { ...row, updated_at: new Date().toISOString() }
   // Estampar el origen del cambio manual en la fila protegida.
   if (maintScope) {
     payload.change_source = maintScope.source
     payload.updated_by = maintScope.userId
   }
-  if (applyTenant) {
-    if (!ctx!.bypassTenantFilter && payload.business_id && payload.business_id !== ctx!.businessId) {
-      throw new Error(`Intento de escribir en business_id ajeno bloqueado`)
-    }
-    if (!payload.business_id) {
-      payload.business_id = ctx!.businessId
+  if (!exempt) {
+    if (opts?.targetBusinessId) {
+      // Tenant explícito (incluye superadmin en "Todos"): la fila pertenece a
+      // ESE negocio. Anti-fuga: un no-superadmin no puede apuntar a otro tenant.
+      if (ctx && !ctx.bypassTenantFilter && opts.targetBusinessId !== ctx.businessId) {
+        throw new Error(`Intento de escribir en business_id ajeno bloqueado`)
+      }
+      payload.business_id = opts.targetBusinessId
+    } else if (ctx) {
+      if (!ctx.bypassTenantFilter && payload.business_id && payload.business_id !== ctx.businessId) {
+        throw new Error(`Intento de escribir en business_id ajeno bloqueado`)
+      }
+      if (!payload.business_id) {
+        payload.business_id = ctx.businessId
+      }
     }
   }
 
@@ -263,7 +272,7 @@ export async function upsertRow(entity: string, row: Row) {
   throw new Error(`No se pudo guardar ${entity}: demasiadas columnas pendientes de migración`)
 }
 
-export async function deleteRow(entity: string, keyValue: string) {
+export async function deleteRow(entity: string, keyValue: string, opts?: { targetBusinessId?: string }) {
   const supabase = getSupabaseAdmin()
   const config = tableConfig(entity)
   if (!keyValue) throw new Error(`Falta clave para eliminar ${entity}`)
@@ -274,14 +283,18 @@ export async function deleteRow(entity: string, keyValue: string) {
     recordKey: keyValue,
   })
 
-  // Tenant verification: si hay contexto y no es superadmin, solo permite
-  // borrar rows que pertenecen al business del user.
+  // Tenant verification: un targetBusinessId explícito SIEMPRE scopea (evita
+  // que un superadmin en "Todos" borre la fila homónima de OTRO tenant cuando
+  // la clave colisiona). Si no, se usa el del contexto cuando no hay bypass.
   const ctx = getBusinessContext()
-  const applyTenant = ctx && !ctx.bypassTenantFilter && !TENANT_EXEMPT_TABLES.has(config.table)
+  const exempt = TENANT_EXEMPT_TABLES.has(config.table)
+  const targetBusinessId =
+    opts?.targetBusinessId ?? (ctx && !ctx.bypassTenantFilter ? ctx.businessId : undefined)
+  const applyTenant = !exempt && !!targetBusinessId
 
   let query = supabase.from(config.table).delete().eq(config.key, keyValue)
   if (applyTenant) {
-    query = query.eq("business_id", ctx!.businessId)
+    query = query.eq("business_id", targetBusinessId!)
   }
   const { error } = await query
   if (error) throw error
@@ -299,7 +312,12 @@ export async function deleteRow(entity: string, keyValue: string) {
   }
 }
 
-export async function updateRowFields(entity: string, keyValue: string, fields: Row) {
+export async function updateRowFields(
+  entity: string,
+  keyValue: string,
+  fields: Row,
+  opts?: { targetBusinessId?: string },
+) {
   const supabase = getSupabaseAdmin()
   const config = tableConfig(entity)
 
@@ -310,7 +328,16 @@ export async function updateRowFields(entity: string, keyValue: string, fields: 
   })
 
   const ctx = getBusinessContext()
-  const applyTenant = ctx && !ctx.bypassTenantFilter && !TENANT_EXEMPT_TABLES.has(config.table)
+  const exempt = TENANT_EXEMPT_TABLES.has(config.table)
+  // business_id objetivo:
+  //   - explícito (caller) → SIEMPRE se aplica, incluso si el superadmin está
+  //     en modo "Todos" (bypass). Es la única forma de escribir UNA sola fila
+  //     cuando un equipo_id colisiona entre tenants (ej. "1" existe en CSL y
+  //     Depicenter). Sin esto el UPDATE tocaría ambos tenants.
+  //   - si no, el del contexto cuando NO hay bypass (path normal scopeado).
+  const targetBusinessId =
+    opts?.targetBusinessId ?? (ctx && !ctx.bypassTenantFilter ? ctx.businessId : undefined)
+  const applyTenant = !exempt && !!targetBusinessId
 
   // Sanitizar: no permitir cambiar business_id desde fields (sería escape de tenant).
   const safeFields: Row = { ...fields }
@@ -330,7 +357,7 @@ export async function updateRowFields(entity: string, keyValue: string, fields: 
       .update({ ...safeFields, updated_at: new Date().toISOString() })
       .eq(config.key, keyValue)
     if (applyTenant) {
-      query = query.eq("business_id", ctx!.businessId)
+      query = query.eq("business_id", targetBusinessId!)
     }
     const { error } = await query
     if (!error) break
@@ -527,14 +554,24 @@ export async function getReporteCompleto(reportId: string): Promise<Row | null> 
 /** Carga registro COMPLETO por ID para tablas cuyo listado se devuelve
  *  con SELECT slim (sin firma_digital + payload_json + JSONs grandes).
  *  Genérico — mismo patrón que getReporteCompleto. */
-export async function getRecordCompleto(entity: string, idValue: string): Promise<Row | null> {
+export async function getRecordCompleto(
+  entity: string,
+  idValue: string,
+  opts?: { targetBusinessId?: string },
+): Promise<Row | null> {
   if (!idValue) return null
   const supabase = getSupabaseAdmin()
   const config = tableConfig(entity)
   const ctx = getBusinessContext()
-  const applyTenant = ctx && !ctx.bypassTenantFilter && !TENANT_EXEMPT_TABLES.has(config.table)
+  const exempt = TENANT_EXEMPT_TABLES.has(config.table)
+  // Mismo criterio que updateRowFields: un targetBusinessId explícito SIEMPRE
+  // scopea. Crítico cuando la clave colisiona entre tenants — sin esto
+  // `.maybeSingle()` revienta con "multiple rows" para un superadmin en "Todos".
+  const targetBusinessId =
+    opts?.targetBusinessId ?? (ctx && !ctx.bypassTenantFilter ? ctx.businessId : undefined)
+  const applyTenant = !exempt && !!targetBusinessId
   let query = supabase.from(config.table).select("*").eq(config.key, idValue)
-  if (applyTenant) query = query.eq("business_id", ctx!.businessId)
+  if (applyTenant) query = query.eq("business_id", targetBusinessId!)
   const { data, error } = await query.maybeSingle()
   if (error) throw error
   return data ? (fromDb(entity, data as Row)) : null

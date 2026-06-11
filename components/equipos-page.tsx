@@ -205,6 +205,10 @@ export function EquiposPage() {
       put("cabina", snapshot.Cabina)
       put("operadora", snapshot.Operadora)
       put("operadoraId", snapshot.OperadoraID)
+      // business_id del registro: imprescindible para que el backend scopee el
+      // UPDATE a UNA sola fila cuando el superadmin está en "Todos los negocios"
+      // (los equipo_id colisionan entre CSL y Depicenter).
+      if (snapshot.business_id) params.businessId = snapshot.business_id
     } else {
       params = {
         action: "saveEquipo",
@@ -231,7 +235,14 @@ export function EquiposPage() {
     // Si falla, mostramos el error y NO cerramos el modal (no se pierde el trabajo).
     try {
       const res = await apiJsonp(normalized, params) as { ok?: boolean; record?: Equipo; error?: string }
-      const saved = (res?.record as Equipo) || snapshot
+      // El backend SIEMPRE responde { ok }. Si no guardó (ej. error de tenant,
+      // RLS, columna), NO fingimos éxito: lanzamos el error real para mostrarlo
+      // y dejar el modal abierto (no se pierde el trabajo).
+      if (!res?.ok) {
+        throw new Error(res?.error || "No se pudo guardar el equipo")
+      }
+      // Verdad de la DB: usamos el registro que devuelve el backend (no optimista).
+      const saved = (res.record as Equipo) || snapshot
       setDb({
         ...db,
         equipos: exists
@@ -239,7 +250,7 @@ export function EquiposPage() {
           : [...db.equipos, saved],
       })
       setFormData(emptyEquipo); setEditingEquipo(null); setIsFormOpen(false)
-      showToast(exists ? "Equipo actualizado" : "Equipo creado", "success")
+      showToast(exists ? "Equipo actualizado correctamente" : "Equipo creado correctamente", "success")
     } catch (e) {
       showToast(e instanceof Error ? e.message : "No se pudo guardar el equipo", "error")
     }

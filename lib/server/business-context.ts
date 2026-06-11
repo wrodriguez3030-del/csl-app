@@ -89,6 +89,13 @@ const KNOWN_BUSINESS_IDS = new Set<string>([
   "03b96698-c5df-4b4b-84df-1160a7ad56b9", // depicenter
 ])
 
+/** True si `id` es un business_id real conocido. Lo usan los handlers de
+ *  mantenimiento para exigir un tenant específico cuando el superadmin está
+ *  en modo "Todos" (no se puede escribir sin saber a qué negocio pertenece). */
+export function isKnownBusinessId(id: string | null | undefined): boolean {
+  return !!id && KNOWN_BUSINESS_IDS.has(id.trim())
+}
+
 /**
  * Aplica el "business activo" que la UI envía en cada request.
  *

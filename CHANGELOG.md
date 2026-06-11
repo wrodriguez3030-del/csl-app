@@ -18,6 +18,34 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.5] - 2026-06-11
+
+### Fixed
+- **Edición manual de equipos no guardaba en modo superadmin "Todos los
+  negocios".** Causa raíz: en ese modo `bypassTenantFilter=true`, por lo que
+  `updateRowFields` y `getRecordCompleto` **quitaban el filtro `business_id`**.
+  Como `equipo_id` colisiona entre tenants (los ids `1`, `2`, `3` existen en CSL
+  y en Depicenter), `getRecordCompleto(...).maybeSingle()` reventaba con
+  *"multiple rows"* → el endpoint devolvía `{ ok:false }` y el frontend, que
+  **nunca chequeaba `res.ok`**, mostraba un "Equipo actualizado" falso y revertía
+  al recargar. Además el `UPDATE` sin tenant podía tocar ambos negocios.
+  - Backend: `updateRowFields` / `getRecordCompleto` / `upsertRow` / `deleteRow`
+    aceptan un `targetBusinessId` explícito que **siempre** scopea (aun bajo
+    bypass). Los handlers `saveEquipo` / `updateEquipoCampos` / `setEquipoEstado`
+    / `deleteEquipo` lo resuelven con `resolveMaintenanceTargetBusiness`: usan el
+    tenant del usuario si está scopeado, o exigen el `businessId` del registro
+    cuando el superadmin está en "Todos" (si falta → *"Selecciona un negocio
+    específico para editar equipos."*). Se elimina la contaminación cruzada
+    Cibao ↔ Depicenter.
+  - Frontend (`equipos-page.tsx`): envía el `business_id` del registro y ahora
+    **verifica `res.ok`** — si el backend no guardó, muestra el error real y
+    mantiene el modal abierto (no finge éxito). Mensaje de éxito:
+    *"Equipo actualizado correctamente"*.
+  - La edición manual sigue permitida (`manual_tecnico` / `manual_admin`) y
+    auditada en `csl_maintenance_audit`; el blindaje anti-automático intacto.
+
+---
+
 ## [0.2.4] - 2026-06-11
 
 ### Security
