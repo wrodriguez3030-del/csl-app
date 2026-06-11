@@ -34,11 +34,11 @@ export interface MaintenanceWriteScope {
 
 /**
  * Tablas de mantenimiento protegidas. Toda escritura a estas tablas exige un
- * scope manual aprobado en el contexto async.
+ * scope manual aprobado en el contexto async — incluyendo el historial
+ * (snapshots/fallas): "bloquea todo lo que alimente automático".
  *
  * NOTA: `csl_sucursales` NO se incluye (no es un menú de Mantenimiento y lo
- * usan otros módulos). `csl_equipo_snapshots` / `csl_equipo_fallas` tampoco:
- * son bitácoras append-only de historial, no registros editables por el técnico.
+ * usan otros módulos).
  */
 export const PROTECTED_MAINTENANCE_TABLES = new Set<string>([
   "csl_equipos",
@@ -47,6 +47,10 @@ export const PROTECTED_MAINTENANCE_TABLES = new Set<string>([
   "csl_tecnicos",
   "csl_inventario",
   "csl_piezas_poliza_lista",
+  // Historial de equipos: append-only, pero alimentado solo por procesos
+  // automáticos (import del Dashboard). Bloqueado por política.
+  "csl_equipo_snapshots",
+  "csl_equipo_fallas",
 ])
 
 const APPROVED_SOURCES = new Set<MaintenanceChangeSource>([

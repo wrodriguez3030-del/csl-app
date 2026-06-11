@@ -18,6 +18,21 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.4] - 2026-06-11
+
+### Security
+- **Bloqueo total de feeds automáticos a Mantenimiento.** Se extiende v0.2.3:
+  el endpoint `POST /api/integrations/mantenimiento/import-lecturas` (import del
+  Excel "Dashboard Mantenimiento") **ya no escribe nada** — antes seguía
+  alimentando el historial `csl_equipo_snapshots` / `csl_equipo_fallas`. Ahora
+  registra el intento como `auto_change_blocked` y responde **403** con el
+  mensaje estándar. Las tablas de historial se agregan al set protegido
+  (`PROTECTED_MAINTENANCE_TABLES`). La carga de equipos se hace solo
+  manualmente desde el módulo. Confirmado: ningún otro proceso (AgendaPro,
+  pulse, cron, webhook) alimenta tablas de mantenimiento.
+
+---
+
 ## [0.2.3] - 2026-06-11
 
 ### Security

@@ -1,37 +1,27 @@
 /**
  * POST /api/integrations/mantenimiento/import-lecturas
  *
- * Recibe filas parseadas del Excel "Dashboard Mantenimiento" y:
- *   1. Inserta snapshot histórico en csl_equipo_snapshots (append-only).
- *   2. Inserta fallas normalizadas en csl_equipo_fallas (append-only).
+ * BLOQUEADO POR POLÍTICA (estricto total — "bloquea todo lo que alimente
+ * automático"): este endpoint alimentaba mantenimiento de forma automática
+ * desde el Excel "Dashboard Mantenimiento" (antes actualizaba csl_equipos y
+ * registraba historial en csl_equipo_snapshots / csl_equipo_fallas).
  *
- * POLÍTICA MANTENIMIENTO (estricto total): la importación NO modifica
- * csl_equipos. Los campos del equipo (p_cabeza, serie, cabina, operadora,
- * fallas_recientes, etc.) solo los edita el técnico manualmente desde el
- * módulo de Mantenimiento. Este endpoint solo registra historial.
- *
- * CRÍTICO multi-tenant: todo insert usa (business_id, equipo_id).
+ * Los datos de mantenimiento SOLO se modifican manualmente por un técnico/admin
+ * autorizado dentro del módulo. Por eso este endpoint ya NO escribe nada:
+ * registra el intento como `auto_change_blocked` y responde con el mensaje
+ * estándar. La carga manual de equipos se hace desde el módulo Equipos.
  */
 
 import { NextResponse } from "next/server"
-import { requireAuthenticatedUser, getSupabaseAdmin } from "@/lib/server/supabase"
+import { requireAuthenticatedUser } from "@/lib/server/supabase"
 import { loadBusinessContext } from "@/lib/server/csl-crud"
 import { runWithBusinessContext } from "@/lib/server/business-context"
-import type { MantenimientoEquipoRow } from "@/lib/mantenimiento-dashboard-excel"
-import { toUpperFieldOrNull } from "@/lib/normalize-fields"
+import { recordMaintenanceAudit, MAINTENANCE_REJECTION_MESSAGE } from "@/lib/server/maintenance-guard"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 export const maxDuration = 60
 export const runtime = "nodejs"
-
-interface ImportBody {
-  rows: MantenimientoEquipoRow[]
-  periodoInicio?: string
-  periodoFin?: string
-  etiquetaPeriodo?: string
-  archivoNombre?: string
-}
 
 function json(data: Record<string, unknown>, status = 200) {
   return NextResponse.json(data, { status })
@@ -48,97 +38,26 @@ export async function POST(request: Request) {
   const ctx = await loadBusinessContext(user.id)
   if (!ctx) return json({ ok: false, error: "Contexto de negocio no encontrado." }, 403)
 
+  // Capturar nombre de archivo solo para enriquecer la auditoría (best-effort).
+  let archivoNombre: string | null = null
+  try {
+    const body = await request.json()
+    archivoNombre = typeof body?.archivoNombre === "string" ? body.archivoNombre : null
+  } catch { /* body vacío o no-JSON */ }
+
   return runWithBusinessContext(ctx, async () => {
-    let body: ImportBody = { rows: [] }
-    try { body = await request.json() } catch { /* empty body */ }
-
-    if (!body.rows || !Array.isArray(body.rows) || body.rows.length === 0) {
-      return json({ ok: false, error: "Se requiere un array de filas no vacío." }, 400)
-    }
-
-    const supabase = getSupabaseAdmin()
-    const businessId = ctx.businessId
-    const periodoInicio = body.periodoInicio || null
-    const periodoFin = body.periodoFin || null
-
-    // `updated` queda en 0 por política: la importación ya no escribe en equipos.
-    const updated = 0
-    let notFound = 0
-    const warnings: string[] = []
-    const errors: string[] = []
-
-    // 1. Cargar equipos existentes de este tenant en una sola query
-    const { data: existingEquipos, error: fetchError } = await supabase
-      .from("csl_equipos")
-      .select("equipo_id")
-      .eq("business_id", businessId)
-
-    if (fetchError) {
-      return json({ ok: false, error: `Error cargando equipos: ${fetchError.message}` }, 500)
-    }
-    const existingSet = new Set((existingEquipos || []).map(e => String(e.equipo_id)))
-
-    // 2. POLÍTICA MANTENIMIENTO (estricto total): la importación del Excel
-    // "Dashboard Mantenimiento" YA NO actualiza csl_equipos. Antes este paso
-    // sobrescribía p_cabeza/serie/cabina/operadora/fallas del equipo de forma
-    // automática, pisando datos del técnico. Esos campos solo se editan
-    // manualmente desde el módulo de Mantenimiento. Aquí solo clasificamos qué
-    // equipos existen para informar al usuario; NO se escribe en csl_equipos.
-    for (const row of body.rows) {
-      if (!row.equipoId) continue
-      if (!existingSet.has(row.equipoId)) {
-        notFound++
-        warnings.push(`Equipo ${row.equipoId} (${row.equipoRaw}) no encontrado en este tenant.`)
-      }
-    }
-
-    // 3. Insertar snapshots en bulk
-    const snapshotRows = body.rows
-      .filter(r => r.equipoId)
-      .map(row => ({
-        business_id:     businessId,
-        equipo_id:       row.equipoId,
-        serie:           row.serie || null,
-        sucursal:        row.sucursal || null,
-        cabina:          toUpperFieldOrNull(row.cabina),
-        operadora:       toUpperFieldOrNull(row.operadora),
-        lectura_final:   row.pulsos || null,
-        estado:          row.estadoExcel || null,
-        fallas:          row.fallasRaw || null,
-        periodo_inicio:  periodoInicio,
-        periodo_fin:     periodoFin,
-        etiqueta_periodo: body.etiquetaPeriodo || null,
-        archivo_nombre:  body.archivoNombre || null,
-        fuente:          "excel_dashboard_mantenimiento",
-      }))
-
-    let snapshotsSaved = 0
-    if (snapshotRows.length > 0) {
-      const { error: snapError } = await supabase
-        .from("csl_equipo_snapshots")
-        .insert(snapshotRows)
-      if (snapError) errors.push(`Snapshots: ${snapError.message}`)
-      else snapshotsSaved = snapshotRows.length
-    }
-
-    // 4. Insertar fallas en bulk
-    const fallaRows: Array<Record<string, unknown>> = []
-    for (const row of body.rows) {
-      if (!row.equipoId || !row.fallas?.length) continue
-      for (const codigo of row.fallas) {
-        fallaRows.push({ business_id: businessId, equipo_id: row.equipoId, codigo_falla: codigo, periodo_inicio: periodoInicio, fuente: "excel" })
-      }
-    }
-
-    let fallasSaved = 0
-    if (fallaRows.length > 0) {
-      const { error: fallaError } = await supabase
-        .from("csl_equipo_fallas")
-        .insert(fallaRows)
-      if (fallaError) errors.push(`Fallas: ${fallaError.message}`)
-      else fallasSaved = fallaRows.length
-    }
-
-    return json({ ok: errors.length === 0, updated, notFound, snapshotsSaved, fallasSaved, warnings, errors, totalRows: body.rows.length, policy: "equipos_no_auto_update" })
+    await recordMaintenanceAudit({
+      entity: "equipos",
+      table: "csl_equipo_snapshots",
+      op: "upsert",
+      changeSource: "auto_change_blocked",
+      userId: user.id,
+      userEmail: user.email,
+      details: { endpoint: "import-lecturas", archivoNombre },
+    })
+    return json(
+      { ok: false, blocked: true, policy: "maintenance_manual_only", error: MAINTENANCE_REJECTION_MESSAGE },
+      403,
+    )
   })
 }
