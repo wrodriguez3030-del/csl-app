@@ -18,6 +18,48 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.3] - 2026-06-11
+
+### Security
+- **Blindaje del módulo Mantenimiento (estricto total).** Las tablas de
+  mantenimiento (`csl_equipos`, `csl_reportes`, `csl_piezas`, `csl_tecnicos`,
+  `csl_inventario`, `csl_piezas_poliza_lista`) ahora **solo aceptan cambios
+  manuales** hechos por un técnico/admin autorizado dentro del módulo. Ningún
+  proceso automático (seed, sync API, import de Excel, PulseControl, AgendaPro,
+  recálculos, scripts de normalización/reparación, cambios de tenant/sucursal,
+  carga de maestros) puede crear/editar/reemplazar/borrar esas filas.
+  - Guard centralizado nuevo `lib/server/maintenance-guard.ts`: las escrituras
+    a tablas protegidas exigen un *scope* manual aprobado (`manual_tecnico` /
+    `manual_admin`) en el contexto async; sin él se **bloquean** con el mensaje
+    «Los datos de mantenimiento solo pueden ser modificados manualmente por un
+    técnico autorizado.» y se registra el intento como `auto_change_blocked`.
+  - La capa CRUD (`csl-crud.ts`) aplica el guard en `upsertRow` /
+    `updateRowFields` / `deleteRow` y estampa `change_source` + `updated_by` en
+    cada cambio manual.
+  - El dispatcher (`_handlers.ts`) marca como manuales solo las acciones del
+    módulo (saveEquipo/updateEquipoCampos/setEquipoEstado/deleteEquipo,
+    saveTecnico/setTecnicoEstado/deleteTecnico, savePieza/deletePieza,
+    saveReporte/updateReporteCampos/deleteReporte, addInventario/saveInventario/
+    updateInventario/deleteInventario, savePiezaPolizaLista/markPiezaPoliza*/
+    deletePiezaPolizaLista).
+
+### Changed
+- `savePulseReading` **ya no** sincroniza campos en `csl_equipos`
+  (p_cabeza/sucursal/cabina/operadora/serie/fallas). La lectura se guarda solo
+  en `csl_pulse_readings`; el equipo lo edita el técnico manualmente.
+- `POST /api/integrations/mantenimiento/import-lecturas` **ya no** actualiza
+  `csl_equipos`; conserva el historial append-only (`csl_equipo_snapshots`,
+  `csl_equipo_fallas`).
+
+### Added
+- Migración aditiva `202606110001_maintenance_change_guard.sql`: columnas de
+  auditoría (`change_source`, `created_by`, `updated_by`, `created_at`,
+  `updated_at`) en las tablas protegidas + tabla de bitácora
+  `csl_maintenance_audit` (cambios manuales e intentos `auto_change_blocked`).
+  Aplicada en db-cls (`db-cls.cibao-cloude.com`) el 2026-06-11.
+
+---
+
 ## [0.2.2] - 2026-06-09
 
 ### Fixed

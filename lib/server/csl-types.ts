@@ -39,6 +39,9 @@ export interface BusinessContext {
   businessSlug: string
   /** Permisos: si el usuario es superadmin (independiente del scoping). */
   isSuperadmin: boolean
+  /** Si el usuario es admin del negocio. Usado para distinguir manual_admin
+   *  de manual_tecnico en la auditoría del módulo de Mantenimiento. */
+  isAdmin: boolean
   /** Si true, el filtro por business_id se OMITE (acceso cross-tenant real).
    *  Solo es true para un superadmin que NO ha fijado un business activo
    *  (modo "Todos"). En cuanto la UI manda un business activo, esto pasa a

@@ -8,8 +8,20 @@
 import { getSupabaseAdmin } from "./supabase"
 import { fichaClientPatchFromCliente, fromDb, mergeClienteRows } from "./csl-transforms"
 import { getBusinessContext, scopeByBranch } from "./business-context"
+import {
+  assertMaintenanceWriteAllowed,
+  recordMaintenanceAudit,
+} from "./maintenance-guard"
 import { normalizeSucursal, sucursalAllowedForTenant } from "@/lib/normalize-pulse"
 import type { BusinessContext, Row } from "./csl-types"
+
+/**
+ * Columnas de auditoría que pueden NO existir aún si la migración
+ * 202606110001 está pendiente en la DB. Si un INSERT/UPDATE falla por una de
+ * estas, la quitamos del payload y reintentamos — el bloqueo de mantenimiento
+ * (lógica de app) sigue funcionando aunque la columna no exista todavía.
+ */
+const AUDIT_OPTIONAL_COLS = new Set<string>(["change_source", "created_by", "updated_by"])
 
 /**
  * Tablas exentas del filtro por business_id.
@@ -186,11 +198,23 @@ export async function upsertRow(entity: string, row: Row) {
   const config = tableConfig(entity)
   if (!row[config.key]) throw new Error(`Falta clave ${config.key}`)
 
+  // GUARDIA MANTENIMIENTO: si la tabla es protegida, exige un cambio manual
+  // autorizado en el contexto async; si no, bloquea + audita auto_change_blocked.
+  const maintScope = await assertMaintenanceWriteAllowed(config.table, "upsert", {
+    entity,
+    recordKey: String(row[config.key] ?? ""),
+  })
+
   // Inyectar business_id desde contexto. Si el caller pasó uno y NO es
   // superadmin, debe coincidir con su tenant (anti-fuga).
   const ctx = getBusinessContext()
   const applyTenant = ctx && !TENANT_EXEMPT_TABLES.has(config.table)
   const payload: Row = { ...row, updated_at: new Date().toISOString() }
+  // Estampar el origen del cambio manual en la fila protegida.
+  if (maintScope) {
+    payload.change_source = maintScope.source
+    payload.updated_by = maintScope.userId
+  }
   if (applyTenant) {
     if (!ctx!.bypassTenantFilter && payload.business_id && payload.business_id !== ctx!.businessId) {
       throw new Error(`Intento de escribir en business_id ajeno bloqueado`)
@@ -214,10 +238,27 @@ export async function upsertRow(entity: string, row: Row) {
       .from(config.table)
       .upsert(payload, { onConflict })
 
-    if (!error) return
+    if (!error) {
+      if (maintScope) {
+        await recordMaintenanceAudit({
+          entity,
+          table: config.table,
+          recordKey: String(payload[config.key] ?? ""),
+          op: "upsert",
+          changeSource: maintScope.source,
+          userId: maintScope.userId,
+          userEmail: maintScope.userEmail,
+        })
+      }
+      return
+    }
     const missingColumn = /'([^']+)' column/.exec(error.message || "")?.[1]
-    if (entity !== "ficha_dermatologica" || !missingColumn || !(missingColumn in payload)) throw error
-    delete payload[missingColumn]
+    // Tolerar columnas opcionales: las de auditoría (cualquier entidad) o
+    // cualquier columna en ficha_dermatologica (esquema histórico flexible).
+    const tolerable = !!missingColumn && missingColumn in payload &&
+      (AUDIT_OPTIONAL_COLS.has(missingColumn) || entity === "ficha_dermatologica")
+    if (!tolerable) throw error
+    delete payload[missingColumn as string]
   }
   throw new Error(`No se pudo guardar ${entity}: demasiadas columnas pendientes de migración`)
 }
@@ -226,6 +267,12 @@ export async function deleteRow(entity: string, keyValue: string) {
   const supabase = getSupabaseAdmin()
   const config = tableConfig(entity)
   if (!keyValue) throw new Error(`Falta clave para eliminar ${entity}`)
+
+  // GUARDIA MANTENIMIENTO: bloquea borrados automáticos sobre tablas protegidas.
+  const maintScope = await assertMaintenanceWriteAllowed(config.table, "delete", {
+    entity,
+    recordKey: keyValue,
+  })
 
   // Tenant verification: si hay contexto y no es superadmin, solo permite
   // borrar rows que pertenecen al business del user.
@@ -238,29 +285,73 @@ export async function deleteRow(entity: string, keyValue: string) {
   }
   const { error } = await query
   if (error) throw error
+
+  if (maintScope) {
+    await recordMaintenanceAudit({
+      entity,
+      table: config.table,
+      recordKey: keyValue,
+      op: "delete",
+      changeSource: maintScope.source,
+      userId: maintScope.userId,
+      userEmail: maintScope.userEmail,
+    })
+  }
 }
 
 export async function updateRowFields(entity: string, keyValue: string, fields: Row) {
   const supabase = getSupabaseAdmin()
   const config = tableConfig(entity)
+
+  // GUARDIA MANTENIMIENTO: bloquea updates automáticos sobre tablas protegidas.
+  const maintScope = await assertMaintenanceWriteAllowed(config.table, "update", {
+    entity,
+    recordKey: keyValue,
+  })
+
   const ctx = getBusinessContext()
   const applyTenant = ctx && !ctx.bypassTenantFilter && !TENANT_EXEMPT_TABLES.has(config.table)
 
   // Sanitizar: no permitir cambiar business_id desde fields (sería escape de tenant).
-  const safeFields = { ...fields }
+  const safeFields: Row = { ...fields }
   if (applyTenant && safeFields.business_id) {
     delete safeFields.business_id
   }
-
-  let query = supabase
-    .from(config.table)
-    .update({ ...safeFields, updated_at: new Date().toISOString() })
-    .eq(config.key, keyValue)
-  if (applyTenant) {
-    query = query.eq("business_id", ctx!.businessId)
+  // Estampar el origen del cambio manual en la fila protegida.
+  if (maintScope) {
+    safeFields.change_source = maintScope.source
+    safeFields.updated_by = maintScope.userId
   }
-  const { error } = await query
-  if (error) throw error
+
+  // Reintento tolerante a columnas de auditoría aún no migradas.
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    let query = supabase
+      .from(config.table)
+      .update({ ...safeFields, updated_at: new Date().toISOString() })
+      .eq(config.key, keyValue)
+    if (applyTenant) {
+      query = query.eq("business_id", ctx!.businessId)
+    }
+    const { error } = await query
+    if (!error) break
+    const missingColumn = /'([^']+)' column/.exec(error.message || "")?.[1]
+    const tolerable = !!missingColumn && missingColumn in safeFields && AUDIT_OPTIONAL_COLS.has(missingColumn)
+    if (!tolerable) throw error
+    delete safeFields[missingColumn as string]
+  }
+
+  if (maintScope) {
+    await recordMaintenanceAudit({
+      entity,
+      table: config.table,
+      recordKey: keyValue,
+      op: "update",
+      changeSource: maintScope.source,
+      userId: maintScope.userId,
+      userEmail: maintScope.userEmail,
+      details: { fields: Object.keys(fields) },
+    })
+  }
 }
 
 // ── Columnas LIGERAS para listados (excluyen campos pesados base64/json) ───
@@ -640,6 +731,7 @@ export async function loadBusinessContext(userId: string): Promise<BusinessConte
       businessId,
       businessSlug: String(businesses?.slug ?? "csl"),
       isSuperadmin,
+      isAdmin,
       // Por defecto el superadmin bypasea el filtro (ve todo). handleAction
       // lo apaga en cuanto la UI manda un business activo.
       bypassTenantFilter: isSuperadmin,

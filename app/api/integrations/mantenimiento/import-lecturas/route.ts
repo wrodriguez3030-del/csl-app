@@ -2,13 +2,15 @@
  * POST /api/integrations/mantenimiento/import-lecturas
  *
  * Recibe filas parseadas del Excel "Dashboard Mantenimiento" y:
- *   1. Actualiza csl_equipos (p_cabeza, serie, cabina, operadora,
- *      fallas_recientes, ultima_actualizacion_pulsos, ultima_semana_pulsos).
- *   2. Inserta snapshot en csl_equipo_snapshots.
- *   3. Inserta fallas normalizadas en csl_equipo_fallas.
+ *   1. Inserta snapshot histórico en csl_equipo_snapshots (append-only).
+ *   2. Inserta fallas normalizadas en csl_equipo_fallas (append-only).
  *
- * CRÍTICO multi-tenant: toda actualización usa (business_id, equipo_id).
- * Nunca equipo_id solo.
+ * POLÍTICA MANTENIMIENTO (estricto total): la importación NO modifica
+ * csl_equipos. Los campos del equipo (p_cabeza, serie, cabina, operadora,
+ * fallas_recientes, etc.) solo los edita el técnico manualmente desde el
+ * módulo de Mantenimiento. Este endpoint solo registra historial.
+ *
+ * CRÍTICO multi-tenant: todo insert usa (business_id, equipo_id).
  */
 
 import { NextResponse } from "next/server"
@@ -56,11 +58,11 @@ export async function POST(request: Request) {
 
     const supabase = getSupabaseAdmin()
     const businessId = ctx.businessId
-    const now = new Date().toISOString()
     const periodoInicio = body.periodoInicio || null
     const periodoFin = body.periodoFin || null
 
-    let updated = 0
+    // `updated` queda en 0 por política: la importación ya no escribe en equipos.
+    const updated = 0
     let notFound = 0
     const warnings: string[] = []
     const errors: string[] = []
@@ -76,32 +78,18 @@ export async function POST(request: Request) {
     }
     const existingSet = new Set((existingEquipos || []).map(e => String(e.equipo_id)))
 
-    // 2. Actualizar cada equipo existente
+    // 2. POLÍTICA MANTENIMIENTO (estricto total): la importación del Excel
+    // "Dashboard Mantenimiento" YA NO actualiza csl_equipos. Antes este paso
+    // sobrescribía p_cabeza/serie/cabina/operadora/fallas del equipo de forma
+    // automática, pisando datos del técnico. Esos campos solo se editan
+    // manualmente desde el módulo de Mantenimiento. Aquí solo clasificamos qué
+    // equipos existen para informar al usuario; NO se escribe en csl_equipos.
     for (const row of body.rows) {
       if (!row.equipoId) continue
-
       if (!existingSet.has(row.equipoId)) {
         notFound++
-        warnings.push(`Equipo ${row.equipoId} (${row.equipoRaw}) no encontrado en este tenant — no actualizado.`)
-        continue
+        warnings.push(`Equipo ${row.equipoId} (${row.equipoRaw}) no encontrado en este tenant.`)
       }
-
-      const fields: Record<string, unknown> = { ultima_actualizacion_pulsos: now }
-      if (row.pulsos > 0) fields.p_cabeza = row.pulsos
-      if (row.serie) fields.serie = row.serie
-      if (row.cabina) fields.cabina = toUpperFieldOrNull(row.cabina)
-      if (row.operadora) fields.operadora = toUpperFieldOrNull(row.operadora)
-      if (row.fallasRaw !== undefined) fields.fallas_recientes = row.fallasRaw || null
-      if (periodoFin) fields.ultima_semana_pulsos = periodoFin
-
-      const { error } = await supabase
-        .from("csl_equipos")
-        .update(fields)
-        .eq("business_id", businessId)
-        .eq("equipo_id", row.equipoId)
-
-      if (error) errors.push(`Equipo ${row.equipoId}: ${error.message}`)
-      else updated++
     }
 
     // 3. Insertar snapshots en bulk
@@ -151,6 +139,6 @@ export async function POST(request: Request) {
       else fallasSaved = fallaRows.length
     }
 
-    return json({ ok: errors.length === 0, updated, notFound, snapshotsSaved, fallasSaved, warnings, errors, totalRows: body.rows.length })
+    return json({ ok: errors.length === 0, updated, notFound, snapshotsSaved, fallasSaved, warnings, errors, totalRows: body.rows.length, policy: "equipos_no_auto_update" })
   })
 }

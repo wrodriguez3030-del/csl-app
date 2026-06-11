@@ -41,6 +41,29 @@ import {
   CONSENT_LIST_COLS,
 } from "@/lib/server/csl-crud"
 import { runWithBusinessContext, applyActiveBusiness, getBusinessContext, scopeByBranch } from "@/lib/server/business-context"
+import { runWithMaintenanceWriteScope, type MaintenanceChangeSource } from "@/lib/server/maintenance-guard"
+
+/**
+ * Acciones MANUALES del módulo de Mantenimiento. Solo estas pueden escribir en
+ * las tablas protegidas (csl_equipos, csl_reportes, csl_piezas, csl_tecnicos,
+ * csl_inventario, csl_piezas_poliza_lista). Cualquier otra escritura a esas
+ * tablas (PulseControl, import, sync, seed, scripts) queda bloqueada por el
+ * guard en csl-crud.ts.
+ */
+const MAINTENANCE_MANUAL_ACTIONS = new Set<string>([
+  // Equipos
+  "saveEquipo", "updateEquipoCampos", "setEquipoEstado", "deleteEquipo",
+  // Técnicos
+  "saveTecnico", "setTecnicoEstado", "deleteTecnico",
+  // Piezas (catálogo)
+  "savePieza", "deletePieza",
+  // Reportes
+  "saveReporte", "updateReporteCampos", "deleteReporte",
+  // Inventario
+  "addInventario", "updateInventario", "saveInventario", "deleteInventario",
+  // Lista piezas póliza
+  "savePiezaPolizaLista", "markPiezaPolizaRecibida", "markPiezaPolizaPendiente", "deletePiezaPolizaLista",
+])
 import { createHash, randomBytes } from "node:crypto"
 import { haversineMeters } from "@/lib/hr-geo"
 import { makeAgendaMatchKey, normalizeSucursal } from "@/lib/normalize-pulse"
@@ -387,6 +410,17 @@ export async function handleAction(params: ActionParams, user: ActionUser) {
   const effectiveContext = applyActiveBusiness(businessContext, activeBusinessId)
 
   return runWithBusinessContext(effectiveContext, async () => {
+    // Las acciones manuales del módulo de Mantenimiento declaran un origen de
+    // cambio autorizado (manual_tecnico|manual_admin). Solo bajo este scope la
+    // capa CRUD permite escribir en las tablas protegidas de mantenimiento.
+    if (MAINTENANCE_MANUAL_ACTIONS.has(action)) {
+      const source: MaintenanceChangeSource =
+        effectiveContext?.isAdmin || effectiveContext?.isSuperadmin ? "manual_admin" : "manual_tecnico"
+      return runWithMaintenanceWriteScope(
+        { source, userId: user.id, userEmail: user.email },
+        () => dispatchAction(action, params, user),
+      )
+    }
     return dispatchAction(action, params, user)
   })
 }
@@ -3586,24 +3620,12 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (error) throw error
       if (!data) throw new Error("La lectura no se actualizó (0 filas afectadas).")
 
-      // Sincronizar campos del equipo si la lectura final es válida
-      if (row.equipo_id && Number(row.lectura_final) > 0) {
-        const equipoUpdate: Record<string, unknown> = {
-          p_cabeza: row.lectura_final,
-          ultima_actualizacion_pulsos: new Date().toISOString(),
-        }
-        if (row.period_label) equipoUpdate.ultima_semana_pulsos = row.period_label
-        if (row.sucursal) equipoUpdate.sucursal = row.sucursal
-        if (row.cabina) equipoUpdate.cabina = row.cabina
-        if (row.operadora) equipoUpdate.operadora = row.operadora
-        if (row.serial) equipoUpdate.serie = row.serial
-        if (row.fallas) equipoUpdate.fallas_recientes = row.fallas
-        await sb
-          .from("csl_equipos")
-          .update(equipoUpdate)
-          .eq("equipo_id", row.equipo_id as string)
-          .eq("business_id", profile.business_id)
-      }
+      // POLÍTICA MANTENIMIENTO (estricto total): guardar una lectura de
+      // PulseControl YA NO modifica csl_equipos. Antes este bloque
+      // sobrescribía p_cabeza/sucursal/cabina/operadora/serie/fallas del
+      // equipo automáticamente — eso pisaba datos del técnico. La lectura se
+      // persiste en csl_pulse_readings; el equipo solo lo edita el técnico
+      // manualmente desde el módulo de Mantenimiento.
       return { ok: true, record: data }
     }
 
