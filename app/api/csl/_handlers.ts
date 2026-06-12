@@ -26,6 +26,7 @@ import {
   getProfile,
   getRecordCompleto,
   getReporteCompleto,
+  getRowBusinessIds,
   getRows,
   getRowsPaged,
   loadBusinessContext,
@@ -67,23 +68,33 @@ const MAINTENANCE_MANUAL_ACTIONS = new Set<string>([
 
 /**
  * Resuelve el business_id objetivo para una escritura de Mantenimiento sobre un
- * registro existente (equipos, reportes, etc.).
+ * registro identificado por `keyValue` en `entity`.
  *
- *   - Usuario scopeado (admin/técnico, o superadmin con un negocio activo):
- *     se usa SIEMPRE su propio tenant. No puede tocar otro.
- *   - Superadmin en modo "Todos los negocios" (bypassTenantFilter): NO hay un
- *     tenant implícito, así que la UI debe enviar el `businessId` del registro
- *     seleccionado. Si falta o es inválido se rechaza — sin esto el UPDATE
- *     tocaría ambos tenants (los equipo_id colisionan entre CSL y Depicenter).
+ *   1. Usuario scopeado (admin/técnico, o superadmin con un negocio activo):
+ *      se usa SIEMPRE su propio tenant. No puede tocar otro.
+ *   2. Superadmin en modo "Todos los negocios" (bypassTenantFilter): no hay
+ *      tenant implícito. Se prefiere el `businessId` que mande la UI; si no
+ *      llega (ej. frontend cacheado viejo), se DEDUCE del propio registro.
+ *      - 1 dueño  → ese.
+ *      - 0 dueños → no existe / hay que crearlo eligiendo negocio.
+ *      - >1 dueño → la clave colisiona entre negocios; exige elección.
+ *
+ * Sin esto un UPDATE en modo "Todos" tocaría ambos tenants (los equipo_id
+ * colisionan entre CSL y Depicenter).
  */
-function resolveMaintenanceTargetBusiness(params: ActionParams): string {
+async function resolveMaintenanceTargetBusiness(
+  params: ActionParams,
+  entity: string,
+  keyValue: string,
+): Promise<string> {
   const ctx = getBusinessContext()
   if (ctx && !ctx.bypassTenantFilter) return ctx.businessId
   const fromParams = textValue(params, "businessId")
-  if (!isKnownBusinessId(fromParams)) {
-    throw new Error("Selecciona un negocio específico para editar equipos.")
-  }
-  return fromParams
+  if (isKnownBusinessId(fromParams)) return fromParams
+  // Deducir del registro existente (defensa ante frontend que no manda businessId).
+  const owners = await getRowBusinessIds(entity, keyValue)
+  if (owners.length === 1) return owners[0]
+  throw new Error("Selecciona un negocio específico para editar equipos.")
 }
 import { createHash, randomBytes } from "node:crypto"
 import { haversineMeters } from "@/lib/hr-geo"
@@ -2749,23 +2760,28 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       // manualmente NO debe resetear estos timestamps.
       if (ultimaActRaw) row.ultima_actualizacion_pulsos = ultimaActRaw
       if (ultimaSemRaw) row.ultima_semana_pulsos = ultimaSemRaw
-      // Tenant del equipo: en "Todos" exige el businessId de la UI; scopeado
-      // usa el propio. Se estampa en la fila (PK compuesta business_id+equipo_id).
-      const targetBusinessId = resolveMaintenanceTargetBusiness(params)
+      // Tenant del equipo: en "Todos" usa el businessId de la UI o lo deduce si
+      // el equipo ya existe; scopeado usa el propio. Se estampa en la fila
+      // (PK compuesta business_id+equipo_id).
+      const targetBusinessId = await resolveMaintenanceTargetBusiness(params, "equipos", textValue(params, "equipoId"))
       row.business_id = targetBusinessId
       await upsertRow("equipos", row, { targetBusinessId })
       return { ok: true, record: fromDb("equipos", row) }
     }
-    case "deleteEquipo":
-      await deleteRow("equipos", textValue(params, "equipoId"), {
-        targetBusinessId: resolveMaintenanceTargetBusiness(params),
+    case "deleteEquipo": {
+      const equipoId = textValue(params, "equipoId")
+      await deleteRow("equipos", equipoId, {
+        targetBusinessId: await resolveMaintenanceTargetBusiness(params, "equipos", equipoId),
       })
       return { ok: true }
-    case "setEquipoEstado":
-      await updateRowFields("equipos", textValue(params, "equipoId"), { estado: textValue(params, "estado") }, {
-        targetBusinessId: resolveMaintenanceTargetBusiness(params),
+    }
+    case "setEquipoEstado": {
+      const equipoId = textValue(params, "equipoId")
+      await updateRowFields("equipos", equipoId, { estado: textValue(params, "estado") }, {
+        targetBusinessId: await resolveMaintenanceTargetBusiness(params, "equipos", equipoId),
       })
       return { ok: true }
+    }
     case "updateEquipoCampos": {
       // UPDATE parcial — solo aplica los campos enviados con valor no vacío.
       // A diferencia de saveEquipo (upsert full-row), preserva los campos
@@ -2774,9 +2790,9 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       //   - importador masivo de base (solo actualiza sucursal/cabina/op./serial)
       const equipoId = textValue(params, "equipoId")
       if (!equipoId) throw new Error("equipoId obligatorio para updateEquipoCampos")
-      // Tenant del registro: scopea el UPDATE a UNA sola fila. En "Todos" exige
-      // el businessId que manda la UI (el del equipo seleccionado).
-      const targetBusinessId = resolveMaintenanceTargetBusiness(params)
+      // Tenant del registro: scopea el UPDATE a UNA sola fila. En "Todos" usa el
+      // businessId que manda la UI o lo deduce del equipo (frontend viejo).
+      const targetBusinessId = await resolveMaintenanceTargetBusiness(params, "equipos", equipoId)
       const fields: Record<string, unknown> = {}
       // Mapeo camelCase del request → snake_case de la DB. Solo se incluye
       // un campo si vino con valor no vacío (= el caller quiere actualizarlo).

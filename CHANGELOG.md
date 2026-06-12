@@ -18,6 +18,22 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.6] - 2026-06-11
+
+### Fixed
+- **Edición de equipos: el backend ahora deduce el tenant aunque el frontend no
+  lo mande.** Refuerzo de v0.2.5: si un superadmin en "Todos los negocios" edita
+  un equipo y la petición no trae `businessId` (típicamente porque el navegador
+  sirve el bundle JS viejo cacheado), el backend resuelve el `business_id` desde
+  el propio registro (`getRowBusinessIds`): si el `equipo_id` pertenece a un solo
+  negocio, lo usa y guarda; si colisiona entre negocios (ids `1`/`2`/`3`), exige
+  elegir negocio con el mensaje estándar. `resolveMaintenanceTargetBusiness`
+  pasa a ser asíncrona y se aplica a `updateEquipoCampos` / `setEquipoEstado` /
+  `deleteEquipo` / `saveEquipo`. Esto cierra el caso en que, con el backend nuevo
+  pero un frontend cacheado, el update se rechazaba y la UI fingía éxito.
+
+---
+
 ## [0.2.5] - 2026-06-11
 
 ### Fixed

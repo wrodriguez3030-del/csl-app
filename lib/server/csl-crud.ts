@@ -554,6 +554,26 @@ export async function getReporteCompleto(reportId: string): Promise<Row | null> 
 /** Carga registro COMPLETO por ID para tablas cuyo listado se devuelve
  *  con SELECT slim (sin firma_digital + payload_json + JSONs grandes).
  *  Genérico — mismo patrón que getReporteCompleto. */
+/**
+ * Devuelve los business_id DISTINTOS que poseen una fila con la clave `idValue`
+ * (sin filtro de tenant — usa el admin client). Sirve para deducir a qué negocio
+ * pertenece un registro cuando un superadmin en modo "Todos" edita sin declarar
+ * el tenant. Si hay más de uno, la clave colisiona entre negocios y se necesita
+ * desambiguación explícita.
+ */
+export async function getRowBusinessIds(entity: string, idValue: string): Promise<string[]> {
+  if (!idValue) return []
+  const supabase = getSupabaseAdmin()
+  const config = tableConfig(entity)
+  const { data, error } = await supabase.from(config.table).select("business_id").eq(config.key, idValue)
+  if (error) throw error
+  const ids = new Set<string>()
+  for (const r of (data || []) as Row[]) {
+    if (r.business_id) ids.add(String(r.business_id))
+  }
+  return [...ids]
+}
+
 export async function getRecordCompleto(
   entity: string,
   idValue: string,
