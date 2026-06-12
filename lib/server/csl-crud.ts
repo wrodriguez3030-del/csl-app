@@ -24,6 +24,19 @@ import type { BusinessContext, Row } from "./csl-types"
 const AUDIT_OPTIONAL_COLS = new Set<string>(["change_source", "created_by", "updated_by"])
 
 /**
+ * Error CLARO cuando una escritura no afecta ninguna fila. Supabase NO lanza
+ * error si el filtro (clave + business_id) no calza con ninguna fila — devuelve
+ * éxito con 0 filas. Sin esta guardia el frontend mostraría "guardado
+ * correctamente" mientras la DB no cambió, y al recargar todo vuelve atrás.
+ */
+function noRowsError(entity: string): Error {
+  if (entity === "equipos") {
+    return new Error("No se actualizó ningún equipo. Verifica business_id, permisos o RLS.")
+  }
+  return new Error(`No se actualizó ningún registro de ${entity}. Verifica business_id, permisos o RLS.`)
+}
+
+/**
  * Tablas exentas del filtro por business_id.
  *
  * Dos razones para exentar:
@@ -243,11 +256,15 @@ export async function upsertRow(entity: string, row: Row, opts?: { targetBusines
   const onConflict = onConflictByEntity[entity] || config.key
 
   for (let attempt = 0; attempt < 40; attempt += 1) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from(config.table)
       .upsert(payload, { onConflict })
+      .select(config.key)
 
     if (!error) {
+      // Guardia anti-falso-éxito: un upsert que no devuelve fila no escribió nada
+      // (ej. RLS lo bloqueó silenciosamente). No lo reportamos como guardado.
+      if (!data || data.length === 0) throw noRowsError(entity)
       if (maintScope) {
         await recordMaintenanceAudit({
           entity,
@@ -296,8 +313,11 @@ export async function deleteRow(entity: string, keyValue: string, opts?: { targe
   if (applyTenant) {
     query = query.eq("business_id", targetBusinessId!)
   }
-  const { error } = await query
+  const { data, error } = await query.select(config.key)
   if (error) throw error
+  // En tablas protegidas de mantenimiento, un delete que no tocó ninguna fila
+  // significa clave/tenant equivocado: error claro en vez de falso éxito.
+  if (maintScope && (!data || data.length === 0)) throw noRowsError(entity)
 
   if (maintScope) {
     await recordMaintenanceAudit({
@@ -344,13 +364,31 @@ export async function updateRowFields(
   if (applyTenant && safeFields.business_id) {
     delete safeFields.business_id
   }
-  // Estampar el origen del cambio manual en la fila protegida.
+
+  // Captura del estado ANTERIOR de los campos editados — solo para la auditoría
+  // de mantenimiento (valor anterior → valor nuevo). Scopeado al mismo tenant
+  // para no leer la fila homónima del otro negocio.
+  let beforeRow: Row | null = null
   if (maintScope) {
+    const auditCols = Object.keys(fields).filter((k) => k !== "business_id")
+    if (auditCols.length) {
+      try {
+        let bq = supabase.from(config.table).select(auditCols.join(",")).eq(config.key, keyValue)
+        if (applyTenant) bq = bq.eq("business_id", targetBusinessId!)
+        const { data } = await bq.maybeSingle()
+        beforeRow = (data as Row | null) ?? null
+      } catch {
+        // Captura de "valor anterior" es best-effort: nunca debe romper el UPDATE.
+        beforeRow = null
+      }
+    }
+    // Estampar el origen del cambio manual en la fila protegida.
     safeFields.change_source = maintScope.source
     safeFields.updated_by = maintScope.userId
   }
 
   // Reintento tolerante a columnas de auditoría aún no migradas.
+  let affected = 0
   for (let attempt = 0; attempt < 4; attempt += 1) {
     let query = supabase
       .from(config.table)
@@ -359,15 +397,27 @@ export async function updateRowFields(
     if (applyTenant) {
       query = query.eq("business_id", targetBusinessId!)
     }
-    const { error } = await query
-    if (!error) break
+    // .select() devuelve las filas REALMENTE afectadas: la única forma de saber
+    // si el UPDATE calzó con alguna fila (Supabase no falla en 0 filas).
+    const { data, error } = await query.select(config.key)
+    if (!error) { affected = (data || []).length; break }
     const missingColumn = /'([^']+)' column/.exec(error.message || "")?.[1]
     const tolerable = !!missingColumn && missingColumn in safeFields && AUDIT_OPTIONAL_COLS.has(missingColumn)
     if (!tolerable) throw error
     delete safeFields[missingColumn as string]
   }
 
+  // Si no se tocó ninguna fila, el guardado NO ocurrió: error claro (no silencio).
+  if (affected === 0) throw noRowsError(entity)
+
   if (maintScope) {
+    const before: Record<string, unknown> = {}
+    const after: Record<string, unknown> = {}
+    for (const k of Object.keys(fields)) {
+      if (k === "business_id") continue
+      before[k] = beforeRow ? beforeRow[k] ?? null : null
+      after[k] = fields[k]
+    }
     await recordMaintenanceAudit({
       entity,
       table: config.table,
@@ -376,7 +426,7 @@ export async function updateRowFields(
       changeSource: maintScope.source,
       userId: maintScope.userId,
       userEmail: maintScope.userEmail,
-      details: { fields: Object.keys(fields) },
+      details: { fields: Object.keys(fields), before, after },
     })
   }
 }

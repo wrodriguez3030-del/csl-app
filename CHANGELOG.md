@@ -18,6 +18,49 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.7] - 2026-06-12
+
+### Fixed
+- **CAUSA RAÍZ del "guarda pero al recargar vuelve atrás" en Mantenimiento >
+  Equipos.** Las escrituras CRUD (`updateRowFields`, `upsertRow`, `deleteRow` en
+  `lib/server/csl-crud.ts`) **no verificaban filas afectadas**. Supabase NO lanza
+  error cuando el filtro `equipo_id` + `business_id` no calza con ninguna fila:
+  devuelve éxito con **0 filas**. El código incluso registraba una **auditoría de
+  éxito falsa** en ese caso. Resultado: la UI mostraba "Equipo actualizado
+  correctamente" mientras la DB no cambiaba, y al recargar todo volvía atrás.
+  Esto explica por qué los fixes previos (v0.2.5 / v0.2.6, sobre propagación de
+  `businessId`) no cerraban el caso: el fallo real era el éxito silencioso de 0
+  filas. Ahora todas las escrituras usan `.select()`, cuentan filas afectadas y,
+  si son 0, **lanzan un error claro** — *"No se actualizó ningún equipo. Verifica
+  business_id, permisos o RLS."* — visible como toast (no solo consola). La
+  auditoría solo se registra cuando realmente se escribió.
+- **No se podía LIMPIAR operadora/cabina a "Sin asignar".** El update parcial
+  descartaba los campos vacíos (para preservar lo no editado), así que operadora
+  y cabina nunca podían volver a vacío. Ahora los dropdowns viajan SIEMPRE con un
+  sentinel `__CLEAR__` que el handler traduce a `null`, sin afectar a guardarCuadre
+  ni al importador (que solo mandan los campos que sí editan).
+- **Superadmin editaba contra el tenant "activo" y no el del registro.**
+  `resolveMaintenanceTargetBusiness` ahora, para superadmin, apunta SIEMPRE al
+  `business_id` del propio registro (el que manda la UI o el deducido), evitando
+  tocar el homónimo del otro negocio (ids `1`/`2`/`3` colisionan entre CSL y
+  Depicenter). Para usuarios no superadmin, un `businessId` ajeno deja de
+  escribirse en silencio y produce error explícito ("No puedes editar equipos de
+  otro negocio") — Cibao no edita Depicenter ni viceversa.
+- **Toggle de Estado y eliminación ya no fingen éxito.** `handleToggleStatus` y
+  `handleDelete` pasaban por un `syncApi` fire-and-forget que tragaba errores.
+  Ahora esperan la respuesta del servidor, revierten el cambio optimista si el
+  backend lo rechaza y muestran el error real.
+
+### Changed
+- Tras guardar/cambiar estado/eliminar un equipo se invalida el dedup-cache de
+  lecturas (`invalidateReadCache("getAllData")`) para que el siguiente refresco
+  traiga la verdad de la DB y no un snapshot viejo de <30 s.
+- La auditoría de mantenimiento (`csl_maintenance_audit`) ahora guarda en
+  `details` el **valor anterior y el nuevo** de cada campo editado (antes solo los
+  nombres de los campos).
+
+---
+
 ## [0.2.6] - 2026-06-11
 
 ### Fixed

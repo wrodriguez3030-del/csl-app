@@ -88,13 +88,36 @@ async function resolveMaintenanceTargetBusiness(
   keyValue: string,
 ): Promise<string> {
   const ctx = getBusinessContext()
-  if (ctx && !ctx.bypassTenantFilter) return ctx.businessId
   const fromParams = textValue(params, "businessId")
+
+  // Superadmin: el negocio objetivo es el del REGISTRO que se edita (no un
+  // "activo" global), para nunca tocar el homónimo del otro tenant (los
+  // equipo_id 1/2/3 colisionan entre CSL y Depicenter). Se prefiere el
+  // business_id que manda la UI; si no llega, se deduce del propio registro.
+  if (ctx?.isSuperadmin) {
+    if (isKnownBusinessId(fromParams)) return fromParams
+    const owners = await getRowBusinessIds(entity, keyValue)
+    if (owners.length === 1) return owners[0]
+    if (owners.length === 0) return ctx.businessId // registro nuevo → su negocio
+    throw new Error("Selecciona un negocio específico para editar este equipo.")
+  }
+
+  // Usuario NO superadmin (admin/técnico): SIEMPRE su propio tenant. Si la UI
+  // manda OTRO business_id, es un intento cross-tenant → error explícito (jamás
+  // se escribe en silencio en el tenant equivocado). Cibao no edita Depicenter
+  // ni viceversa.
+  if (ctx) {
+    if (isKnownBusinessId(fromParams) && fromParams !== ctx.businessId) {
+      throw new Error("No puedes editar equipos de otro negocio.")
+    }
+    return ctx.businessId
+  }
+
+  // Sin contexto (scripts/migraciones): usar el de params o deducir.
   if (isKnownBusinessId(fromParams)) return fromParams
-  // Deducir del registro existente (defensa ante frontend que no manda businessId).
   const owners = await getRowBusinessIds(entity, keyValue)
   if (owners.length === 1) return owners[0]
-  throw new Error("Selecciona un negocio específico para editar equipos.")
+  throw new Error("Selecciona un negocio específico para editar este equipo.")
 }
 import { createHash, randomBytes } from "node:crypto"
 import { haversineMeters } from "@/lib/hr-geo"
@@ -2796,6 +2819,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const fields: Record<string, unknown> = {}
       // Mapeo camelCase del request → snake_case de la DB. Solo se incluye
       // un campo si vino con valor no vacío (= el caller quiere actualizarlo).
+      // Esto PRESERVA los campos no enviados (lo usa guardarCuadre, que solo
+      // manda pulsos, y el importador, que solo manda lo de la base maestra).
       const mapText: Array<[string, string]> = [
         ["sucursal", "sucursal"],
         ["empresa", "empresa"],
@@ -2805,15 +2830,27 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         ["numero", "numero"],
         ["estado", "estado"],
         ["observaciones", "observaciones"],
-        ["cabina", "cabina"],
-        ["operadora", "operadora"],
-        ["operadoraId", "operadora_id"],
         ["ultimaActualizacionPulsos", "ultima_actualizacion_pulsos"],
         ["ultimaSemanaPulsos", "ultima_semana_pulsos"],
       ]
       for (const [camel, snake] of mapText) {
         const v = params[camel]
         if (typeof v === "string" && v.length > 0) fields[snake] = v
+      }
+      // CABINA / OPERADORA / OPERADORA_ID son dropdowns: SÍ deben poder limpiarse
+      // a "Sin asignar". El frontend manda el sentinel "__CLEAR__" para vaciarlas
+      // (un string vacío se ignora para no romper a quien solo manda pulsos).
+      const CLEAR = "__CLEAR__"
+      const dropdownFields: Array<[string, string]> = [
+        ["cabina", "cabina"],
+        ["operadora", "operadora"],
+        ["operadoraId", "operadora_id"],
+      ]
+      for (const [camel, snake] of dropdownFields) {
+        const v = params[camel]
+        if (typeof v !== "string") continue
+        if (v === CLEAR) fields[snake] = null
+        else if (v.length > 0) fields[snake] = v
       }
       // CABINA / OPERADORA siempre en MAYÚSCULA (regla global del sistema).
       if (typeof fields.cabina === "string") fields.cabina = toUpperField(fields.cabina)

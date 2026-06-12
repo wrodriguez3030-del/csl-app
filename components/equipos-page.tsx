@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo, useRef } from "react"
-import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
+import { useAppStore, apiJsonp, normalizeApiUrl, invalidateReadCache } from "@/lib/store"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { SuperadminBusinessFilter, filterValueToBusinessId, type BusinessFilterValue } from "@/components/superadmin-business-filter"
 import { loadXLSX } from "@/lib/load-xlsx"
@@ -168,12 +168,6 @@ export function EquiposPage() {
     }
   }, [editingEquipo])
 
-  const syncApi = async (params: Record<string, string>) => {
-    const normalized = normalizeApiUrl(apiUrl)
-    if (!normalized) return
-    try { await apiJsonp(normalized, params) } catch (e) { console.warn("API:", e) }
-  }
-
   const handleSubmit = async () => {
     if (!formData.EquipoID) { showToast("El ID del equipo es obligatorio", "error"); return }
     const normalized = normalizeApiUrl(apiUrl)
@@ -202,9 +196,19 @@ export function EquiposPage() {
       put("maxCabeza", snapshot.Max_Cabeza)
       put("estado", snapshot.Estado)
       put("observaciones", snapshot.Observaciones)
-      put("cabina", snapshot.Cabina)
-      put("operadora", snapshot.Operadora)
-      put("operadoraId", snapshot.OperadoraID)
+      // Dropdowns (cabina/operadora/operadoraId): SIEMPRE se envían — con el
+      // sentinel "__CLEAR__" cuando quedan vacíos — para poder cambiarlos Y
+      // poder dejarlos en "Sin asignar". Si se enviaran solo cuando no-vacíos
+      // (como los demás campos), nunca se podrían limpiar y "volverían" al
+      // valor viejo tras guardar.
+      const CLEAR = "__CLEAR__"
+      const dropdownOrClear = (val: string | null | undefined) => {
+        const s = val == null ? "" : String(val).trim()
+        return s ? s : CLEAR
+      }
+      params.cabina = dropdownOrClear(snapshot.Cabina)
+      params.operadora = dropdownOrClear(snapshot.Operadora)
+      params.operadoraId = dropdownOrClear(snapshot.OperadoraID)
       // business_id del registro: imprescindible para que el backend scopee el
       // UPDATE a UNA sola fila cuando el superadmin está en "Todos los negocios"
       // (los equipo_id colisionan entre CSL y Depicenter).
@@ -228,6 +232,10 @@ export function EquiposPage() {
         operadora: snapshot.Operadora || "",
         operadoraId: snapshot.OperadoraID || "",
       }
+      // Si el superadmin tiene un negocio seleccionado en el filtro, el equipo
+      // nuevo se crea en ESE negocio (no en el del perfil). Para usuarios no
+      // superadmin el backend lo fuerza a su propio tenant igual.
+      if (adminFilterBizId) params.businessId = adminFilterBizId
     }
 
     // Guardado REAL: esperamos la respuesta y actualizamos el store con el
@@ -249,6 +257,10 @@ export function EquiposPage() {
           ? db.equipos.map(e => e.EquipoID === snapshot.EquipoID ? { ...e, ...saved } : e)
           : [...db.equipos, saved],
       })
+      // Invalidar el dedup-cache de lecturas: garantiza que el próximo
+      // getAllData traiga la verdad de la DB (no un snapshot viejo de <30s que
+      // haría "revertir" el cambio recién guardado).
+      invalidateReadCache("getAllData")
       setFormData(emptyEquipo); setEditingEquipo(null); setIsFormOpen(false)
       showToast(exists ? "Equipo actualizado correctamente" : "Equipo creado correctamente", "success")
     } catch (e) {
@@ -391,19 +403,44 @@ export function EquiposPage() {
     }
   }
 
-  const handleToggleStatus = (equipo: Equipo) => {
+  const handleToggleStatus = async (equipo: Equipo) => {
     const newStatus = equipo.Estado === "Activo" ? "Inactivo" : "Activo"
+    const normalized = normalizeApiUrl(apiUrl)
+    if (!normalized) { showToast("API no configurada", "error"); return }
+    // Optimista: refleja el cambio de inmediato.
     setDb({ ...db, equipos: db.equipos.map(e => e.EquipoID === equipo.EquipoID ? { ...e, Estado: newStatus as "Activo" | "Inactivo" } : e) })
-    showToast(`Equipo ${newStatus === "Activo" ? "activado" : "desactivado"}`, "success")
-    syncApi({ action: "setEquipoEstado", equipoId: equipo.EquipoID, estado: newStatus })
+    try {
+      const params: Record<string, string> = { action: "setEquipoEstado", equipoId: equipo.EquipoID, estado: newStatus }
+      if (equipo.business_id) params.businessId = equipo.business_id
+      const res = await apiJsonp(normalized, params) as { ok?: boolean; error?: string }
+      if (!res?.ok) throw new Error(res?.error || "No se pudo cambiar el estado")
+      invalidateReadCache("getAllData")
+      showToast(`Equipo ${newStatus === "Activo" ? "activado" : "desactivado"}`, "success")
+    } catch (e) {
+      // El server lo rechazó (0 filas / cross-tenant / RLS): revertir el optimista.
+      setDb({ ...db, equipos: db.equipos.map(x => x.EquipoID === equipo.EquipoID ? { ...x, Estado: equipo.Estado } : x) })
+      showToast(e instanceof Error ? e.message : "No se pudo cambiar el estado", "error")
+    }
   }
 
   const handleDelete = async () => {
     if (!deleteDialog) return
-    setDb({ ...db, equipos: db.equipos.filter(e => e.EquipoID !== deleteDialog.EquipoID) })
+    const target = deleteDialog
+    const normalized = normalizeApiUrl(apiUrl)
+    if (!normalized) { showToast("API no configurada", "error"); return }
     setDeleteDialog(null)
-    showToast("Equipo eliminado", "success")
-    syncApi({ action: "deleteEquipo", equipoId: deleteDialog.EquipoID })
+    try {
+      const params: Record<string, string> = { action: "deleteEquipo", equipoId: target.EquipoID }
+      if (target.business_id) params.businessId = target.business_id
+      const res = await apiJsonp(normalized, params) as { ok?: boolean; error?: string }
+      if (!res?.ok) throw new Error(res?.error || "No se pudo eliminar el equipo")
+      // Solo se quita del listado tras confirmar en la DB (no antes).
+      setDb({ ...db, equipos: db.equipos.filter(e => e.EquipoID !== target.EquipoID) })
+      invalidateReadCache("getAllData")
+      showToast("Equipo eliminado", "success")
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "No se pudo eliminar el equipo", "error")
+    }
   }
 
   const pct = (eq: Equipo) => {
