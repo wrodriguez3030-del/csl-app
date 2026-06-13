@@ -18,6 +18,24 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.8] — 2026-06-13
+
+### Fixed
+- **PulseControl: Depicenter no mostraba datos al cambiar de perfil.**
+  `applyActiveBusiness` actualizaba `businessId` y `bypassTenantFilter` al
+  seleccionar un business activo (superadmin), pero NO actualizaba
+  `businessSlug`, que se quedaba con el del superadmin (`csl`). La guardia
+  anti-fuga por sucursal de `getAllPulsosData` (`scopeTenantSuc` →
+  `sucursalAllowedForTenant(suc, ctx.businessSlug)`) descartaba entonces todas
+  las filas con sucursal `DEPICENTER` al compararlas contra la allow-list de
+  CSL, dejando Dashboard, Lecturas semanales, Sesiones, Auditoría/IA, Cuadre
+  semanal y operatorShots vacíos para Depicenter aunque el filtro por
+  `business_id` sí devolvía sus datos. Ahora `applyActiveBusiness` también fija
+  `businessSlug` vía mapa uuid→slug. Sin SQL ni cambios de datos. CSL no se ve
+  afectado.
+
+---
+
 ## [0.2.7] - 2026-06-12
 
 ### Fixed

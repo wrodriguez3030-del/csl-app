@@ -89,6 +89,19 @@ const KNOWN_BUSINESS_IDS = new Set<string>([
   "03b96698-c5df-4b4b-84df-1160a7ad56b9", // depicenter
 ])
 
+/**
+ * Mapa uuid → slug. Necesario porque `applyActiveBusiness` debe ajustar también
+ * el `businessSlug` del contexto al cambiar el business activo del superadmin.
+ * Si solo se cambia `businessId` y NO el slug, las guardias que filtran por
+ * sucursal según el tenant (`sucursalAllowedForTenant(suc, ctx.businessSlug)`)
+ * usarían el slug del business PROPIO del superadmin (csl) y descartarían todas
+ * las filas del business activo (p.ej. Depicenter), dejando la UI en blanco.
+ */
+const SLUG_BY_BUSINESS_ID: Record<string, string> = {
+  "66b0cf3e-4cd7-4cfb-a7cf-0674b77fc4e6": "csl",
+  "03b96698-c5df-4b4b-84df-1160a7ad56b9": "depicenter",
+}
+
 /** True si `id` es un business_id real conocido. Lo usan los handlers de
  *  mantenimiento para exigir un tenant específico cuando el superadmin está
  *  en modo "Todos" (no se puede escribir sin saber a qué negocio pertenece). */
@@ -118,5 +131,14 @@ export function applyActiveBusiness(
   if (!base.isSuperadmin) return base
   const id = (activeBusinessId ?? "").trim()
   if (!id || !KNOWN_BUSINESS_IDS.has(id)) return base // "Todos" o id inválido → sin scope
-  return { ...base, businessId: id, bypassTenantFilter: false }
+  // CRÍTICO: actualizar también businessSlug. Las guardias anti-fuga por
+  // sucursal (scopeTenantSuc → sucursalAllowedForTenant) filtran según el slug
+  // del tenant activo; si quedara el slug del superadmin (csl) se descartarían
+  // todas las filas del business seleccionado (p.ej. Depicenter).
+  return {
+    ...base,
+    businessId: id,
+    businessSlug: SLUG_BY_BUSINESS_ID[id] ?? base.businessSlug,
+    bypassTenantFilter: false,
+  }
 }
