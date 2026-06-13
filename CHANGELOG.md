@@ -18,6 +18,29 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.9] — 2026-06-13
+
+### Fixed
+- **PulseControl Auditoría/IA y Lecturas: operadora incorrecta por cabina.**
+  La operadora mostrada se tomaba directamente del Excel/lecturas importadas
+  (`r.operadora` / `lec.OperadoraID`), que puede traer nombres equivocados o
+  históricos (p.ej. Los Jardines Cabina 2 salía "MADELIN" cuando la oficial es
+  "LILIAN"). Ahora un resolver central (`lib/operadora-oficial.ts`,
+  `buildOperadoraResolver`) determina la operadora OFICIAL desde el catálogo de
+  equipos (`csl_equipos` → `db.equipos`, ya filtrado por `business_id` activo)
+  por (sucursal, equipo) y (sucursal, cabina) normalizados. El Excel queda solo
+  como fallback cuando no hay asignación oficial, con observación/tooltip
+  "Excel: X / Oficial: Y". Aplica a Auditoría/IA (pantalla + export Excel + PDF)
+  y a Lecturas semanales. El Cuadre semanal y Registro de servicios son
+  reconciliaciones por operadora de AgendaPro (no por cabina) y conservan su
+  agregación, ya canonizada vía `normalizeOperadora`. Aislamiento por empresa
+  garantizado: el catálogo solo contiene equipos del negocio activo. Sin SQL.
+
+### Added
+- `lib/operadora-oficial.ts` — resolver central de operadora oficial reutilizable.
+
+---
+
 ## [0.2.8] — 2026-06-13
 
 ### Fixed

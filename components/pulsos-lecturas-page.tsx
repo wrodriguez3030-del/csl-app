@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { AlertTriangle, ChevronDown, ChevronRight, FileSpreadsheet, Loader2, Plus, RotateCcw, Trash2, Upload } from "lucide-react"
 import { fmtN, parseN } from "@/lib/fmt"
+import { buildOperadoraResolver } from "@/lib/operadora-oficial"
 import {
   type PulseReading,
   calculateLecturaInicial,
@@ -124,6 +125,8 @@ export function PulsosLecturasPage() {
   const editingInputRef = useRef<HTMLInputElement>(null)
 
   const pulseReadings = useMemo(() => dbPulsos.pulseReadings ?? [], [dbPulsos.pulseReadings])
+  // Operadora oficial por cabina/equipo desde el catálogo de equipos.
+  const operadoraResolver = useMemo(() => buildOperadoraResolver(db.equipos), [db.equipos])
 
   // Detectar problemas de continuidad: cur.lectura_inicial ≠ prev.lectura_final
   const continuityIssues = useMemo(() => {
@@ -723,7 +726,18 @@ export function PulsosLecturasPage() {
                             <div>{r.sucursal}</div>
                             {r.cabina && <div className="text-muted-foreground">{r.cabina}</div>}
                           </TableCell>
-                          <TableCell className="text-xs">{r.operadora || "-"}</TableCell>
+                          <TableCell className="text-xs">
+                            {(() => {
+                              const res = operadoraResolver.resolve({ sucursal: r.sucursal, cabina: r.cabina, equipo: r.equipo_id, operadoraExcel: r.operadora })
+                              return (
+                                <span className="inline-flex items-center gap-1">
+                                  {res.operadora || "-"}
+                                  {res.mismatch && <span title={res.observacion} className="text-[10px] text-amber-500 cursor-help">⚠ Excel: {res.excel}</span>}
+                                  {res.source === "excel" && <span title={res.observacion} className="text-[10px] text-muted-foreground cursor-help">(archivo)</span>}
+                                </span>
+                              )
+                            })()}
+                          </TableCell>
                           <TableCell className="text-xs text-right font-mono">{fmtN(r.lectura_inicial)}</TableCell>
 
                           {/* Fin — inline editable */}

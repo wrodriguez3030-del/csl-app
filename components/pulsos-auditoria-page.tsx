@@ -21,6 +21,7 @@ import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { getBusinessBranding } from "@/lib/business"
 import { fmtN } from "@/lib/fmt"
 import { makeAgendaMatchKey, normalizeSucursal as canonicalSucursal, sucursalAllowedForTenant } from "@/lib/normalize-pulse"
+import { buildOperadoraResolver } from "@/lib/operadora-oficial"
 import { signedColorClass, signedColorClassDark, signedIcon, getAlerta as getAlertaShared, alertaBadge as alertaBadgeShared } from "@/lib/pulse-colors"
 
 function fmtSemanaRango(d: string) {
@@ -101,7 +102,11 @@ function auditManualSessionId(fecha: string, sucursal: string, equipo: string, o
 }
 
 export function PulsosAuditoriaPage() {
-  const { dbPulsos, setDbPulsos, apiUrl, showToast, setIsLoading, setLoadingMessage } = useAppStore()
+  const { db, dbPulsos, setDbPulsos, apiUrl, showToast, setIsLoading, setLoadingMessage } = useAppStore()
+  // Resolver de operadora OFICIAL (catálogo de equipos, ya filtrado por
+  // business_id activo en el backend). La operadora mostrada sale de aquí, no
+  // del Excel. Ver lib/operadora-oficial.ts.
+  const operadoraResolver = useMemo(() => buildOperadoraResolver(db.equipos), [db.equipos])
   const activeBusinessSlug = useAppStore((s) => s.activeBusinessSlug)
   const business = useCurrentBusiness()
   const [filterSuc, setFilterSuc] = useState("todas")
@@ -185,6 +190,9 @@ export function PulsosAuditoriaPage() {
 
       if (!map[desde]) map[desde] = []
       const cabinaRaw = String(r.cabina || "").trim()
+      const opRes = operadoraResolver.resolve({
+        sucursal: r.sucursal, cabina: cabinaRaw, equipo: r.equipo_id, operadoraExcel: r.operadora,
+      })
       map[desde].push({
         lecturaId: r.id,
         sourceTable: "pulse_readings",
@@ -193,7 +201,12 @@ export function PulsosAuditoriaPage() {
         sucursal: canonicalSucursal(r.sucursal) || r.sucursal || "",
         cabina: cabinaRaw.replace(/^Cabina\s*/i, ""),
         cabinaRaw,
-        operadora: r.operadora || "",
+        operadora: opRes.operadora,
+        operadoraExcel: opRes.excel,
+        operadoraOficial: opRes.oficial,
+        operadoraSource: opRes.source,
+        operadoraMismatch: opRes.mismatch,
+        operadoraObs: opRes.observacion,
         equipo: r.equipo_id || "",
         serial: r.serial || "",
         pulsosInicio: Number(r.lectura_inicial) || 0,
@@ -244,6 +257,9 @@ export function PulsosAuditoriaPage() {
       const pct = dispLaser > 0 ? Math.round((diferencia / dispLaser) * 100) : 0
 
       if (!map[desde]) map[desde] = []
+      const opResLec = operadoraResolver.resolve({
+        sucursal: lec.Sucursal, cabina: cabinaRaw, equipo: lec.EquipoID, operadoraExcel: lec.OperadoraID,
+      })
       map[desde].push({
         lecturaId: lec.LecturaID,
         sourceTable: "lecturas_semanales",
@@ -251,7 +267,12 @@ export function PulsosAuditoriaPage() {
         sucursal: lec.Sucursal || "",
         cabina: cabinaRaw.replace(/^Cabina\s*/i, ""),
         cabinaRaw,
-        operadora: lec.OperadoraID || "",
+        operadora: opResLec.operadora,
+        operadoraExcel: opResLec.excel,
+        operadoraOficial: opResLec.oficial,
+        operadoraSource: opResLec.source,
+        operadoraMismatch: opResLec.mismatch,
+        operadoraObs: opResLec.observacion,
         equipo: lec.EquipoID || "",
         serial: lec.Observaciones || "",
         pulsosInicio: Number(lec.LecturaInicial) || 0,
@@ -284,7 +305,7 @@ export function PulsosAuditoriaPage() {
           totDiferencia: totDispOp - totDispLaser,
         }
       })
-  }, [dbPulsos.pulseReadings, dbPulsos.lecturasSemanales, dbPulsos.sesionesCliente, activeBusinessSlug])
+  }, [dbPulsos.pulseReadings, dbPulsos.lecturasSemanales, dbPulsos.sesionesCliente, dbPulsos.operatorShots, activeBusinessSlug, operadoraResolver])
 
   const semanasDisponibles = semanas.map(s => s.fecha)
   const sucursales = Array.from(new Set([
@@ -691,7 +712,9 @@ export function PulsosAuditoriaPage() {
       LecturaFinal: editForm.pulsosFin,
       DiferenciaReal: Math.max(0, editForm.pulsosFin - editForm.pulsosInicio),
     }
-    const oldManualId = auditManualSessionId(editRow.fechaSemana, editRow.sucursal, editRow.equipo, editRow.operadora, editRow.cabinaRaw || editRow.cabina)
+    // El id manual histórico se generó con la operadora del Excel (OperadoraID),
+    // no con la oficial mostrada ahora; usar operadoraExcel para localizarlo.
+    const oldManualId = auditManualSessionId(editRow.fechaSemana, editRow.sucursal, editRow.equipo, editRow.operadoraExcel || editRow.operadora, editRow.cabinaRaw || editRow.cabina)
     const manualId = auditManualSessionId(editRow.fechaSemana, editRow.sucursal, editRow.equipo, editForm.operadora, editRow.cabinaRaw || editRow.cabina)
     const weekStart = String(editRow.fechaSemana || "").split("T")[0]
     const weekEndDate = new Date(weekStart + "T12:00:00")
@@ -902,7 +925,27 @@ export function PulsosAuditoriaPage() {
                     <td className="px-2 py-2 text-center"><SeqBadge n={i + 1} /></td>
                     <td className="px-3 py-2 text-xs font-semibold text-muted-foreground">{SUC_MAP[r.sucursal] || r.sucursal}</td>
                     <td className="px-2 py-2 text-center text-xs">{r.cabina}</td>
-                    <td className="px-3 py-2 font-semibold text-sm">{r.operadora}</td>
+                    <td className="px-3 py-2 font-semibold text-sm">
+                      <span className="inline-flex items-center gap-1">
+                        {r.operadora || "—"}
+                        {r.operadoraMismatch && (
+                          <span
+                            title={r.operadoraObs}
+                            className="text-[10px] font-normal text-amber-500 cursor-help"
+                          >
+                            ⚠ Excel: {r.operadoraExcel}
+                          </span>
+                        )}
+                        {r.operadoraSource === "excel" && (
+                          <span
+                            title={r.operadoraObs}
+                            className="text-[10px] font-normal text-muted-foreground cursor-help"
+                          >
+                            (archivo)
+                          </span>
+                        )}
+                      </span>
+                    </td>
                     <td className="px-2 py-2 text-center font-mono text-xs">{r.equipo}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs text-muted-foreground">{r.pulsosInicio > 0 ? fmtN(r.pulsosInicio) : "-"}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs text-muted-foreground">{r.pulsosFin > 0 ? fmtN(r.pulsosFin) : "-"}</td>
