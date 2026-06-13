@@ -30,17 +30,22 @@ https://db-cls.cibao-cloude.com        (Cloudflare Tunnel → VM supabase-01 :80
 - Migraciones / DDL: correr en el **SQL Editor del Studio self-hosted** (o vía
   psql a la VM por Tailscale). NO en el dashboard del Cloud.
 
-### 🔴 Regla de borrado de datos — CONFIRMAR DOS VECES
+### 🟢 Modo autónomo — ver `CLAUDE.md`
 
-Borrar datos en la base de datos es **delicado e irreversible**. Antes de ejecutar
-cualquier `DELETE`, `TRUNCATE`, `DROP` o un `UPDATE` masivo sin `WHERE` acotado:
+Este proyecto opera en **MODO AUTÓNOMO OBLIGATORIO**: Claude ejecuta el ciclo
+completo (diagnosticar → corregir → probar → lint → build → commit → push →
+deploy) **sin pedir autorización operativa**. Ver `CLAUDE.md`.
 
-1. Mostrar exactamente QUÉ se va a borrar (tabla, filas afectadas, condición).
-2. Pedir confirmación explícita al usuario.
-3. **Pedir una segunda confirmación** antes de ejecutar.
+### 🔴 Operaciones destructivas — NO ejecutar (usar alternativa segura)
 
-Nunca borrar sin esa doble confirmación. Lecturas y escrituras normales (insert /
-update acotado) no requieren este paso.
+Las escrituras normales (insert / update con filtro acotado, migraciones
+seguras) se ejecutan directo, sin pedir permiso. Lo que está **prohibido** es la
+operación destructiva masiva: `DROP`, `TRUNCATE`, `DELETE` masivo o `UPDATE`
+masivo sin `WHERE` acotado, y cambiar `business_id` masivamente sin respaldo.
+
+Ante algo que parezca destructivo, **no preguntar**: usar una alternativa segura
+(backup previo, soft delete, marcar inactivo, tabla de auditoría, `update`
+puntual con filtro específico, migración reversible).
 
 ## Para correr localmente
 

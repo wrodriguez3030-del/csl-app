@@ -20,10 +20,16 @@ git push gitea feat/nombre-corto           # y a origin (GitHub) si aplica
 # Abrir Pull Request en Gitea hacia main
 ```
 
-> **Deploy:** producción se auto-promueve con `vercel --prod --yes` tras push aprobado.
+> **Modo autónomo:** este proyecto opera en MODO AUTÓNOMO OBLIGATORIO — el ciclo
+> completo (lint → build → commit → push → deploy) se ejecuta sin pedir
+> autorización. Ver `CLAUDE.md`.
+> **Deploy:** producción se auto-promueve con `vercel --prod --yes` tras cada push.
 > **Multi-tenant:** nunca mezclar datos entre tenants; los filtros por `business_id`
-> (AsyncLocalStorage + RLS) son críticos. **Doble confirmación `CONFIRMO BORRAR`**
-> para DELETE/DROP/borrado masivo/cambios salariales reales/mover datos entre tenants.
+> (AsyncLocalStorage + RLS) son críticos. **Prohibido** (no preguntar, usar
+> alternativa segura): DELETE/DROP/TRUNCATE/borrado masivo, `update` masivo de
+> `business_id` sin respaldo, y cambios salariales reales destructivos. El `update`
+> puntual con filtro específico (p.ej. corregir filas mal etiquetadas entre tenants)
+> sí se ejecuta directo.
 
 ## 2. SemVer (`MAJOR.MINOR.PATCH`)
 - **PATCH** (`0.1.0→0.1.1`): bugfix. · **MINOR** (`→0.2.0`): feature compatible. · **MAJOR** (`→1.0.0`): rompe.
