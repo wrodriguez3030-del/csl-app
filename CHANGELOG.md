@@ -18,6 +18,29 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.10] — 2026-06-13
+
+### Fixed
+- **PulseControl: DISP OPERADOR de Auditoría/IA no "cuadraba" con Registro de
+  servicios por desfase de semana.** Registro de servicios (`pulsos-sesiones`)
+  agrupaba por semana DOMINGO-sábado (`weekStartIso` con `- getDay()`),
+  mientras Auditoría/IA usaba la semana operativa LUNES-sábado
+  (`lib/operational-week.ts`). Mismas sesiones, distinto bucket/rótulo (p.ej.
+  "31-may al 06-jun" vs "01-jun al 07-jun") → parecía que no cuadraba aunque la
+  suma era idéntica. Ahora ambos módulos usan UNA sola función compartida
+  (`operationalWeekStart` / `operationalWeekRangeLabel`) → misma semana y mismo
+  rótulo lunes-sábado. Sin movimiento de datos (no hay sesiones en domingo en
+  ningún tenant). El rótulo de Auditoría pasa de lunes+6 (domingo) al rango real
+  lunes-sábado. `findWeeklyAssignment` de Registro de servicios ahora casa con
+  el `FechaSemana` (lunes) de las lecturas. Aplica a CSL y Depicenter por igual;
+  verificado que Cibao no cambia de cifras.
+
+### Added
+- `operationalWeekStart` y `operationalWeekRangeLabel` en `lib/operational-week.ts`
+  — fuente única de inicio/rótulo de semana operativa para PulseControl.
+
+---
+
 ## [0.2.9] — 2026-06-13
 
 ### Fixed

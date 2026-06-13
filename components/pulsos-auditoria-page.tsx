@@ -22,20 +22,17 @@ import { getBusinessBranding } from "@/lib/business"
 import { fmtN } from "@/lib/fmt"
 import { makeAgendaMatchKey, normalizeSucursal as canonicalSucursal, sucursalAllowedForTenant } from "@/lib/normalize-pulse"
 import { buildOperadoraResolver } from "@/lib/operadora-oficial"
+import { operationalWeekRangeLabel } from "@/lib/operational-week"
 import { signedColorClass, signedColorClassDark, signedIcon, getAlerta as getAlertaShared, alertaBadge as alertaBadgeShared } from "@/lib/pulse-colors"
 
+// Rótulo de semana COMPARTIDO con Registro de servicios: semana operativa
+// lunes-sábado (lib/operational-week.ts). Antes este módulo mostraba lunes+6
+// (domingo), desfasado un día respecto al rango real lunes-sábado.
 function fmtSemanaRango(d: string) {
   if (!d) return "-"
-  try {
-    const clean = String(d).split("T")[0].trim()
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) return d
-    const start = new Date(clean + "T12:00:00")
-    const end = new Date(start)
-    end.setDate(end.getDate() + 6)
-    const startText = start.toLocaleDateString("es-DO", { day: "2-digit", month: "short" })
-    const endText = end.toLocaleDateString("es-DO", { day: "2-digit", month: "short", year: "numeric" })
-    return `Del ${startText} al ${endText}`
-  } catch { return d }
+  const clean = String(d).split("T")[0].trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) return d
+  return operationalWeekRangeLabel(clean)
 }
 
 // getAlerta / alertaBadge re-exportadas desde lib/pulse-colors para

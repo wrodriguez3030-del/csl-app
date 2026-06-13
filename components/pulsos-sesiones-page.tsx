@@ -25,6 +25,7 @@ import {
   type ParsedDisparoRow,
   type ParseAgendaProResult,
 } from "@/lib/agendapro-parser"
+import { operationalWeekStart, operationalWeekRangeLabel } from "@/lib/operational-week"
 
 const today = new Date().toISOString().split("T")[0]
 
@@ -41,24 +42,16 @@ const AREAS = [
   "Bozo","Patillas","Cuello","Manos / Dedos","Pies / Dedos","Línea Alba","Glúteos",
 ]
 
+// Rótulo y agrupación de semana COMPARTIDOS con Auditoría/IA: semana operativa
+// lunes-sábado (lib/operational-week.ts). Antes este módulo usaba semana
+// domingo-sábado (`- getDay()`), lo que desfasaba un día respecto a Auditoría
+// (p.ej. "31-may al 06-jun" vs "01-jun al 07-jun") y no cuadraba DISP OPERADOR.
 function fmtSemana(d: string) {
-  try {
-    const inicio = new Date(weekStartIso(d) + "T12:00:00")
-    const fin = new Date(inicio)
-    fin.setDate(inicio.getDate() + 6)
-    const diaInicio = inicio.toLocaleDateString("es-DO", { day: "2-digit", month: "short" })
-    const diaFin = fin.toLocaleDateString("es-DO", { day: "2-digit", month: "short", year: "numeric" })
-    return `Del ${diaInicio} al ${diaFin}`
-  } catch {
-    return d
-  }
+  return operationalWeekRangeLabel(d)
 }
 
 function weekStartIso(d: string) {
-  const fecha = new Date(String(d || "").slice(0, 10) + "T12:00:00")
-  if (Number.isNaN(fecha.getTime())) return String(d || "")
-  fecha.setDate(fecha.getDate() - fecha.getDay())
-  return fecha.toISOString().slice(0, 10)
+  return operationalWeekStart(d)
 }
 
 function normalizeText(value: string) {

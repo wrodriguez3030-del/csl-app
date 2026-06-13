@@ -122,6 +122,32 @@ export function listOperationalWeeksInRange(
   return out
 }
 
+/**
+ * Inicio (lunes ISO) de la semana operativa que contiene la fecha. Función
+ * COMPARTIDA para que Auditoría/IA y Registro de servicios agrupen por la misma
+ * semana (lunes-sábado). Si la fecha es inválida, devuelve el string original.
+ */
+export function operationalWeekStart(input: string | Date): string {
+  const w = getOperationalWeek(input)
+  if (w) return w.period_start
+  return typeof input === "string" ? input : ""
+}
+
+/**
+ * Etiqueta "Del DD mmm al DD mmm de YYYY" de la semana operativa (lunes-sábado)
+ * que contiene la fecha. Fuente ÚNICA del rótulo de semana en PulseControl, para
+ * que Auditoría/IA y Registro de servicios muestren EXACTAMENTE el mismo rango.
+ */
+export function operationalWeekRangeLabel(input: string | Date): string {
+  const w = getOperationalWeek(input)
+  if (!w) return typeof input === "string" ? input : ""
+  const s = toDate(w.period_start)
+  const e = toDate(w.period_end)
+  const fs = `${s.getDate().toString().padStart(2, "0")} ${MONTHS_ES_SHORT[s.getMonth()]}`
+  const fe = `${e.getDate().toString().padStart(2, "0")} ${MONTHS_ES_SHORT[e.getMonth()]} de ${e.getFullYear()}`
+  return `Del ${fs} al ${fe}`
+}
+
 /** Helper: formato bonito de ISO date para UI. */
 export function formatIsoDateEs(iso: string): string {
   const d = toDate(iso)
