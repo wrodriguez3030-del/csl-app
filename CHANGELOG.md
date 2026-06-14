@@ -18,6 +18,22 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.14] — 2026-06-14
+
+### Fixed
+- **Causa raíz de la contaminación cross-tenant semanal de Depicenter.** Los
+  handlers de Cuadre/AgendaPro (`saveOperatorShots`, `recalculateDispOperador`,
+  `deleteOperatorShot`, `deleteOperatorShotsByPeriod`) guardaban/leían con el
+  `business_id` del **perfil del usuario** (CSL para el superadmin) en vez del
+  **negocio activo**. Por eso cada semana los `csl_operator_shots` y el
+  `disp_operador` de Depicenter terminaban bajo CSL (lo que se venía limpiando a
+  mano). Ahora usan `effectiveBusinessId()` — guardan/recalculan SOLO en el
+  negocio activo. Igual que el guardado masivo de sesiones, que ya era correcto.
+  Nota: los handlers de RR.HH. (contratos/documentos) comparten el mismo patrón
+  y deberían migrarse a `effectiveBusinessId()` en una corrección dedicada.
+
+---
+
 ## [0.2.13] — 2026-06-13
 
 ### Fixed

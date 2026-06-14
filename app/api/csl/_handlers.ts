@@ -3794,9 +3794,11 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const id = textValue(params, "id")
       if (!id) throw new Error("id obligatorio")
       const sb = getSupabaseAdmin()
-      const { data: profile } = await sb
-        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
-      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      // business_id ACTIVO (no el del perfil del usuario): el superadmin opera
+      // sobre el negocio seleccionado en la UI.
+      const bizId = effectiveBusinessId()
+      if (!bizId) throw new Error("business_id no encontrado")
+      const profile = { business_id: bizId }
       const { error } = await sb
         .from("csl_operator_shots")
         .delete()
@@ -3816,9 +3818,9 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const periodEnd = textValue(params, "periodEnd")
       if (!periodStart || !periodEnd) throw new Error("periodStart y periodEnd obligatorios")
       const sb = getSupabaseAdmin()
-      const { data: profile } = await sb
-        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
-      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      const bizId = effectiveBusinessId()
+      if (!bizId) throw new Error("business_id no encontrado")
+      const profile = { business_id: bizId }
       const { data, error } = await sb
         .from("csl_operator_shots")
         .delete()
@@ -3841,9 +3843,12 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const rowsInput = Array.isArray(payload.rows) ? payload.rows : []
       if (!rowsInput.length) return { ok: true, upserted: 0 }
       const sb = getSupabaseAdmin()
-      const { data: profile } = await sb
-        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
-      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      // business_id ACTIVO: los shots de Depicenter se guardan en Depicenter,
+      // NO bajo el perfil del superadmin (CSL). Esta era la fuente de la
+      // contaminación cross-tenant semanal de csl_operator_shots.
+      const bizId = effectiveBusinessId()
+      if (!bizId) throw new Error("business_id no encontrado")
+      const profile = { business_id: bizId }
 
       const now = new Date().toISOString()
       const toUpsert = rowsInput.map((raw) => {
@@ -3895,12 +3900,10 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       //   sucursal                 → limitar a una sucursal (canónica)
       // Si no se pasan, recalcula TODAS las lecturas del tenant.
       const sb = getSupabaseAdmin()
-      const { data: profile } = await sb
-        .from("csl_user_profiles")
-        .select("business_id")
-        .eq("user_id", user.id)
-        .single()
-      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      // business_id ACTIVO: recalcular disp_operador SOLO del negocio activo.
+      const bizId = effectiveBusinessId()
+      if (!bizId) throw new Error("business_id no encontrado")
+      const profile = { business_id: bizId }
 
       const filterPeriodStart = textValue(params, "periodStart") || null
       const filterPeriodEnd = textValue(params, "periodEnd") || null
