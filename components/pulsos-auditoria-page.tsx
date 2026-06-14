@@ -218,8 +218,19 @@ export function PulsosAuditoriaPage() {
       // DISP LÁSER recalculado desde el inicio encadenado (ignora disp_laser
       // guardado, que podía venir roto/negativo por un inicio incorrecto).
       const dispLaser = faltaInicial ? 0 : Math.max(0, pulsosFin - pulsosInicio)
+      // "Falta lectura final": la lectura final no avanzó respecto al inicio
+      // (Fin <= Inicio) pero la operadora SÍ reportó disparos → la lectura del
+      // equipo de esa semana no se capturó / vino igual a la anterior. No es un
+      // 0 real: es una lectura pendiente, y la diferencia con el operador debe
+      // resaltarse como discrepancia (Crítico), no quedar como OK.
+      const faltaFinal = !faltaInicial && pulsosFin <= pulsosInicio && dispOperador > 0
       const diferencia = dispOperador - dispLaser
       const pct = dispLaser > 0 ? Math.round((diferencia / dispLaser) * 100) : 0
+      // Estado: si láser=0 con disparos de operadora reportados → Crítico (la
+      // diferencia es real). Si falta inicial, no marcar crítico por dato falso.
+      const alerta = faltaInicial
+        ? getAlerta(0)
+        : (dispLaser === 0 && dispOperador > 0 ? "Critico" : getAlerta(pct))
 
       if (!map[desde]) map[desde] = []
       const cabinaRaw = String(r.cabina || "").trim()
@@ -245,11 +256,12 @@ export function PulsosAuditoriaPage() {
         pulsosInicio,
         pulsosFin,
         faltaInicial,
+        faltaFinal,
         dispLaser,
         dispOperador,
         diferencia,
         pct,
-        alerta: getAlerta(pct),
+        alerta,
         observaciones: String(r.observaciones || ""),
       })
 
@@ -983,7 +995,7 @@ export function PulsosAuditoriaPage() {
                     <td className="px-2 py-2 text-center font-mono text-xs">{r.equipo}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs text-muted-foreground">{r.faltaInicial ? <span className="text-amber-500" title="No hay lectura anterior para encadenar el inicio">Falta lectura inicial</span> : (r.pulsosInicio > 0 ? fmtN(r.pulsosInicio) : "-")}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs text-muted-foreground">{r.pulsosFin > 0 ? fmtN(r.pulsosFin) : "-"}</td>
-                    <td className="px-3 py-2 text-right font-mono text-sm font-bold">{r.faltaInicial ? "-" : fmtN(r.dispLaser)}</td>
+                    <td className="px-3 py-2 text-right font-mono text-sm font-bold">{r.faltaInicial ? "-" : (r.faltaFinal ? <span className="text-amber-500 text-xs font-normal" title="La lectura final de la semana no avanzó respecto al inicio; falta capturar la lectura del equipo de esta semana">Falta lectura final</span> : fmtN(r.dispLaser))}</td>
                     <td className="px-3 py-2 text-right font-mono text-sm font-bold">{fmtN(r.dispOperador)}</td>
                     <td className="px-3 py-2 text-right">
                       {(() => {

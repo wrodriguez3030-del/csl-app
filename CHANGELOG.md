@@ -18,6 +18,21 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.12] — 2026-06-13
+
+### Fixed
+- **Auditoría/IA: la discrepancia no salía cuando DISP LÁSER era 0.** Si la
+  lectura final de la semana no avanzó respecto al inicio (Fin ≤ Inicio, p.ej.
+  el Excel de Depicenter 08-jun trajo la misma lectura de la semana anterior)
+  pero la operadora SÍ reportó disparos, la fila quedaba como **OK** y la
+  diferencia no se resaltaba. Ahora esa fila se marca **Crítico** (la diferencia
+  con el operador es real) y la columna DISP LÁSER muestra **"Falta lectura
+  final"** en vez de un 0 engañoso, indicando que falta capturar la lectura del
+  equipo de esa semana. Cambio acotado: solo afecta cuando DISP LÁSER = 0 con
+  disparos de operadora > 0; Cibao (con lecturas reales) no cambia.
+
+---
+
 ## [0.2.11] — 2026-06-13
 
 ### Fixed
