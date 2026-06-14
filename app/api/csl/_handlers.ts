@@ -3650,13 +3650,14 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
 
     case "getPulseReadings": {
       const sb = getSupabaseAdmin()
-      const { data: profile } = await sb
-        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
-      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      // business_id ACTIVO (el que la UI seleccionó), NO el del perfil del
+      // usuario. Para un superadmin viendo Depicenter, debe leer Depicenter.
+      const bizId = effectiveBusinessId()
+      if (!bizId) throw new Error("business_id no encontrado")
       const { data, error } = await sb
         .from("csl_pulse_readings")
         .select("*")
-        .eq("business_id", profile.business_id)
+        .eq("business_id", bizId)
         .order("period_start", { ascending: false })
       if (error) throw error
       return { ok: true, records: data || [] }
@@ -3665,15 +3666,15 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "savePulseReading": {
       const record = parsePayload(params)
       const sb = getSupabaseAdmin()
-      const { data: profile } = await sb
-        .from("csl_user_profiles")
-        .select("business_id")
-        .eq("user_id", user.id)
-        .single()
-      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      // business_id ACTIVO (el que la UI seleccionó), NO el del perfil del
+      // usuario. Antes esto tomaba profile.business_id (CSL para el superadmin),
+      // así que editar una lectura de Depicenter intentaba guardar bajo CSL y la
+      // fila real de Depicenter nunca se actualizaba (el FIN "no se guardaba").
+      const bizId = effectiveBusinessId()
+      if (!bizId) throw new Error("business_id no encontrado")
 
       const row: Record<string, unknown> = {
-        business_id: profile.business_id,
+        business_id: bizId,
         equipo_id: textFrom(record, "equipo_id"),
         serial: textFrom(record, "serial") || null,
         sucursal: textFrom(record, "sucursal"),
@@ -3720,31 +3721,27 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const id = textValue(params, "id")
       if (!id) throw new Error("id obligatorio")
       const sb = getSupabaseAdmin()
-      const { data: profile } = await sb
-        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
-      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      const bizId = effectiveBusinessId()
+      if (!bizId) throw new Error("business_id no encontrado")
       const { error } = await sb
         .from("csl_pulse_readings")
         .delete()
         .eq("id", id)
-        .eq("business_id", profile.business_id)
+        .eq("business_id", bizId)
       if (error) throw error
       return { ok: true }
     }
 
     case "recalculatePulseContinuity": {
       const sb = getSupabaseAdmin()
-      const { data: profile } = await sb
-        .from("csl_user_profiles")
-        .select("business_id")
-        .eq("user_id", user.id)
-        .single()
-      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      // business_id ACTIVO: recalcular continuidad SOLO del negocio activo.
+      const bizId = effectiveBusinessId()
+      if (!bizId) throw new Error("business_id no encontrado")
 
       const { data: all, error: fetchErr } = await sb
         .from("csl_pulse_readings")
         .select("*")
-        .eq("business_id", profile.business_id)
+        .eq("business_id", bizId)
         .order("period_start", { ascending: true })
       if (fetchErr) throw fetchErr
 
@@ -3777,13 +3774,12 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       // Devuelve el resumen semanal de disparos por operadora (csl_operator_shots).
       // Si la tabla aún no existe (migración pendiente), devuelve [] sin error.
       const sb = getSupabaseAdmin()
-      const { data: profile } = await sb
-        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
-      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      const bizId = effectiveBusinessId()
+      if (!bizId) throw new Error("business_id no encontrado")
       const { data, error } = await sb
         .from("csl_operator_shots")
         .select("*")
-        .eq("business_id", profile.business_id)
+        .eq("business_id", bizId)
         .order("period_start", { ascending: false })
       if (error) {
         const code = (error as { code?: string }).code

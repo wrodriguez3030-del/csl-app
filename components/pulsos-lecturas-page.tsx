@@ -282,8 +282,17 @@ export function PulsosLecturasPage() {
 
   const handleInlineSaveFinal = async (reading: PulseReading) => {
     const newFinal = parseN(editingFinalValue)
+    const inicio = Number(reading.lectura_inicial) || 0
     setEditingFinalId(null)
     if (!newFinal || newFinal === Number(reading.lectura_final)) return
+    // Validación: FIN no puede ser menor que INICIO (DISP LÁSER negativo).
+    if (newFinal < inicio) {
+      showToast(`El valor FIN (${fmtN(newFinal)}) no puede ser menor que INICIO (${fmtN(inicio)}).`, "error")
+      return
+    }
+    if (newFinal === inicio) {
+      showToast("DISP Láser quedará en 0 porque FIN e INICIO son iguales.", "info")
+    }
     setSavingInline(true)
     try {
       const payload = {

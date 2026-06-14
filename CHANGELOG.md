@@ -18,6 +18,28 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.13] — 2026-06-13
+
+### Fixed
+- **Lecturas semanales: editar FIN no se guardaba (Depicenter).** Los handlers
+  de PulseControl (`savePulseReading`, `getPulseReadings`, `deletePulseReading`,
+  `recalculatePulseContinuity`, `getOperatorShots`) tomaban el `business_id` del
+  **perfil del usuario logueado** (CSL para el superadmin), NO del **negocio
+  activo** seleccionado en la UI. Al editar una lectura de Depicenter, el
+  `upsert` usaba la clave `(business_id=CSL, equipo, period_start, period_end)`,
+  que nunca coincidía con la fila real de Depicenter → el FIN no persistía (y
+  podía escribir en el espacio de CSL). Ahora todos usan `effectiveBusinessId()`
+  (el negocio activo vía BusinessContext/AsyncLocalStorage). Guardar/leer/borrar/
+  recalcular operan SIEMPRE sobre el negocio activo; Depicenter guarda en
+  Depicenter, Cibao en Cibao, sin mezclar.
+- **Lecturas semanales:** validación al editar FIN — bloquea FIN < INICIO
+  ("no puede ser menor que INICIO") y avisa si FIN = INICIO (DISP Láser 0).
+  `recalculatePulseContinuity` solo ajusta el INICIO de semanas siguientes al
+  FIN editado (no pisa el FIN manual). Auditoría/IA y exports leen la misma
+  lectura ya persistida.
+
+---
+
 ## [0.2.12] — 2026-06-13
 
 ### Fixed
