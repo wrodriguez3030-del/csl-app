@@ -18,6 +18,27 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.11] — 2026-06-13
+
+### Fixed
+- **PulseControl Auditoría/IA: Pulsos Inicio roto (DISP LÁSER absurdo) en
+  Depicenter.** Las lecturas de Depicenter de la semana 08-jun traían
+  `lectura_inicial` corrupto del import (eq1=642.194 en vez de 5.280.253) →
+  DISP LÁSER de 4.638.059. Ahora la auditoría DERIVA Pulsos Inicio del
+  `lectura_final` de la semana inmediatamente anterior del mismo equipo
+  (encadenado, por sucursal+equipo, ignorando el `lectura_inicial`/`disp_laser`
+  guardados que podían venir rotos). DISP LÁSER se recalcula = Pulsos Fin −
+  Pulsos Inicio. Si no hay semana anterior ni inicial válido → "Falta lectura
+  inicial" sin calcular DISP LÁSER. Misma lógica para Cibao y Depicenter; Cibao
+  ya encadenaba 1:1 (40/40) así que NO cambia. Aplica a pantalla, Exportar Excel
+  y Exportar PDF (todos leen las mismas filas).
+- **Datos:** corregido `lectura_inicial` de las 3 lecturas Depicenter 08-jun
+  (encadenado a la semana previa); `disp_laser` (columna generada) se recalculó
+  a 0. Solo Depicenter; Cibao intacto. (Antes: movidas las 3 lecturas + 3 shots
+  08-jun de business_id CSL→Depicenter, mal etiquetadas por el import.)
+
+---
+
 ## [0.2.10] — 2026-06-13
 
 ### Fixed

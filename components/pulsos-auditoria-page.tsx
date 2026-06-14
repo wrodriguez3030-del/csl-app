@@ -138,6 +138,32 @@ export function PulsosAuditoriaPage() {
     const map: Record<string, any[]> = {}
     const seenKeys = new Set<string>() // period|equipo|sucursal|cabina
 
+    // ── Pulsos Inicio = lectura FINAL de la semana inmediatamente anterior del
+    // MISMO equipo (encadenado), NO el lectura_inicial guardado (que puede venir
+    // roto del import, p.ej. Depicenter 08-jun traía 642.194 en vez de 5.280.253).
+    // Misma lógica para Cibao y Depicenter; Cibao ya encadena 1:1 así que no
+    // cambia. Clave por sucursal+equipo (en modo "Todos" evita cruzar tenants).
+    const prevFinalFor = (() => {
+      const byKey = new Map<string, { ps: string; final: number }[]>()
+      for (const r of (dbPulsos.pulseReadings ?? [])) {
+        const ps = String(r.period_start || "").split("T")[0].trim()
+        if (!ps || !/^\d{4}-\d{2}-\d{2}$/.test(ps)) continue
+        if ((activeBusinessSlug === "csl" || activeBusinessSlug === "depicenter") && !sucursalAllowedForTenant(r.sucursal, activeBusinessSlug)) continue
+        const k = `${canonicalSucursal(r.sucursal) || r.sucursal}|${r.equipo_id}`
+        if (!byKey.has(k)) byKey.set(k, [])
+        byKey.get(k)!.push({ ps, final: Number(r.lectura_final) || 0 })
+      }
+      for (const arr of byKey.values()) arr.sort((a, b) => a.ps.localeCompare(b.ps))
+      return (sucursal: unknown, equipo: unknown, ps: string): number | null => {
+        const k = `${canonicalSucursal(sucursal) || sucursal}|${equipo}`
+        const arr = byKey.get(k)
+        if (!arr) return null
+        let prev: number | null = null
+        for (const x of arr) { if (x.ps < ps) prev = x.final; else break }
+        return prev
+      }
+    })()
+
     // ── 1) Fuente PRIMARIA: csl_pulse_readings ────────────────────────────
     for (const r of (dbPulsos.pulseReadings ?? [])) {
       const desde = String(r.period_start || "").split("T")[0].trim()
@@ -181,7 +207,17 @@ export function PulsosAuditoriaPage() {
         }
       }
 
-      const dispLaser = Number(r.disp_laser) || Math.max(0, (Number(r.lectura_final) || 0) - (Number(r.lectura_inicial) || 0))
+      // Pulsos Inicio: encadenado desde la semana anterior. Si no hay semana
+      // anterior, usar el lectura_inicial guardado (primera semana del equipo).
+      // Si no hay ninguno → "Falta lectura inicial" y NO se calcula DISP LÁSER.
+      const prevFinal = prevFinalFor(r.sucursal, r.equipo_id, desde)
+      const storedInicial = Number(r.lectura_inicial) || 0
+      const pulsosFin = Number(r.lectura_final) || 0
+      const pulsosInicio = prevFinal != null ? prevFinal : storedInicial
+      const faltaInicial = prevFinal == null && storedInicial <= 0
+      // DISP LÁSER recalculado desde el inicio encadenado (ignora disp_laser
+      // guardado, que podía venir roto/negativo por un inicio incorrecto).
+      const dispLaser = faltaInicial ? 0 : Math.max(0, pulsosFin - pulsosInicio)
       const diferencia = dispOperador - dispLaser
       const pct = dispLaser > 0 ? Math.round((diferencia / dispLaser) * 100) : 0
 
@@ -206,8 +242,9 @@ export function PulsosAuditoriaPage() {
         operadoraObs: opRes.observacion,
         equipo: r.equipo_id || "",
         serial: r.serial || "",
-        pulsosInicio: Number(r.lectura_inicial) || 0,
-        pulsosFin: Number(r.lectura_final) || 0,
+        pulsosInicio,
+        pulsosFin,
+        faltaInicial,
         dispLaser,
         dispOperador,
         diferencia,
@@ -944,9 +981,9 @@ export function PulsosAuditoriaPage() {
                       </span>
                     </td>
                     <td className="px-2 py-2 text-center font-mono text-xs">{r.equipo}</td>
-                    <td className="px-3 py-2 text-right font-mono text-xs text-muted-foreground">{r.pulsosInicio > 0 ? fmtN(r.pulsosInicio) : "-"}</td>
+                    <td className="px-3 py-2 text-right font-mono text-xs text-muted-foreground">{r.faltaInicial ? <span className="text-amber-500" title="No hay lectura anterior para encadenar el inicio">Falta lectura inicial</span> : (r.pulsosInicio > 0 ? fmtN(r.pulsosInicio) : "-")}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs text-muted-foreground">{r.pulsosFin > 0 ? fmtN(r.pulsosFin) : "-"}</td>
-                    <td className="px-3 py-2 text-right font-mono text-sm font-bold">{fmtN(r.dispLaser)}</td>
+                    <td className="px-3 py-2 text-right font-mono text-sm font-bold">{r.faltaInicial ? "-" : fmtN(r.dispLaser)}</td>
                     <td className="px-3 py-2 text-right font-mono text-sm font-bold">{fmtN(r.dispOperador)}</td>
                     <td className="px-3 py-2 text-right">
                       {(() => {
