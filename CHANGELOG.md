@@ -18,6 +18,30 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.15] — 2026-06-15
+
+### Removed
+- **Desmantelado el proyecto Supabase Cloud `pfqnyzbtwhfkemkixril`** (eliminado
+  desde el dashboard por el usuario). Era el respaldo de rollback posterior a la
+  migración al self-hosted; ya no se usa. El self-hosted `db-cls.cibao-cloude.com`
+  queda como **única fuente de verdad** de csl-app.
+- Eliminado el archivo de credenciales obsoleto `.env.local.cloud-rollback`
+  (apuntaba al Cloud ya borrado; no estaba versionado).
+
+### Changed
+- **Reconciliación final de datos antes del borrado:** se detectaron y migraron
+  al self-hosted 5 registros que existían solo en el Cloud (2 fichas en
+  `csl_ficha_dermatologica` del 24-may y 3 lecturas en `csl_pulse_readings` de
+  Rafael Vidal del 31-may). Verificación exhaustiva triple-chequeada
+  (estructura + datos en 3 pasadas + auth + storage) confirmó que el self-hosted
+  contiene el 100% del Cloud.
+
+### Security
+- Reducida la superficie: ya no existe una copia en la nube de los datos de
+  clientes/operación fuera de la infraestructura self-hosted de Cibao Cloud.
+
+---
+
 ## [0.2.14] — 2026-06-14
 
 ### Fixed
