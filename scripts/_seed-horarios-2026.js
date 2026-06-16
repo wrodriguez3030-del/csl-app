@@ -58,13 +58,11 @@ const LUNCH = {
 }
 const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(t); return Number(m[1]) * 60 + Number(m[2]) }
 const fmt = (mins) => `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`
-// Almuerzo de 1 h: usa la regla oficial; si el turno no está en la tabla,
-// centra 60 min dentro del turno (caso turnos cortos 09:00-13:00).
-// REGLA: el personal que ENTRA a las 12:30 PM no tiene hora de almuerzo → null.
+// Almuerzo SIEMPRE 60 min por día trabajado (regla oficial). Usa la ventana de
+// la tabla; si el turno no está, centra 60 min dentro del turno.
 function lunchWindow(shift) {
-  const [a, b] = shift.split("-")
-  if (a === "12:30") return null
   if (LUNCH[shift]) return LUNCH[shift]
+  const [a, b] = shift.split("-")
   const s = toMin(a), e = toMin(b)
   const ls = s + Math.max(0, Math.floor((e - s - 60) / 2))
   return [fmt(ls), fmt(ls + 60)]

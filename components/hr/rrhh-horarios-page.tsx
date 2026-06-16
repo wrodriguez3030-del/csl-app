@@ -42,6 +42,10 @@ interface HrAssignment {
 const DAYS = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"]
 const TYPE_OPTIONS = ["fijo", "rotativo"]
 
+// Almuerzo SIEMPRE 60 min (regla oficial). Helpers para ajustar/validar.
+const schedToMin = (t: unknown) => { const m = /^(\d{1,2}):(\d{2})/.exec(String(t ?? "")); return m ? Number(m[1]) * 60 + Number(m[2]) : null }
+const schedMinToHHMM = (mins: number) => { const x = ((Math.round(mins) % 1440) + 1440) % 1440; return `${String(Math.floor(x / 60)).padStart(2, "0")}:${String(x % 60).padStart(2, "0")}` }
+
 function emptySchedule(): Partial<HrSchedule> {
   return {
     name: "", type: "fijo", entry_time: "09:00", exit_time: "18:00",
@@ -96,6 +100,11 @@ export function RrhhHorariosPage() {
   const handleSaveSchedule = async () => {
     if (!editing) return
     if (!editing.name?.trim()) { showToast("Nombre del horario obligatorio", "error"); return }
+    // El almuerzo, si se define, debe ser de exactamente 60 minutos.
+    const ls = schedToMin(editing.lunch_start), le = schedToMin(editing.lunch_end)
+    if ((editing.lunch_start || editing.lunch_end) && (ls == null || le == null || le - ls !== 60)) {
+      showToast("El almuerzo debe ser de 60 minutos.", "error"); return
+    }
     setSaving(true)
     try {
       const payload: Record<string, string | number> = {
@@ -308,8 +317,8 @@ export function RrhhHorariosPage() {
                 </div>
                 <div className="space-y-1"><Label className="text-xs">Entrada</Label><Input type="time" value={editing.entry_time || ""} onChange={e => setEditing({ ...editing, entry_time: e.target.value })} /></div>
                 <div className="space-y-1"><Label className="text-xs">Salida</Label><Input type="time" value={editing.exit_time || ""} onChange={e => setEditing({ ...editing, exit_time: e.target.value })} /></div>
-                <div className="space-y-1"><Label className="text-xs">Inicio almuerzo</Label><Input type="time" value={editing.lunch_start || ""} onChange={e => setEditing({ ...editing, lunch_start: e.target.value })} /></div>
-                <div className="space-y-1"><Label className="text-xs">Fin almuerzo</Label><Input type="time" value={editing.lunch_end || ""} onChange={e => setEditing({ ...editing, lunch_end: e.target.value })} /></div>
+                <div className="space-y-1"><Label className="text-xs">Inicio almuerzo</Label><Input type="time" value={editing.lunch_start || ""} onChange={e => { const s = schedToMin(e.target.value); setEditing({ ...editing, lunch_start: e.target.value, lunch_end: s != null ? schedMinToHHMM(s + 60) : editing.lunch_end }) }} /></div>
+                <div className="space-y-1"><Label className="text-xs">Fin almuerzo <span className="text-amber-600">(60 min)</span></Label><Input type="time" value={editing.lunch_end || ""} onChange={e => { const en = schedToMin(e.target.value); setEditing({ ...editing, lunch_end: e.target.value, lunch_start: en != null ? schedMinToHHMM(en - 60) : editing.lunch_start }) }} /></div>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Días laborables</Label>

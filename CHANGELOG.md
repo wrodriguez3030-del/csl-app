@@ -18,6 +18,34 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.20] — 2026-06-16
+
+### Changed
+- **Almuerzo fijo de 60 minutos en TODO el sistema** (regla oficial única).
+  Revierte la regla previa "entrada 12:30 = sin almuerzo" (v0.2.18): ahora
+  **cada día trabajado descuenta 1 h**, día libre = 0. Constante única
+  `DEFAULT_LUNCH_MINUTES = 60` en `lib/work-hours.ts`.
+  - `calculateDailyWorkedHours({startTime, endTime, isDayOff})` →
+    `{ grossHours, lunchMinutes:60, lunchHours:1, netHours }`.
+  - `calculateWeeklyWorkedHours` → descansos = díasTrabajados × 1 h; horas
+    netas = brutas − descansos; indicador > 44 h por horas **netas**.
+  - Ponche y asistencia (`_handlers.ts`, `app/api/public/punch/route.ts`) usan
+    el almuerzo fijo de 60 min para las horas esperadas/trabajadas.
+  - `saveHrEmployeeSchedule` fuerza `break_minutes = 60` en días trabajados.
+- **Modal Horario laboral**: el almuerzo es siempre 60 min — al cambiar inicio
+  o fin, el otro extremo se ajusta a ±60; al guardar se valida (bloquea con
+  "El almuerzo debe ser de 60 minutos." si no cuadra, si la salida ≤ entrada o
+  si el almuerzo cae fuera del turno). Cada día muestra badge **"60 min"**.
+- **Plantilla Horarios y turnos** (`hr_schedules`): mismo enforce de 60 min al
+  guardar y autoajuste del fin de almuerzo.
+
+### Fixed
+- Datos en db-cls: restaurado el almuerzo de 60 min en los días con entrada
+  12:30 (seed `_seed-horarios-2026.js` ya no los exime). Verificado: 0 días
+  trabajados con `break_minutes ≠ 60` en CSL. Depicenter intacto (0 horarios).
+
+---
+
 ## [0.2.19] — 2026-06-16
 
 ### Added

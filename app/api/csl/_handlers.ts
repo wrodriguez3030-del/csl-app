@@ -8,6 +8,7 @@
  */
 
 import { ALL_MENU_IDS } from "@/lib/menus"
+import { DEFAULT_LUNCH_MINUTES } from "@/lib/work-hours"
 import { sendFichaDermoEmail } from "@/lib/dermo-server"
 import { getSupabaseAdmin } from "@/lib/server/supabase"
 import {
@@ -1087,7 +1088,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         if (sd && sd.is_working_day) {
           scheduledStart = sd.start_time; scheduledEnd = sd.end_time
           const ss = hhmmToMin(sd.start_time), se = hhmmToMin(sd.end_time)
-          if (ss != null && se != null) expectedMin = Math.max(0, se - ss - (sd.break_minutes || 0))
+          // Almuerzo fijo 60 min/día trabajado (regla oficial, no de la BD).
+          if (ss != null && se != null) expectedMin = Math.max(0, se - ss - DEFAULT_LUNCH_MINUTES)
           if (punchType === "entrada" && ss != null) lateMin = Math.max(0, nowMin - ss)
           if (punchType === "salida") {
             if (se != null) earlyMin = Math.max(0, se - nowMin)
@@ -1097,7 +1099,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
             if (entIso) {
               const [eh, em] = new Date(entIso).toLocaleTimeString("en-GB", { timeZone: TZRD, hour12: false }).split(":")
               const entMin = Number(eh) * 60 + Number(em)
-              workedMin = Math.max(0, nowMin - entMin - (sd.break_minutes || 0))
+              workedMin = Math.max(0, nowMin - entMin - DEFAULT_LUNCH_MINUTES)
               if (expectedMin != null) overtimeMin = Math.max(0, workedMin - expectedMin)
             }
           }
@@ -1187,7 +1189,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
           // Ventana de almuerzo solo en día laborable; en día libre se limpia.
           lunch_start: isWorking && d.lunch_start ? String(d.lunch_start) : null,
           lunch_end: isWorking && d.lunch_end ? String(d.lunch_end) : null,
-          break_minutes: isWorking ? Number(d.break_minutes || 0) : 0, updated_at: new Date().toISOString(),
+          // Almuerzo fijo 60 min en día trabajado (regla oficial), 0 en día libre.
+          break_minutes: isWorking ? DEFAULT_LUNCH_MINUTES : 0, updated_at: new Date().toISOString(),
         }, { onConflict: "schedule_id,day_of_week" })
       }
       await hrAudit(user, "horarios", id ? "update" : "create", "hr_employee_schedules", schedId, null, { employee_id: employeeId })
@@ -1227,7 +1230,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         const breakTaken = (bIni && bFin) ? Math.max(0, minOf(bFin.punched_at) - minOf(bIni.punched_at)) : 0
         const sd = await empScheduleForDate(bid as string, g.emp, g.day, g.sucursal)
         const ss = sd ? hhmmToMin(sd.start_time) : null, se = sd ? hhmmToMin(sd.end_time) : null
-        const expected = (sd && sd.is_working_day && ss != null && se != null) ? Math.max(0, se - ss - (sd.break_minutes || 0)) : 0
+        const expected = (sd && sd.is_working_day && ss != null && se != null) ? Math.max(0, se - ss - DEFAULT_LUNCH_MINUTES) : 0
         const worked = (aStart != null && aEnd != null) ? Math.max(0, aEnd - aStart - breakTaken) : 0
         const late = (aStart != null && ss != null) ? Math.max(0, aStart - ss) : 0
         const early = (aEnd != null && se != null) ? Math.max(0, se - aEnd) : 0

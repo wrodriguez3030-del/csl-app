@@ -11,6 +11,7 @@
 import { NextResponse } from "next/server"
 import { getSupabaseAdmin } from "@/lib/server/supabase"
 import { haversineMeters } from "@/lib/hr-geo"
+import { DEFAULT_LUNCH_MINUTES } from "@/lib/work-hours"
 import { createHash } from "node:crypto"
 
 export const dynamic = "force-dynamic"
@@ -123,14 +124,15 @@ export async function POST(request: Request) {
     if (sd && sd.working) {
       scheduledStart = sd.start; scheduledEnd = sd.end
       const ss = hhmm(sd.start), se = hhmm(sd.end)
-      if (ss != null && se != null) expectedMin = Math.max(0, se - ss - sd.brk)
+      // Almuerzo fijo 60 min/día trabajado (regla oficial, no de la BD).
+      if (ss != null && se != null) expectedMin = Math.max(0, se - ss - DEFAULT_LUNCH_MINUTES)
       if (punchType === "entrada" && ss != null) lateMin = Math.max(0, nowMin - ss)
       if (punchType === "salida") {
         if (se != null) earlyMin = Math.max(0, se - nowMin)
         const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)
         const { data: ent } = await sb.from("hr_punches").select("punched_at").eq("business_id", businessId).eq("employee_id", employeeId).eq("type", "entrada").eq("status", "approved").gte("punched_at", dayStart.toISOString()).order("punched_at", { ascending: true }).limit(1)
         const entIso = ent && ent[0] ? String((ent[0] as { punched_at: string }).punched_at) : ""
-        if (entIso) { const [eh, em] = new Date(entIso).toLocaleTimeString("en-GB", { timeZone: TZ, hour12: false }).split(":"); workedMin = Math.max(0, nowMin - (Number(eh) * 60 + Number(em)) - sd.brk); if (expectedMin != null) overtimeMin = Math.max(0, workedMin - expectedMin) }
+        if (entIso) { const [eh, em] = new Date(entIso).toLocaleTimeString("en-GB", { timeZone: TZ, hour12: false }).split(":"); workedMin = Math.max(0, nowMin - (Number(eh) * 60 + Number(em)) - DEFAULT_LUNCH_MINUTES); if (expectedMin != null) overtimeMin = Math.max(0, workedMin - expectedMin) }
       }
     }
   }

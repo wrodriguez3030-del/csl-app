@@ -22,6 +22,14 @@ function defaultDays(): DayRow[] {
 }
 const hhmm = (v: unknown) => { const s = String(v ?? ""); return /^\d{2}:\d{2}/.test(s) ? s.slice(0, 5) : "" }
 const toMin = (t: string) => { const m = /^(\d{1,2}):(\d{2})/.exec(t || ""); return m ? Number(m[1]) * 60 + Number(m[2]) : null }
+const minToHHMM = (mins: number) => { const m = ((Math.round(mins) % 1440) + 1440) % 1440; return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}` }
+// Ventana de almuerzo de 60 min centrada en el turno (autocompletado).
+function centeredLunch(start: string, end: string): { ls: string; le: string } {
+  const s = toMin(start), e = toMin(end)
+  if (s == null || e == null || e - s < 60) return { ls: "13:00", le: "14:00" }
+  const ls = s + Math.floor((e - s - 60) / 2)
+  return { ls: minToHHMM(ls), le: minToHHMM(ls + 60) }
+}
 // Cálculo de horas centralizado en lib/work-hours.ts (mismo usado en la tarjeta).
 const dayHours = (d: DayRow): number => dayWorkedHours(d)
 
@@ -58,35 +66,51 @@ export function EmployeeScheduleDialog({ employeeId, employeeName, sucursal, onC
     })()
   }, [employeeId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const setDay = (i: number, patch: Partial<DayRow>) => setDays(prev => prev.map((d, idx) => idx === i ? { ...d, ...patch } : d))
-  // Cambiar ventana de almuerzo mantiene break_minutes en sync (= minutos de almuerzo).
-  const setLunch = (i: number, start: string, end: string) => {
-    const s = toMin(start), e = toMin(end)
-    const mins = s != null && e != null && e > s ? e - s : 0
-    setDay(i, { lunch_start: start, lunch_end: end, break_minutes: mins })
-  }
+  const setDay = (i: number, patch: Partial<DayRow>) => setDays(prev => prev.map((d, idx) => {
+    if (idx !== i) return d
+    const next = { ...d, ...patch }
+    // Día libre → sin almuerzo. Día trabajado sin almuerzo → autocompletar 60 min.
+    if (patch.is_working_day === false) { next.lunch_start = ""; next.lunch_end = ""; next.break_minutes = 0 }
+    else if (next.is_working_day && (!next.lunch_start || !next.lunch_end)) {
+      const { ls, le } = centeredLunch(next.start_time, next.end_time)
+      next.lunch_start = ls; next.lunch_end = le; next.break_minutes = 60
+    }
+    return next
+  }))
+  // El almuerzo es SIEMPRE 60 min: al cambiar un extremo, el otro se ajusta a ±60.
+  const setLunchStart = (i: number, start: string) => { const s = toMin(start); setDay(i, { lunch_start: start, lunch_end: s != null ? minToHHMM(s + 60) : "", break_minutes: 60 }) }
+  const setLunchEnd = (i: number, end: string) => { const e = toMin(end); setDay(i, { lunch_end: end, lunch_start: e != null ? minToHHMM(e - 60) : "", break_minutes: 60 }) }
 
-  // Resumen semanal en tiempo real (cruce de medianoche soportado).
+  // Resumen semanal — almuerzo fijo 60 min/día (lib/work-hours.ts).
   const resumen = useMemo(() => {
     const w = calculateWeeklyWorkedHours(days)
-    let lab = 0, bruto = 0
-    for (const d of days) {
-      if (!d.is_working_day) continue
-      lab++
-      const s = toMin(d.start_time), e = toMin(d.end_time)
-      if (s == null || e == null) continue
-      let mins = e - s; if (mins <= 0) mins += 24 * 60
-      bruto += mins / 60
-    }
-    const neto = w.totalHours
-    return { lab, libres: 7 - lab, bruto, desc: Math.max(0, bruto - neto), neto, prom: lab > 0 ? neto / lab : 0, exceeds44: w.exceeds44 }
+    return { lab: w.workedDays, libres: w.freeDays, bruto: w.grossHours, desc: w.restHours, neto: w.totalHours, prom: w.avgHours, exceeds44: w.exceeds44 }
   }, [days])
   const h1 = (n: number) => `${(Math.round(n * 100) / 100).toLocaleString("es-DO", { maximumFractionDigits: 2 })} h`
 
+  // Validación: cada día trabajado debe tener salida>entrada y almuerzo de
+  // EXACTAMENTE 60 min dentro del turno; los días libres no llevan almuerzo.
+  const validate = (): string | null => {
+    for (const d of days) {
+      if (!d.is_working_day) continue
+      const s = toMin(d.start_time), e = toMin(d.end_time)
+      if (s == null || e == null) return `Completa entrada y salida de ${DOW[d.day_of_week]}.`
+      if (e <= s) return `En ${DOW[d.day_of_week]} la salida debe ser mayor que la entrada.`
+      const ls = toMin(d.lunch_start), le = toMin(d.lunch_end)
+      if (ls == null || le == null || le - ls !== 60) return "El almuerzo debe ser de 60 minutos."
+      if (ls < s || le > e) return `El almuerzo de ${DOW[d.day_of_week]} debe quedar dentro del turno.`
+    }
+    return null
+  }
+
   const save = async () => {
+    const err = validate()
+    if (err) { showToast(err, "error"); return }
     setSaving(true)
     try {
-      const payload = { id: id || undefined, employee_id: employeeId, name, sucursal: suc, effective_from: from, effective_to: to, active: true, days }
+      // Normaliza break_minutes=60 en días trabajados (almuerzo fijo) antes de guardar.
+      const normDays = days.map(d => d.is_working_day ? { ...d, break_minutes: 60 } : { ...d, break_minutes: 0, lunch_start: "", lunch_end: "" })
+      const payload = { id: id || undefined, employee_id: employeeId, name, sucursal: suc, effective_from: from, effective_to: to, active: true, days: normDays }
       const res = await call({ action: "saveHrEmployeeSchedule", data: JSON.stringify(payload) }) as { ok?: boolean; error?: string; tableMissing?: boolean }
       if (res?.tableMissing) { showToast("Falta aplicar la migración de horarios en db-cls", "error"); return }
       if (!res?.ok) { showToast(`Error: ${res?.error || "no se pudo guardar"}`, "error"); return }
@@ -119,10 +143,11 @@ export function EmployeeScheduleDialog({ employeeId, employeeName, sucursal, onC
                       <span className="text-muted-foreground">a</span>
                       <Input type="time" value={d.end_time} onChange={e => setDay(i, { end_time: e.target.value })} className="h-8 w-24" title="Salida" />
                       <span className="text-[11px] text-muted-foreground ml-1">Almuerzo</span>
-                      <Input type="time" value={d.lunch_start} onChange={e => setLunch(i, e.target.value, d.lunch_end)} className="h-8 w-24" title="Almuerzo inicio" />
+                      <Input type="time" value={d.lunch_start} onChange={e => setLunchStart(i, e.target.value)} className="h-8 w-24" title="Almuerzo inicio (60 min)" />
                       <span className="text-muted-foreground">a</span>
-                      <Input type="time" value={d.lunch_end} onChange={e => setLunch(i, d.lunch_start, e.target.value)} className="h-8 w-24" title="Almuerzo fin" />
-                      <span className="ml-1 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-bold text-primary" title="Total del día">{h1(dayHours(d))}</span>
+                      <Input type="time" value={d.lunch_end} onChange={e => setLunchEnd(i, e.target.value)} className="h-8 w-24" title="Almuerzo fin (60 min)" />
+                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" title="Almuerzo fijo">60 min</span>
+                      <span className="ml-1 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-bold text-primary" title="Total neto del día">{h1(dayHours(d))}</span>
                     </div>
                   ) : <span className="text-xs text-muted-foreground">Libre</span>}
                 </div>
