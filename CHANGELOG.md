@@ -18,6 +18,30 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.21] — 2026-06-16
+
+### Changed
+- **Turno corrido sin almuerzo para entrada 12:30 PM** (regla oficial),
+  codificada de forma central en `lib/work-hours.ts`:
+  `NO_LUNCH_START_TIMES = ["12:30"]` + `lunchMinutesForShift(start)` → 0 min si
+  entra 12:30, 60 min en cualquier otro turno. Reemplaza el "60 min fijo a
+  todos" de v0.2.20 solo para los turnos 12:30.
+  - Aplicado en cálculo (tarjeta/modal), ponche y asistencia (`_handlers.ts`,
+    `app/api/public/punch/route.ts`) y en `saveHrEmployeeSchedule`
+    (`break_minutes` y ventana de almuerzo se limpian en turno corrido).
+  - `calculateWeeklyWorkedHours`: descansos = suma real de almuerzos del horario
+    (no díasTrabajados × 1), por lo que los días 12:30 no suman descanso.
+- **Modal Horario laboral**: los días con entrada 12:30 muestran
+  **"Turno corrido · sin almuerzo"** (sin inputs de almuerzo) y se omiten de la
+  validación de 60 min; el resto sigue exigiendo almuerzo de 60 min.
+
+### Fixed
+- Datos db-cls: el seed vuelve a eximir del almuerzo los turnos 12:30. Verificado
+  en CSL: 0 días 12:30 con almuerzo, 0 días no-12:30 con `break_minutes ≠ 60`.
+  Depicenter intacto. (Benita vuelve a 35.5 h netas.)
+
+---
+
 ## [0.2.20] — 2026-06-16
 
 ### Changed

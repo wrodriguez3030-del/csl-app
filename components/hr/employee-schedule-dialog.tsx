@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Loader2, Save, X, Clock, AlertTriangle } from "lucide-react"
-import { calculateWeeklyWorkedHours, dayWorkedHours, fmtHours, WEEKLY_HOURS_LIMIT } from "@/lib/work-hours"
+import { calculateWeeklyWorkedHours, dayWorkedHours, fmtHours, lunchMinutesForShift, WEEKLY_HOURS_LIMIT } from "@/lib/work-hours"
 
 const DOW = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]
 interface DayRow { day_of_week: number; is_working_day: boolean; start_time: string; end_time: string; break_minutes: number; lunch_start: string; lunch_end: string }
@@ -69,11 +69,18 @@ export function EmployeeScheduleDialog({ employeeId, employeeName, sucursal, onC
   const setDay = (i: number, patch: Partial<DayRow>) => setDays(prev => prev.map((d, idx) => {
     if (idx !== i) return d
     const next = { ...d, ...patch }
-    // Día libre → sin almuerzo. Día trabajado sin almuerzo → autocompletar 60 min.
-    if (patch.is_working_day === false) { next.lunch_start = ""; next.lunch_end = ""; next.break_minutes = 0 }
-    else if (next.is_working_day && (!next.lunch_start || !next.lunch_end)) {
+    if (!next.is_working_day) {
+      // Día libre → sin almuerzo.
+      next.lunch_start = ""; next.lunch_end = ""; next.break_minutes = 0
+    } else if (lunchMinutesForShift(next.start_time) === 0) {
+      // Turno corrido (entrada 12:30) → sin almuerzo.
+      next.lunch_start = ""; next.lunch_end = ""; next.break_minutes = 0
+    } else if (!next.lunch_start || !next.lunch_end) {
+      // Día trabajado con almuerzo y sin ventana → autocompletar 60 min.
       const { ls, le } = centeredLunch(next.start_time, next.end_time)
       next.lunch_start = ls; next.lunch_end = le; next.break_minutes = 60
+    } else {
+      next.break_minutes = 60
     }
     return next
   }))
@@ -96,6 +103,7 @@ export function EmployeeScheduleDialog({ employeeId, employeeName, sucursal, onC
       const s = toMin(d.start_time), e = toMin(d.end_time)
       if (s == null || e == null) return `Completa entrada y salida de ${DOW[d.day_of_week]}.`
       if (e <= s) return `En ${DOW[d.day_of_week]} la salida debe ser mayor que la entrada.`
+      if (lunchMinutesForShift(d.start_time) === 0) continue // turno corrido: sin almuerzo
       const ls = toMin(d.lunch_start), le = toMin(d.lunch_end)
       if (ls == null || le == null || le - ls !== 60) return "El almuerzo debe ser de 60 minutos."
       if (ls < s || le > e) return `El almuerzo de ${DOW[d.day_of_week]} debe quedar dentro del turno.`
@@ -142,11 +150,17 @@ export function EmployeeScheduleDialog({ employeeId, employeeName, sucursal, onC
                       <Input type="time" value={d.start_time} onChange={e => setDay(i, { start_time: e.target.value })} className="h-8 w-24" title="Entrada" />
                       <span className="text-muted-foreground">a</span>
                       <Input type="time" value={d.end_time} onChange={e => setDay(i, { end_time: e.target.value })} className="h-8 w-24" title="Salida" />
-                      <span className="text-[11px] text-muted-foreground ml-1">Almuerzo</span>
-                      <Input type="time" value={d.lunch_start} onChange={e => setLunchStart(i, e.target.value)} className="h-8 w-24" title="Almuerzo inicio (60 min)" />
-                      <span className="text-muted-foreground">a</span>
-                      <Input type="time" value={d.lunch_end} onChange={e => setLunchEnd(i, e.target.value)} className="h-8 w-24" title="Almuerzo fin (60 min)" />
-                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" title="Almuerzo fijo">60 min</span>
+                      {lunchMinutesForShift(d.start_time) === 0 ? (
+                        <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-slate-500/15 dark:text-slate-300" title="Entrada 12:30 PM: trabaja seguido">Turno corrido · sin almuerzo</span>
+                      ) : (
+                        <>
+                          <span className="text-[11px] text-muted-foreground ml-1">Almuerzo</span>
+                          <Input type="time" value={d.lunch_start} onChange={e => setLunchStart(i, e.target.value)} className="h-8 w-24" title="Almuerzo inicio (60 min)" />
+                          <span className="text-muted-foreground">a</span>
+                          <Input type="time" value={d.lunch_end} onChange={e => setLunchEnd(i, e.target.value)} className="h-8 w-24" title="Almuerzo fin (60 min)" />
+                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" title="Almuerzo fijo">60 min</span>
+                        </>
+                      )}
                       <span className="ml-1 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-bold text-primary" title="Total neto del día">{h1(dayHours(d))}</span>
                     </div>
                   ) : <span className="text-xs text-muted-foreground">Libre</span>}

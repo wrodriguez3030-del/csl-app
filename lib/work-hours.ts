@@ -17,6 +17,22 @@ export const DEFAULT_LUNCH_MINUTES = 60
 export const LUNCH_MINUTES = DEFAULT_LUNCH_MINUTES
 export const WEEKLY_HOURS_LIMIT = 44
 
+/**
+ * Turnos CORRIDOS (sin hora de almuerzo): el personal que ENTRA a estas horas
+ * trabaja seguido y no se le descuenta almuerzo. Regla oficial del negocio.
+ * Hoy: solo entrada 12:30 PM. (Si en el futuro se suman 1:00/1:30 PM, agregar
+ * aquí "13:00"/"13:30" — es el único punto a tocar.)
+ */
+export const NO_LUNCH_START_TIMES: string[] = ["12:30"]
+
+/** Minutos de almuerzo que aplican a un turno según su hora de ENTRADA. */
+export function lunchMinutesForShift(startTime: string | null | undefined, isDayOff = false): number {
+  if (isDayOff) return 0
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(startTime ?? ""))
+  const hm = m ? `${m[1].padStart(2, "0")}:${m[2]}` : ""
+  return NO_LUNCH_START_TIMES.includes(hm) ? 0 : DEFAULT_LUNCH_MINUTES
+}
+
 export interface ScheduleDay {
   day_of_week: number
   is_working_day: boolean
@@ -67,8 +83,10 @@ export function calculateDailyWorkedHours(input: {
   let mins = e - s
   if (mins <= 0) mins += 24 * 60 // cruce de medianoche
   const grossHours = mins / 60
-  const netHours = Math.max(0, grossHours - DEFAULT_LUNCH_MINUTES / 60)
-  return { grossHours, lunchMinutes: DEFAULT_LUNCH_MINUTES, lunchHours: 1, netHours }
+  // Almuerzo 60 min, salvo turno corrido (entrada 12:30 → sin almuerzo).
+  const lunchMin = lunchMinutesForShift(input.startTime, false)
+  const netHours = Math.max(0, grossHours - lunchMin / 60)
+  return { grossHours, lunchMinutes: lunchMin, lunchHours: lunchMin / 60, netHours }
 }
 
 /** Horas netas trabajadas de un día del horario (compatibilidad). */
@@ -84,7 +102,7 @@ export function calculateWeeklyWorkedHours(days: ScheduleDay[] | null | undefine
   const list = Array.isArray(days) ? days : []
   const hasSchedule = list.length > 0
   const dailyHours = [0, 0, 0, 0, 0, 0, 0]
-  let net = 0, gross = 0, workedDays = 0
+  let net = 0, gross = 0, lunch = 0, workedDays = 0
   for (const d of list) {
     if (!d.is_working_day) continue
     const r = calculateDailyWorkedHours({ startTime: d.start_time, endTime: d.end_time, isDayOff: false })
@@ -92,11 +110,12 @@ export function calculateWeeklyWorkedHours(days: ScheduleDay[] | null | undefine
     if (dow >= 0 && dow <= 6) dailyHours[dow] = r.netHours
     net += r.netHours
     gross += r.grossHours
+    lunch += r.lunchHours
     workedDays++
   }
   const totalHours = Math.round(net * 100) / 100
   const grossHours = Math.round(gross * 100) / 100
-  const restHours = workedDays * (DEFAULT_LUNCH_MINUTES / 60)
+  const restHours = Math.round(lunch * 100) / 100
   const exceeds44 = hasSchedule && totalHours > WEEKLY_HOURS_LIMIT
   return {
     totalHours,
