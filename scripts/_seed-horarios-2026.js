@@ -21,6 +21,8 @@ const EMP = [
   { id: "sol_1777321360063", task: "KARLA",    suc: "Rafael Vidal", d: ["09:00-13:00","09:00-13:00",null,"09:00-13:00","09:00-13:00","08:00-16:00"] },
   { id: "sol_1777397765546", task: "DIANA",    suc: "Rafael Vidal", d: ["10:30-20:00","09:00-18:00",null,"09:00-18:00","09:00-18:00","08:00-16:00"] },
   { id: "sol_1777323239749", task: "EMELY",    suc: "Rafael Vidal", d: ["12:30-20:00","12:30-20:00","09:00-20:00","09:00-18:00",null,"08:00-16:00"] },
+  // Ashley: mismo horario que Emely (pedido del usuario).
+  { id: "sol_1777398965952", task: "ASHLEY",   suc: "Rafael Vidal", d: ["12:30-20:00","12:30-20:00","09:00-20:00","09:00-18:00",null,"08:00-16:00"] },
   { id: "sol_1777398310745", task: "RIQUELMI", suc: "Rafael Vidal", d: ["12:30-20:00","09:00-20:00","12:30-20:00",null,"12:30-20:00","08:00-16:00"] },
   { id: "sol_1777321538864", task: "MADELIN",  suc: "Rafael Vidal", d: ["09:00-18:00",null,"09:00-18:00","10:30-20:00","09:00-18:00","08:00-16:00"] },
   { id: "sol_1777397196207", task: "ROSA",     suc: "Rafael Vidal", d: [null,"13:00-20:00","09:00-20:00","12:30-20:00","12:30-20:00","08:00-16:00"] },
@@ -58,9 +60,11 @@ const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(t); return Number(m[1
 const fmt = (mins) => `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`
 // Almuerzo de 1 h: usa la regla oficial; si el turno no está en la tabla,
 // centra 60 min dentro del turno (caso turnos cortos 09:00-13:00).
+// REGLA: el personal que ENTRA a las 12:30 PM no tiene hora de almuerzo → null.
 function lunchWindow(shift) {
-  if (LUNCH[shift]) return LUNCH[shift]
   const [a, b] = shift.split("-")
+  if (a === "12:30") return null
+  if (LUNCH[shift]) return LUNCH[shift]
   const s = toMin(a), e = toMin(b)
   const ls = s + Math.max(0, Math.floor((e - s - 60) / 2))
   return [fmt(ls), fmt(ls + 60)]
@@ -85,8 +89,9 @@ async function upsertDays(schedId, emp) {
     const shift = emp.d[i]
     if (!shift) { rows.push(`(${q(schedId)}, ${q(CSL)}, ${dow}, false, null, null, null, null, 0, now())`); continue }
     const [s, e] = shift.split("-")
-    const [ls, le] = lunchWindow(shift)
-    rows.push(`(${q(schedId)}, ${q(CSL)}, ${dow}, true, ${q(s)}, ${q(e)}, ${q(ls)}, ${q(le)}, 60, now())`)
+    const lunch = lunchWindow(shift)
+    if (!lunch) { rows.push(`(${q(schedId)}, ${q(CSL)}, ${dow}, true, ${q(s)}, ${q(e)}, null, null, 0, now())`); continue }
+    rows.push(`(${q(schedId)}, ${q(CSL)}, ${dow}, true, ${q(s)}, ${q(e)}, ${q(lunch[0])}, ${q(lunch[1])}, 60, now())`)
   }
   await runSql(`insert into hr_employee_schedule_days
     (schedule_id, business_id, day_of_week, is_working_day, start_time, end_time, lunch_start, lunch_end, break_minutes, updated_at)

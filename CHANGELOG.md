@@ -18,6 +18,22 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.18] — 2026-06-16
+
+### Changed
+- **Regla de almuerzo**: el personal que **entra a las 12:30 PM no tiene hora
+  de almuerzo** (turno corrido). Se eliminó el almuerzo (lunch_start/end = null,
+  break_minutes = 0) en los 34 días con entrada 12:30; el total de esos días
+  pasa a 7.5 h. Aplicado en db-cls y en el seed `_seed-horarios-2026.js`
+  (`lunchWindow` devuelve null para entradas 12:30) para que sea idempotente.
+
+### Added
+- **ASHLEY** (Ashley Michelle Sánchez, R Vidal) con el **mismo horario que
+  Emely**: L/M 12:30–20:00 (sin almuerzo), X 09:00–20:00, J 09:00–18:00, V
+  libre, S 08:00–16:00. Total empleados con horario: 23.
+
+---
+
 ## [0.2.17] — 2026-06-16
 
 ### Added
