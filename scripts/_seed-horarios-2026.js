@@ -58,11 +58,12 @@ const LUNCH = {
 }
 const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(t); return Number(m[1]) * 60 + Number(m[2]) }
 const fmt = (mins) => `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`
-// Almuerzo 60 min por día trabajado, SALVO turno corrido: el personal que
-// entra a las 12:30 PM trabaja seguido y no lleva almuerzo → null.
+// Almuerzo 60 min por día trabajado, SALVO turno corrido: quien entra a las
+// 12:30 PM o más tarde (12:30, 1:00, 1:30…) trabaja seguido, sin almuerzo → null.
+const NO_LUNCH_FROM = 12 * 60 + 30 // 12:30 PM
 function lunchWindow(shift) {
   const [a, b] = shift.split("-")
-  if (a === "12:30") return null
+  if (toMin(a) >= NO_LUNCH_FROM) return null
   if (LUNCH[shift]) return LUNCH[shift]
   const s = toMin(a), e = toMin(b)
   const ls = s + Math.max(0, Math.floor((e - s - 60) / 2))

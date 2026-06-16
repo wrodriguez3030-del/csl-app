@@ -18,19 +18,20 @@ export const LUNCH_MINUTES = DEFAULT_LUNCH_MINUTES
 export const WEEKLY_HOURS_LIMIT = 44
 
 /**
- * Turnos CORRIDOS (sin hora de almuerzo): el personal que ENTRA a estas horas
- * trabaja seguido y no se le descuenta almuerzo. Regla oficial del negocio.
- * Hoy: solo entrada 12:30 PM. (Si en el futuro se suman 1:00/1:30 PM, agregar
- * aquí "13:00"/"13:30" — es el único punto a tocar.)
+ * TURNO CORRIDO (sin hora de almuerzo): el personal que ENTRA a las 12:30 PM o
+ * más tarde trabaja seguido y no se le descuenta almuerzo. Regla oficial del
+ * negocio. Cubre 12:30, 1:00 y 1:30 PM (y cualquier turno futuro de la tarde).
+ * Los turnos de mañana (8:00, 9:00, 10:30…) sí llevan 60 min de almuerzo.
  */
-export const NO_LUNCH_START_TIMES: string[] = ["12:30"]
+export const NO_LUNCH_FROM_MINUTE = 12 * 60 + 30 // 12:30 PM
 
 /** Minutos de almuerzo que aplican a un turno según su hora de ENTRADA. */
 export function lunchMinutesForShift(startTime: string | null | undefined, isDayOff = false): number {
   if (isDayOff) return 0
   const m = /^(\d{1,2}):(\d{2})/.exec(String(startTime ?? ""))
-  const hm = m ? `${m[1].padStart(2, "0")}:${m[2]}` : ""
-  return NO_LUNCH_START_TIMES.includes(hm) ? 0 : DEFAULT_LUNCH_MINUTES
+  if (!m) return DEFAULT_LUNCH_MINUTES
+  const startMin = Number(m[1]) * 60 + Number(m[2])
+  return startMin >= NO_LUNCH_FROM_MINUTE ? 0 : DEFAULT_LUNCH_MINUTES
 }
 
 export interface ScheduleDay {

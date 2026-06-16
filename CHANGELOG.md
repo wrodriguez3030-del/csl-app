@@ -18,6 +18,23 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.22] — 2026-06-16
+
+### Changed
+- **Turno corrido (sin almuerzo) para toda entrada de las 12:30 PM en adelante**
+  (12:30, 1:00, 1:30 PM…), no solo 12:30. Se reemplazó la lista exacta por un
+  umbral central `NO_LUNCH_FROM_MINUTE = 12:30` en `lib/work-hours.ts`
+  (`lunchMinutesForShift`): entrada ≥ 12:30 → 0 min; turnos de mañana (8:00,
+  9:00, 10:30) → 60 min. Aplica en tarjeta, modal, ponche, asistencia y guardado.
+- Seed `_seed-horarios-2026.js` usa el mismo umbral.
+
+### Fixed
+- Datos db-cls: días con entrada ≥ 12:30 quedan sin almuerzo (Eidylee 1:30 PM,
+  Rosa/Benita 1:00 PM incluidos). Verificado: 0 días tarde con almuerzo, 0 días
+  de mañana con `break_minutes ≠ 60`. Depicenter intacto.
+
+---
+
 ## [0.2.21] — 2026-06-16
 
 ### Changed
