@@ -19,6 +19,7 @@ import type { Business, ClienteCosmiatria } from "@/lib/types"
 import { displayPhone, displayDocumento } from "@/lib/formatters"
 import type { FichaDermoCosmiatrica } from "@/lib/dermo-cosmiatria"
 import { normalizeSearchText, normalizeDigits } from "@/lib/cliente-search"
+import { dedupeEspecialistas } from "@/lib/especialistas"
 
 type SortKey = "fecha" | "nombre" | "sucursal" | "operadora" | "estado"
 
@@ -362,8 +363,12 @@ export function CosmiatriaFichaPage() {
     [records, dbPulsos.operadoras]
   )
 
+  // Lista de especialistas para el dropdown: fusiona la fuente limpia
+  // (csl_operadoras) con los valores históricos de los registros, pero
+  // normaliza/deduplica por nombre canónico para que "Eidylee" y "EIDYLEE"
+  // no aparezcan dos veces. Ver lib/especialistas.ts.
   const operadoras = useMemo(
-    () => uniqueText([...operatorOptions, ...records.map((record) => record.operadora)]),
+    () => dedupeEspecialistas([...operatorOptions, ...records.map((record) => record.operadora)]),
     [operatorOptions, records]
   )
 

@@ -216,13 +216,13 @@ const ZONAS_MASAJE: ReadonlyArray<string> = [
  *  no usa csl_operadoras (esa tabla mezcla operadoras de láser / ficha /
  *  otros servicios). Exportado para que LinkGeneratorDialog lo reutilice y
  *  no haya drift entre el modal de generar link y el form interno. */
-export const MASSAGE_SPECIALISTS = ["DAYHANA", "Benita"] as const
+export const MASSAGE_SPECIALISTS = ["BENITA", "DAYHANA"] as const
 
 /** Especialista por defecto que se autocompleta al elegir sucursal. Se puede
  *  editar manualmente en el formulario. Solo aplica a masajes (las dos
  *  sucursales con servicio de masajes tienen una especialista fija). */
 const ESPECIALISTAS_POR_SUCURSAL: Record<string, string> = {
-  "Los Jardines": "Benita",
+  "Los Jardines": "BENITA",
   "Villa Olga": "DAYHANA",
 }
 

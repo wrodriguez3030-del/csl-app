@@ -30,6 +30,7 @@ import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { getBusinessBranding } from "@/lib/business"
 import type { Business } from "@/lib/types"
 import { displayPhone, displayDocumento } from "@/lib/formatters"
+import { normalizeEspecialista, dedupeEspecialistas } from "@/lib/especialistas"
 
 /**
  * Vista centralizada de documentos firmados / pendientes:
@@ -131,7 +132,7 @@ function fichaToUnified(rows: Record<string, unknown>[]): ReporteUnificado[] {
     telefono: pickString(row.telefono, row.Telefono),
     correo: pickString(row.correo, row.email, row.Email),
     sucursal: pickString(row.sucursal, row.Sucursal),
-    especialista: pickString(row.especialista, row.nombreEspecialista, row.operadora, row.Operadora),
+    especialista: normalizeEspecialista(pickString(row.especialista, row.nombreEspecialista, row.operadora, row.Operadora)),
     estado: pickString(row.estado, row.Estado, "Completada"),
     firmaCliente: pickString(row.firma_cliente, row.firma, row.firmaDigital, row.FirmaDigital),
     firmaEspecialista: pickString(row.firma_especialista, row.firmaEspecialista, row.FirmaEspecialista),
@@ -150,7 +151,7 @@ function consentToUnified(rows: Record<string, unknown>[], tipo: "masajes" | "pe
     telefono: pickString(row.telefono, row.Telefono),
     correo: pickString(row.correo, row.Correo, row.email),
     sucursal: pickString(row.sucursal, row.Sucursal),
-    especialista: pickString(row.nombreEspecialista, row.NombreEspecialista, row.especialista_nombre),
+    especialista: normalizeEspecialista(pickString(row.nombreEspecialista, row.NombreEspecialista, row.especialista_nombre)),
     estado: pickString(row.estado, row.Estado, "Pendiente"),
     firmaCliente: pickString(row.firmaCliente, row.FirmaCliente, row.firma_cliente),
     firmaEspecialista: pickString(row.firmaEspecialista, row.FirmaEspecialista, row.firma_especialista),
@@ -215,7 +216,7 @@ export function ReportesFirmadosPage() {
     [items],
   )
   const especialistas = useMemo(
-    () => Array.from(new Set(items.map((r) => r.especialista).filter(Boolean))).sort(),
+    () => dedupeEspecialistas(items.map((r) => r.especialista)),
     [items],
   )
   const estados = useMemo(

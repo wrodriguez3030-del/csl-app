@@ -12,6 +12,7 @@ import { supabaseBrowser } from "@/lib/supabase-client"
 import { normalizeAddress } from "@/lib/address"
 import type { ClienteCosmiatria } from "@/lib/types"
 import { MASSAGE_SPECIALISTS } from "@/components/consentimientos-page"
+import { dedupeEspecialistas } from "@/lib/especialistas"
 import { searchClients } from "@/lib/cliente-search"
 import { formatPhone, formatCedula, displayPhone, displayDocumento } from "@/lib/formatters"
 import { findExistingClienteMatch } from "@/lib/cliente-dedupe"
@@ -222,13 +223,9 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
     try {
       const result = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getAllPulsosData" })
       const ops = (result as { operadoras?: Record<string, unknown>[] }).operadoras || []
-      const names = Array.from(
-        new Set(
-          ops
-            .map((o) => String(o.Nombre || o.nombre || "").trim())
-            .filter(Boolean),
-        ),
-      ).sort((a, b) => a.localeCompare(b, "es"))
+      // Normaliza/deduplica por nombre canónico (ver lib/especialistas.ts) para
+      // que no aparezcan variantes de la misma persona ("Eidylee"/"EIDYLEE").
+      const names = dedupeEspecialistas(ops.map((o) => String(o.Nombre || o.nombre || "")))
       setEspecialistas(names)
     } catch {
       // sin lista: el operador puede dejarlo vacío y rellenar después en interno

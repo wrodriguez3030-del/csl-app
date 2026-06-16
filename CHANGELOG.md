@@ -18,6 +18,36 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.16] — 2026-06-16
+
+### Added
+- **BENITA** agregada como especialista oficial de CSL (`csl_operadoras`,
+  sucursal Los Jardines, Activa). Aparece en todos los selectores de
+  especialista de cosmiatría/fichas/consentimientos.
+- `lib/especialistas.ts`: normalizador canónico compartido
+  (`normalizeEspecialista` + `dedupeEspecialistas`) para que los dropdowns no
+  mezclen variantes de la misma persona. Alias: `EMELY→EMELI`,
+  `KATHERINE→KATHERIN`, `YESICA→YESSICA`, `SAOMY→SAHOMY`.
+
+### Fixed
+- **Especialistas duplicadas en los selectores** (p.ej. `Eidylee`/`EIDYLEE`,
+  `Johely`/`JOHELY`). Causa raíz: los dropdowns fusionaban la fuente limpia
+  (`csl_operadoras`, ya en MAYÚSCULAS) con valores históricos de los registros
+  guardados con mayúsc/minúsc mezcladas, sin normalizar el case. Ahora
+  Ficha Dermatología (`cosmiatria-ficha-page`), generador de links
+  (`link-generator-dialog`) y el filtro de Reportes/Historial
+  (`reportes-firmados-page`) normalizan y deduplican por nombre canónico.
+- Constantes de masajes normalizadas a MAYÚSCULAS (`MASSAGE_SPECIALISTS`,
+  `ESPECIALISTAS_POR_SUCURSAL`: `Benita→BENITA`).
+- Migración `202606160001_normalize_especialistas.sql` (aditiva, sin DELETE):
+  canoniza valores históricos `Eidylee→EIDYLEE`, `Johely→JOHELY`,
+  `Benita→BENITA`, `Dayhana→DAYHANA` en fichas y consentimientos. Auditado en
+  `csl_maintenance_audit` (`specialist_added`, `specialist_normalized`).
+- Lado LÁSER intacto: `csl_equipos`/`normalize-pulse` siguen usando `ROQUELMI`;
+  el normalizador de cosmiatría usa `RIQUELMI` y no toca las pantallas de Pulsos.
+
+---
+
 ## [0.2.15] — 2026-06-15
 
 ### Removed
