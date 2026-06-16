@@ -1133,6 +1133,29 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const { data: days } = await sb.from("hr_employee_schedule_days").select("*").eq("schedule_id", (sched as { id: string }).id).order("day_of_week", { ascending: true })
       return { ok: true, schedule: sched, days: days || [] }
     }
+    case "getHrAllEmployeeSchedules": {
+      // Horarios activos de TODOS los empleados del business activo (para
+      // calcular horas semanales en cada tarjeta). Scopeado por business_id.
+      const businessId = effectiveBusinessId()
+      if (!businessId) throw new Error("business_id no encontrado")
+      const sb = getSupabaseAdmin()
+      const { data: scheds, error } = await sb.from("hr_employee_schedules")
+        .select("id, employee_id, sucursal, name").eq("business_id", businessId).eq("active", true)
+      if (error) { if (isMissingTable(error)) return { ok: true, schedules: [], tableMissing: true }; throw error }
+      const schedList = (scheds || []) as Array<{ id: string; employee_id: string; sucursal: string | null; name: string | null }>
+      const ids = schedList.map((s) => s.id)
+      const daysBySched: Record<string, Record<string, unknown>[]> = {}
+      if (ids.length) {
+        const { data: days } = await sb.from("hr_employee_schedule_days")
+          .select("*").in("schedule_id", ids).order("day_of_week", { ascending: true })
+        for (const d of ((days || []) as Record<string, unknown>[])) {
+          const sid = String(d.schedule_id)
+          ;(daysBySched[sid] ||= []).push(d)
+        }
+      }
+      const schedules = schedList.map((s) => ({ employee_id: s.employee_id, sucursal: s.sucursal, name: s.name, days: daysBySched[s.id] || [] }))
+      return { ok: true, schedules }
+    }
     case "saveHrEmployeeSchedule": {
       const record = parsePayload(params)
       const businessId = effectiveBusinessId()

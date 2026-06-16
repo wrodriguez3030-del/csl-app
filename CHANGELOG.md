@@ -18,6 +18,33 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.19] — 2026-06-16
+
+### Added
+- **Horas trabajadas por empleado** en cada tarjeta de RRHH → Empleados:
+  `Horas trabajadas: XX h / 44 h`. Badge **amarillo "⚠ Sobre 44 h"** si supera
+  44 h semanales; verde/neutro si ≤ 44. Sin horario → "Horario pendiente"
+  (no muestra 0 h como válido).
+- Función central `lib/work-hours.ts` `calculateWeeklyWorkedHours(days)` →
+  `{ totalHours, dailyHours, hasSchedule, exceeds44, status }`. Reutilizada por
+  la tarjeta y el modal de horario (sin drift). Horas/día = salida − entrada −
+  almuerzo real del día (turno corrido 12:30 = sin almuerzo); día libre = 0;
+  formato máx. 1 decimal (`fmtHours`).
+- Handler `getHrAllEmployeeSchedules`: horarios activos de todos los empleados
+  del business activo (scopeado por `business_id`; Depicenter no se mezcla).
+
+### Changed
+- Modal **Horario laboral**: el resumen ahora muestra **Total semanal XX h / 44 h**
+  con estado e indicador amarillo si pasa de 44 h. Cálculo centralizado en
+  `lib/work-hours.ts` (mismo que la tarjeta).
+
+### Notes
+- Hoy ningún empleado CSL supera 44 h (máx. 40 h: Emely/Ashley), así que todas
+  las tarjetas muestran el indicador normal; el amarillo se activa con cualquier
+  horario > 44 h.
+
+---
+
 ## [0.2.18] — 2026-06-16
 
 ### Changed

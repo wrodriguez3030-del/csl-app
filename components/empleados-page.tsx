@@ -10,8 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import QRCode from "qrcode"
 import { composeQrPng, downloadDataUrl } from "@/lib/qr-compose"
 import { EmployeeScheduleDialog } from "@/components/hr/employee-schedule-dialog"
-import { Clock } from "lucide-react"
+import { Clock, AlertTriangle } from "lucide-react"
 import { RecordActions } from "@/components/record-actions"
+import { calculateWeeklyWorkedHours, fmtHours, WEEKLY_HOURS_LIMIT, type WeeklyWorkResult, type ScheduleDay } from "@/lib/work-hours"
 
 interface EmpleadoRecord {
   id: string
@@ -64,6 +65,9 @@ export function EmpleadosPage() {
   const [qrToken, setQrToken] = useState("")
   const [qrBusy, setQrBusy] = useState(false)
   const [schedEmp, setSchedEmp] = useState<EmpleadoRecord | null>(null)
+  // Horas semanales por empleado (employee_id → resultado). Fuente: horarios
+  // activos del business activo (Supabase local db-cls), scopeado en backend.
+  const [hoursByEmp, setHoursByEmp] = useState<Record<string, WeeklyWorkResult>>({})
 
   const qrLink = (token: string) => `${typeof window !== "undefined" ? window.location.origin : ""}/qr/${encodeURIComponent(token)}`
   const shareWhatsapp = () => {
@@ -141,8 +145,27 @@ export function EmpleadosPage() {
     }
   }
 
+  const loadHoras = async () => {
+    const normalized = normalizeApiUrl(apiUrl)
+    if (!normalized) { setHoursByEmp({}); return }
+    try {
+      const res = await apiCall(normalized, { action: "getHrAllEmployeeSchedules" }) as {
+        ok?: boolean; schedules?: Array<{ employee_id: string; days?: ScheduleDay[] }>; tableMissing?: boolean
+      }
+      const map: Record<string, WeeklyWorkResult> = {}
+      for (const s of (res?.schedules || [])) {
+        map[String(s.employee_id)] = calculateWeeklyWorkedHours(s.days || [])
+      }
+      setHoursByEmp(map)
+    } catch {
+      // sin horarios: las tarjetas muestran "Horario pendiente"
+    }
+  }
+
   useEffect(() => {
     void loadEmpleados()
+    void loadHoras()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiUrl])
 
   const filtered = useMemo(() => {
@@ -259,6 +282,19 @@ export function EmpleadosPage() {
                         <div><b>Fecha solicitud:</b> {empleado.fecha || "—"}</div>
                         <div><b>Nacionalidad:</b> {empleado.nacionalidad || "—"}</div>
                         <div><b>Nacimiento:</b> {empleado.fechaNacimiento || "—"}</div>
+                        <div className="mt-2 lg:flex lg:justify-end">{(() => {
+                          const w = hoursByEmp[empleado.id]
+                          if (!w || !w.hasSchedule) {
+                            return <span className="inline-flex items-center gap-1 rounded-md border border-dashed px-2 py-0.5 text-xs text-muted-foreground"><Clock className="h-3.5 w-3.5" />Horario pendiente</span>
+                          }
+                          return (
+                            <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium ${w.exceeds44 ? "bg-yellow-100 text-yellow-800 border border-yellow-400 dark:bg-yellow-500/15 dark:text-yellow-300" : "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300"}`}>
+                              <Clock className="h-3.5 w-3.5" />
+                              Horas trabajadas: {fmtHours(w.totalHours)} h / {WEEKLY_HOURS_LIMIT} h
+                              {w.exceeds44 ? <span className="inline-flex items-center gap-0.5 font-semibold"><AlertTriangle className="h-3.5 w-3.5" />Sobre 44 h</span> : null}
+                            </span>
+                          )
+                        })()}</div>
                         <div className="mt-3 flex gap-2 lg:justify-end">
                           <button onClick={() => setSchedEmp(empleado)} className="rounded-lg border px-3 py-1.5 text-xs flex items-center gap-1 hover:bg-muted/50"><Clock className="h-3.5 w-3.5" />Horario</button>
                           <button onClick={() => void openQr(empleado)} className="rounded-lg border px-3 py-1.5 text-xs flex items-center gap-1 hover:bg-muted/50"><QrCode className="h-3.5 w-3.5" />Ver QR</button>
@@ -306,7 +342,7 @@ export function EmpleadosPage() {
           employeeId={schedEmp.id}
           employeeName={`${schedEmp.nombre} ${schedEmp.apellido}`.trim()}
           sucursal={schedEmp.sucursal}
-          onClose={() => setSchedEmp(null)}
+          onClose={() => { setSchedEmp(null); void loadHoras() }}
         />
       )}
     </div>

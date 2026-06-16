@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Loader2, Save, X, Clock } from "lucide-react"
+import { Loader2, Save, X, Clock, AlertTriangle } from "lucide-react"
+import { calculateWeeklyWorkedHours, dayWorkedHours, fmtHours, WEEKLY_HOURS_LIMIT } from "@/lib/work-hours"
 
 const DOW = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]
 interface DayRow { day_of_week: number; is_working_day: boolean; start_time: string; end_time: string; break_minutes: number; lunch_start: string; lunch_end: string }
@@ -21,20 +22,8 @@ function defaultDays(): DayRow[] {
 }
 const hhmm = (v: unknown) => { const s = String(v ?? ""); return /^\d{2}:\d{2}/.test(s) ? s.slice(0, 5) : "" }
 const toMin = (t: string) => { const m = /^(\d{1,2}):(\d{2})/.exec(t || ""); return m ? Number(m[1]) * 60 + Number(m[2]) : null }
-// Minutos de almuerzo: si hay ventana inicio/fin la usamos; si no, break_minutes.
-function lunchMinutes(d: DayRow): number {
-  const ls = toMin(d.lunch_start), le = toMin(d.lunch_end)
-  if (ls != null && le != null && le > ls) return le - ls
-  return Number(d.break_minutes) || 0
-}
-// Total neto del día en horas (salida − entrada − almuerzo). Soporta cruce de medianoche.
-function dayHours(d: DayRow): number {
-  if (!d.is_working_day) return 0
-  const s = toMin(d.start_time), e = toMin(d.end_time)
-  if (s == null || e == null) return 0
-  let mins = e - s; if (mins <= 0) mins += 24 * 60
-  return Math.max(0, (mins - lunchMinutes(d)) / 60)
-}
+// Cálculo de horas centralizado en lib/work-hours.ts (mismo usado en la tarjeta).
+const dayHours = (d: DayRow): number => dayWorkedHours(d)
 
 export function EmployeeScheduleDialog({ employeeId, employeeName, sucursal, onClose }: { employeeId: string; employeeName: string; sucursal?: string; onClose: () => void }) {
   const { apiUrl, showToast } = useAppStore()
@@ -79,18 +68,18 @@ export function EmployeeScheduleDialog({ employeeId, employeeName, sucursal, onC
 
   // Resumen semanal en tiempo real (cruce de medianoche soportado).
   const resumen = useMemo(() => {
-    let lab = 0, bruto = 0, desc = 0
+    const w = calculateWeeklyWorkedHours(days)
+    let lab = 0, bruto = 0
     for (const d of days) {
       if (!d.is_working_day) continue
       lab++
       const s = toMin(d.start_time), e = toMin(d.end_time)
       if (s == null || e == null) continue
-      let mins = e - s; if (mins <= 0) mins += 24 * 60 // salida < entrada → cruce de medianoche
+      let mins = e - s; if (mins <= 0) mins += 24 * 60
       bruto += mins / 60
-      desc += lunchMinutes(d) / 60
     }
-    const neto = Math.max(0, bruto - desc)
-    return { lab, libres: 7 - lab, bruto, desc, neto, prom: lab > 0 ? neto / lab : 0 }
+    const neto = w.totalHours
+    return { lab, libres: 7 - lab, bruto, desc: Math.max(0, bruto - neto), neto, prom: lab > 0 ? neto / lab : 0, exceeds44: w.exceeds44 }
   }, [days])
   const h1 = (n: number) => `${(Math.round(n * 100) / 100).toLocaleString("es-DO", { maximumFractionDigits: 2 })} h`
 
@@ -139,15 +128,23 @@ export function EmployeeScheduleDialog({ employeeId, employeeName, sucursal, onC
                 </div>
               ))}
             </div>
-            <div className="rounded-lg border bg-muted/20 p-3">
-              <h4 className="text-sm font-bold mb-2 flex items-center gap-1.5"><Clock className="h-4 w-4 text-primary" />Resumen semanal</h4>
+            <div className={`rounded-lg border p-3 ${resumen.exceeds44 ? "border-yellow-400 bg-yellow-50 dark:bg-yellow-500/10" : "bg-muted/20"}`}>
+              <h4 className="text-sm font-bold mb-2 flex items-center justify-between gap-1.5">
+                <span className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-primary" />Resumen semanal</span>
+                {resumen.exceeds44 ? (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-yellow-100 px-2 py-0.5 text-[11px] font-bold text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-300"><AlertTriangle className="h-3.5 w-3.5" />Sobre 44 h</span>
+                ) : null}
+              </h4>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
                 <div><span className="text-muted-foreground">Días laborables</span><div className="font-bold text-base">{resumen.lab}</div></div>
                 <div><span className="text-muted-foreground">Días libres</span><div className="font-bold text-base">{resumen.libres}</div></div>
                 <div><span className="text-muted-foreground">Horas brutas</span><div className="font-bold text-base">{h1(resumen.bruto)}</div></div>
                 <div><span className="text-muted-foreground">Descansos</span><div className="font-bold text-base">{h1(resumen.desc)}</div></div>
                 <div><span className="text-muted-foreground">Promedio diario</span><div className="font-bold text-base">{h1(resumen.prom)}</div></div>
-                <div className="rounded bg-primary/10 px-2 py-1"><span className="text-primary/80">Horas netas semanales</span><div className="font-black text-base text-primary">{h1(resumen.neto)}</div></div>
+                <div className={`rounded px-2 py-1 ${resumen.exceeds44 ? "bg-yellow-200/60 dark:bg-yellow-500/20" : "bg-primary/10"}`}>
+                  <span className={resumen.exceeds44 ? "text-yellow-800 dark:text-yellow-300" : "text-primary/80"}>Total semanal</span>
+                  <div className={`font-black text-base ${resumen.exceeds44 ? "text-yellow-800 dark:text-yellow-300" : "text-primary"}`}>{fmtHours(resumen.neto)} h / {WEEKLY_HOURS_LIMIT} h</div>
+                </div>
               </div>
             </div>
             <p className="text-[11px] text-muted-foreground">Si el empleado no tiene horario, el ponche usa el horario de la sucursal (geocerca › workday_config).</p>
