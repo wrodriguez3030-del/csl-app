@@ -18,6 +18,36 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.17] — 2026-06-16
+
+### Added
+- **Horarios semanales de los 22 empleados de CSL** (R Vidal, Jardines, Villa
+  Olga) cargados en `hr_employee_schedules` + `hr_employee_schedule_days`, con
+  **1 hora de almuerzo por día trabajado** según las reglas oficiales por turno
+  (turnos cortos 09:00–13:00 sin regla → almuerzo de 1 h centrado). Domingo y
+  días marcados LIBRE quedan como no laborables (0 h). Seed idempotente
+  `scripts/_seed-horarios-2026.js` (reusa el horario activo existente; no crea
+  duplicados — Angélica y Dayhana se actualizaron, 20 creados).
+- Columnas `lunch_start` / `lunch_end` (texto "HH:MM") en
+  `hr_employee_schedule_days` (migración `202606160002`, aditiva) para mostrar
+  la ventana de almuerzo exacta además de `break_minutes`.
+
+### Changed
+- Diálogo **Horario laboral** (`employee-schedule-dialog`): cada día laborable
+  muestra/edita entrada, salida, **almuerzo inicio/fin** y **total del día**;
+  `break_minutes` se sincroniza con la ventana de almuerzo. El resumen semanal
+  calcula horas netas = salida − entrada − almuerzo.
+- Handler `saveHrEmployeeSchedule`: persiste `lunch_start`/`lunch_end` y limpia
+  la ventana en días libres.
+
+### Notes
+- Solo tenant CSL (business_id `66b0cf3e…`); Depicenter (La Vega) intacto.
+- Match de nombres normalizado, sin duplicados: YADIBLE→Yadibel,
+  NAYELIN→Nayeli, KETHERINE→Katerin, AIDYLEE→Eidylee, RIQUELMI→Riquelmy,
+  ANGELICA→Angélica, YAMILKA (en apellido). 0 empleados no encontrados.
+
+---
+
 ## [0.2.16] — 2026-06-16
 
 ### Added

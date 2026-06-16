@@ -1156,11 +1156,15 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       for (const d of days) {
         const dow = Number(d.day_of_week)
         if (!Number.isInteger(dow) || dow < 0 || dow > 6) continue
+        const isWorking = d.is_working_day === undefined ? true : Boolean(d.is_working_day)
         await sb.from("hr_employee_schedule_days").upsert({
           schedule_id: schedId, business_id: businessId, day_of_week: dow,
-          is_working_day: d.is_working_day === undefined ? true : Boolean(d.is_working_day),
+          is_working_day: isWorking,
           start_time: d.start_time ? String(d.start_time) : null, end_time: d.end_time ? String(d.end_time) : null,
-          break_minutes: Number(d.break_minutes || 0), updated_at: new Date().toISOString(),
+          // Ventana de almuerzo solo en día laborable; en día libre se limpia.
+          lunch_start: isWorking && d.lunch_start ? String(d.lunch_start) : null,
+          lunch_end: isWorking && d.lunch_end ? String(d.lunch_end) : null,
+          break_minutes: isWorking ? Number(d.break_minutes || 0) : 0, updated_at: new Date().toISOString(),
         }, { onConflict: "schedule_id,day_of_week" })
       }
       await hrAudit(user, "horarios", id ? "update" : "create", "hr_employee_schedules", schedId, null, { employee_id: employeeId })

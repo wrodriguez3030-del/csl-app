@@ -9,17 +9,32 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Loader2, Save, X, Clock } from "lucide-react"
 
 const DOW = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]
-interface DayRow { day_of_week: number; is_working_day: boolean; start_time: string; end_time: string; break_minutes: number }
+interface DayRow { day_of_week: number; is_working_day: boolean; start_time: string; end_time: string; break_minutes: number; lunch_start: string; lunch_end: string }
 
 function defaultDays(): DayRow[] {
   // L-V 9:00-20:00, Sáb 8:00-16:00, Dom libre (0=Dom … 6=Sáb).
   return [0, 1, 2, 3, 4, 5, 6].map(d => {
-    if (d === 0) return { day_of_week: 0, is_working_day: false, start_time: "", end_time: "", break_minutes: 0 }
-    if (d === 6) return { day_of_week: 6, is_working_day: true, start_time: "08:00", end_time: "16:00", break_minutes: 0 }
-    return { day_of_week: d, is_working_day: true, start_time: "09:00", end_time: "20:00", break_minutes: 0 }
+    if (d === 0) return { day_of_week: 0, is_working_day: false, start_time: "", end_time: "", break_minutes: 0, lunch_start: "", lunch_end: "" }
+    if (d === 6) return { day_of_week: 6, is_working_day: true, start_time: "08:00", end_time: "16:00", break_minutes: 60, lunch_start: "12:00", lunch_end: "13:00" }
+    return { day_of_week: d, is_working_day: true, start_time: "09:00", end_time: "20:00", break_minutes: 60, lunch_start: "13:00", lunch_end: "14:00" }
   })
 }
 const hhmm = (v: unknown) => { const s = String(v ?? ""); return /^\d{2}:\d{2}/.test(s) ? s.slice(0, 5) : "" }
+const toMin = (t: string) => { const m = /^(\d{1,2}):(\d{2})/.exec(t || ""); return m ? Number(m[1]) * 60 + Number(m[2]) : null }
+// Minutos de almuerzo: si hay ventana inicio/fin la usamos; si no, break_minutes.
+function lunchMinutes(d: DayRow): number {
+  const ls = toMin(d.lunch_start), le = toMin(d.lunch_end)
+  if (ls != null && le != null && le > ls) return le - ls
+  return Number(d.break_minutes) || 0
+}
+// Total neto del día en horas (salida − entrada − almuerzo). Soporta cruce de medianoche.
+function dayHours(d: DayRow): number {
+  if (!d.is_working_day) return 0
+  const s = toMin(d.start_time), e = toMin(d.end_time)
+  if (s == null || e == null) return 0
+  let mins = e - s; if (mins <= 0) mins += 24 * 60
+  return Math.max(0, (mins - lunchMinutes(d)) / 60)
+}
 
 export function EmployeeScheduleDialog({ employeeId, employeeName, sucursal, onClose }: { employeeId: string; employeeName: string; sucursal?: string; onClose: () => void }) {
   const { apiUrl, showToast } = useAppStore()
@@ -46,7 +61,7 @@ export function EmployeeScheduleDialog({ employeeId, employeeName, sucursal, onC
           const base = defaultDays()
           for (const d of (res.days || [])) {
             const dw = Number(d.day_of_week)
-            if (dw >= 0 && dw <= 6) base[dw] = { day_of_week: dw, is_working_day: d.is_working_day !== false, start_time: hhmm(d.start_time), end_time: hhmm(d.end_time), break_minutes: Number(d.break_minutes || 0) }
+            if (dw >= 0 && dw <= 6) base[dw] = { day_of_week: dw, is_working_day: d.is_working_day !== false, start_time: hhmm(d.start_time), end_time: hhmm(d.end_time), break_minutes: Number(d.break_minutes || 0), lunch_start: hhmm(d.lunch_start), lunch_end: hhmm(d.lunch_end) }
           }
           setDays(base)
         }
@@ -55,10 +70,15 @@ export function EmployeeScheduleDialog({ employeeId, employeeName, sucursal, onC
   }, [employeeId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const setDay = (i: number, patch: Partial<DayRow>) => setDays(prev => prev.map((d, idx) => idx === i ? { ...d, ...patch } : d))
+  // Cambiar ventana de almuerzo mantiene break_minutes en sync (= minutos de almuerzo).
+  const setLunch = (i: number, start: string, end: string) => {
+    const s = toMin(start), e = toMin(end)
+    const mins = s != null && e != null && e > s ? e - s : 0
+    setDay(i, { lunch_start: start, lunch_end: end, break_minutes: mins })
+  }
 
   // Resumen semanal en tiempo real (cruce de medianoche soportado).
   const resumen = useMemo(() => {
-    const toMin = (t: string) => { const m = /^(\d{1,2}):(\d{2})/.exec(t || ""); return m ? Number(m[1]) * 60 + Number(m[2]) : null }
     let lab = 0, bruto = 0, desc = 0
     for (const d of days) {
       if (!d.is_working_day) continue
@@ -67,7 +87,7 @@ export function EmployeeScheduleDialog({ employeeId, employeeName, sucursal, onC
       if (s == null || e == null) continue
       let mins = e - s; if (mins <= 0) mins += 24 * 60 // salida < entrada → cruce de medianoche
       bruto += mins / 60
-      desc += (Number(d.break_minutes) || 0) / 60
+      desc += lunchMinutes(d) / 60
     }
     const neto = Math.max(0, bruto - desc)
     return { lab, libres: 7 - lab, bruto, desc, neto, prom: lab > 0 ? neto / lab : 0 }
@@ -106,11 +126,14 @@ export function EmployeeScheduleDialog({ employeeId, employeeName, sucursal, onC
                   </label>
                   {d.is_working_day ? (
                     <div className="flex items-center gap-1 flex-wrap">
-                      <Input type="time" value={d.start_time} onChange={e => setDay(i, { start_time: e.target.value })} className="h-8 w-28" />
+                      <Input type="time" value={d.start_time} onChange={e => setDay(i, { start_time: e.target.value })} className="h-8 w-24" title="Entrada" />
                       <span className="text-muted-foreground">a</span>
-                      <Input type="time" value={d.end_time} onChange={e => setDay(i, { end_time: e.target.value })} className="h-8 w-28" />
-                      <Input type="number" min="0" step="5" value={d.break_minutes} onChange={e => setDay(i, { break_minutes: Number(e.target.value) })} className="h-8 w-20" title="Descanso (min)" />
-                      <span className="text-[11px] text-muted-foreground">min desc.</span>
+                      <Input type="time" value={d.end_time} onChange={e => setDay(i, { end_time: e.target.value })} className="h-8 w-24" title="Salida" />
+                      <span className="text-[11px] text-muted-foreground ml-1">Almuerzo</span>
+                      <Input type="time" value={d.lunch_start} onChange={e => setLunch(i, e.target.value, d.lunch_end)} className="h-8 w-24" title="Almuerzo inicio" />
+                      <span className="text-muted-foreground">a</span>
+                      <Input type="time" value={d.lunch_end} onChange={e => setLunch(i, d.lunch_start, e.target.value)} className="h-8 w-24" title="Almuerzo fin" />
+                      <span className="ml-1 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-bold text-primary" title="Total del día">{h1(dayHours(d))}</span>
                     </div>
                   ) : <span className="text-xs text-muted-foreground">Libre</span>}
                 </div>
