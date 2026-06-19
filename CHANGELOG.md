@@ -18,6 +18,26 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.28] — 2026-06-19
+
+### Fixed
+- **No se podía editar el nombre de una pieza ya creada en Inventario.** El campo
+  "Nombre" del modal de edición era un `<Select>` que solo listaba piezas del
+  **catálogo** (`db.piezas`), así que corregir un nombre libre (ej. *Manifull →
+  Manifold*) era imposible si ese texto no existía en el catálogo. Ahora el
+  nombre es un **input de texto libre** (obligatorio) como fuente de verdad, con
+  el catálogo como autocompletado **opcional**. La categoría ya era editable
+  aparte.
+- **Guardado de inventario robusto:** `handleSave` ahora **confirma la
+  escritura en Supabase local** antes de declarar éxito (antes era optimista y
+  fire-and-forget); muestra "Pieza actualizada correctamente." o "No se pudo
+  actualizar la pieza." según el resultado real. Guard `isSaving` (sin doble
+  submit). El `update` va por `item_id` + `business_id` activo (vía `upsertRow`,
+  que inyecta y valida el tenant) → no duplica ni mezcla Cibao/Depicenter, y no
+  pierde stock/precio/categoría.
+
+---
+
 ## [0.2.27] — 2026-06-19
 
 ### Fixed

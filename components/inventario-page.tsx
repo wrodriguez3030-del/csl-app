@@ -142,20 +142,37 @@ export function InventarioPage() {
   }
   const openEdit = (item: InventarioItem) => { setForm({...item}); setIsEditing(true); setOpen(true) }
 
-  const handleSave = () => {
-    if (!form.Pieza.trim()) { showToast("Nombre de pieza obligatorio", "error"); return }
+  const [isSaving, setIsSaving] = useState(false)
+
+  const handleSave = async () => {
+    if (isSaving) return
+    const nombre = form.Pieza.trim()
+    if (!nombre) { showToast("El nombre de la pieza es obligatorio", "error"); return }
     const id = form.ItemID || ("inv_" + Date.now())
-    const nuevo = {...form, ItemID: id}
-    const lista = isEditing
-      ? inventario.map(i => i.ItemID === id ? nuevo : i)
-      : [...inventario, nuevo]
-    setDb({...db, inventario: lista})
-    
-    // Guardar en Supabase
-    void guardarEnSupabase(nuevo, isEditing ? "updateInventario" : "addInventario")
-    
-    showToast(isEditing ? "Item actualizado" : "Item agregado al inventario", "success")
-    setOpen(false)
+    const nuevo = { ...form, Pieza: nombre, ItemID: id }
+
+    setIsSaving(true)
+    try {
+      // Persistir REALMENTE en Supabase local (update por item_id + business_id
+      // activo, vía upsertRow). Solo declaramos éxito si guardó.
+      const ok = await guardarEnSupabase(nuevo, isEditing ? "updateInventario" : "addInventario")
+      const normalized = normalizeApiUrl(apiUrl)
+      if (normalized && !ok) {
+        showToast("No se pudo actualizar la pieza. Revisa la conexión e inténtalo de nuevo.", "error")
+        return
+      }
+      // Confirmado (o sin API configurada → guardado local).
+      setDb({
+        ...db,
+        inventario: isEditing
+          ? inventario.map(i => i.ItemID === id ? nuevo : i)
+          : [...inventario, nuevo],
+      })
+      showToast(isEditing ? "Pieza actualizada correctamente." : "Item agregado al inventario.", "success")
+      setOpen(false)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   // Crea una pieza del catálogo desde el modal de Nuevo item de inventario.
@@ -555,7 +572,7 @@ export function InventarioPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2 space-y-1.5">
                   <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <Label>Pieza del catálogo *</Label>
+                    <Label htmlFor="inv-nombre">Nombre de la pieza *</Label>
                     <Button
                       type="button"
                       variant="outline"
@@ -572,37 +589,44 @@ export function InventarioPage() {
                       Nueva pieza
                     </Button>
                   </div>
-                  <Select
+                  {/* Nombre EDITABLE como texto libre — fuente de verdad. Permite
+                      corregir el nombre de una pieza ya creada (ej. Manifull → Manifold)
+                      sin depender de que exista en el catálogo. */}
+                  <Input
+                    id="inv-nombre"
                     value={form.Pieza}
-                    onValueChange={(v) => {
-                      // Auto-fill categoría desde el catálogo
-                      const pieza = db.piezas.find(p => p.Pieza === v)
-                      setForm({
-                        ...form,
-                        Pieza: v,
-                        Categoria: pieza?.Categoria || form.Categoria,
-                        Observaciones: form.Observaciones || pieza?.Funcion || ""
-                      })
-                    }}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Selecciona una pieza del catálogo" /></SelectTrigger>
-                    <SelectContent className="max-h-[300px]">
-                      {db.piezas.length === 0 ? (
-                        <SelectItem value="__none__" disabled>No hay piezas en el catálogo — usa &quot;+ Nueva pieza&quot;</SelectItem>
-                      ) : (
-                        db.piezas
+                    onChange={(e) => setForm({ ...form, Pieza: e.target.value })}
+                    placeholder="Ej: Manifold"
+                  />
+                  {/* Autocompletar desde el catálogo (opcional): al elegir, rellena
+                      nombre + categoría, pero el campo de texto sigue editable. */}
+                  {db.piezas.length > 0 && (
+                    <Select
+                      value=""
+                      onValueChange={(v) => {
+                        const pieza = db.piezas.find(p => p.Pieza === v)
+                        setForm({
+                          ...form,
+                          Pieza: v,
+                          Categoria: pieza?.Categoria || form.Categoria,
+                          Observaciones: form.Observaciones || pieza?.Funcion || "",
+                        })
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-xs text-muted-foreground">
+                        <SelectValue placeholder="O autocompletar desde el catálogo…" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[300px]">
+                        {db.piezas
                           .filter(p => p.Pieza)
                           .sort((a, b) => a.Pieza.localeCompare(b.Pieza))
                           .map(p => (
                             <SelectItem key={p.Pieza} value={p.Pieza}>
                               {p.Pieza} {p.Categoria ? `— ${p.Categoria}` : ""}
                             </SelectItem>
-                          ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {form.Pieza && !db.piezas.some(p => p.Pieza === form.Pieza) && (
-                    <p className="text-xs text-yellow-400">⚠️ Esta pieza no está en el catálogo</p>
+                          ))}
+                      </SelectContent>
+                    </Select>
                   )}
                 </div>
                 <div className="space-y-1.5">
@@ -708,8 +732,8 @@ export function InventarioPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}><X className="h-4 w-4 mr-2" />Cancelar</Button>
-            <Button onClick={handleSave}><Save className="h-4 w-4 mr-2" />Guardar</Button>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={isSaving}><X className="h-4 w-4 mr-2" />Cancelar</Button>
+            <Button onClick={handleSave} disabled={isSaving}><Save className="h-4 w-4 mr-2" />{isSaving ? "Guardando..." : "Guardar"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
