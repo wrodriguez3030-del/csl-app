@@ -46,7 +46,8 @@ export default function PublicQrPage() {
             {info.sucursal ? <p className="text-sm text-slate-500">{info.sucursal}</p> : null}
             {url ? <img src={url} alt="QR personal" className="mx-auto my-4 w-60 h-60" /> : <p className="py-12 text-sm text-slate-500">Generando…</p>}
             <p className="text-[12px] text-slate-500">Presenta este QR en el kiosco autorizado de tu sucursal para registrar entrada y salida. Solo funciona dentro de la geocerca y desde un dispositivo autorizado.</p>
-            <button onClick={download} className="mt-4 w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white">Descargar QR</button>
+            <a href={`/ponche-movil/${encodeURIComponent(token)}`} className="mt-4 block w-full rounded-lg bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white">Ponchar desde el celular</a>
+            <button onClick={download} className="mt-2 w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white">Descargar QR</button>
           </>
         )}
       </div>

@@ -18,6 +18,31 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.26] — 2026-06-19
+
+### Added
+- **Ponche desde el celular (PWA) + biometría WebAuthn/Passkeys** — tercer slice
+  del epic RR.HH./Ponche.
+  - Página móvil `/ponche-movil/[token]`: el empleado abre con su QR, marca
+    Entrada/Salida con GPS, y puede registrar/usar la **biometría del propio
+    teléfono** (huella / Face ID) como passkey. Responsive + manifest PWA
+    instalable.
+  - Endpoint `/api/public/mobile-punch`: autentica por QR (no por dispositivo),
+    lee `hr_punch_modality_config` (alcance empleado > sucursal > global) y la
+    **aplica**: modalidad habilitada, ubicación obligatoria, geocerca salvo
+    `allow_remote_punch`, y biometría obligatoria cuando aplica. Calcula
+    tardanza/horas igual que el kiosko; registra `modality`, `verified_biometric`,
+    `source="mobile"`.
+  - WebAuthn con `@simplewebauthn` (server+browser): endpoints
+    `register-options/verify` y `auth-options/verify`. La verificación biométrica
+    emite un ticket efímero (90 s) que el ponche consume.
+  - Migración `202606190002_hr_webauthn.sql` (aditiva): tablas
+    `hr_webauthn_credentials` y `hr_webauthn_challenges` con RLS.
+  - NOTA: WebAuthn requiere prueba en dispositivo real con biometría (no
+    verificable en headless).
+
+---
+
 ## [0.2.25] — 2026-06-19
 
 ### Added
