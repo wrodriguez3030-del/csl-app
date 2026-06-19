@@ -18,6 +18,23 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.23] — 2026-06-18
+
+### Added
+- **Campos técnicos editables en el Reporte de Servicio de equipos.** El formato
+  impreso ya mostraba N/S Fuente, N/S Fibra, HV@, J, BS, BC, HV REF@, VDC, V, TX
+  y Software, pero salían siempre en blanco porque no se capturaban ni se
+  guardaban. Ahora existe una tarjeta "Parámetros técnicos" en Nuevo/Editar
+  reporte, los valores persisten en Supabase local, aparecen en la vista de
+  detalle y se imprimen en el PDF. Se agregó también el número de la fuente de
+  poder. Campos de texto: aceptan unidades ("12.5 kV", "8 J").
+  - Migración aditiva `202606180001_reportes_campos_tecnicos.sql`: 12 columnas
+    `ADD COLUMN IF NOT EXISTS` en `csl_reportes` (no destructiva, reportes
+    previos intactos). Pulsos (p_totales/p_cabeza), corrección, observaciones,
+    partes y atendió se reutilizaron, no se duplicaron.
+
+---
+
 ## [0.2.22] — 2026-06-16
 
 ### Changed

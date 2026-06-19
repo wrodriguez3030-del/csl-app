@@ -83,6 +83,21 @@ export interface Reporte {
   P_Cabeza?: number
   P_Totales?: number
   Atendio: string
+  // Parámetros técnicos del reporte de servicio (migración
+  // 202606180001_reportes_campos_tecnicos.sql). Texto libre: pueden traer
+  // unidades ("12.5 kV", "8 J").
+  PowerSourceNumber?: string  // Número de la fuente de poder
+  PowerSourceSerial?: string  // N/S Fuente
+  FiberSerial?: string        // N/S Fibra
+  HV?: string                 // HV@
+  Joules?: string             // J
+  BS?: string                 // BS
+  BC?: string                 // BC
+  HVRef?: string              // HV REF@
+  VDC?: string                // VDC
+  Voltage?: string            // V
+  TX?: string                 // TX
+  Software?: string           // Software
   PiezasJSON?: string
   PartesTexto?: string
   FirmaCliente?: string

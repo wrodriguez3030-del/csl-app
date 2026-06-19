@@ -281,10 +281,9 @@ export function ReportesPage() {
         </tr></table>
 
         <table><tr>
-          <td style="width:120px;border:none"></td>
-          <td class="label">N/S FUENTE:</td><td style="width:150px"></td>
-          <td style="width:20px;border:none"></td>
-          <td class="label">N/S FIBRA:</td><td style="width:150px"></td>
+          <td class="label">NO. FUENTE:</td><td style="width:110px">${reporte.PowerSourceNumber || ""}</td>
+          <td class="label">N/S FUENTE:</td><td style="width:130px">${reporte.PowerSourceSerial || ""}</td>
+          <td class="label">N/S FIBRA:</td><td style="width:130px">${reporte.FiberSerial || ""}</td>
         </tr></table>
 
         <table>
@@ -306,18 +305,17 @@ export function ReportesPage() {
           <tr>
             <td class="label">P. TOTALES:</td><td>${fmtN(reporte.P_Totales)}</td>
             <td class="label">P. CABEZA:</td><td>${fmtN(reporte.P_Cabeza)}</td>
-            <td class="label">HV@</td><td></td>
-            <td class="label">J</td>
-            <td class="label">BS:</td><td></td>
-            <td class="label">/</td>
-            <td class="label">BC:</td><td></td>
+            <td class="label">HV@</td><td>${reporte.HV || ""}</td>
+            <td class="label">J</td><td>${reporte.Joules || ""}</td>
+            <td class="label">BS:</td><td>${reporte.BS || ""}</td>
+            <td class="label">BC:</td><td>${reporte.BC || ""}</td>
           </tr>
           <tr>
-            <td class="label">HV REF@</td><td></td>
-            <td class="label">VDC-</td><td></td>
-            <td class="label">V</td>
-            <td class="label">TX:</td><td></td>
-            <td class="label">SOFTWARE</td><td colspan="4"></td>
+            <td class="label">HV REF@</td><td>${reporte.HVRef || ""}</td>
+            <td class="label">VDC-</td><td>${reporte.VDC || ""}</td>
+            <td class="label">V</td><td>${reporte.Voltage || ""}</td>
+            <td class="label">TX:</td><td>${reporte.TX || ""}</td>
+            <td class="label">SOFTWARE</td><td colspan="3">${reporte.Software || ""}</td>
           </tr>
         </table>
 
@@ -712,6 +710,46 @@ export function ReportesPage() {
               {viewDialog.Problema && <div><span className="font-semibold text-muted-foreground">Problema:</span><p className="mt-1">{viewDialog.Problema}</p></div>}
               {viewDialog.Correccion && <div><span className="font-semibold text-muted-foreground">Corrección:</span><p className="mt-1">{viewDialog.Correccion}</p></div>}
               {viewDialog.Observaciones && <div><span className="font-semibold text-muted-foreground">Observaciones:</span><p className="mt-1">{viewDialog.Observaciones}</p></div>}
+              {[
+                ["No. fuente", viewDialog.PowerSourceNumber],
+                ["N/S Fuente", viewDialog.PowerSourceSerial],
+                ["N/S Fibra", viewDialog.FiberSerial],
+                ["HV@", viewDialog.HV],
+                ["J", viewDialog.Joules],
+                ["BS", viewDialog.BS],
+                ["BC", viewDialog.BC],
+                ["HV REF@", viewDialog.HVRef],
+                ["VDC", viewDialog.VDC],
+                ["V", viewDialog.Voltage],
+                ["TX", viewDialog.TX],
+                ["Software", viewDialog.Software],
+              ].some(([, v]) => v) && (
+                <div>
+                  <span className="font-semibold text-muted-foreground">Parametros tecnicos:</span>
+                  <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
+                    {([
+                      ["No. fuente", viewDialog.PowerSourceNumber],
+                      ["N/S Fuente", viewDialog.PowerSourceSerial],
+                      ["N/S Fibra", viewDialog.FiberSerial],
+                      ["HV@", viewDialog.HV],
+                      ["J", viewDialog.Joules],
+                      ["BS", viewDialog.BS],
+                      ["BC", viewDialog.BC],
+                      ["HV REF@", viewDialog.HVRef],
+                      ["VDC", viewDialog.VDC],
+                      ["V", viewDialog.Voltage],
+                      ["TX", viewDialog.TX],
+                      ["Software", viewDialog.Software],
+                    ] as [string, string | undefined][])
+                      .filter(([, v]) => v)
+                      .map(([label, v]) => (
+                        <div key={label}>
+                          <span className="text-muted-foreground">{label}:</span> {v}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
               {parsePiezas(viewDialog.PiezasJSON).length > 0 && (
                 <div>
                   <span className="font-semibold text-muted-foreground">Piezas intervenidas:</span>

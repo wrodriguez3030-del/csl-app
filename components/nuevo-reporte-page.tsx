@@ -43,6 +43,18 @@ const emptyReporte: Partial<Reporte> = {
   P_Cabeza: 0,
   P_Totales: 0,
   Atendio: "",
+  PowerSourceNumber: "",
+  PowerSourceSerial: "",
+  FiberSerial: "",
+  HV: "",
+  Joules: "",
+  BS: "",
+  BC: "",
+  HVRef: "",
+  VDC: "",
+  Voltage: "",
+  TX: "",
+  Software: "",
 }
 
 const emptyPieza: PiezaIntervenida = {
@@ -337,6 +349,18 @@ export function NuevoReportePage() {
           put("pcabeza", formData.P_Cabeza)
           put("ptotales", formData.P_Totales)
           put("atendio", formData.Atendio)
+          put("powerSourceNumber", formData.PowerSourceNumber)
+          put("powerSourceSerial", formData.PowerSourceSerial)
+          put("fiberSerial", formData.FiberSerial)
+          put("hv", formData.HV)
+          put("joules", formData.Joules)
+          put("bs", formData.BS)
+          put("bc", formData.BC)
+          put("hvRef", formData.HVRef)
+          put("vdc", formData.VDC)
+          put("voltage", formData.Voltage)
+          put("tx", formData.TX)
+          put("software", formData.Software)
           put("partesTexto", formData.PartesTexto)
           // Estos se mandan SIEMPRE si tienen contenido (firmas, fotos,
           // piezas) — son listas/imagenes que el usuario puede haber
@@ -360,6 +384,11 @@ export function NuevoReportePage() {
             correccion: formData.Correccion || "", observaciones: formData.Observaciones || "",
             checklist: formData.Checklist || "", pcabeza: String(formData.P_Cabeza || 0),
             ptotales: String(formData.P_Totales || 0), atendio: formData.Atendio || "",
+            powerSourceNumber: formData.PowerSourceNumber || "", powerSourceSerial: formData.PowerSourceSerial || "",
+            fiberSerial: formData.FiberSerial || "", hv: formData.HV || "", joules: formData.Joules || "",
+            bs: formData.BS || "", bc: formData.BC || "", hvRef: formData.HVRef || "",
+            vdc: formData.VDC || "", voltage: formData.Voltage || "", tx: formData.TX || "",
+            software: formData.Software || "",
             piezasJson: JSON.stringify(piezasReporte), partesTexto: formData.PartesTexto || "",
             firmaCliente: firmaCliente || "", firmaTecnico: firmaTecnico || "",
             fotos: JSON.stringify(fotos),
@@ -672,6 +701,117 @@ export function NuevoReportePage() {
               />
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Technical Parameters Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Parametros tecnicos</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-2">
+              <Label htmlFor="powerSourceNumber">No. fuente de poder</Label>
+              <Input
+                id="powerSourceNumber"
+                value={formData.PowerSourceNumber || ""}
+                onChange={(e) => setFormData({ ...formData, PowerSourceNumber: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="powerSourceSerial">N/S Fuente</Label>
+              <Input
+                id="powerSourceSerial"
+                value={formData.PowerSourceSerial || ""}
+                onChange={(e) => setFormData({ ...formData, PowerSourceSerial: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="fiberSerial">N/S Fibra</Label>
+              <Input
+                id="fiberSerial"
+                value={formData.FiberSerial || ""}
+                onChange={(e) => setFormData({ ...formData, FiberSerial: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="hv">HV@</Label>
+              <Input
+                id="hv"
+                value={formData.HV || ""}
+                onChange={(e) => setFormData({ ...formData, HV: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="joules">J</Label>
+              <Input
+                id="joules"
+                value={formData.Joules || ""}
+                onChange={(e) => setFormData({ ...formData, Joules: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="bs">BS</Label>
+              <Input
+                id="bs"
+                value={formData.BS || ""}
+                onChange={(e) => setFormData({ ...formData, BS: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="bc">BC</Label>
+              <Input
+                id="bc"
+                value={formData.BC || ""}
+                onChange={(e) => setFormData({ ...formData, BC: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="hvRef">HV REF@</Label>
+              <Input
+                id="hvRef"
+                value={formData.HVRef || ""}
+                onChange={(e) => setFormData({ ...formData, HVRef: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="vdc">VDC</Label>
+              <Input
+                id="vdc"
+                value={formData.VDC || ""}
+                onChange={(e) => setFormData({ ...formData, VDC: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="voltage">V</Label>
+              <Input
+                id="voltage"
+                value={formData.Voltage || ""}
+                onChange={(e) => setFormData({ ...formData, Voltage: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tx">TX</Label>
+              <Input
+                id="tx"
+                value={formData.TX || ""}
+                onChange={(e) => setFormData({ ...formData, TX: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="software">Software</Label>
+              <Input
+                id="software"
+                value={formData.Software || ""}
+                onChange={(e) => setFormData({ ...formData, Software: e.target.value })}
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Campos tecnicos del reporte de servicio. Aceptan texto y unidades
+            (ej. &quot;12.5 kV&quot;, &quot;8 J&quot;). Se imprimen en el PDF.
+          </p>
         </CardContent>
       </Card>
 
