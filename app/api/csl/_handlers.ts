@@ -853,6 +853,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         punched_at: textFrom(record, "punched_at") || new Date().toISOString(),
         sucursal: textFrom(record, "sucursal") || null,
         source: textFrom(record, "source") || "manual",
+        modality: textFrom(record, "modality") || "manual",
         is_correction: isCorrection,
         correction_reason: reason || null,
         approved_by: textFrom(record, "approved_by") || user.id,
@@ -1109,7 +1110,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const punchRow: Record<string, unknown> = {
         business_id: businessId, employee_id: employeeId || "(desconocido)",
         type: punchType, punched_at: nowDate.toISOString(), sucursal,
-        source: "qr_kiosk", is_correction: false,
+        source: "qr_kiosk", is_correction: false, modality: "qr",
         latitude: lat, longitude: lng, distance_meters: distance, device_id: deviceId,
         status, rejection_reason: reason, ip, device_info: deviceInfo,
         scheduled_start: scheduledStart, scheduled_end: scheduledEnd,

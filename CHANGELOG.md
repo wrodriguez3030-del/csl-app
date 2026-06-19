@@ -18,6 +18,29 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.24] — 2026-06-19
+
+### Added
+- **Dashboard Ponche** (RR.HH. · Asistencia) — nueva pantalla con KPIs de
+  asistencia en tiempo real: empleados activos, asistencias/ausencias/tardanzas
+  de hoy, sin marca de salida, salidas tempranas, horas hoy/semana, horas extra,
+  geocerca inválida y modalidad biométrica. Filtros Hoy/Semana/Mes + rango +
+  sucursal. Gráficas (asistencia por día, distribución por modalidad), resumen
+  por sucursal, alertas (sin salida / tardanzas) y tabla de últimos ponches.
+  Calcula desde `hr_punches` + `getEmpleados`, scopeado por negocio. Primer
+  slice del epic RR.HH./Ponche.
+- **Modalidades de ponche** — migración `202606190001_hr_ponche_modalidades.sql`
+  (aditiva): `hr_punches` gana `modality`, `selfie_url`, `verified_biometric`,
+  `validation_result`, `accuracy_meters`, `device_name`; nueva tabla
+  `hr_punch_modality_config` (config por negocio/sucursal/empleado: allow_pin,
+  allow_qr, allow_mobile_biometric, allow_face, allow_gps, allow_kiosk,
+  allow_remote_punch, require_photo/location/biometric, only_within_schedule,
+  tolerance_minutes, double_validation) con RLS multi-tenant e índices únicos
+  parciales por nivel. Seed de config global por negocio. El ponche por QR ahora
+  registra `modality="qr"` y las correcciones manuales `modality="manual"`.
+
+---
+
 ## [0.2.23] — 2026-06-18
 
 ### Added

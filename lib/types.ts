@@ -414,6 +414,7 @@ export type TabId =
   | "rrhh-contratos"
   | "rrhh-documentos"
   // RR.HH. — Asistencia
+  | "rrhh-dashboard-ponche"
   | "rrhh-ponche"
   | "rrhh-kiosko-ponche"
   | "rrhh-asistencia"

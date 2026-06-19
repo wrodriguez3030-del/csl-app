@@ -47,6 +47,7 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "rrhh-contratos", label: "Contratos laborales", section: "RR.HH. · Personal" },
   { id: "rrhh-documentos", label: "Documentos empleados", section: "RR.HH. · Personal" },
   // RR.HH. — Asistencia
+  { id: "rrhh-dashboard-ponche", label: "Dashboard Ponche", section: "RR.HH. · Asistencia" },
   { id: "rrhh-ponche", label: "Ponche / Reloj checador", section: "RR.HH. · Asistencia" },
   { id: "rrhh-kiosko-ponche", label: "Kiosko Ponche", section: "RR.HH. · Asistencia" },
   { id: "rrhh-asistencia", label: "Asistencia", section: "RR.HH. · Asistencia" },
