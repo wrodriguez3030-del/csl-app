@@ -95,6 +95,7 @@ export function NuevoReportePage() {
   } = useAppStore()
 
   const [formData, setFormData] = useState<Partial<Reporte>>(emptyReporte)
+  const [isSaving, setIsSaving] = useState(false)
   const [piezaForm, setPiezaForm] = useState<PiezaIntervenida>(emptyPieza)
   const [editingPiezaIndex, setEditingPiezaIndex] = useState<number | null>(null)
   const [piezaSearch, setPiezaSearch] = useState("")
@@ -273,12 +274,20 @@ export function NuevoReportePage() {
     setEditingPiezaIndex(index)
   }
 
-  // Save report
+  // Save report — flujo robusto:
+  //  · guard isSaving → sin doble submit / doble clic
+  //  · confirma con la API ANTES de declarar éxito (apiCall lanza si falla)
+  //  · separa "guardado" de "correo/PDF": el correo lleva el PDF adjunto; si
+  //    falla, el reporte YA se guardó → NO se muestra como error
+  //  · en error real conserva los datos del formulario y reutiliza el mismo ID
+  //    (upsert idempotente) para que un reintento no cree duplicados
   const handleSubmit = async () => {
-    if (!formData.EquipoID) { showToast("Selecciona un equipo", "error"); return }
-    if (!formData.Atendio) { showToast("Ingresa el nombre del tecnico", "error"); return }
+    if (isSaving) return
+    if (!formData.EquipoID) { showToast("Faltan campos obligatorios: selecciona un equipo", "error"); return }
+    if (!formData.Atendio) { showToast("Faltan campos obligatorios: ingresa el técnico", "error"); return }
 
     const id = formData.ID || `RPT-${Date.now()}`
+    const isEdit = Boolean(formData.ID) && Boolean(editingReporte || db.reportes.find(r => r.ID === id))
     const newReporte = {
       ...formData,
       ID: id,
@@ -295,35 +304,15 @@ export function NuevoReportePage() {
       Fotos: JSON.stringify(fotos),
     } as Reporte
 
-    // Guardar local primero
-    const exists = db.reportes.find(r => r.ID === id)
-    setDb({
-      ...db,
-      reportes: exists
-        ? db.reportes.map(r => r.ID === id ? newReporte : r)
-        : [...db.reportes, newReporte]
-    })
-    setFormData(emptyReporte)
-    clearPiezasReporte()
-    setEditingReporte(null)
-    updateFotos([])
-    setFirmaCliente("")
-    setFirmaTecnico("")
-    showToast("Reporte guardado exitosamente", "success")
-    setActiveTab("reportes")
-
-    // Sincronizar API en background
+    setIsSaving(true)
     const normalized = normalizeApiUrl(apiUrl)
-    if (normalized) {
-      try {
-        if (exists) {
+    let pdfWarning: string | null = null
+    try {
+      if (normalized) {
+        if (isEdit) {
           // UPDATE PARCIAL — solo envía los campos con valor real para
           // preservar firmas/fotos/piezas si el usuario solo cambió un texto.
-          // El backend usa updateRowFields, no upsert full-row.
-          const params: Record<string, string> = {
-            action: "updateReporteCampos",
-            reportId: id,
-          }
+          const params: Record<string, string> = { action: "updateReporteCampos", reportId: id }
           const put = (key: string, val: string | number | null | undefined) => {
             if (val === null || val === undefined) return
             const s = String(val).trim()
@@ -362,16 +351,13 @@ export function NuevoReportePage() {
           put("tx", formData.TX)
           put("software", formData.Software)
           put("partesTexto", formData.PartesTexto)
-          // Estos se mandan SIEMPRE si tienen contenido (firmas, fotos,
-          // piezas) — son listas/imagenes que el usuario puede haber
-          // editado en este flujo.
           if (firmaCliente) params.firmaCliente = firmaCliente
           if (firmaTecnico) params.firmaTecnico = firmaTecnico
           if (fotos && fotos.length > 0) params.fotos = JSON.stringify(fotos)
           if (piezasReporte && piezasReporte.length > 0) params.piezasJson = JSON.stringify(piezasReporte)
-          await apiJsonp(normalized, params)
+          await apiJsonp(normalized, params) // lanza si falla
         } else {
-          // CREATE — saveReporte full-row es correcto al crear.
+          // CREATE — saveReporte upsert por report_id (idempotente).
           const result = await apiJsonp(normalized, {
             action: "saveReporte", reportId: id,
             fecha: newReporte.Fecha, equipoId: formData.EquipoID || "",
@@ -393,11 +379,41 @@ export function NuevoReportePage() {
             firmaCliente: firmaCliente || "", firmaTecnico: firmaTecnico || "",
             fotos: JSON.stringify(fotos),
           })
+          // Si llegamos aquí, el reporte SE GUARDÓ. El correo (con PDF) es
+          // secundario: si falló, se informa aparte, sin marcar error.
           const email = (result as { email?: { sent?: boolean; warning?: string } }).email
-          if (email?.sent) showToast("Reporte enviado por correo con PDF", "success")
-          else if (email?.warning) showToast(`Reporte guardado. Correo pendiente: ${email.warning}`, "error")
+          if (email && !email.sent && email.warning) pdfWarning = email.warning
         }
-      } catch(e) { console.warn("API sync reporte:", e) }
+      }
+
+      // Éxito confirmado (o sin API configurada → guardado local).
+      setDb({
+        ...db,
+        reportes: db.reportes.find(r => r.ID === id)
+          ? db.reportes.map(r => r.ID === id ? newReporte : r)
+          : [...db.reportes, newReporte],
+      })
+      setFormData(emptyReporte)
+      clearPiezasReporte()
+      setEditingReporte(null)
+      updateFotos([])
+      setFirmaCliente("")
+      setFirmaTecnico("")
+      showToast(
+        pdfWarning
+          ? "Reporte guardado correctamente. Hubo un problema generando el PDF/correo (puedes imprimirlo desde el detalle)."
+          : "Reporte guardado correctamente.",
+        "success",
+      )
+      setActiveTab("reportes")
+    } catch (e) {
+      // Error REAL de guardado (red/servidor). No tocar secretos en consola.
+      console.warn("Guardar reporte:", e instanceof Error ? e.message : "error desconocido")
+      // Reutiliza el mismo ID en el reintento → upsert idempotente, sin duplicar.
+      if (!formData.ID) setFormData(f => ({ ...f, ID: id }))
+      showToast("No se pudo guardar el reporte. Revisa la conexión e inténtalo de nuevo.", "error")
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -1116,11 +1132,11 @@ export function NuevoReportePage() {
       <Card>
         <CardContent className="pt-6">
           <div className="flex gap-2">
-            <Button onClick={handleSubmit} size="lg" className="gap-2">
+            <Button onClick={handleSubmit} size="lg" className="gap-2" disabled={isSaving}>
               <Save className="h-4 w-4" />
-              Guardar reporte
+              {isSaving ? "Guardando..." : "Guardar reporte"}
             </Button>
-            <Button variant="outline" onClick={handleClear} className="gap-2">
+            <Button variant="outline" onClick={handleClear} className="gap-2" disabled={isSaving}>
               <X className="h-4 w-4" />
               Nuevo reporte
             </Button>

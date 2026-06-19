@@ -18,6 +18,28 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.27] — 2026-06-19
+
+### Fixed
+- **Falso "error" al crear un Nuevo reporte de servicio.** El reporte se
+  guardaba bien, pero si el correo (que adjunta el PDF) no se enviaba, se
+  mostraba un toast ROJO de error ("Correo pendiente: …") aunque el guardado
+  fue exitoso — por eso "el segundo reporte sí se guardó aunque dio error".
+  Ahora:
+  - El guardado se **confirma con la API antes** de declarar éxito (`apiCall`
+    lanza si falla); solo entonces se muestra "Reporte guardado correctamente."
+  - El fallo de **correo/PDF se informa aparte** y SIN estilo de error:
+    "Reporte guardado correctamente. Hubo un problema generando el PDF/correo
+    (puedes imprimirlo desde el detalle)."
+  - **Sin doble submit:** guard `isSaving` + botón Guardar deshabilitado con
+    "Guardando…" mientras procesa.
+  - **Sin duplicados:** en error real se conservan los datos del formulario y se
+    reutiliza el mismo `report_id` → el reintento hace upsert idempotente.
+  - Mensajes de validación claros ("Faltan campos obligatorios: …").
+  - Funciona igual en desktop y celular (mismo formulario responsive).
+
+---
+
 ## [0.2.26] — 2026-06-19
 
 ### Added
