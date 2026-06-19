@@ -18,6 +18,32 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.30] — 2026-06-19
+
+### Added
+- **KPI "Días con tardanza" clickeable con detalle en RR.HH. → Asistencia.** La
+  tarjeta ahora es interactiva (cursor pointer, hover, texto "Ver detalle"). Al
+  hacer clic abre un modal **"Detalle de tardanzas"** con la lista de los
+  registros que componen el número: Fecha, Empleado, Sucursal, Entrada esperada,
+  Entrada real, Tardanza (min), Estado y acción **Ver** (detalle completo del
+  registro: incluye horas, modalidad/origen del horario y observaciones).
+  - **Coincidencia garantizada KPI = lista:** ambos salen del mismo array
+    `filtered` vía el helper compartido `getLateAttendanceRecords()`
+    (predicado único `late_minutes > 0`). Imposible que el KPI diga 10 y la
+    lista muestre otra cantidad.
+  - **Respeta filtros** Desde/Hasta/Sucursal/Empleado y el **business_id activo**
+    (no mezcla Cibao con Depicenter — el scoping ya lo hace el handler
+    `getHrAttendanceHours`). Botón **Exportar** la lista de tardanzas a Excel.
+  - Estado vacío: "No hay tardanzas en este período." Contador
+    "N tardanza(s) encontrada(s)".
+- **Cuadro de barras por empleado (Asistencia y tardanza).** Gráfico horizontal
+  (recharts) bajo el dashboard de Asistencia: por cada empleado, barras de
+  **Asistencias** (días con entrada) y **Tardanzas**, ordenado por tardanzas.
+  Respeta los mismos filtros y el negocio activo.
+  - Solo cliente: no se agregaron queries nuevas ni se tocó la base de datos.
+
+---
+
 ## [0.2.29] — 2026-06-19
 
 ### Added

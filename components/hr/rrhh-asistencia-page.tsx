@@ -9,8 +9,10 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { EmployeeSelect } from "@/components/hr/employee-select"
-import { CalendarClock, Loader2, RefreshCw, FileSpreadsheet, AlertCircle } from "lucide-react"
+import { CalendarClock, Loader2, RefreshCw, FileSpreadsheet, AlertCircle, Eye, BarChart3, ChevronRight } from "lucide-react"
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { exportHrReportExcel } from "@/lib/hr-report-excel"
 
@@ -18,8 +20,11 @@ interface HoursRow {
   employee_id: string; employee_nombre: string; cedula: string; sucursal: string; fecha: string
   scheduled_start: string | null; scheduled_end: string | null; actual_start: string | null; actual_end: string | null
   expected_minutes: number; worked_minutes: number; late_minutes: number; early_leave_minutes: number; overtime_minutes: number
-  estado: string
+  estado: string; schedule_source?: string | null; observaciones?: string | null
 }
+// Misma fuente que el KPI "Días con tardanza": un registro cuenta como tardanza
+// cuando late_minutes > 0. La lista debe salir SIEMPRE de aquí para que el total coincida.
+const getLateAttendanceRecords = (records: HoursRow[]) => records.filter(r => (Number(r.late_minutes) || 0) > 0)
 const ESTADO_CLASS: Record<string, string> = {
   Presente: "bg-emerald-100 text-emerald-700 border-emerald-200",
   Tarde: "bg-amber-100 text-amber-700 border-amber-200",
@@ -43,6 +48,8 @@ export function RrhhAsistenciaPage() {
   const [hasta, setHasta] = useState(todayStr())
   const [empFilter, setEmpFilter] = useState("")
   const [sucFilter, setSucFilter] = useState("all")
+  const [lateOpen, setLateOpen] = useState(false)
+  const [detailRow, setDetailRow] = useState<HoursRow | null>(null)
 
   const reload = async () => {
     setLoading(true)
@@ -57,12 +64,28 @@ export function RrhhAsistenciaPage() {
 
   const sucursales = useMemo(() => Array.from(new Set(rows.map(r => r.sucursal).filter(Boolean))).sort(), [rows])
   const filtered = useMemo(() => sucFilter === "all" ? rows : rows.filter(r => r.sucursal === sucFilter), [rows, sucFilter])
+  // El detalle de tardanzas usa EXACTAMENTE la misma fuente que el KPI.
+  const lateRecords = useMemo(() => getLateAttendanceRecords(filtered), [filtered])
   const totals = useMemo(() => ({
     dias: filtered.length,
     worked: filtered.reduce((s, r) => s + (Number(r.worked_minutes) || 0), 0),
-    late: filtered.filter(r => (Number(r.late_minutes) || 0) > 0).length,
+    late: lateRecords.length,
     overtime: filtered.reduce((s, r) => s + (Number(r.overtime_minutes) || 0), 0),
-  }), [filtered])
+  }), [filtered, lateRecords])
+
+  // Cuadro de barras por empleado: asistencias (días con entrada) vs tardanzas.
+  const porEmpleado = useMemo(() => {
+    const m = new Map<string, { nombre: string; asistencias: number; tardanzas: number }>()
+    for (const r of filtered) {
+      const cur = m.get(r.employee_id) || { nombre: r.employee_nombre || r.employee_id, asistencias: 0, tardanzas: 0 }
+      if (r.actual_start) cur.asistencias += 1
+      if ((Number(r.late_minutes) || 0) > 0) cur.tardanzas += 1
+      m.set(r.employee_id, cur)
+    }
+    return Array.from(m.values())
+      .map(e => ({ ...e, label: e.nombre.length > 16 ? e.nombre.slice(0, 15) + "…" : e.nombre }))
+      .sort((a, b) => b.tardanzas - a.tardanzas || b.asistencias - a.asistencias)
+  }, [filtered])
 
   const exportExcel = () => {
     const headers = ["Empleado", "Cédula", "Sucursal", "Fecha", "Entrada prog.", "Entrada real", "Salida prog.", "Salida real", "Horas esperadas", "Horas trabajadas", "Tardanza", "Salida temprana", "Horas extra", "Estado"]
@@ -73,6 +96,16 @@ export function RrhhAsistenciaPage() {
     ])
     exportHrReportExcel(business, { title: "Reporte de Asistencia / Horas trabajadas", headers, rows: data, filtros: `${desde} a ${hasta}${sucFilter !== "all" ? ` · ${sucFilter}` : ""}`, filename: `Asistencia_${desde}_${hasta}.xls` })
     showToast(`Excel generado (${data.length} fila(s))`, "success")
+  }
+
+  const exportLate = () => {
+    const headers = ["Fecha", "Empleado", "Cédula", "Sucursal", "Entrada esperada", "Entrada real", "Tardanza", "Estado"]
+    const data = lateRecords.map(r => [
+      r.fecha, r.employee_nombre, r.cedula, r.sucursal,
+      r.scheduled_start || "—", fmtTime(r.actual_start), fmtMin(r.late_minutes), r.estado,
+    ])
+    exportHrReportExcel(business, { title: "Detalle de tardanzas", headers, rows: data, filtros: `${desde} a ${hasta}${sucFilter !== "all" ? ` · ${sucFilter}` : ""}${empFilter ? " · empleado filtrado" : ""}`, filename: `Tardanzas_${desde}_${hasta}.xls` })
+    showToast(`Excel generado (${data.length} tardanza(s))`, "success")
   }
 
   return (
@@ -115,7 +148,18 @@ export function RrhhAsistenciaPage() {
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <Card><CardContent className="pt-4 pb-3 text-center"><div className="text-2xl font-bold text-primary">{totals.dias}</div><div className="text-xs text-muted-foreground uppercase mt-1">Días</div></CardContent></Card>
         <Card><CardContent className="pt-4 pb-3 text-center"><div className="text-2xl font-bold text-emerald-600">{fmtMin(totals.worked)}</div><div className="text-xs text-muted-foreground uppercase mt-1">Horas trabajadas</div></CardContent></Card>
-        <Card><CardContent className="pt-4 pb-3 text-center"><div className="text-2xl font-bold text-amber-600">{totals.late}</div><div className="text-xs text-muted-foreground uppercase mt-1">Días con tardanza</div></CardContent></Card>
+        <Card
+          role="button" tabIndex={0} title="Ver detalle"
+          onClick={() => totals.late > 0 && setLateOpen(true)}
+          onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && totals.late > 0) { e.preventDefault(); setLateOpen(true) } }}
+          className={`relative transition-all ${totals.late > 0 ? "cursor-pointer hover:shadow-md hover:border-amber-300 hover:bg-amber-50/40 focus:outline-none focus:ring-2 focus:ring-amber-300" : "opacity-90"}`}
+        >
+          <CardContent className="pt-4 pb-3 text-center">
+            <div className="text-2xl font-bold text-amber-600">{totals.late}</div>
+            <div className="text-xs text-muted-foreground uppercase mt-1">Días con tardanza</div>
+            {totals.late > 0 && <div className="mt-1 inline-flex items-center gap-0.5 text-[10px] font-medium text-amber-600"><Eye className="w-3 h-3" />Ver detalle</div>}
+          </CardContent>
+        </Card>
         <Card><CardContent className="pt-4 pb-3 text-center"><div className="text-2xl font-bold text-blue-600">{fmtMin(totals.overtime)}</div><div className="text-xs text-muted-foreground uppercase mt-1">Horas extra</div></CardContent></Card>
       </div>
 
@@ -150,6 +194,107 @@ export function RrhhAsistenciaPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Cuadro de barras: asistencia y tardanza por empleado */}
+      {!loading && porEmpleado.length > 0 && (
+        <Card>
+          <CardContent className="py-4">
+            <div className="flex items-center gap-2 mb-3">
+              <BarChart3 className="w-4 h-4 text-primary" />
+              <h3 className="text-sm font-bold">Asistencia y tardanza por empleado</h3>
+              <span className="text-xs text-muted-foreground">({desde} a {hasta}{sucFilter !== "all" ? ` · ${sucFilter}` : ""})</span>
+            </div>
+            <div style={{ width: "100%", height: Math.max(220, porEmpleado.length * 38) }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={porEmpleado} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="label" width={120} tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="asistencias" name="Asistencias" fill="#0891b2" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="tardanzas" name="Tardanzas" fill="#dc2626" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Modal: Detalle de tardanzas (misma fuente que el KPI) */}
+      <Dialog open={lateOpen} onOpenChange={setLateOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Detalle de tardanzas</DialogTitle>
+            <DialogDescription>Registros con tardanza según los filtros actuales</DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-200">{lateRecords.length} tardanza(s) encontrada(s)</Badge>
+            {lateRecords.length > 0 && <Button size="sm" variant="outline" onClick={exportLate}><FileSpreadsheet className="w-4 h-4 mr-1" />Exportar</Button>}
+          </div>
+          <div className="overflow-auto">
+            {lateRecords.length === 0 ? (
+              <div className="py-10 text-center text-sm text-muted-foreground">No hay tardanzas en este período.</div>
+            ) : (
+              <Table>
+                <TableHeader><TableRow>
+                  <TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Empleado</TableHead><TableHead className="text-xs">Sucursal</TableHead>
+                  <TableHead className="text-xs">Entrada esperada</TableHead><TableHead className="text-xs">Entrada real</TableHead>
+                  <TableHead className="text-xs text-right">Tardanza</TableHead><TableHead className="text-xs">Estado</TableHead><TableHead className="text-xs text-right">Acciones</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>
+                  {lateRecords.map((r, i) => (
+                    <TableRow key={`late-${r.employee_id}-${r.fecha}-${i}`}>
+                      <TableCell className="text-xs">{r.fecha}</TableCell>
+                      <TableCell className="text-sm font-medium">{r.employee_nombre}<div className="text-[11px] text-muted-foreground">{r.cedula || "—"}</div></TableCell>
+                      <TableCell className="text-xs">{r.sucursal || "—"}</TableCell>
+                      <TableCell className="text-xs">{r.scheduled_start || "—"}</TableCell>
+                      <TableCell className="text-xs font-bold">{fmtTime(r.actual_start)}</TableCell>
+                      <TableCell className="text-xs text-right text-amber-600 font-semibold">{fmtMin(r.late_minutes)}</TableCell>
+                      <TableCell><Badge variant="outline" className={ESTADO_CLASS[r.estado] || ""}>{r.estado}</Badge></TableCell>
+                      <TableCell className="text-right"><Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setDetailRow(r)}><Eye className="w-3.5 h-3.5 mr-1" />Ver</Button></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: detalle completo de un registro de tardanza */}
+      <Dialog open={!!detailRow} onOpenChange={(o) => !o && setDetailRow(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Detalle del registro</DialogTitle>
+            <DialogDescription>{detailRow?.employee_nombre} · {detailRow?.fecha}</DialogDescription>
+          </DialogHeader>
+          {detailRow && (
+            <div className="space-y-1.5 text-sm">
+              {[
+                ["Empleado", detailRow.employee_nombre],
+                ["Cédula", detailRow.cedula || "—"],
+                ["Sucursal", detailRow.sucursal || "—"],
+                ["Fecha", detailRow.fecha],
+                ["Entrada esperada", detailRow.scheduled_start || "—"],
+                ["Entrada real", fmtTime(detailRow.actual_start)],
+                ["Salida esperada", detailRow.scheduled_end || "—"],
+                ["Salida real", fmtTime(detailRow.actual_end)],
+                ["Minutos de tardanza", fmtMin(detailRow.late_minutes)],
+                ["Horas trabajadas", fmtMin(detailRow.worked_minutes)],
+                ["Estado", detailRow.estado],
+                ["Modalidad / origen horario", detailRow.schedule_source || "—"],
+                ["Observaciones", detailRow.observaciones || "—"],
+              ].map(([k, v]) => (
+                <div key={k as string} className="flex items-start justify-between gap-3 border-b border-dashed py-1 last:border-0">
+                  <span className="text-muted-foreground flex items-center gap-1"><ChevronRight className="w-3 h-3" />{k}</span>
+                  <span className="font-medium text-right">{v}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
