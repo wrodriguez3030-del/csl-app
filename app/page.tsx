@@ -26,6 +26,7 @@ import { RrhhDocumentosPage } from "@/components/hr/rrhh-documentos-page"
 import { RrhhHorariosPage } from "@/components/hr/rrhh-horarios-page"
 import { RrhhPonchePage, KioskPonchePage } from "@/components/hr/rrhh-ponche-page"
 import { RrhhDashboardPonchePage } from "@/components/hr/rrhh-dashboard-ponche-page"
+import { RrhhConfigModalidadesPage } from "@/components/hr/rrhh-config-modalidades-page"
 import { RrhhAsistenciaPage } from "@/components/hr/rrhh-asistencia-page"
 import { RrhhPermisosPage } from "@/components/hr/rrhh-permisos-page"
 import { RrhhDiasLaboradosPage } from "@/components/hr/rrhh-dias-laborados-page"
@@ -304,6 +305,8 @@ export default function HomePage() {
         return <RrhhPonchePage />
       case "rrhh-kiosko-ponche":
         return <KioskPonchePage />
+      case "rrhh-config-modalidades":
+        return <RrhhConfigModalidadesPage />
       case "rrhh-asistencia":
         return <RrhhAsistenciaPage />
       case "rrhh-horarios":

@@ -50,6 +50,7 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "rrhh-dashboard-ponche", label: "Dashboard Ponche", section: "RR.HH. · Asistencia" },
   { id: "rrhh-ponche", label: "Ponche / Reloj checador", section: "RR.HH. · Asistencia" },
   { id: "rrhh-kiosko-ponche", label: "Kiosko Ponche", section: "RR.HH. · Asistencia" },
+  { id: "rrhh-config-modalidades", label: "Configuración de modalidades", section: "RR.HH. · Asistencia" },
   { id: "rrhh-asistencia", label: "Asistencia", section: "RR.HH. · Asistencia" },
   { id: "rrhh-horarios", label: "Horarios y turnos", section: "RR.HH. · Asistencia" },
   { id: "rrhh-permisos", label: "Permisos y licencias", section: "RR.HH. · Asistencia" },

@@ -18,6 +18,22 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.25] — 2026-06-19
+
+### Added
+- **Configuración de modalidades de ponche (UI admin)** — nueva pantalla
+  (RR.HH. · Asistencia) para habilitar/deshabilitar modalidades y validaciones
+  por alcance: global del negocio, por sucursal o por empleado. Toggles para
+  PIN, QR, biometría móvil, facial, GPS, kiosko, ponche remoto y para
+  ubicación/foto/biometría obligatorias, solo-dentro-de-horario, doble
+  validación y tolerancia de tardanza. Las configs de sucursal/empleado
+  sobreescriben la global; la global no se puede borrar. Solo admin/superadmin
+  (handlers `getHrModalityConfig` / `saveHrModalityConfig` /
+  `deleteHrModalityConfig` con `requireAdmin`, auditados). Segundo slice del
+  epic RR.HH./Ponche; usa la tabla `hr_punch_modality_config` creada en v0.2.24.
+
+---
+
 ## [0.2.24] — 2026-06-19
 
 ### Added

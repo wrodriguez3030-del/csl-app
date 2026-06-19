@@ -417,6 +417,7 @@ export type TabId =
   | "rrhh-dashboard-ponche"
   | "rrhh-ponche"
   | "rrhh-kiosko-ponche"
+  | "rrhh-config-modalidades"
   | "rrhh-asistencia"
   | "rrhh-horarios"
   | "rrhh-permisos"

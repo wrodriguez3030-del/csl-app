@@ -1020,6 +1020,88 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       await hrAudit(user, "ponche", "geofence_update", "hr_branch_geofences", sucursal, null, row)
       return { ok: true, record: data }
     }
+    case "getHrModalityConfig": {
+      const sb = getSupabaseAdmin()
+      let q = sb.from("hr_punch_modality_config").select("*")
+        .order("sucursal", { ascending: true, nullsFirst: true })
+        .order("employee_id", { ascending: true, nullsFirst: true })
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: (data || []) as Row[] }
+    }
+    case "saveHrModalityConfig": {
+      // Crear/actualizar la config de modalidades de un ALCANCE (global del
+      // negocio / por sucursal / por empleado). Solo admin/superadmin.
+      await requireAdmin(user.id)
+      const record = parsePayload(params)
+      const businessId = effectiveBusinessId() || textFrom(record, "business_id")
+      if (!businessId) throw new Error("Selecciona la empresa")
+      const sucursal = textFrom(record, "sucursal") || null
+      const employeeId = textFrom(record, "employee_id") || null
+      const b = (k: string, def: boolean): boolean => {
+        const v = (record as Record<string, unknown>)[k]
+        if (v === undefined || v === null || v === "") return def
+        return v === true || v === "true" || v === 1 || v === "1"
+      }
+      const tol = Math.max(0, Math.round(numberFrom(record, "tolerance_minutes") || 0))
+      const fields: Record<string, unknown> = {
+        allow_pin: b("allow_pin", true),
+        allow_qr: b("allow_qr", true),
+        allow_mobile_biometric: b("allow_mobile_biometric", false),
+        allow_face: b("allow_face", false),
+        allow_gps: b("allow_gps", true),
+        allow_kiosk: b("allow_kiosk", true),
+        allow_remote_punch: b("allow_remote_punch", false),
+        require_photo: b("require_photo", false),
+        require_location: b("require_location", true),
+        require_biometric: b("require_biometric", false),
+        only_within_schedule: b("only_within_schedule", false),
+        tolerance_minutes: tol,
+        double_validation: b("double_validation", false),
+        active: b("active", true),
+        updated_by: user.id,
+        updated_at: new Date().toISOString(),
+      }
+      const sb = getSupabaseAdmin()
+      // Buscar fila existente del MISMO alcance exacto (NULL = nivel global/sucursal).
+      let sel = sb.from("hr_punch_modality_config").select("id").eq("business_id", businessId)
+      sel = sucursal === null ? sel.is("sucursal", null) : sel.eq("sucursal", sucursal)
+      sel = employeeId === null ? sel.is("employee_id", null) : sel.eq("employee_id", employeeId)
+      const { data: existing, error: selErr } = await sel.maybeSingle()
+      if (selErr) { if (isMissingTable(selErr)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw selErr }
+      if (existing) {
+        const { data, error } = await sb.from("hr_punch_modality_config")
+          .update(fields).eq("id", (existing as Row).id).select().single()
+        if (error) throw error
+        await hrAudit(user, "ponche", "modality_config_update", "hr_punch_modality_config", String((existing as Row).id), null, { sucursal, employee_id: employeeId, ...fields })
+        return { ok: true, record: data }
+      }
+      const insertRow = { business_id: businessId, sucursal, employee_id: employeeId, created_by: user.id, ...fields }
+      const { data, error } = await sb.from("hr_punch_modality_config").insert(insertRow).select().single()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+      await hrAudit(user, "ponche", "modality_config_create", "hr_punch_modality_config", String((data as Row)?.id || ""), null, { sucursal, employee_id: employeeId, ...fields })
+      return { ok: true, record: data }
+    }
+    case "deleteHrModalityConfig": {
+      // Borra una config de alcance específico (sucursal/empleado). NO permite
+      // borrar la config GLOBAL del negocio (sucursal y empleado NULL).
+      await requireAdmin(user.id)
+      const id = textValue(params, "id")
+      if (!id) throw new Error("id obligatorio")
+      const sb = getSupabaseAdmin()
+      let selQ = sb.from("hr_punch_modality_config").select("*").eq("id", id)
+      if (shouldScopeTenant()) selQ = selQ.eq("business_id", effectiveBusinessId() as string)
+      const { data: prev, error: selErr } = await selQ.maybeSingle()
+      if (selErr) { if (isMissingTable(selErr)) return { ok: false, tableMissing: true }; throw selErr }
+      if (!prev) throw new Error("Configuración no encontrada o de otro negocio")
+      const p = prev as Row
+      if (!p.sucursal && !p.employee_id) throw new Error("No se puede borrar la configuración global del negocio")
+      const { error } = await sb.from("hr_punch_modality_config").delete().eq("id", id)
+      if (error) throw error
+      await hrAudit(user, "ponche", "modality_config_delete", "hr_punch_modality_config", id, prev, null)
+      return { ok: true }
+    }
     case "punchByQr": {
       const record = parsePayload(params)
       const businessId = effectiveBusinessId()
