@@ -363,7 +363,7 @@ export interface SolicitudEmpleo {
   _rowNum?: string
   SolicitudID: string
   FechaSolicitud: string
-  Estado: "Pendiente" | "En revisión" | "Entrevista" | "Aprobado" | "Rechazado"
+  Estado: "Pendiente" | "En revisión" | "Entrevista" | "Aprobado" | "Rechazado" | "Renuncia" | "Desvinculado"
   Nombre: string
   Apellido: string
   Cedula: string

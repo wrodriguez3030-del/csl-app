@@ -18,6 +18,28 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.29] — 2026-06-19
+
+### Added
+- **Estados "Renuncia" y "Desvinculado" en RR.HH. (Solicitudes/Empleados).** Al
+  selector de Estado (editor y filtro de Solicitudes) se suman 🟠 Renuncia y
+  ⚫ Desvinculado, además de los existentes. Badges con color propio (naranja /
+  gris). Fuente única de estados, colores y regla activo/no-activo en nuevo
+  `lib/empleado-estado.ts`.
+  - **Regla de negocio:** activo = "Aprobado"/"Activo". Renuncia, Desvinculado y
+    Rechazado **no** cuentan como activos en Dashboard RR.HH., Dashboard Ponche,
+    selector de empleados (nómina/asistencia/ponche vía `EmployeeSelect`) ni en
+    el listado de Empleados (filtro Activos/No activos/Todos, badge real por
+    estado).
+  - **No se borra nada:** al pasar a Renuncia/Desvinculado el registro del
+    empleado se **conserva** (antes `saveSolicitudEmpleo` borraba la fila de
+    `csl_empleados` para cualquier estado ≠ Aprobado); ahora solo se marca el
+    estado. Historial, ponches, nómina, contratos y documentos intactos.
+  - BD: `estado` es `text` sin constraint en `csl_solicitudes_empleo` /
+    `csl_empleados` → no requiere migración; valores previos sin cambios.
+
+---
+
 ## [0.2.28] — 2026-06-19
 
 ### Fixed

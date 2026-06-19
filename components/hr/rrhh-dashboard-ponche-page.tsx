@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select"
 import { KpiCard } from "@/components/kpi-card"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
+import { isEmpleadoActivo } from "@/lib/empleado-estado"
 import {
   Users, Clock, UserCheck, UserX, AlertTriangle, LogOut, Timer,
   CalendarClock, MapPinOff, Fingerprint, RefreshCw, Loader2,
@@ -132,7 +133,7 @@ export function RrhhDashboardPonchePage() {
     const wkStart = weekStartStr(today)
     const inSuc = (s?: string | null) => sucursalFilter === "__all__" || (s || "") === sucursalFilter
     const px = punches.filter((p) => inSuc(p.sucursal))
-    const empActivos = empleados.filter((e) => e.estado.toLowerCase() === "activo" && inSuc(e.sucursal))
+    const empActivos = empleados.filter((e) => isEmpleadoActivo(e.estado) && inSuc(e.sucursal))
 
     const todayPunches = px.filter((p) => dayStr(p.punched_at) === today)
     const entradasHoy = todayPunches.filter((p) => p.type === "entrada")

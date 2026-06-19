@@ -160,6 +160,10 @@ function estadoClasses(estado: string) {
       return "border-green-500/40 bg-green-500/15 text-green-700 dark:text-green-300"
     case "Rechazado":
       return "border-red-500/40 bg-red-500/15 text-red-700 dark:text-red-300"
+    case "Renuncia":
+      return "border-orange-500/40 bg-orange-500/15 text-orange-700 dark:text-orange-300"
+    case "Desvinculado":
+      return "border-slate-500/40 bg-slate-500/20 text-slate-700 dark:text-slate-300"
     default:
       return ""
   }
@@ -691,6 +695,8 @@ ${solicitud.firma ? `<div class="firma"><p><b>Firma del Solicitante:</b></p><img
                 <SelectItem value="Entrevista">Entrevista</SelectItem>
                 <SelectItem value="Aprobado">Aprobado</SelectItem>
                 <SelectItem value="Rechazado">Rechazado</SelectItem>
+                <SelectItem value="Renuncia">Renuncia</SelectItem>
+                <SelectItem value="Desvinculado">Desvinculado</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -834,6 +840,8 @@ ${solicitud.firma ? `<div class="firma"><p><b>Firma del Solicitante:</b></p><img
                         <SelectItem value="Entrevista">🟣 Entrevista</SelectItem>
                         <SelectItem value="Aprobado">🟢 Aprobado</SelectItem>
                         <SelectItem value="Rechazado">🔴 Rechazado</SelectItem>
+                        <SelectItem value="Renuncia">🟠 Renuncia</SelectItem>
+                        <SelectItem value="Desvinculado">⚫ Desvinculado</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

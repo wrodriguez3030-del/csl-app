@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { KpiCard } from "@/components/kpi-card"
 import { Users, UserCheck, UserMinus, Clock, AlertTriangle, Calendar, Wallet, FileWarning } from "lucide-react"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
+import { isEmpleadoActivo } from "@/lib/empleado-estado"
 
 /**
  * Dashboard RR.HH. — vista principal del módulo de Recursos Humanos.
@@ -22,11 +23,10 @@ export function RrhhDashboardPage() {
   const stats = useMemo(() => {
     const empleadosArr = (db as unknown as { empleados?: Array<{ Estado?: string; Sucursal?: string }> }).empleados || []
     const solicitudesArr = (db as unknown as { solicitudesEmpleo?: Array<{ Estado?: string }> }).solicitudesEmpleo || []
-    const activos = empleadosArr.filter(e => String(e?.Estado).toLowerCase() === "activo").length
-    const inactivos = empleadosArr.filter(e => {
-      const s = String(e?.Estado).toLowerCase()
-      return s === "inactivo" || s === "terminado" || s === "suspendido"
-    }).length
+    // Activo = Aprobado/Activo. Renuncia, Desvinculado, Rechazado e inactivos
+    // NO cuentan como activos (no se borran, solo quedan fuera del conteo).
+    const activos = empleadosArr.filter(e => isEmpleadoActivo(e?.Estado)).length
+    const inactivos = empleadosArr.filter(e => String(e?.Estado || "").trim() !== "" && !isEmpleadoActivo(e?.Estado)).length
     const porSucursal = empleadosArr.reduce<Record<string, number>>((acc, e) => {
       const k = String(e?.Sucursal || "Sin sucursal")
       acc[k] = (acc[k] || 0) + 1

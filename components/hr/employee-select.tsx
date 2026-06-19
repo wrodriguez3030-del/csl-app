@@ -21,6 +21,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Check, ChevronsUpDown, UserPlus, RotateCw, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { isEmpleadoActivo } from "@/lib/empleado-estado"
 
 export interface EmployeeOption {
   empleado_id: string
@@ -29,6 +30,8 @@ export interface EmployeeOption {
   puesto: string
   sucursal: string
   sueldo: number
+  /** Estado del empleado. Solo se ofrecen empleados ACTIVOS en el selector. */
+  estado: string
   /** Fecha de ingreso laboral (YYYY-MM-DD). "" si el empleado no la tiene. */
   fecha_ingreso: string
 }
@@ -46,6 +49,7 @@ function toOption(r: Record<string, unknown>): EmployeeOption {
     puesto: firstStr(r.PuestoSolicitado, r.puesto_solicitado, r.Puesto, r.puesto),
     sucursal: firstStr(r.Sucursal, r.sucursal),
     sueldo: Number(r.Salario ?? r.salario ?? r.sueldo_mensual ?? 0) || 0,
+    estado: firstStr(r.Estado, r.estado) || "Aprobado",
     // Fecha de ingreso laboral — fuente oficial: empleado; fallback solicitud aprobada.
     fecha_ingreso: firstStr(r.fechaIngresoLaboral, r.FechaIngresoLaboral, r.fecha_ingreso, r.fecha_ingreso_laboral, r.ingreso_laboral, r.start_date, r.fechaIngreso, r.FechaSolicitud, r.fecha_solicitud),
   }
@@ -72,7 +76,12 @@ export function EmployeeSelect({ value, onSelect, placeholder = "Seleccionar emp
     try {
       const res = await apiCall(normalizeApiUrl(apiUrl), { action: "getEmpleados" }) as { ok?: boolean; records?: Record<string, unknown>[] }
       const seen = new Set<string>()
-      const list = (res?.records ?? []).map(toOption).filter(e => e.empleado_id && !seen.has(e.empleado_id) && seen.add(e.empleado_id))
+      const list = (res?.records ?? []).map(toOption)
+        // Solo empleados ACTIVOS: Renuncia / Desvinculado / Rechazado no se
+        // ofrecen para ponche, nómina ni asistencia (no se borran, quedan en
+        // el módulo Empleados con su badge).
+        .filter(e => isEmpleadoActivo(e.estado))
+        .filter(e => e.empleado_id && !seen.has(e.empleado_id) && seen.add(e.empleado_id))
       list.sort((a, b) => a.nombre.localeCompare(b.nombre))
       setEmps(list)
     } catch {

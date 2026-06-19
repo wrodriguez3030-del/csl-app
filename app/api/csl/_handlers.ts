@@ -3189,7 +3189,18 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
           sent: false,
           warning: error instanceof Error ? error.message : "No se pudo enviar el correo",
         }))
+      } else if (row.estado === "Renuncia" || row.estado === "Desvinculado") {
+        // Empleado que dejó la empresa: NO se borra (conserva historial,
+        // ponches, nómina, contratos). Solo se marca el estado en csl_empleados
+        // si la fila existe. Queda fuera de "activos" por isEmpleadoActivo.
+        await updateRowFields("empleados", String(row.solicitud_id), {
+          estado: row.estado,
+          updated_at: new Date().toISOString(),
+        }).catch(() => undefined)
       } else {
+        // Pendiente / En revisión / Entrevista / Rechazado: aún no es empleado
+        // (o solicitud rechazada) → se quita de la lista de empleados. La
+        // solicitud y sus datos permanecen en csl_solicitudes_empleo.
         await deleteRow("empleados", String(row.solicitud_id)).catch(() => undefined)
       }
       return { ok: true, record: fromDb("solicitudes_empleo", row), email }

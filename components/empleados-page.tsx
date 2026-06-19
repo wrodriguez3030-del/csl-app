@@ -13,6 +13,7 @@ import { EmployeeScheduleDialog } from "@/components/hr/employee-schedule-dialog
 import { Clock, AlertTriangle } from "lucide-react"
 import { RecordActions } from "@/components/record-actions"
 import { calculateWeeklyWorkedHours, fmtHours, WEEKLY_HOURS_LIMIT, type WeeklyWorkResult, type ScheduleDay } from "@/lib/work-hours"
+import { estadoBadgeClasses, isEmpleadoActivo } from "@/lib/empleado-estado"
 
 interface EmpleadoRecord {
   id: string
@@ -58,6 +59,7 @@ export function EmpleadosPage() {
   const { apiUrl, showToast, setIsLoading, setLoadingMessage } = useAppStore()
   const [empleados, setEmpleados] = useState<EmpleadoRecord[]>([])
   const [search, setSearch] = useState("")
+  const [estadoFilter, setEstadoFilter] = useState<"activos" | "no_activos" | "todos">("activos")
   const [sortKey, setSortKey] = useState<EmpleadoSortKey>("nombre")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
   const [qrEmp, setQrEmp] = useState<EmpleadoRecord | null>(null)
@@ -171,6 +173,11 @@ export function EmpleadosPage() {
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
     return empleados
+      .filter((e) => {
+        if (estadoFilter === "activos") return isEmpleadoActivo(e.estado)
+        if (estadoFilter === "no_activos") return !isEmpleadoActivo(e.estado)
+        return true
+      })
       .filter((e) =>
         !search.trim() ||
         [e.nombre, e.apellido, e.cedula, e.puestoSolicitado, e.email, e.celular, e.ciudad, e.sector]
@@ -183,7 +190,7 @@ export function EmpleadosPage() {
         const valueB = sortKey === "nombre" ? `${b.nombre} ${b.apellido}` : b[sortKey]
         return String(valueA || "").localeCompare(String(valueB || ""), "es", { numeric: true }) * (sortDir === "asc" ? 1 : -1)
       })
-  }, [empleados, search, sortKey, sortDir])
+  }, [empleados, search, estadoFilter, sortKey, sortDir])
 
   function handleSort(key: EmpleadoSortKey) {
     if (sortKey === key) setSortDir(sortDir === "asc" ? "desc" : "asc")
@@ -240,6 +247,15 @@ export function EmpleadosPage() {
               <Input className="pl-9" placeholder="Buscar por nombre, cédula, puesto o contacto..." value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
             <div className="flex flex-wrap gap-2">
+              {([["activos", "Activos"], ["no_activos", "No activos"], ["todos", "Todos"]] as const).map(([val, label]) => (
+                <button
+                  key={val}
+                  onClick={() => setEstadoFilter(val)}
+                  className={`rounded-lg border px-3 py-2 text-xs ${estadoFilter === val ? "bg-primary text-primary-foreground border-primary" : ""}`}
+                >
+                  {label}
+                </button>
+              ))}
               <button onClick={() => handleSort("nombre")} className="rounded-lg border px-3 py-2 text-xs">{sortText("nombre", "Nombre")}</button>
               <button onClick={() => handleSort("fecha")} className="rounded-lg border px-3 py-2 text-xs">{sortText("fecha", "Fecha")}</button>
               <button onClick={() => handleSort("puestoSolicitado")} className="rounded-lg border px-3 py-2 text-xs">{sortText("puestoSolicitado", "Puesto")}</button>
@@ -263,9 +279,9 @@ export function EmpleadosPage() {
                             <Users className="h-4 w-4 text-primary" />
                             <h3 className="text-lg font-semibold">{empleado.nombre} {empleado.apellido}</h3>
                           </div>
-                          <Badge className="gap-1 bg-green-600 text-white hover:bg-green-600">
-                            <BadgeCheck className="h-3.5 w-3.5" />
-                            Aprobado
+                          <Badge variant="outline" className={`gap-1 ${estadoBadgeClasses(empleado.estado || "Aprobado")}`}>
+                            {isEmpleadoActivo(empleado.estado || "Aprobado") && <BadgeCheck className="h-3.5 w-3.5" />}
+                            {empleado.estado || "Aprobado"}
                           </Badge>
                         </div>
 
