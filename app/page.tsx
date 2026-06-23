@@ -17,6 +17,12 @@ import { HistorialEquiposPage } from "@/components/historial-equipos-page"
 import { CatalogoPage } from "@/components/catalogo-page"
 import { InventarioPage } from "@/components/inventario-page"
 import { PiezasPolizaPage } from "@/components/piezas-poliza-page"
+import { ReqMatNuevaPage } from "@/components/req-mat-nueva-page"
+import { ReqMatMisPage } from "@/components/req-mat-mis-page"
+import { ReqMatConsolidadoPage } from "@/components/req-mat-consolidado-page"
+import { ReqMatAprobacionesPage } from "@/components/req-mat-aprobaciones-page"
+import { ReqMatMaterialesPage } from "@/components/req-mat-materiales-page"
+import { ReqMatDashboardPage } from "@/components/req-mat-dashboard-page"
 import { CredencialesPage } from "@/components/credenciales-page"
 import { RecursosHumanosPage } from "@/components/recursos-humanos-page"
 import { EmpleadosPage } from "@/components/empleados-page"
@@ -281,6 +287,18 @@ export default function HomePage() {
         return <InventarioPage />
       case "piezas-poliza":
         return <PiezasPolizaPage />
+      case "req-mat-nueva":
+        return <ReqMatNuevaPage />
+      case "req-mat-mis":
+        return <ReqMatMisPage />
+      case "req-mat-consolidado":
+        return <ReqMatConsolidadoPage />
+      case "req-mat-aprobaciones":
+        return <ReqMatAprobacionesPage />
+      case "req-mat-materiales":
+        return <ReqMatMaterialesPage />
+      case "req-mat-dashboard":
+        return <ReqMatDashboardPage />
       case "credenciales":
         return <CredencialesPage />
       case "pulse-dashboard":

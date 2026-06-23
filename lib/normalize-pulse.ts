@@ -150,6 +150,11 @@ export function sucursalAllowedForTenant(sucursal: unknown, slug: string): boole
   return allowed.includes(norm)
 }
 
+/** Sucursales (normalizadas) de un tenant. Tenant desconocido → lista vacía. */
+export function sucursalesForTenant(slug: string): string[] {
+  return TENANT_SUCURSALES[slug] ? [...TENANT_SUCURSALES[slug]] : []
+}
+
 /**
  * Clave canónica para el match AgendaPro ↔ Excel equipos.
  *

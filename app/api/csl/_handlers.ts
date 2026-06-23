@@ -42,8 +42,9 @@ import {
   FICHA_LIST_COLS,
   CONSENT_LIST_COLS,
 } from "@/lib/server/csl-crud"
-import { runWithBusinessContext, applyActiveBusiness, getBusinessContext, isKnownBusinessId, scopeByBranch } from "@/lib/server/business-context"
+import { runWithBusinessContext, applyActiveBusiness, getBusinessContext, isKnownBusinessId, scopeByBranch, getBranchScope } from "@/lib/server/business-context"
 import { runWithMaintenanceWriteScope, recordMaintenanceAudit, type MaintenanceChangeSource } from "@/lib/server/maintenance-guard"
+import * as materials from "@/lib/server/materials"
 
 /**
  * Acciones MANUALES del módulo de Mantenimiento. Solo estas pueden escribir en
@@ -123,7 +124,7 @@ async function resolveMaintenanceTargetBusiness(
 }
 import { createHash, randomBytes } from "node:crypto"
 import { haversineMeters } from "@/lib/hr-geo"
-import { makeAgendaMatchKey, normalizeSucursal } from "@/lib/normalize-pulse"
+import { makeAgendaMatchKey, normalizeSucursal, sucursalesForTenant, sucursalAllowedForTenant } from "@/lib/normalize-pulse"
 import { toUpperField, toUpperFieldOrNull } from "@/lib/normalize-fields"
 import {
   clienteCosmiatriaToDb,
@@ -3181,6 +3182,38 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "deletePiezaPolizaLista":
       await deleteRow("piezas_poliza_lista", textValue(params, "id"))
       return { ok: true }
+
+    // ── Requisición de materiales por sucursal ──────────────────────────────
+    case "getMaterialCatalog":
+      return await materials.getMaterialCatalog()
+    case "saveMaterial":
+      return await materials.saveMaterial(params, user)
+    case "setMaterialActive":
+      return await materials.setMaterialActive(params, user)
+    case "getMaterialBranches":
+      return materials.getMaterialBranches()
+    case "saveRequisition":
+      return await materials.saveRequisition(params, user)
+    case "getMyRequisitions":
+      return await materials.getMyRequisitions(params)
+    case "getRequisition":
+      return await materials.getRequisition(params)
+    case "submitRequisition":
+      return await materials.submitRequisition(params, user)
+    case "getMaterialConsolidado":
+      return await materials.getMaterialConsolidado(params)
+    case "approveMaterialItem":
+      return await materials.approveItem(params, user)
+    case "rejectMaterialItem":
+      return await materials.rejectItem(params, user)
+    case "approveAllRequisition":
+      return await materials.approveAllRequisition(params, user)
+    case "purchaseMaterialItem":
+      return await materials.purchaseItem(params, user)
+    case "receiveMaterialItem":
+      return await materials.receiveItem(params, user)
+    case "getMaterialDashboard":
+      return await materials.getMaterialDashboard(params)
     case "saveReporte": {
       const row = { report_id: textValue(params, "reportId"), fecha: dateValue(params.fecha), equipo_id: textValue(params, "equipoId"), sucursal: textValue(params, "sucursal"), empresa: textValue(params, "empresa"), cliente: textValue(params, "cliente"), domicilio: textValue(params, "domicilio"), ciudad: textValue(params, "ciudad", "Santiago"), modelo: textValue(params, "modelo"), serie: textValue(params, "serie"), numero: textValue(params, "numero"), tipo: textValue(params, "tipo", "Preventivo"), estado_equipo: textValue(params, "estadoEquipo", "Operativo"), prioridad: textValue(params, "prioridad", "Baja"), problema: textValue(params, "problema"), correccion: textValue(params, "correccion"), observaciones: textValue(params, "observaciones"), checklist: textValue(params, "checklist"), p_cabeza: numberValue(params, "pcabeza"), p_totales: numberValue(params, "ptotales"), atendio: textValue(params, "atendio"), power_source_number: textValue(params, "powerSourceNumber"), power_source_serial: textValue(params, "powerSourceSerial"), fiber_serial: textValue(params, "fiberSerial"), hv_value: textValue(params, "hv"), joules_value: textValue(params, "joules"), bs_value: textValue(params, "bs"), bc_value: textValue(params, "bc"), hv_ref_value: textValue(params, "hvRef"), vdc_value: textValue(params, "vdc"), voltage_value: textValue(params, "voltage"), tx_value: textValue(params, "tx"), software_version: textValue(params, "software"), piezas_json: textValue(params, "piezasJson", "[]"), partes_texto: textValue(params, "partesTexto"), firma_cliente: textValue(params, "firmaCliente"), firma_tecnico: textValue(params, "firmaTecnico"), fotos: textValue(params, "fotos", "[]") }
       const config = tableConfig("reportes")

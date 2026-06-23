@@ -31,6 +31,13 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "equipos", label: "Equipos", section: "Mantenimiento" },
   { id: "tecnicos", label: "Técnicos", section: "Mantenimiento" },
   { id: "errores", label: "Consulta código errores", section: "Mantenimiento" },
+  // Requisición de materiales por sucursal (inventario interno).
+  { id: "req-mat-nueva", label: "Nueva requisición", section: "Requisición de materiales" },
+  { id: "req-mat-mis", label: "Mis requisiciones", section: "Requisición de materiales" },
+  { id: "req-mat-consolidado", label: "Consolidado de compras", section: "Requisición de materiales" },
+  { id: "req-mat-aprobaciones", label: "Aprobaciones", section: "Requisición de materiales" },
+  { id: "req-mat-materiales", label: "Materiales", section: "Requisición de materiales" },
+  { id: "req-mat-dashboard", label: "Dashboard materiales", section: "Requisición de materiales" },
   { id: "pulse-dashboard", label: "Dashboard", section: "PulseControl CSL" },
   { id: "pulse-equipos", label: "Equipos", section: "PulseControl CSL" },
   { id: "pulsos-operadoras", label: "Operadoras", section: "Pulsos" },

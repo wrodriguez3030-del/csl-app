@@ -417,6 +417,13 @@ export type TabId =
   | "errores"
   | "inventario"
   | "credenciales"
+  // Requisición de materiales por sucursal
+  | "req-mat-nueva"
+  | "req-mat-mis"
+  | "req-mat-consolidado"
+  | "req-mat-aprobaciones"
+  | "req-mat-materiales"
+  | "req-mat-dashboard"
   // Módulo Pulsos
   | "pulse-dashboard"
   | "pulse-equipos"

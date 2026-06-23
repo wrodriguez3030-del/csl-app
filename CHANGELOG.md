@@ -18,6 +18,41 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.3.0] — 2026-06-23
+
+### Added
+- **Módulo nuevo: Requisición de Materiales por Sucursal.** Menú con 6 submenús
+  (Nueva requisición, Mis requisiciones, Consolidado de compras, Aprobaciones,
+  Materiales, Dashboard materiales) bajo la sección "Requisición de materiales".
+- **Nueva requisición**: tabla con check por material agrupada por proveedor,
+  cantidad obligatoria al marcar (mínimo 1), "Seleccionar todo" por categoría,
+  "Limpiar", guardar borrador o "Enviar requisición". Sucursal limitada al
+  scope de la encargada.
+- **Consolidado de compras**: pivote Proveedor × Material × Sucursal con Total y
+  Aprobado, filtros (fecha, estado, sucursal, proveedor), "Aprobar todo
+  (visible)", export **Excel** y **PDF** profesional agrupado por proveedor.
+- **Aprobaciones**: por requisición e ítem — aprobar (cantidad ajustable),
+  rechazar con motivo, marcar comprado (suplidor + costo), registrar recepción
+  (parcial/completa derivada por cantidad). Estado de la requisición se
+  recalcula automáticamente desde sus ítems.
+- **Materiales**: catálogo editable (agregar/editar/inactivar, sin borrado
+  físico) agrupado por proveedor.
+- **Dashboard materiales**: 8 KPIs + tops (sucursal/material/proveedor) +
+  gráficos (solicitudes por sucursal, estado de requisiciones, materiales más
+  solicitados, tendencia mensual, gasto por proveedor) con recharts.
+- Catálogo inicial CSL sembrado: 12 materiales BRAVO + 9 PRICES MART (21).
+- Auditoría completa en `material_requisition_audit_logs`
+  (creación, envío, aprobación, rechazo, compra, recepción).
+
+### Changed
+- Migración aditiva `202606230001_materiales_requisicion.sql`: 4 tablas
+  (`material_catalog`, `material_requisitions`, `material_requisition_items`,
+  `material_requisition_audit_logs`) con `business_id` multi-tenant, RLS por
+  tenant (`current_business_id()`/`is_superadmin()`), grants a service_role e
+  índices. Aislamiento Cibao ↔ Depicenter por business_id + scope por sucursal.
+
+---
+
 ## [0.2.31] — 2026-06-22
 
 ### Added

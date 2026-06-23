@@ -85,6 +85,17 @@ const PULSE_ITEMS: NavItem[] = [
 
 const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
   {
+    label: "Requisición de materiales",
+    items: [
+      { id: "req-mat-nueva", label: "Nueva requisición", icon: <FileText className="h-4 w-4" /> },
+      { id: "req-mat-mis", label: "Mis requisiciones", icon: <ClipboardList className="h-4 w-4" /> },
+      { id: "req-mat-consolidado", label: "Consolidado de compras", icon: <BarChart3 className="h-4 w-4" /> },
+      { id: "req-mat-aprobaciones", label: "Aprobaciones", icon: <ShieldCheck className="h-4 w-4" /> },
+      { id: "req-mat-materiales", label: "Materiales", icon: <Package className="h-4 w-4" /> },
+      { id: "req-mat-dashboard", label: "Dashboard materiales", icon: <LayoutDashboard className="h-4 w-4" /> },
+    ],
+  },
+  {
     label: "RR.HH. · Personal",
     items: [
       { id: "rrhh-dashboard", label: "Dashboard RR.HH.", icon: <LayoutDashboard className="h-4 w-4" /> },
