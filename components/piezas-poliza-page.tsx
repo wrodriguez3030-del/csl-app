@@ -16,13 +16,52 @@ import {
 } from "@/components/ui/dialog"
 import {
   ListChecks, Plus, Search, Trash2, Pencil, RotateCcw, ChevronDown, ChevronRight,
-  PackageCheck, Circle, CheckCircle2, X, Save, Printer,
+  PackageCheck, Circle, CheckCircle2, X, Save, Printer, PackagePlus, Paperclip, Loader2, FileText,
 } from "lucide-react"
-import type { PiezaPolizaLista, PiezaCatalogo } from "@/lib/types"
+import type { PiezaPolizaLista, PiezaCatalogo, ReceivedStatus } from "@/lib/types"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { useSessionUser } from "@/hooks/use-session-user"
 import { printPiezasPoliza } from "@/lib/piezas-poliza-pdf"
 import { CATEGORIAS_TECNICAS, normalizeCategoria } from "@/lib/categorias"
+import { supabaseBrowser } from "@/lib/supabase-client"
+
+// ── Estados de recepción: etiquetas y colores de badge ────────────────────
+const RECEPCION_LABEL: Record<ReceivedStatus, string> = {
+  pendiente: "Pendiente",
+  recibida_parcial: "Recibida parcial",
+  recibida_completa: "Recibida completa",
+  cancelada: "Cancelada",
+}
+const RECEPCION_BADGE: Record<ReceivedStatus, string> = {
+  pendiente: "bg-amber-100 text-amber-700 border-amber-200",
+  recibida_parcial: "bg-orange-100 text-orange-700 border-orange-200",
+  recibida_completa: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  cancelada: "bg-red-100 text-red-700 border-red-200",
+}
+
+type RecepcionForm = {
+  receivedStatus: ReceivedStatus | "auto"
+  receivedAt: string
+  receivedQuantity: string
+  receivedBy: string
+  receivedNote: string
+  receivedInvoiceNumber: string
+  receivedCost: string
+  receivedSupplier: string
+  receivedAttachmentUrl: string
+}
+
+const emptyRecepcion: RecepcionForm = {
+  receivedStatus: "auto",
+  receivedAt: "",
+  receivedQuantity: "",
+  receivedBy: "",
+  receivedNote: "",
+  receivedInvoiceNumber: "",
+  receivedCost: "",
+  receivedSupplier: "",
+  receivedAttachmentUrl: "",
+}
 
 type FormState = {
   id?: string
@@ -85,8 +124,14 @@ export function PiezasPolizaPage() {
   const [search, setSearch] = useState("")
   const [filterSuplidor, setFilterSuplidor] = useState("todos")
   const [filterPrioridad, setFilterPrioridad] = useState("todas")
-  const [filterEstado, setFilterEstado] = useState<"todas" | "pendiente" | "recibida">("todas")
+  const [filterRecepcion, setFilterRecepcion] = useState<"todas" | ReceivedStatus>("todas")
   const [filterSucursal, setFilterSucursal] = useState("todas")
+
+  // Recepción de pieza (sección dentro del modal de edición).
+  const [recepcion, setRecepcion] = useState<RecepcionForm>(emptyRecepcion)
+  const [savingRecepcion, setSavingRecepcion] = useState(false)
+  const [uploadingEvidencia, setUploadingEvidencia] = useState(false)
+  const [recepcionAlreadyDone, setRecepcionAlreadyDone] = useState(false)
 
   // Recibidas colapsable (cerrado por defecto para que el foco sea pendientes).
   const [recibidasOpen, setRecibidasOpen] = useState(false)
@@ -163,7 +208,7 @@ export function PiezasPolizaPage() {
 
   const filtered = useMemo(() => {
     return items.filter((i) => {
-      if (filterEstado !== "todas" && i.Estado !== filterEstado) return false
+      if (filterRecepcion !== "todas" && (i.ReceivedStatus || "pendiente") !== filterRecepcion) return false
       if (filterSuplidor !== "todos" && (i.Suplidor || "") !== filterSuplidor) return false
       if (filterPrioridad !== "todas" && i.Prioridad !== filterPrioridad) return false
       if (filterSucursal !== "todas" && (i.Sucursal || "") !== filterSucursal) return false
@@ -174,10 +219,22 @@ export function PiezasPolizaPage() {
       }
       return true
     })
-  }, [items, search, filterSuplidor, filterPrioridad, filterEstado, filterSucursal])
+  }, [items, search, filterSuplidor, filterPrioridad, filterRecepcion, filterSucursal])
 
   const pendientes = filtered.filter((i) => i.Estado === "pendiente")
   const recibidas = filtered.filter((i) => i.Estado === "recibida")
+
+  // Estado de recepción que se aplicaría con los valores actuales del form
+  // (modo "auto": derivado de la cantidad recibida vs la solicitada).
+  const recepcionQty = Number(recepcion.receivedQuantity) || 0
+  const recepcionDerivedStatus: ReceivedStatus =
+    recepcion.receivedStatus !== "auto"
+      ? recepcion.receivedStatus
+      : recepcionQty <= 0
+        ? "pendiente"
+        : recepcionQty < (form.cantidad || 0)
+          ? "recibida_parcial"
+          : "recibida_completa"
 
   const handlePrintPdf = () => {
     printPiezasPoliza({
@@ -186,7 +243,7 @@ export function PiezasPolizaPage() {
       recibidas,
       filtros: {
         busqueda: search,
-        estado: filterEstado,
+        estado: filterRecepcion === "todas" ? "todas" : RECEPCION_LABEL[filterRecepcion],
         prioridad: filterPrioridad,
         suplidor: filterSuplidor,
         sucursal: filterSucursal,
@@ -218,6 +275,20 @@ export function PiezasPolizaPage() {
       fechaSolicitada: item.FechaSolicitada,
       prioridad: item.Prioridad,
       nota: item.Nota || "",
+    })
+    // Cargar la ficha de recepción existente (si la hay).
+    const yaRecibida = !!item.ReceivedAt
+    setRecepcionAlreadyDone(yaRecibida)
+    setRecepcion({
+      receivedStatus: yaRecibida && item.ReceivedStatus ? item.ReceivedStatus : "auto",
+      receivedAt: item.ReceivedAt || "",
+      receivedQuantity: item.ReceivedQuantity != null ? String(item.ReceivedQuantity) : "",
+      receivedBy: item.ReceivedBy || sessionUser?.nombre || sessionUser?.username || "",
+      receivedNote: item.ReceivedNote || "",
+      receivedInvoiceNumber: item.ReceivedInvoiceNumber || "",
+      receivedCost: item.ReceivedCost != null ? String(item.ReceivedCost) : "",
+      receivedSupplier: item.ReceivedSupplier || item.Suplidor || "",
+      receivedAttachmentUrl: item.ReceivedAttachmentUrl || "",
     })
     setPiezaQuery(item.PiezaNombre)
     setShowAddModal(true)
@@ -257,6 +328,65 @@ export function PiezasPolizaPage() {
       showToast(error instanceof Error ? error.message : "Error al guardar", "error")
     } finally {
       setSaving(false)
+    }
+  }
+
+  // ─── Recepción de pieza ────────────────────────────────────────────────
+
+  const handleUploadEvidencia = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = "" // permitir re-seleccionar el mismo archivo
+    if (!file || !editingId) return
+    setUploadingEvidencia(true)
+    try {
+      const { data: { session } } = await supabaseBrowser.auth.getSession()
+      if (!session?.access_token) throw new Error("Sesión no válida — vuelve a iniciar sesión")
+      const fd = new FormData()
+      fd.append("file", file)
+      fd.append("pieza_id", editingId)
+      const response = await fetch("/api/maintenance/documents/upload", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: fd,
+      })
+      const result = (await response.json().catch(() => ({}))) as { ok?: boolean; path?: string; error?: string }
+      if (!result.ok || !result.path) throw new Error(result.error || "No se pudo subir el archivo")
+      setRecepcion((r) => ({ ...r, receivedAttachmentUrl: result.path as string }))
+      showToast("Evidencia adjuntada", "success")
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Error al subir la evidencia", "error")
+    } finally {
+      setUploadingEvidencia(false)
+    }
+  }
+
+  const handleSaveRecepcion = async () => {
+    if (!editingId) return
+    setSavingRecepcion(true)
+    try {
+      const endpoint = normalizeApiUrl(apiUrl)
+      const result = await apiJsonp(endpoint, {
+        action: "savePiezaPolizaRecepcion",
+        id: editingId,
+        receivedStatus: recepcion.receivedStatus === "auto" ? "" : recepcion.receivedStatus,
+        receivedAt: recepcion.receivedAt,
+        receivedQuantity: recepcion.receivedQuantity,
+        receivedBy: recepcion.receivedBy,
+        receivedNote: recepcion.receivedNote,
+        receivedInvoiceNumber: recepcion.receivedInvoiceNumber,
+        receivedCost: recepcion.receivedCost,
+        receivedSupplier: recepcion.receivedSupplier,
+        receivedAttachmentUrl: recepcion.receivedAttachmentUrl,
+      })
+      if (!result?.ok) throw new Error((result as { error?: string })?.error || "Error al guardar la recepción")
+      invalidateReadCache("getPiezasPolizaLista")
+      await loadItems()
+      showToast(recepcionAlreadyDone ? "Recepción actualizada" : "Recepción registrada", "success")
+      setShowAddModal(false)
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Error al guardar la recepción", "error")
+    } finally {
+      setSavingRecepcion(false)
     }
   }
 
@@ -352,12 +482,14 @@ export function PiezasPolizaPage() {
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
-              <Select value={filterEstado} onValueChange={(v) => setFilterEstado(v as typeof filterEstado)}>
-                <SelectTrigger className="h-9"><SelectValue placeholder="Estado" /></SelectTrigger>
+              <Select value={filterRecepcion} onValueChange={(v) => setFilterRecepcion(v as typeof filterRecepcion)}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Recepción" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todas">Todas</SelectItem>
                   <SelectItem value="pendiente">Pendientes</SelectItem>
-                  <SelectItem value="recibida">Recibidas</SelectItem>
+                  <SelectItem value="recibida_parcial">Recibida parcial</SelectItem>
+                  <SelectItem value="recibida_completa">Recibida completa</SelectItem>
+                  <SelectItem value="cancelada">Canceladas</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={filterPrioridad} onValueChange={setFilterPrioridad}>
@@ -610,6 +742,152 @@ export function PiezasPolizaPage() {
                 className="mt-1 min-h-[60px]"
               />
             </div>
+
+            {/* ── Recepción de pieza (solo al editar una pieza existente) ── */}
+            {editingId ? (
+              <div className="mt-2 rounded-lg border border-[color:var(--brand-border)] bg-slate-50/60 p-3">
+                <div className="mb-2 flex items-center gap-2">
+                  <PackagePlus className="h-4 w-4 text-[color:var(--brand-primary)]" />
+                  <span className="text-sm font-semibold">Recepción de pieza</span>
+                  <Badge variant="outline" className={`ml-auto ${RECEPCION_BADGE[recepcionDerivedStatus]}`}>
+                    {RECEPCION_LABEL[recepcionDerivedStatus]}
+                  </Badge>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Estado de recepción</Label>
+                    <Select
+                      value={recepcion.receivedStatus}
+                      onValueChange={(v) => setRecepcion({ ...recepcion, receivedStatus: v as RecepcionForm["receivedStatus"] })}
+                    >
+                      <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="auto">Automático (por cantidad)</SelectItem>
+                        <SelectItem value="recibida_parcial">Recibida parcial</SelectItem>
+                        <SelectItem value="recibida_completa">Recibida completa</SelectItem>
+                        <SelectItem value="cancelada">Cancelada</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Fecha de recepción</Label>
+                    <Input
+                      type="date"
+                      value={recepcion.receivedAt}
+                      onChange={(e) => setRecepcion({ ...recepcion, receivedAt: e.target.value })}
+                      className="mt-1 h-9"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Cantidad recibida</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={recepcion.receivedQuantity}
+                      onChange={(e) => setRecepcion({ ...recepcion, receivedQuantity: e.target.value })}
+                      placeholder={`de ${form.cantidad}`}
+                      className="mt-1 h-9"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Recibido por</Label>
+                    <Input
+                      value={recepcion.receivedBy}
+                      onChange={(e) => setRecepcion({ ...recepcion, receivedBy: e.target.value })}
+                      placeholder="Nombre"
+                      className="mt-1 h-9"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">N.º factura / comprobante</Label>
+                    <Input
+                      value={recepcion.receivedInvoiceNumber}
+                      onChange={(e) => setRecepcion({ ...recepcion, receivedInvoiceNumber: e.target.value })}
+                      placeholder="Opcional"
+                      className="mt-1 h-9"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Costo real</Label>
+                    <Input
+                      value={recepcion.receivedCost}
+                      onChange={(e) => setRecepcion({ ...recepcion, receivedCost: e.target.value })}
+                      placeholder="Opcional"
+                      className="mt-1 h-9"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3">
+                  <Label className="text-xs">Suplidor final</Label>
+                  <Input
+                    value={recepcion.receivedSupplier}
+                    onChange={(e) => setRecepcion({ ...recepcion, receivedSupplier: e.target.value })}
+                    placeholder="Opcional"
+                    className="mt-1 h-9"
+                  />
+                </div>
+
+                <div className="mt-3">
+                  <Label className="text-xs">Nota de recepción</Label>
+                  <Textarea
+                    value={recepcion.receivedNote}
+                    onChange={(e) => setRecepcion({ ...recepcion, receivedNote: e.target.value })}
+                    placeholder="Opcional"
+                    className="mt-1 min-h-[50px]"
+                  />
+                </div>
+
+                <div className="mt-3">
+                  <Label className="text-xs">Evidencia / factura (PDF o imagen)</Label>
+                  <div className="mt-1 flex items-center gap-2">
+                    <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm hover:bg-slate-50">
+                      {uploadingEvidencia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+                      {uploadingEvidencia ? "Subiendo..." : "Adjuntar archivo"}
+                      <input
+                        type="file"
+                        accept=".pdf,image/*,.doc,.docx,.xls,.xlsx"
+                        className="hidden"
+                        disabled={uploadingEvidencia}
+                        onChange={handleUploadEvidencia}
+                      />
+                    </label>
+                    {recepcion.receivedAttachmentUrl ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
+                        <FileText className="h-3.5 w-3.5" />
+                        {recepcion.receivedAttachmentUrl.split("/").pop()}
+                        <button
+                          type="button"
+                          onClick={() => setRecepcion({ ...recepcion, receivedAttachmentUrl: "" })}
+                          className="ml-1 text-slate-400 hover:text-red-600"
+                          title="Quitar"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="mt-3 flex justify-end">
+                  <Button onClick={handleSaveRecepcion} disabled={savingRecepcion} className="h-9">
+                    <PackageCheck className="mr-1.5 h-4 w-4" />
+                    {savingRecepcion
+                      ? "Guardando..."
+                      : recepcionAlreadyDone
+                        ? "Editar recepción"
+                        : "Registrar recepción"}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <DialogFooter>
@@ -618,7 +896,7 @@ export function PiezasPolizaPage() {
             </Button>
             <Button onClick={handleSave} disabled={saving || !form.piezaNombre.trim()}>
               <Save className="mr-1 h-4 w-4" />
-              {saving ? "Guardando..." : editingId ? "Actualizar" : "Agregar"}
+              {saving ? "Guardando..." : editingId ? "Actualizar solicitud" : "Agregar"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -747,13 +1025,19 @@ function ItemRow({
           <span className={`font-semibold ${received ? "line-through" : ""}`}>{item.PiezaNombre}</span>
           {item.CategoriaSnapshot ? <span className="text-xs text-muted-foreground">· {item.CategoriaSnapshot}</span> : null}
           <Badge variant="outline" className={prioBadge[item.Prioridad] || ""}>{item.Prioridad}</Badge>
+          {item.ReceivedStatus && item.ReceivedStatus !== "pendiente" ? (
+            <Badge variant="outline" className={RECEPCION_BADGE[item.ReceivedStatus]}>
+              {RECEPCION_LABEL[item.ReceivedStatus]}
+            </Badge>
+          ) : null}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
           <span>Cant: <b className="text-foreground">{item.Cantidad}</b></span>
+          {item.ReceivedQuantity != null ? <span>Recibida: <b className="text-foreground">{item.ReceivedQuantity}</b></span> : null}
           {item.Suplidor ? <span>Suplidor: <b className="text-foreground">{item.Suplidor}</b></span> : null}
           {item.Sucursal ? <span>Sucursal: <b className="text-foreground">{item.Sucursal}</b></span> : null}
           <span>Solicitada: {item.FechaSolicitada}</span>
-          {received && item.FechaRecibida ? <span className="text-emerald-700">Recibida: {item.FechaRecibida}</span> : null}
+          {item.ReceivedAt ? <span className="text-emerald-700">Fecha recepción: {item.ReceivedAt}</span> : null}
         </div>
         {item.Nota ? <p className="mt-1 text-[12px] text-slate-600">{item.Nota}</p> : null}
       </div>

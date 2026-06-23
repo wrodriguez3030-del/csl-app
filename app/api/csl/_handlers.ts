@@ -43,7 +43,7 @@ import {
   CONSENT_LIST_COLS,
 } from "@/lib/server/csl-crud"
 import { runWithBusinessContext, applyActiveBusiness, getBusinessContext, isKnownBusinessId, scopeByBranch } from "@/lib/server/business-context"
-import { runWithMaintenanceWriteScope, type MaintenanceChangeSource } from "@/lib/server/maintenance-guard"
+import { runWithMaintenanceWriteScope, recordMaintenanceAudit, type MaintenanceChangeSource } from "@/lib/server/maintenance-guard"
 
 /**
  * Acciones MANUALES del módulo de Mantenimiento. Solo estas pueden escribir en
@@ -65,6 +65,7 @@ const MAINTENANCE_MANUAL_ACTIONS = new Set<string>([
   "addInventario", "updateInventario", "saveInventario", "deleteInventario",
   // Lista piezas póliza
   "savePiezaPolizaLista", "markPiezaPolizaRecibida", "markPiezaPolizaPendiente", "deletePiezaPolizaLista",
+  "savePiezaPolizaRecepcion",
 ])
 
 /**
@@ -3047,6 +3048,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (!id) throw new Error("Falta id")
       await updateRowFields("piezas_poliza_lista", id, {
         estado: "recibida",
+        received_status: "recibida_completa",
         fecha_recibida: dateValue(params.fechaRecibida) || new Date().toISOString().slice(0, 10),
       })
       return { ok: true }
@@ -3056,9 +3058,125 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (!id) throw new Error("Falta id")
       await updateRowFields("piezas_poliza_lista", id, {
         estado: "pendiente",
+        received_status: "pendiente",
         fecha_recibida: null,
       })
       return { ok: true }
+    }
+    case "savePiezaPolizaRecepcion": {
+      // Registra o edita la FICHA DE RECEPCIÓN de una pieza. Deriva el estado
+      // de recepción de la cantidad recibida vs la solicitada (salvo override
+      // manual a "cancelada"), y mantiene `estado`/`fecha_recibida` coherentes
+      // para no romper el toggle binario, los contadores ni el PDF.
+      const id = textValue(params, "id")
+      if (!id) throw new Error("Falta id")
+      const today = new Date().toISOString().slice(0, 10)
+      const sb = getSupabaseAdmin()
+
+      // Fila actual (scopeada al tenant) → cantidad solicitada + valores previos.
+      let cq = sb
+        .from("csl_piezas_poliza_lista")
+        .select(
+          "cantidad, estado, received_status, received_at, received_quantity, received_by, received_note, received_invoice_number, received_cost, received_supplier, received_attachment_url",
+        )
+        .eq("id", id)
+      if (shouldScopeTenant()) cq = cq.eq("business_id", effectiveBusinessId() as string)
+      const { data: current, error: cErr } = await cq.maybeSingle()
+      if (cErr) throw cErr
+      if (!current) throw new Error("Pieza no encontrada o de otro negocio")
+      const before = current as Row
+
+      const cantidadSolicitada = Math.max(0, Number(before.cantidad) || 0)
+      const wasReceived = !!before.received_at // primera recepción vs edición
+
+      const statusParam = textValue(params, "receivedStatus")
+      const receivedQty = Math.max(0, numberValue(params, "receivedQuantity", 0))
+      const receivedAt = dateValue(params.receivedAt)
+
+      let received_status: "pendiente" | "recibida_parcial" | "recibida_completa" | "cancelada"
+      if (statusParam === "cancelada") received_status = "cancelada"
+      else if (receivedQty <= 0) received_status = "pendiente"
+      else if (cantidadSolicitada > 0 && receivedQty < cantidadSolicitada) received_status = "recibida_parcial"
+      else received_status = "recibida_completa"
+
+      // Sincronización con el modelo binario heredado.
+      const estado: "pendiente" | "recibida" = received_status === "recibida_completa" ? "recibida" : "pendiente"
+      const fecha_recibida =
+        received_status === "recibida_completa" ? (receivedAt || today) : null
+
+      const costRaw = String(params.receivedCost ?? "").trim()
+      const received_cost = costRaw ? (Number(costRaw.replace(/[^\d.-]/g, "")) || null) : null
+
+      const fields: Row = {
+        received_status,
+        received_at:
+          received_status === "pendiente"
+            ? null
+            : received_status === "cancelada"
+              ? receivedAt
+              : receivedAt || today,
+        received_quantity: receivedQty > 0 ? receivedQty : null,
+        received_by: textValue(params, "receivedBy") || null,
+        received_note: textValue(params, "receivedNote") || null,
+        received_invoice_number: textValue(params, "receivedInvoiceNumber") || null,
+        received_cost,
+        received_supplier: textValue(params, "receivedSupplier") || null,
+        reception_updated_at: new Date().toISOString(),
+        reception_updated_by: user.id,
+        estado,
+        fecha_recibida,
+      }
+      // Solo tocar el adjunto si el cliente lo envió (no borrar evidencia previa).
+      if (params.receivedAttachmentUrl !== undefined) {
+        fields.received_attachment_url = textValue(params, "receivedAttachmentUrl") || null
+      }
+
+      await updateRowFields("piezas_poliza_lista", id, fields)
+
+      // Auditoría semántica de recepción (además del log genérico del guard).
+      await recordMaintenanceAudit({
+        entity: "piezas_poliza_lista",
+        table: "csl_piezas_poliza_lista",
+        recordKey: id,
+        op: "update",
+        changeSource: wasReceived ? "part_reception_updated" : "part_received",
+        userId: user.id,
+        userEmail: user.email,
+        details: {
+          before: {
+            received_status: before.received_status ?? null,
+            received_at: before.received_at ?? null,
+            received_quantity: before.received_quantity ?? null,
+            received_cost: before.received_cost ?? null,
+          },
+          after: {
+            received_status,
+            received_at: fields.received_at,
+            received_quantity: fields.received_quantity,
+            received_cost,
+          },
+        },
+      })
+      return { ok: true, record: fromDb("piezas_poliza_lista", { id, ...before, ...fields }) }
+    }
+    case "getPiezaReceptionSignedUrl": {
+      // URL firmada (privada, 2 min) para ver/descargar la evidencia adjunta de
+      // la recepción. Scopeada al tenant del registro.
+      const id = textValue(params, "id")
+      if (!id) throw new Error("Falta id")
+      const sb = getSupabaseAdmin()
+      let q = sb.from("csl_piezas_poliza_lista").select("received_attachment_url, business_id").eq("id", id)
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { data: row, error } = await q.maybeSingle()
+      if (error) throw error
+      if (!row) return { ok: false, error: "Pieza no encontrada o de otro negocio" }
+      const path = String((row as Row).received_attachment_url || "")
+      if (!path) return { ok: false, error: "Esta recepción no tiene evidencia adjunta" }
+      const wantDownload = textValue(params, "download") === "true"
+      const opts = wantDownload ? { download: path.split("/").pop() || "evidencia" } : undefined
+      const { data: signed, error: sErr } = await sb.storage.from("maintenance-docs").createSignedUrl(path, 120, opts)
+      if (sErr || !signed?.signedUrl) return { ok: false, error: `No se pudo generar el enlace: ${sErr?.message || "desconocido"}` }
+      return { ok: true, url: signed.signedUrl }
     }
     case "deletePiezaPolizaLista":
       await deleteRow("piezas_poliza_lista", textValue(params, "id"))

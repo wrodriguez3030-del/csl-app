@@ -116,6 +116,12 @@ export interface PiezaCatalogo {
   Activa?: "Sí" | "No"
 }
 
+export type ReceivedStatus =
+  | "pendiente"
+  | "recibida_parcial"
+  | "recibida_completa"
+  | "cancelada"
+
 export interface PiezaPolizaLista {
   id: string
   PiezaNombre: string
@@ -131,6 +137,18 @@ export interface PiezaPolizaLista {
   CreadoPor?: string
   CreatedAt?: string
   UpdatedAt?: string
+  // ── Recepción de pieza ──────────────────────────────────────────────
+  ReceivedStatus?: ReceivedStatus
+  ReceivedAt?: string | null
+  ReceivedQuantity?: number | null
+  ReceivedBy?: string | null
+  ReceivedNote?: string | null
+  ReceivedInvoiceNumber?: string | null
+  ReceivedCost?: number | null
+  ReceivedSupplier?: string | null
+  ReceivedAttachmentUrl?: string | null
+  ReceptionUpdatedAt?: string | null
+  ReceptionUpdatedBy?: string | null
 }
 
 export interface InventarioItem {

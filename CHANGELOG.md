@@ -18,6 +18,36 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.2.31] — 2026-06-22
+
+### Added
+- **Recepción editable de piezas en Mantenimiento → Lista piezas póliza.** El
+  modal de edición de una pieza ahora incluye una sección **"Recepción de
+  pieza"** para registrar y editar: estado de recepción (Pendiente / Recibida
+  parcial / Recibida completa / Cancelada), fecha de recepción, cantidad
+  recibida, recibido por, nota, N.º de factura, costo real, suplidor final y
+  evidencia/factura adjunta (PDF o imagen). Botón **"Registrar recepción"** /
+  **"Editar recepción"** según si ya fue recibida.
+- El estado de recepción se **deriva automáticamente** de la cantidad recibida
+  vs la solicitada (menor → parcial; igual o mayor → completa), salvo override
+  manual a "Cancelada". El `estado` binario heredado y `fecha_recibida` se
+  mantienen sincronizados (no rompe el toggle, los contadores ni el PDF).
+- **Evidencia adjunta** en bucket privado de Supabase Storage `maintenance-docs`
+  (se crea solo si falta) vía `POST /api/maintenance/documents/upload`, con
+  lectura por URL firmada (`getPiezaReceptionSignedUrl`).
+- **Auditoría** de la recepción en `csl_maintenance_audit`
+  (`part_received` / `part_reception_updated`) con valores antes/después.
+- Listado: **badge de estado de recepción** con colores + cantidad recibida y
+  fecha de recepción por fila; el filtro de estado pasa a 5 opciones
+  (Todas / Pendientes / Recibida parcial / Recibida completa / Canceladas).
+
+### Changed
+- Migración aditiva `202606220001_piezas_recepcion.sql`: 11 columnas
+  `received_*` / `reception_*` en `csl_piezas_poliza_lista` (sin DELETE/DROP);
+  backfill `estado='recibida'` → `received_status='recibida_completa'`.
+
+---
+
 ## [0.2.30] — 2026-06-19
 
 ### Added

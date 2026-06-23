@@ -172,6 +172,17 @@ export function fromDb(entity: string, row: Row): Row {
         CreadoPor: row.creado_por,
         CreatedAt: row.created_at,
         UpdatedAt: row.updated_at,
+        ReceivedStatus: row.received_status ?? "pendiente",
+        ReceivedAt: row.received_at,
+        ReceivedQuantity: row.received_quantity,
+        ReceivedBy: row.received_by,
+        ReceivedNote: row.received_note,
+        ReceivedInvoiceNumber: row.received_invoice_number,
+        ReceivedCost: row.received_cost,
+        ReceivedSupplier: row.received_supplier,
+        ReceivedAttachmentUrl: row.received_attachment_url,
+        ReceptionUpdatedAt: row.reception_updated_at,
+        ReceptionUpdatedBy: row.reception_updated_by,
       }
     case "certificados_depicenter":
       return {
