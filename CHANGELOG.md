@@ -18,6 +18,18 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.6.1] — 2026-06-24
+
+### Changed
+- **Reutilizar el `normalizeOperadora` canónico de `lib/normalize-pulse.ts`** en
+  el editor de equipos (cliente + backend) en vez de un duplicado en
+  `normalize-fields.ts`. `normalize-pulse` es la fuente única ya usada por el
+  resolver oficial (`operadora-oficial.ts`), PulseControl y los reportes
+  (cubre KATHERINE→KATHERIN, EMELY→EMELI, RIQUELMI→ROQUELMI, YESICA→YESSICA,
+  SAOMY→SAHOMY). Evita que el editor canonice distinto al resto del sistema.
+
+---
+
 ## [0.6.0] — 2026-06-24
 
 ### Added
@@ -30,8 +42,8 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
   sin lista oficial / Depicenter se mantiene el catálogo real + respaldo.
 
 ### Changed
-- **Normalización canónica de operadora** (`normalizeOperadora` en
-  `lib/normalize-fields.ts`, aplicada en cliente y backend: `updateEquipoCampos`
+- **Normalización canónica de operadora** (`normalizeOperadora` de
+  `lib/normalize-pulse.ts`, aplicada en cliente y backend: `updateEquipoCampos`
   y `saveEquipo`). Resuelve variantes ortográficas a la forma oficial:
   EMELY→EMELI, KATHERINE→KATHERIN, RIQUELMI→ROQUELMI, YESICA/JESSICA→YESSICA.
   Nombres desconocidos se conservan en MAYÚSCULA (no se pierden). Evita que la

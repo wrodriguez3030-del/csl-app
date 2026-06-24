@@ -7,7 +7,7 @@ import { SuperadminBusinessFilter, filterValueToBusinessId, type BusinessFilterV
 import { loadXLSX } from "@/lib/load-xlsx"
 import { fmtN, parseN } from "@/lib/fmt"
 import { detectExcelType } from "@/lib/excel-type-detector"
-import { normalizeOperadora } from "@/lib/normalize-fields"
+import { normalizeOperadora } from "@/lib/normalize-pulse"
 import { parseEquiposBaseWorkbook, type ParsedEquipoBaseRow, type ParseEquiposBaseResult } from "@/lib/equipos-base-parser"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"

@@ -29,29 +29,7 @@ export function toUpperFieldOrNull(value: unknown): string | null {
   return v ? v : null
 }
 
-/**
- * Variantes ortográficas conocidas de operadoras → forma CANÓNICA oficial.
- * Evita que el mismo nombre se guarde de dos maneras (ej. "RIQUELMI" vs
- * "ROQUELMI") y rompa el cruce cabina→operadora y los reportes.
- */
-const OPERADORA_SYNONYMS: Record<string, string> = {
-  EMELY: "EMELI",
-  KATHERINE: "KATHERIN",
-  KATERIN: "KATHERIN",
-  RIQUELMI: "ROQUELMI",
-  ROQUELMY: "ROQUELMI",
-  YESICA: "YESSICA",
-  JESSICA: "YESSICA",
-}
-
-/**
- * Normaliza un nombre de operadora a su forma canónica oficial (MAYÚSCULA +
- * sinónimos resueltos). Nombres desconocidos se conservan en MAYÚSCULA (no se
- * pierden). "" para vacío. Usar en AMBOS lados: selección en la UI y
- * persistencia en el backend.
- */
-export function normalizeOperadora(value: unknown): string {
-  const up = toUpperField(value)
-  if (!up) return ""
-  return OPERADORA_SYNONYMS[up] ?? up
-}
+// NOTA: la normalización canónica de OPERADORA (aliases RIQUELMI→ROQUELMI,
+// EMELY→EMELI, etc.) vive en `lib/normalize-pulse.ts` (`normalizeOperadora`),
+// fuente única usada por el resolver oficial, PulseControl y los reportes.
+// No duplicar aquí para no divergir.
