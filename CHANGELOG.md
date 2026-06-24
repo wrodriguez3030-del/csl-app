@@ -18,6 +18,39 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.6.0] — 2026-06-24
+
+### Added
+- **Operadoras oficiales por sucursal en el editor de equipos (CSL).** El
+  selector de Operadora se restringe a la lista oficial de la sucursal del
+  equipo (Los Jardines → NAYELI/LILIAN/YAMILKA/KATHERIN; Rafael Vidal →
+  DIANA/EMELI/ROQUELMI/MADELIN/ROSA; Villa Olga → SAHOMY/YESSICA) más "Sin
+  asignar". Al cambiar la sucursal, la lista de operadoras se actualiza. La
+  operadora actual del equipo siempre permanece seleccionable. Para sucursales
+  sin lista oficial / Depicenter se mantiene el catálogo real + respaldo.
+
+### Changed
+- **Normalización canónica de operadora** (`normalizeOperadora` en
+  `lib/normalize-fields.ts`, aplicada en cliente y backend: `updateEquipoCampos`
+  y `saveEquipo`). Resuelve variantes ortográficas a la forma oficial:
+  EMELY→EMELI, KATHERINE→KATHERIN, RIQUELMI→ROQUELMI, YESICA/JESSICA→YESSICA.
+  Nombres desconocidos se conservan en MAYÚSCULA (no se pierden). Evita que la
+  misma operadora se guarde de dos formas y rompa el cruce cabina→operadora y
+  los reportes. Solo afecta nuevas escrituras; no reescribe datos existentes.
+
+### Investigado (sin cambio de comportamiento)
+- Reporte "la operadora no se guarda en Mantenimiento › Equipos": la auditoría
+  de `csl_maintenance_audit` y el estado de la DB confirman que el guardado de
+  operadora **sí persiste** (C-05 = JOHELY, `manual_tecnico`, auditado). El path
+  frontend → `updateEquipoCampos` → `updateRowFields` verifica filas afectadas,
+  estampa `change_source`/`updated_by`/`updated_at` y audita antes/después. No
+  hay trigger, columna generada ni FK que revierta `operadora`; el store no
+  persiste `db` (se recarga fresco). La confusión provenía del selector
+  (operadoras no oficiales / sin filtro por sucursal) y del bug de mayúsculas
+  del selector de Cabina ya corregido en v0.5.0.
+
+---
+
 ## [0.5.0] — 2026-06-24
 
 ### Added

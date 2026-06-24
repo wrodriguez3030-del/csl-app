@@ -7,6 +7,7 @@ import { SuperadminBusinessFilter, filterValueToBusinessId, type BusinessFilterV
 import { loadXLSX } from "@/lib/load-xlsx"
 import { fmtN, parseN } from "@/lib/fmt"
 import { detectExcelType } from "@/lib/excel-type-detector"
+import { normalizeOperadora } from "@/lib/normalize-fields"
 import { parseEquiposBaseWorkbook, type ParsedEquipoBaseRow, type ParseEquiposBaseResult } from "@/lib/equipos-base-parser"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -52,6 +53,15 @@ const FALLBACK_OPERADORAS: Record<string, string[]> = {
   // Nombres OFICIALES (tabla de equipos): KATHERIN / EMELI / ROQUELMI.
   csl: ["NAYELI", "LILIAN", "YAMILKA", "KATHERIN", "DIANA", "EMELI", "ROQUELMI", "MADELIN", "ROSA", "SAHOMY", "YESSICA"],
   depicenter: ["SELENIA", "CLARIBEL", "NOELIA", "EVELINA"],
+}
+
+// Operadoras OFICIALES por sucursal (solo CSL). El selector se restringe a la
+// lista de la sucursal del equipo; al cambiar la sucursal cambia la lista.
+// Clave en MAYÚSCULA (normalizeSucursalKey).
+const OPERADORAS_OFICIALES_CSL: Record<string, string[]> = {
+  "LOS JARDINES": ["NAYELI", "LILIAN", "YAMILKA", "KATHERIN"],
+  "RAFAEL VIDAL": ["DIANA", "EMELI", "ROQUELMI", "MADELIN", "ROSA"],
+  "VILLA OLGA": ["SAHOMY", "YESSICA"],
 }
 
 /** Si la cabina viene legacy en Observaciones (texto libre tipo "CABINA 1 -
@@ -118,16 +128,24 @@ export function EquiposPage() {
       .sort((a, b) => (a.Nombre || "").localeCompare(b.Nombre || "", "es"))
   }, [dbPulsos.operadoras])
 
-  // Opciones del dropdown de operadora (SIEMPRE en MAYÚSCULA): catálogo real del
-  // tenant + lista conocida de respaldo (por si dbPulsos.operadoras no está
-  // cargado) + la operadora actual del equipo. Garantiza poder asignarla.
+  // Opciones del dropdown de operadora (forma canónica, MAYÚSCULA). Para CSL se
+  // restringe a las operadoras OFICIALES de la sucursal del equipo (al cambiar
+  // la sucursal cambia la lista). Si la sucursal no tiene lista oficial (otra
+  // sucursal / Depicenter) cae al catálogo real del tenant + respaldo. SIEMPRE
+  // incluye la operadora actual del equipo para no perderla al editar.
   const operadoraOptions = useMemo(() => {
     const set = new Set<string>()
-    for (const o of operadorasActivas) { const n = (o.Nombre || "").trim().toUpperCase(); if (n) set.add(n) }
-    for (const n of (FALLBACK_OPERADORAS[business.slug] || [])) set.add(n)
-    if (formData.Operadora) set.add(formData.Operadora.trim().toUpperCase())
+    const sucKey = (formData.Sucursal || "").trim().replace(/\s+/g, " ").toUpperCase()
+    const oficiales = business.slug === "csl" ? OPERADORAS_OFICIALES_CSL[sucKey] : undefined
+    if (oficiales && oficiales.length) {
+      for (const n of oficiales) set.add(normalizeOperadora(n))
+    } else {
+      for (const o of operadorasActivas) { const n = normalizeOperadora(o.Nombre); if (n) set.add(n) }
+      for (const n of (FALLBACK_OPERADORAS[business.slug] || [])) set.add(normalizeOperadora(n))
+    }
+    if (formData.Operadora) set.add(normalizeOperadora(formData.Operadora))
     return Array.from(set).sort((a, b) => a.localeCompare(b, "es"))
-  }, [operadorasActivas, business.slug, formData.Operadora])
+  }, [operadorasActivas, business.slug, formData.Sucursal, formData.Operadora])
 
   // Reportes relacionados al equipo abierto (mostrados como extraSlot del dialog).
   const reportesEquipo = viewEquipo
@@ -769,12 +787,13 @@ export function EquiposPage() {
             <div className="space-y-1.5">
               <Label>Operadora</Label>
               <Select
-                value={formData.Operadora ? formData.Operadora.toUpperCase() : "__none__"}
+                value={formData.Operadora ? normalizeOperadora(formData.Operadora) : "__none__"}
                 onValueChange={(name) => {
                   if (name === "__none__") { setFormData({ ...formData, Operadora: "", OperadoraID: "" }); return }
-                  // Resolver OperadoraID si la operadora existe en el catálogo real.
-                  const op = operadorasActivas.find((o) => (o.Nombre || "").trim().toUpperCase() === name)
-                  setFormData({ ...formData, Operadora: name, OperadoraID: op?.OperadoraID || "" })
+                  // Forma canónica + resolver OperadoraID desde el catálogo real.
+                  const canon = normalizeOperadora(name)
+                  const op = operadorasActivas.find((o) => normalizeOperadora(o.Nombre) === canon)
+                  setFormData({ ...formData, Operadora: canon, OperadoraID: op?.OperadoraID || "" })
                 }}
               >
                 <SelectTrigger>

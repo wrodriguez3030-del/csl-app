@@ -28,3 +28,30 @@ export function toUpperFieldOrNull(value: unknown): string | null {
   const v = toUpperField(value)
   return v ? v : null
 }
+
+/**
+ * Variantes ortográficas conocidas de operadoras → forma CANÓNICA oficial.
+ * Evita que el mismo nombre se guarde de dos maneras (ej. "RIQUELMI" vs
+ * "ROQUELMI") y rompa el cruce cabina→operadora y los reportes.
+ */
+const OPERADORA_SYNONYMS: Record<string, string> = {
+  EMELY: "EMELI",
+  KATHERINE: "KATHERIN",
+  KATERIN: "KATHERIN",
+  RIQUELMI: "ROQUELMI",
+  ROQUELMY: "ROQUELMI",
+  YESICA: "YESSICA",
+  JESSICA: "YESSICA",
+}
+
+/**
+ * Normaliza un nombre de operadora a su forma canónica oficial (MAYÚSCULA +
+ * sinónimos resueltos). Nombres desconocidos se conservan en MAYÚSCULA (no se
+ * pierden). "" para vacío. Usar en AMBOS lados: selección en la UI y
+ * persistencia en el backend.
+ */
+export function normalizeOperadora(value: unknown): string {
+  const up = toUpperField(value)
+  if (!up) return ""
+  return OPERADORA_SYNONYMS[up] ?? up
+}

@@ -125,7 +125,7 @@ async function resolveMaintenanceTargetBusiness(
 import { createHash, randomBytes } from "node:crypto"
 import { haversineMeters } from "@/lib/hr-geo"
 import { makeAgendaMatchKey, normalizeSucursal, sucursalesForTenant, sucursalAllowedForTenant } from "@/lib/normalize-pulse"
-import { toUpperField, toUpperFieldOrNull } from "@/lib/normalize-fields"
+import { toUpperField, toUpperFieldOrNull, normalizeOperadora } from "@/lib/normalize-fields"
 import {
   clienteCosmiatriaToDb,
   consentToDb,
@@ -2916,7 +2916,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         // Columnas añadidas por 202605280001_equipos_cabina_operadora.sql.
         // Nombre de la operadora simplificado a `operadora` (no `operadora_nombre`).
         cabina: toUpperFieldOrNull(cabinaRaw),
-        operadora: toUpperFieldOrNull(operadoraRaw),
+        // Operadora a forma canónica (RIQUELMI→ROQUELMI, EMELY→EMELI, etc.).
+        operadora: normalizeOperadora(operadoraRaw) || null,
         operadora_id: operadoraIdRaw ? operadoraIdRaw : null,
       }
       // Columnas añadidas por 202605280002_equipos_pulsos_audit.sql.
@@ -2993,9 +2994,10 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         if (v === CLEAR) fields[snake] = null
         else if (v.length > 0) fields[snake] = v
       }
-      // CABINA / OPERADORA siempre en MAYÚSCULA (regla global del sistema).
+      // CABINA en MAYÚSCULA; OPERADORA a forma canónica oficial (MAYÚSCULA +
+      // sinónimos resueltos: RIQUELMI→ROQUELMI, EMELY→EMELI, etc.).
       if (typeof fields.cabina === "string") fields.cabina = toUpperField(fields.cabina)
-      if (typeof fields.operadora === "string") fields.operadora = toUpperField(fields.operadora)
+      if (typeof fields.operadora === "string") fields.operadora = normalizeOperadora(fields.operadora)
       // Numéricos: el frontend los manda como string. Solo aplicamos si
       // vino una cadena no vacía (string "0" sí vale → permite resetear).
       const mapNum: Array<[string, string]> = [
