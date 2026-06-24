@@ -18,6 +18,25 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.3.1] — 2026-06-23
+
+### Fixed
+- **Liquidaciones y prestaciones — vacaciones proporcionales en renuncias.** El
+  cálculo de vacaciones devolvía 0 días para empleados con menos de 1 año. Ahora
+  aplica la escala proporcional del Código de Trabajo (art. 177/180): 5 meses = 6
+  días, 6 = 7, 7 = 8, 8 = 9, 9 = 10, 10 = 11, 11 = 12. En renuncia/salida
+  voluntaria preaviso y cesantía quedan en RD$ 0.00 y el total considera solo los
+  derechos adquiridos (vacaciones proporcionales + salario de Navidad proporcional
+  + salario pendiente). Corregido en backend (`computeSeverance`) y frontend
+  (recalcular en pantalla, vista previa, guardar/editar y PDF Ministerio).
+- **Tiempo laborado** ahora se muestra en años/meses/días (antes años/días), con
+  criterio Ministerio (mes de 30 días, día inclusivo).
+- Caso de validación EMELY CADIZ (ingreso 01/10/2025, salida 28/06/2026, RD$18,000,
+  renuncia): tiempo 8 meses 28 días, diario RD$755.35, vacaciones 9 días
+  RD$6,798.15, Navidad 5 meses 28 días RD$8,900.00, total **RD$15,698.15**. ✓
+
+---
+
 ## [0.3.0] — 2026-06-23
 
 ### Added

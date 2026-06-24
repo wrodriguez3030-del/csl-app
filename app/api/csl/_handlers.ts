@@ -308,17 +308,15 @@ function computeSeverance(motivo: string, fechaIngreso: string, fechaSalida: str
     else if (t >= 0.5) cesantiaDias = 13
     else if (t >= 0.25) cesantiaDias = 6
   }
-  const vacacionesDias = diasVacacionesRD(t)
+  const tieneIngreso = !!ing && !Number.isNaN(ing.getTime())
+  const mesesServicio = tieneIngreso ? mesesServicioCompletos(ing as Date, sal) : 0
+  const vacacionesDias = diasVacacionesRD(t, mesesServicio)
   const nav = navidadProporcional(ing, sal, mensual)
-  // Días sobre los años completos, por calendario e inclusivo (criterio Ministerio).
-  let diasTrabajados = 0
-  if (ing && !Number.isNaN(ing.getTime())) {
-    const anchor = Date.UTC(ing.getUTCFullYear() + aniosCompletos, ing.getUTCMonth(), ing.getUTCDate())
-    diasTrabajados = Math.max(0, Math.round((sal.getTime() - anchor) / 86400000) + 1)
-  }
+  // Tiempo laborado en años/meses/días (criterio Ministerio).
+  const td = tieneIngreso ? tiempoDetallado(ing as Date, sal) : { anios: 0, meses: 0, dias: 0 }
   return {
     anios_servicio: round2(t),
-    tiempo_anios: aniosCompletos, tiempo_dias: diasTrabajados,
+    tiempo_anios: td.anios, tiempo_meses: td.meses, tiempo_dias: td.dias,
     salario_diario: round2(diarioFull),
     preaviso_dias: preavisoDias, preaviso_monto: round2(diarioFull * preavisoDias),
     cesantia_dias: cesantiaDias, cesantia_monto: round2(diarioFull * cesantiaDias),
@@ -356,9 +354,35 @@ async function diasDesdeAsistencia(businessId: string, employeeId: string, desde
   return dias.size
 }
 
-/** Días de vacaciones legales RD según antigüedad (Código de Trabajo). */
-function diasVacacionesRD(anios: number): number {
-  return anios >= 5 ? 18 : anios >= 1 ? 14 : 0
+/**
+ * Días de vacaciones legales RD según antigüedad (Código de Trabajo).
+ * 1-5 años = 14 días; >=5 años = 18 días. Para menos de 1 año se aplica la
+ * escala proporcional (art. 177/180 C.T.): 5 meses = 6 días, 6 = 7, 7 = 8,
+ * 8 = 9, 9 = 10, 10 = 11, 11 = 12. < 5 meses no genera derecho.
+ */
+function diasVacacionesRD(anios: number, mesesCompletos?: number): number {
+  if (anios >= 5) return 18
+  if (anios >= 1) return 14
+  if (mesesCompletos != null && mesesCompletos >= 5) return Math.min(12, mesesCompletos + 1)
+  return 0
+}
+/** Meses completos de servicio (escala proporcional de vacaciones < 1 año). */
+function mesesServicioCompletos(ing: Date, sal: Date): number {
+  let m = (sal.getUTCFullYear() - ing.getUTCFullYear()) * 12 + (sal.getUTCMonth() - ing.getUTCMonth())
+  if (sal.getUTCDate() < ing.getUTCDate()) m -= 1
+  return Math.max(0, m)
+}
+/** Tiempo laborado en años/meses/días (criterio Ministerio: mes 30 días, día inclusivo). */
+function tiempoDetallado(ing: Date, sal: Date): { anios: number; meses: number; dias: number } {
+  const t = Math.max(0, (sal.getTime() - ing.getTime()) / (365.25 * 24 * 3600 * 1000))
+  const anios = Math.floor(t + 1e-9)
+  const anchor = new Date(Date.UTC(ing.getUTCFullYear() + anios, ing.getUTCMonth(), ing.getUTCDate()))
+  let meses = (sal.getUTCFullYear() - anchor.getUTCFullYear()) * 12 + (sal.getUTCMonth() - anchor.getUTCMonth())
+  let dias = sal.getUTCDate() - anchor.getUTCDate() + 1 // inclusivo (criterio Ministerio)
+  while (dias >= 30) { meses += 1; dias -= 30 }
+  while (dias < 0) { meses -= 1; dias += 30 }
+  if (meses < 0) { meses = 0; dias = 0 }
+  return { anios, meses, dias }
 }
 /**
  * Meses trabajados dentro de un año (para doble sueldo / salario de Navidad).

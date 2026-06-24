@@ -27,7 +27,7 @@ interface Severance {
   otros_ingresos: number; descuentos: number; total: number; status: string; observations: string | null
   // Derivados (no persistidos): días/meses para pantalla y PDF.
   vacaciones_dias?: number; navidad_meses?: number; navidad_dias?: number
-  tiempo_anios?: number; tiempo_dias?: number; cedula?: string
+  tiempo_anios?: number; tiempo_meses?: number; tiempo_dias?: number; cedula?: string
 }
 interface Emp { id: string; nombre: string; cedula: string; puesto: string; sucursal: string; sueldo: number; fecha_ingreso: string }
 
@@ -49,7 +49,10 @@ const STATUS_CLASS: Record<string, string> = {
 const rd = (n: number) => `RD$ ${(Number(n) || 0).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100
 const pick = (...vals: unknown[]) => { for (const v of vals) { const s = v == null ? "" : String(v).trim(); if (s) return s } return "" }
-const diasVacacionesRD = (a: number) => (a >= 5 ? 18 : a >= 1 ? 14 : 0)
+// 1-5 años = 14 días; >=5 años = 18 días. < 1 año: escala proporcional
+// (art. 177/180 C.T.) 5 meses=6 días … 11 meses=12 días.
+const diasVacacionesRD = (a: number, mesesCompletos?: number) =>
+  a >= 5 ? 18 : a >= 1 ? 14 : mesesCompletos != null && mesesCompletos >= 5 ? Math.min(12, mesesCompletos + 1) : 0
 
 function toEmp(r: Record<string, unknown>): Emp {
   return {
@@ -62,18 +65,28 @@ function toEmp(r: Record<string, unknown>): Emp {
   }
 }
 
-/** Tiempo laborado (años y días) entre ingreso y salida. */
-function clientTiempo(ing?: string | null, sal?: string | null): { anios: number; dias: number; t: number } {
-  if (!ing) return { anios: 0, dias: 0, t: 0 }
+/** Tiempo laborado (años, meses y días) + meses completos para la escala de vacaciones. */
+function clientTiempo(ing?: string | null, sal?: string | null): { anios: number; meses: number; dias: number; t: number; mesesCompletos: number } {
+  const zero = { anios: 0, meses: 0, dias: 0, t: 0, mesesCompletos: 0 }
+  if (!ing) return zero
   const a = Date.parse(`${ing}T00:00:00Z`)
   const b = sal ? Date.parse(`${sal}T00:00:00Z`) : Date.now()
-  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return { anios: 0, dias: 0, t: 0 }
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return zero
   const t = (b - a) / (365.25 * 24 * 3600 * 1000)
   const anios = Math.floor(t + 1e-9)
-  const ingD = new Date(`${ing}T00:00:00Z`)
-  const anchor = Date.UTC(ingD.getUTCFullYear() + anios, ingD.getUTCMonth(), ingD.getUTCDate())
-  const dias = Math.max(0, Math.round((b - anchor) / 86400000) + 1)
-  return { anios, dias, t }
+  const iD = new Date(a)
+  const sD = new Date(b)
+  // Años/meses/días (criterio Ministerio: mes 30 días, día inclusivo).
+  const anchor = new Date(Date.UTC(iD.getUTCFullYear() + anios, iD.getUTCMonth(), iD.getUTCDate()))
+  let meses = (sD.getUTCFullYear() - anchor.getUTCFullYear()) * 12 + (sD.getUTCMonth() - anchor.getUTCMonth())
+  let dias = sD.getUTCDate() - anchor.getUTCDate() + 1
+  while (dias >= 30) { meses += 1; dias -= 30 }
+  while (dias < 0) { meses -= 1; dias += 30 }
+  if (meses < 0) { meses = 0; dias = 0 }
+  // Meses completos totales (día alcanzado) para la escala de vacaciones < 1 año.
+  let mc = (sD.getUTCFullYear() - iD.getUTCFullYear()) * 12 + (sD.getUTCMonth() - iD.getUTCMonth())
+  if (sD.getUTCDate() < iD.getUTCDate()) mc -= 1
+  return { anios, meses, dias, t, mesesCompletos: Math.max(0, mc) }
 }
 /** Navidad proporcional (mismo criterio que el backend). */
 function clientNavidad(ing: string | null | undefined, sal: string | null | undefined, mensual: number): { meses: number; dias: number; monto: number } {
@@ -91,7 +104,13 @@ function clientNavidad(ing: string | null | undefined, sal: string | null | unde
   if (months < 0) { months = 0; days = 0 }
   return { meses: months, dias: days, monto: round2(mensual * (months + days / 30) / 12) }
 }
-const fmtTiempo = (anios: number, dias: number) => `${anios} año(s) y ${dias} día(s)`
+const fmtTiempo = (anios: number, meses: number, dias: number) => {
+  const parts: string[] = []
+  if (anios > 0) parts.push(`${anios} año(s)`)
+  if (anios > 0 || meses > 0) parts.push(`${meses} mes(es)`)
+  parts.push(`${dias} día(s)`)
+  return parts.join(" y ")
+}
 const fmtNav = (m: number, d: number) => `${m} mes(es) y ${d} día(s)`
 
 /** Días legales preaviso/cesantía (mismo criterio que el backend). */
@@ -123,8 +142,8 @@ function recalcFromDates(e: Partial<Severance>): Partial<Severance> {
   const ld = legalDias(e.motivo || "desahucio", ti.t)
   const nav = clientNavidad(e.fecha_ingreso, e.fecha_salida, Number(e.sueldo_mensual || 0))
   return recalc({
-    ...e, anios_servicio: round2(ti.t), tiempo_anios: ti.anios, tiempo_dias: ti.dias,
-    preaviso_dias: ld.preaviso, cesantia_dias: ld.cesantia, vacaciones_dias: diasVacacionesRD(ti.t),
+    ...e, anios_servicio: round2(ti.t), tiempo_anios: ti.anios, tiempo_meses: ti.meses, tiempo_dias: ti.dias,
+    preaviso_dias: ld.preaviso, cesantia_dias: ld.cesantia, vacaciones_dias: diasVacacionesRD(ti.t, ti.mesesCompletos),
     navidad_meses: nav.meses, navidad_dias: nav.dias,
   })
 }
@@ -167,7 +186,9 @@ export function RrhhLiquidacionesPage() {
   }), [records])
 
   // Cálculo en vivo del modal.
-  const tiempo = editing ? clientTiempo(editing.fecha_ingreso, editing.fecha_salida) : { anios: 0, dias: 0, t: 0 }
+  const tiempo = editing ? clientTiempo(editing.fecha_ingreso, editing.fecha_salida) : { anios: 0, meses: 0, dias: 0, t: 0, mesesCompletos: 0 }
+  // Salidas voluntarias: sin preaviso ni cesantía, solo derechos adquiridos.
+  const sinPreCes = editing ? editing.motivo !== "desahucio" && editing.motivo !== "despido_injustificado" : false
   const diarioLive = editing ? round2(Number(editing.sueldo_mensual || 0) / DAILY_BASE) : 0
   const subtotal = editing ? round2(Number(editing.preaviso_monto || 0) + Number(editing.cesantia_monto || 0) + Number(editing.vacaciones_monto || 0)) : 0
   const totalCalc = editing ? round2(subtotal + Number(editing.navidad_monto || 0) + Number(editing.salario_pendiente || 0) + Number(editing.otros_ingresos || 0) - Number(editing.descuentos || 0)) : 0
@@ -178,14 +199,14 @@ export function RrhhLiquidacionesPage() {
     setCalcing(true)
     try {
       const res = await call({ action: "getHrSeveranceSuggestion", employee_id: empId, motivo: editing?.motivo || "desahucio", fecha_ingreso: editing?.fecha_ingreso || "", fecha_salida: editing?.fecha_salida || "" }) as
-        { ok?: boolean; employee_nombre?: string; cedula?: string; fecha_ingreso?: string; sueldo_mensual?: number; salario_diario?: number; anios_servicio?: number; tiempo_anios?: number; tiempo_dias?: number; preaviso_dias?: number; preaviso_monto?: number; cesantia_dias?: number; cesantia_monto?: number; vacaciones_dias?: number; vacaciones_monto?: number; navidad_meses?: number; navidad_dias?: number; navidad_monto?: number; error?: string }
+        { ok?: boolean; employee_nombre?: string; cedula?: string; fecha_ingreso?: string; sueldo_mensual?: number; salario_diario?: number; anios_servicio?: number; tiempo_anios?: number; tiempo_meses?: number; tiempo_dias?: number; preaviso_dias?: number; preaviso_monto?: number; cesantia_dias?: number; cesantia_monto?: number; vacaciones_dias?: number; vacaciones_monto?: number; navidad_meses?: number; navidad_dias?: number; navidad_monto?: number; error?: string }
       if (!res?.ok) { showToast(`Error: ${res?.error || "no se pudo calcular"}`, "error"); return }
       setEditing(prev => prev ? {
         ...prev,
         employee_nombre: res.employee_nombre ?? prev.employee_nombre, cedula: res.cedula ?? prev.cedula,
         fecha_ingreso: res.fecha_ingreso || prev.fecha_ingreso,
         sueldo_mensual: res.sueldo_mensual, salario_diario: res.salario_diario, anios_servicio: res.anios_servicio,
-        tiempo_anios: res.tiempo_anios, tiempo_dias: res.tiempo_dias,
+        tiempo_anios: res.tiempo_anios, tiempo_meses: res.tiempo_meses, tiempo_dias: res.tiempo_dias,
         preaviso_dias: res.preaviso_dias, preaviso_monto: res.preaviso_monto,
         cesantia_dias: res.cesantia_dias, cesantia_monto: res.cesantia_monto,
         vacaciones_dias: res.vacaciones_dias, vacaciones_monto: res.vacaciones_monto,
@@ -202,7 +223,7 @@ export function RrhhLiquidacionesPage() {
       const e = empMap[r.employee_id]; const ti = clientTiempo(r.fecha_ingreso, r.fecha_salida)
       return [
         i + 1, r.employee_nombre || e?.nombre || r.employee_id, pick(r.cedula, e?.cedula), empresa,
-        r.fecha_ingreso || "", r.fecha_salida || "", fmtTiempo(ti.anios, ti.dias), rd(r.sueldo_mensual), rd(r.salario_diario),
+        r.fecha_ingreso || "", r.fecha_salida || "", fmtTiempo(ti.anios, ti.meses, ti.dias), rd(r.sueldo_mensual), rd(r.salario_diario),
         rd(r.preaviso_monto), rd(r.cesantia_monto), rd(r.vacaciones_monto), rd(r.navidad_monto), rd(r.total), r.status,
       ]
     })
@@ -264,7 +285,7 @@ export function RrhhLiquidacionesPage() {
     const e = empMap[r.employee_id]
     const cedula = pick(r.cedula, e?.cedula)
     const ti = clientTiempo(r.fecha_ingreso, r.fecha_salida)
-    const vacDias = r.vacaciones_dias ?? diasVacacionesRD(Number(r.anios_servicio || 0))
+    const vacDias = r.vacaciones_dias ?? diasVacacionesRD(Number(r.anios_servicio || 0), ti.mesesCompletos)
     const nav = clientNavidad(r.fecha_ingreso, r.fecha_salida, Number(r.sueldo_mensual || 0))
     const subtot = round2(Number(r.preaviso_monto || 0) + Number(r.cesantia_monto || 0) + Number(r.vacaciones_monto || 0))
     const logo = /^https?:/.test(b.logoUrl) ? b.logoUrl : (typeof window !== "undefined" ? window.location.origin + b.logoUrl : b.logoUrl)
@@ -293,7 +314,7 @@ ${dato("Nombre del solicitante", String(r.employee_nombre || r.employee_id))}
 ${dato("Lugar de trabajo / empleador", b.name)}
 ${dato("Fecha de ingreso", r.fecha_ingreso || "—")}
 ${dato("Fecha de salida", r.fecha_salida || "—")}
-${dato("Tiempo laborado", fmtTiempo(ti.anios, ti.dias))}
+${dato("Tiempo laborado", fmtTiempo(ti.anios, ti.meses, ti.dias))}
 ${dato("Motivo de terminación", MOTIVOS[r.motivo] || r.motivo)}
 ${dato("Salario promedio mensual", rd(r.sueldo_mensual))}
 ${dato("Salario promedio diario", rd(r.salario_diario))}
@@ -372,7 +393,7 @@ ${Number(r.descuentos || 0) ? `<tr><td>Descuentos</td><td class="num">− ${rd(r
                   <TableRow key={r.id}>
                     <TableCell className="text-sm font-medium">{r.employee_nombre || r.employee_id}<div className="text-[11px] text-muted-foreground">{pick(r.cedula, empMap[r.employee_id]?.cedula) || "—"}</div></TableCell>
                     <TableCell className="text-xs">{MOTIVOS[r.motivo] || r.motivo}</TableCell>
-                    <TableCell className="text-xs text-right">{fmtTiempo(ti.anios, ti.dias)}</TableCell>
+                    <TableCell className="text-xs text-right">{fmtTiempo(ti.anios, ti.meses, ti.dias)}</TableCell>
                     <TableCell className="text-xs text-right font-mono font-bold">{rd(r.total)}</TableCell>
                     <TableCell><Badge variant="outline" className={STATUS_CLASS[r.status] || ""}>{r.status}</Badge></TableCell>
                     <TableCell className="text-center">
@@ -421,7 +442,7 @@ ${Number(r.descuentos || 0) ? `<tr><td>Descuentos</td><td class="num">− ${rd(r
               </div>
 
               <div className="rounded-lg border bg-muted/30 p-3 text-sm grid grid-cols-2 gap-x-4 gap-y-1">
-                <div className="flex justify-between"><span className="text-muted-foreground">Tiempo laborado</span><span className="font-mono">{fmtTiempo(editing.tiempo_anios ?? tiempo.anios, editing.tiempo_dias ?? tiempo.dias)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Tiempo laborado</span><span className="font-mono">{fmtTiempo(tiempo.anios, tiempo.meses, tiempo.dias)}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Salario diario</span><span className="font-mono">{rd(editing.salario_diario || diarioLive)}</span></div>
               </div>
 
@@ -429,12 +450,19 @@ ${Number(r.descuentos || 0) ? `<tr><td>Descuentos</td><td class="num">− ${rd(r
                 {calcing ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Calculator className="w-4 h-4 mr-1" />}Actualizar desde empleado (salario vigente + legal)
               </Button>
 
+              {sinPreCes && (
+                <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                  <b>Derechos adquiridos.</b> Por ser salida voluntaria ({MOTIVOS[editing.motivo || ""] || "renuncia"}) no se calcula preaviso ni cesantía (RD$ 0.00).
+                  El total considera vacaciones proporcionales + salario de Navidad proporcional + salario pendiente.
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1"><Label className="text-xs">Preaviso días</Label><Input type="number" step="1" value={editing.preaviso_dias ?? 0} onChange={e => setEditing(recalc({ ...editing, preaviso_dias: Number(e.target.value) }))} /></div>
                 <div className="space-y-1"><Label className="text-xs">Preaviso monto</Label><Input type="number" step="0.01" value={editing.preaviso_monto ?? 0} onChange={e => setEditing({ ...editing, preaviso_monto: Number(e.target.value) })} /></div>
                 <div className="space-y-1"><Label className="text-xs">Cesantía días</Label><Input type="number" step="1" value={editing.cesantia_dias ?? 0} onChange={e => setEditing(recalc({ ...editing, cesantia_dias: Number(e.target.value) }))} /></div>
                 <div className="space-y-1"><Label className="text-xs">Cesantía monto</Label><Input type="number" step="0.01" value={editing.cesantia_monto ?? 0} onChange={e => setEditing({ ...editing, cesantia_monto: Number(e.target.value) })} /></div>
-                <div className="space-y-1"><Label className="text-xs">Vacaciones días</Label><Input type="number" step="1" value={editing.vacaciones_dias ?? diasVacacionesRD(Number(editing.anios_servicio || 0))} readOnly className="bg-muted/40" /></div>
+                <div className="space-y-1"><Label className="text-xs">Vacaciones días</Label><Input type="number" step="1" value={editing.vacaciones_dias ?? diasVacacionesRD(Number(editing.anios_servicio || 0), tiempo.mesesCompletos)} readOnly className="bg-muted/40" /></div>
                 <div className="space-y-1"><Label className="text-xs">Vacaciones monto</Label><Input type="number" step="0.01" value={editing.vacaciones_monto ?? 0} onChange={e => setEditing({ ...editing, vacaciones_monto: Number(e.target.value) })} /></div>
                 <div className="space-y-1"><Label className="text-xs">Navidad proporcional</Label><Input value={fmtNav(editing.navidad_meses ?? 0, editing.navidad_dias ?? 0)} readOnly className="bg-muted/40" /></div>
                 <div className="space-y-1"><Label className="text-xs">Navidad monto</Label><Input type="number" step="0.01" value={editing.navidad_monto ?? 0} onChange={e => setEditing({ ...editing, navidad_monto: Number(e.target.value) })} /></div>
