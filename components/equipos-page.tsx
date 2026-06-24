@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl, invalidateReadCache } from "@/lib/store"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { SuperadminBusinessFilter, filterValueToBusinessId, type BusinessFilterValue } from "@/components/superadmin-business-filter"
@@ -68,6 +68,30 @@ function detectarCabinaLegacy(observaciones: string | undefined): string {
   return ""
 }
 
+// Cabinas fijas que van DESPUÉS de las "Cabina N" en el selector.
+const CABINA_FIXED_TAIL = ["BACKUP", "TALLER", "SIN ASIGNAR"]
+
+/** Rango de orden de una cabina (todo en MAYÚSCULA): primero Cabina 1..N por
+ *  número, luego Backup/Taller/Sin asignar, luego cualquier otra alfabética. */
+function cabinaRank(name: string): [number, number, string] {
+  const m = name.match(/^CABINA\s+(\d+)$/)
+  if (m) return [0, Number(m[1]), name]
+  const fi = CABINA_FIXED_TAIL.indexOf(name)
+  if (fi >= 0) return [1, fi, name]
+  return [2, 0, name]
+}
+function cabinaSort(a: string, b: string): number {
+  const ra = cabinaRank(a), rb = cabinaRank(b)
+  if (ra[0] !== rb[0]) return ra[0] - rb[0]
+  if (ra[1] !== rb[1]) return ra[1] - rb[1]
+  return ra[2].localeCompare(rb[2], "es")
+}
+/** Etiqueta amigable: "CABINA 11" → "Cabina 11", "SIN ASIGNAR" → "Sin asignar". */
+function prettyCabina(name: string): string {
+  const lower = name.toLowerCase()
+  return lower.charAt(0).toUpperCase() + lower.slice(1)
+}
+
 export function EquiposPage() {
   const { db, setDb, dbPulsos, apiUrl, showToast, editingEquipo, setEditingEquipo } = useAppStore()
   // Business activo — usado para defaultear Empresa al crear equipo nuevo.
@@ -115,6 +139,48 @@ export function EquiposPage() {
   const [sortDir, setSortDir] = useState<"asc"|"desc">("asc")
 
   const activeSucursales = db.sucursales.filter(s => s.Estado === "Activa")
+
+  // ── Catálogo de cabinas (maintenance_cabins) del negocio activo ───────────
+  // Alimenta el selector de Cabina. Se recarga al montar y al cambiar de
+  // negocio. Nombres SIEMPRE en MAYÚSCULA (regla global + coincide con lo que
+  // devuelve fromDb para Equipo.Cabina, evitando el desfase de mayúsculas que
+  // hacía que el dropdown se viera vacío aunque el equipo tuviera cabina).
+  type DbCabin = { id: string; name: string; branch: string; active: boolean }
+  const [dbCabins, setDbCabins] = useState<DbCabin[]>([])
+  const [cabinModalOpen, setCabinModalOpen] = useState(false)
+  const [savingCabin, setSavingCabin] = useState(false)
+  const [newCabin, setNewCabin] = useState<{ name: string; branch: string; active: boolean; notes: string }>(
+    { name: "", branch: "", active: true, notes: "" },
+  )
+
+  const loadCabins = useCallback(async () => {
+    const normalized = normalizeApiUrl(apiUrl)
+    if (!normalized) return
+    try {
+      const res = await apiJsonp(normalized, { action: "getMaintenanceCabins" }) as
+        { ok?: boolean; records?: Array<Record<string, unknown>> }
+      if (res?.ok && Array.isArray(res.records)) {
+        setDbCabins(res.records.map(r => ({
+          id: String(r.id),
+          name: String(r.name || "").trim().toUpperCase(),
+          branch: String(r.branch || ""),
+          active: r.active !== false,
+        })))
+      }
+    } catch { /* silencioso: el selector cae a las cabinas por defecto */ }
+  }, [apiUrl])
+
+  useEffect(() => { loadCabins() }, [loadCabins, business.id])
+
+  // Opciones del selector: defaults + cabinas activas del catálogo + la cabina
+  // actual del equipo (aunque sea legacy/desconocida, para no perderla).
+  const cabinaOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const c of CABINA_OPTIONS) set.add(c.toUpperCase())
+    for (const c of dbCabins) { if (c.active && c.name) set.add(c.name) }
+    if (formData.Cabina) set.add(formData.Cabina.trim().toUpperCase())
+    return Array.from(set).sort(cabinaSort)
+  }, [dbCabins, formData.Cabina])
 
   const handleSort = (col: string) => {
     if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc")
@@ -265,6 +331,44 @@ export function EquiposPage() {
       showToast(exists ? "Equipo actualizado correctamente" : "Equipo creado correctamente", "success")
     } catch (e) {
       showToast(e instanceof Error ? e.message : "No se pudo guardar el equipo", "error")
+    }
+  }
+
+  // Crear una cabina nueva desde el editor de equipos. Al guardar, la cabina
+  // aparece en el selector y queda seleccionada para el equipo en edición.
+  const handleSaveCabin = async () => {
+    const normalized = normalizeApiUrl(apiUrl)
+    if (!normalized) { showToast("API no configurada", "error"); return }
+    const name = newCabin.name.trim().toUpperCase()
+    if (!name) { showToast("El nombre de la cabina es obligatorio", "error"); return }
+    setSavingCabin(true)
+    try {
+      const params: Record<string, string> = {
+        action: "saveMaintenanceCabin",
+        name,
+        branch: newCabin.branch || "",
+        active: newCabin.active ? "true" : "false",
+        notes: newCabin.notes || "",
+      }
+      // En modo "Todos los negocios" del superadmin, crear en el negocio del filtro.
+      if (adminFilterBizId) params.businessId = adminFilterBizId
+      const res = await apiJsonp(normalized, params) as
+        { ok?: boolean; record?: Record<string, unknown>; reused?: boolean; error?: string }
+      if (!res?.ok || !res.record) throw new Error(res?.error || "No se pudo crear la cabina")
+      const saved: DbCabin = {
+        id: String(res.record.id),
+        name: String(res.record.name || "").trim().toUpperCase(),
+        branch: String(res.record.branch || ""),
+        active: res.record.active !== false,
+      }
+      setDbCabins(prev => prev.some(c => c.id === saved.id) ? prev : [...prev, saved])
+      setFormData(fd => ({ ...fd, Cabina: saved.name }))
+      setCabinModalOpen(false)
+      showToast(res.reused ? "La cabina ya existía — seleccionada" : `Cabina "${prettyCabina(saved.name)}" creada`, "success")
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "No se pudo crear la cabina", "error")
+    } finally {
+      setSavingCabin(false)
     }
   }
 
@@ -647,12 +751,20 @@ export function EquiposPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Cabina</Label>
-              <Select value={formData.Cabina || ""} onValueChange={v => setFormData({ ...formData, Cabina: v })}>
-                <SelectTrigger><SelectValue placeholder="Sin asignar" /></SelectTrigger>
-                <SelectContent>
-                  {CABINA_OPTIONS.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-1.5">
+                <Select value={(formData.Cabina || "").trim().toUpperCase()} onValueChange={v => setFormData({ ...formData, Cabina: v })}>
+                  <SelectTrigger className="flex-1"><SelectValue placeholder="Sin asignar" /></SelectTrigger>
+                  <SelectContent>
+                    {cabinaOptions.map((c) => <SelectItem key={c} value={c}>{prettyCabina(c)}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button" variant="outline" size="icon" title="Agregar cabina"
+                  onClick={() => { setNewCabin({ name: "", branch: formData.Sucursal || "", active: true, notes: "" }); setCabinModalOpen(true) }}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label>Operadora</Label>
@@ -741,6 +853,66 @@ export function EquiposPage() {
             </Button>
             <Button onClick={handleSubmit}>
               <Save className="h-4 w-4 mr-2" /> Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Nueva cabina */}
+      <Dialog open={cabinModalOpen} onOpenChange={(o) => { if (!savingCabin) setCabinModalOpen(o) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Nueva cabina</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label>Nombre de cabina *</Label>
+              <Input
+                value={newCabin.name}
+                onChange={e => setNewCabin({ ...newCabin, name: e.target.value })}
+                placeholder="Ej: Cabina 11"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Sucursal</Label>
+              <Select value={newCabin.branch || "__none__"} onValueChange={v => setNewCabin({ ...newCabin, branch: v === "__none__" ? "" : v })}>
+                <SelectTrigger><SelectValue placeholder="Sin sucursal" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Sin sucursal</SelectItem>
+                  {(activeSucursales.length > 0
+                    ? activeSucursales.map(s => s.Nombre)
+                    : ["Rafael Vidal", "Los Jardines", "Villa Olga", "La Vega"]
+                  ).map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Estado</Label>
+              <Select value={newCabin.active ? "activa" : "inactiva"} onValueChange={v => setNewCabin({ ...newCabin, active: v === "activa" })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="activa">Activa</SelectItem>
+                  <SelectItem value="inactiva">Inactiva</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Nota (opcional)</Label>
+              <Input
+                value={newCabin.notes}
+                onChange={e => setNewCabin({ ...newCabin, notes: e.target.value })}
+                placeholder="Opcional"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCabinModalOpen(false)} disabled={savingCabin}>
+              <X className="h-4 w-4 mr-2" /> Cancelar
+            </Button>
+            <Button onClick={handleSaveCabin} disabled={savingCabin || !newCabin.name.trim()}>
+              {savingCabin ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
+              Crear cabina
             </Button>
           </DialogFooter>
         </DialogContent>

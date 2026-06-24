@@ -18,6 +18,30 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.5.0] — 2026-06-24
+
+### Added
+- **Cabinas configurables desde el editor de equipos.** Nuevo catálogo
+  `maintenance_cabins` (multi-tenant + RLS, soft-delete, índice único por
+  `business_id + branch + lower(name)`) sembrado con las cabinas por defecto
+  (Cabina 1..10, Backup, Taller, Sin asignar) por negocio. En
+  **Mantenimiento › Equipos › Editar**, junto al selector de Cabina hay un botón
+  **"+"** que abre el modal **"Nueva cabina"** (nombre, sucursal, estado, nota).
+  La cabina creada aparece de inmediato en el selector, queda seleccionada y se
+  persiste al guardar el equipo. Acciones backend `getMaintenanceCabins` y
+  `saveMaintenanceCabin` (scopeadas al negocio activo: Cibao no ve cabinas de
+  Depicenter ni viceversa; el superadmin respeta el negocio activo). No duplica
+  cabinas con el mismo nombre en la misma sucursal.
+
+### Fixed
+- **Selector de Cabina aparecía vacío al editar un equipo.** `fromDb` devuelve
+  `Equipo.Cabina` en MAYÚSCULA ("CABINA 1") pero las opciones del dropdown eran
+  "Cabina 1": nunca coincidían, así que el selector mostraba "Sin asignar" aunque
+  el equipo SÍ tuviera cabina (causa de la percepción de que "no se guardaba").
+  Ahora el selector compara y guarda en MAYÚSCULA y muestra etiquetas amigables.
+
+---
+
 ## [0.4.0] — 2026-06-24
 
 ### Added

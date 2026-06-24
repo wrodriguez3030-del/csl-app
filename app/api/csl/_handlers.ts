@@ -3018,6 +3018,50 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const record = await getRecordCompleto("equipos", equipoId, { targetBusinessId })
       return { ok: true, record }
     }
+    case "getMaintenanceCabins": {
+      // Catálogo de cabinas del negocio activo (maintenance_cabins). Alimenta el
+      // selector de Cabina del editor de equipos. Scopeado al tenant: Cibao
+      // nunca ve cabinas de Depicenter y viceversa.
+      const sb = getSupabaseAdmin()
+      let q = sb.from("maintenance_cabins")
+        .select("id, business_id, branch, name, code, active, notes")
+        .is("deleted_at", null)
+        .order("name", { ascending: true })
+      if (shouldScopeTenant()) q = q.eq("business_id", effectiveBusinessId() as string)
+      const { data, error } = await q
+      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      return { ok: true, records: (data || []) as Row[] }
+    }
+    case "saveMaintenanceCabin": {
+      // Crea una cabina nueva desde el editor de equipos. Solo admin/superadmin.
+      // El nombre se guarda en MAYÚSCULA (regla global de cabinas). No duplica
+      // por (negocio, sucursal, nombre): si ya existe viva, la reutiliza.
+      await requireAdmin(user.id)
+      const businessId = effectiveBusinessId() || textValue(params, "businessId")
+      if (!businessId || !isKnownBusinessId(businessId)) throw new Error("Selecciona la empresa")
+      const name = toUpperField(textValue(params, "name"))
+      if (!name) throw new Error("El nombre de la cabina es obligatorio")
+      const branch = textValue(params, "branch")
+      const code = textValue(params, "code") || null
+      const notes = textValue(params, "notes") || null
+      const active = textValue(params, "active") !== "false"
+      const sb = getSupabaseAdmin()
+      // Dedup: misma cabina viva en el mismo negocio+sucursal → reutilizar.
+      const { data: existing, error: selErr } = await sb.from("maintenance_cabins")
+        .select("id, business_id, branch, name, code, active, notes")
+        .eq("business_id", businessId).eq("branch", branch).ilike("name", name)
+        .is("deleted_at", null).maybeSingle()
+      if (selErr) { if (isMissingTable(selErr)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw selErr }
+      if (existing) return { ok: true, record: existing as Row, reused: true }
+      const insertRow = {
+        business_id: businessId, branch, name, code, active, notes,
+        created_by: user.id, updated_by: user.id,
+      }
+      const { data, error } = await sb.from("maintenance_cabins")
+        .insert(insertRow).select("id, business_id, branch, name, code, active, notes").single()
+      if (error) { if (isMissingTable(error)) return { ok: false, tableMissing: true, error: "Migración pendiente" }; throw error }
+      return { ok: true, record: data as Row }
+    }
     case "saveTecnico": {
       const row = { codigo: textValue(params, "codigo"), nombre: textValue(params, "nombre"), telefono: textValue(params, "telefono"), correo: textValue(params, "correo"), estado: textValue(params, "estado", "Activo"), notas: textValue(params, "notas") }
       await upsertRow("tecnicos", row)
