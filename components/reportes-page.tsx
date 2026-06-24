@@ -2,6 +2,8 @@
 
 import { useState, useMemo } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
+import { usePagination } from "@/lib/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { fmtN } from "@/lib/fmt"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -176,6 +178,11 @@ export function ReportesPage() {
         : valB.localeCompare(valA)
     })
   }, [db.reportes, searchQuery, filterSucursal, filterTipo, sortCol, sortDir])
+
+  const pag = usePagination(filteredReportes, {
+    initialPageSize: 50,
+    resetKey: `${searchQuery}|${filterSucursal}|${filterTipo}|${sortCol}|${sortDir}`,
+  })
 
   // Edit report
   const [viewDialog, setViewDialog] = useState<Reporte | null>(null)
@@ -534,7 +541,7 @@ export function ReportesPage() {
             <>
               {/* Mobile: card por reporte (sin scroll horizontal) */}
               <div className="space-y-3 md:hidden">
-                {filteredReportes.map((r, i) => {
+                {pag.pageItems.map((r, i) => {
                   const piezas = parsePiezas(r.PiezasJSON)
                   const resumen = piezas.length
                     ? `${piezas[0].pieza}${piezas.length > 1 ? ` +${piezas.length - 1}` : ""}`
@@ -555,7 +562,7 @@ export function ReportesPage() {
                     >
                       <div className="mb-2 flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2">
-                          <SeqBadge n={i + 1} />
+                          <SeqBadge n={pag.from + i} />
                           <div className="text-xs text-muted-foreground">{formatDate(r.Fecha)}</div>
                           <Badge variant="secondary" className="text-[10px]">{r.Tipo}</Badge>
                         </div>
@@ -625,7 +632,7 @@ export function ReportesPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredReportes.map((r, i) => {
+                    {pag.pageItems.map((r, i) => {
                       const piezas = parsePiezas(r.PiezasJSON)
                       const resumen = piezas.length
                         ? `${piezas[0].pieza}${piezas.length > 1 ? ` +${piezas.length - 1}` : ""}`
@@ -637,7 +644,7 @@ export function ReportesPage() {
                           className="cursor-pointer"
                           onClick={() => setViewDialog(r)}
                         >
-                          <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
+                          <TableCell className="text-center"><SeqBadge n={pag.from + i} /></TableCell>
                           <TableCell className="text-xs text-muted-foreground">{formatDate(r.Fecha)}</TableCell>
                           <TableCell className="font-medium">{r.EquipoID}</TableCell>
                           <TableCell className="text-xs">{r.Sucursal}</TableCell>
@@ -682,6 +689,17 @@ export function ReportesPage() {
                   </TableBody>
                 </Table>
               </div>
+              <DataPagination
+                page={pag.page}
+                totalPages={pag.totalPages}
+                total={pag.total}
+                from={pag.from}
+                to={pag.to}
+                pageSize={pag.pageSize}
+                onPage={pag.setPage}
+                onPageSize={pag.setPageSize}
+                label="reportes"
+              />
             </>
           )}
         </CardContent>

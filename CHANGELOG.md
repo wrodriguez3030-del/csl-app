@@ -18,6 +18,34 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.4.0] — 2026-06-24
+
+### Added
+- **Paginación en cliente reutilizable.** Nuevo hook `lib/use-pagination.ts`
+  (`usePagination`) + componente `components/ui/data-pagination.tsx`
+  (`DataPagination`): pie "Mostrando X–Y de Z", selector de tamaño (25/50/100/200)
+  y controles « ‹ › ». El arreglo filtrado/ordenado completo se conserva para
+  exportes, contadores y totales; solo se pagina lo que se renderiza.
+
+### Changed
+- **Paginación aplicada en 13 pantallas con listas que crecen sin límite:**
+  RR.HH. (Ponche, Asistencia, Auditoría, Liquidaciones), Pulse (Sesiones),
+  Consentimientos, Reportes, Reportes firmados, Certificados de regalo,
+  Certificados Depicenter, Inventario y piezas, Lista piezas póliza
+  (Pendientes/Recibidas), Historial de equipos, Requisición de materiales
+  (Mis requisiciones, Aprobaciones).
+- **RR.HH. › Ponche:** se eliminó el tope artificial `.slice(0, 300)` (antes
+  ocultaba todo lo posterior al ponche 300); ahora se navega todo con paginación.
+- Numeración de filas continua entre páginas (`#` = posición global, no por página).
+
+### Notes
+- `Pulse › Auditoría` se mantiene sin paginar a propósito: sus tablas están
+  agrupadas por semana con totales por grupo; una paginación plana rompería el
+  agrupamiento. Páginas con catálogos pequeños (sucursales, config, credenciales)
+  tampoco se paginan por innecesario.
+
+---
+
 ## [0.3.1] — 2026-06-23
 
 ### Fixed

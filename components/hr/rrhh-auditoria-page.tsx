@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Shield, Loader2, RefreshCw, Eye, AlertCircle } from "lucide-react"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
+import { usePagination } from "@/lib/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 
 interface AuditLog {
   id: string; user_email: string | null; module: string; action: string
@@ -53,6 +55,8 @@ export function RrhhAuditoriaPage() {
     } catch (err) { showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error") } finally { setLoading(false) }
   }
   useEffect(() => { reload() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pag = usePagination(logs, { initialPageSize: 50, resetKey: `${filterModule}|${desde}|${logs.length}` })
 
   return (
     <div className="space-y-4">
@@ -103,7 +107,7 @@ export function RrhhAuditoriaPage() {
                 <TableHead className="text-xs text-center w-16">Ver</TableHead>
               </TableRow></TableHeader>
               <TableBody>
-                {logs.map(l => (
+                {pag.pageItems.map(l => (
                   <TableRow key={l.id}>
                     <TableCell className="text-xs">{new Date(l.created_at).toLocaleString("es-DO")}</TableCell>
                     <TableCell className="text-xs">{l.user_email || "—"}</TableCell>
@@ -116,6 +120,7 @@ export function RrhhAuditoriaPage() {
               </TableBody>
             </Table>
           )}
+          <DataPagination page={pag.page} totalPages={pag.totalPages} total={pag.total} from={pag.from} to={pag.to} pageSize={pag.pageSize} onPage={pag.setPage} onPageSize={pag.setPageSize} label="registros" />
         </CardContent>
       </Card>
 

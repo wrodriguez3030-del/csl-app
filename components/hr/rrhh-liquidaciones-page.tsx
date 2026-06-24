@@ -15,6 +15,8 @@ import { Scale, Plus, Pencil, Trash2, Save, X, Loader2, Calculator, Printer, Ale
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { getBusinessBranding } from "@/lib/business"
 import { exportHrReportExcel } from "@/lib/hr-report-excel"
+import { usePagination } from "@/lib/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 
 const DAILY_BASE = 23.83
 
@@ -184,6 +186,8 @@ export function RrhhLiquidacionesPage() {
     aprobado: records.filter(r => r.status === "aprobado" || r.status === "pagado").length,
     monto: records.filter(r => r.status === "aprobado" || r.status === "pagado").reduce((s, r) => s + Number(r.total || 0), 0),
   }), [records])
+
+  const pag = usePagination(records, { initialPageSize: 25, resetKey: `${records.length}` })
 
   // Cálculo en vivo del modal.
   const tiempo = editing ? clientTiempo(editing.fecha_ingreso, editing.fecha_salida) : { anios: 0, meses: 0, dias: 0, t: 0, mesesCompletos: 0 }
@@ -389,7 +393,7 @@ ${Number(r.descuentos || 0) ? `<tr><td>Descuentos</td><td class="num">− ${rd(r
                 <TableHead className="text-xs">Estado</TableHead><TableHead className="text-xs text-center w-40">Acciones</TableHead>
               </TableRow></TableHeader>
               <TableBody>
-                {records.map(r => { const ti = clientTiempo(r.fecha_ingreso, r.fecha_salida); return (
+                {pag.pageItems.map(r => { const ti = clientTiempo(r.fecha_ingreso, r.fecha_salida); return (
                   <TableRow key={r.id}>
                     <TableCell className="text-sm font-medium">{r.employee_nombre || r.employee_id}<div className="text-[11px] text-muted-foreground">{pick(r.cedula, empMap[r.employee_id]?.cedula) || "—"}</div></TableCell>
                     <TableCell className="text-xs">{MOTIVOS[r.motivo] || r.motivo}</TableCell>
@@ -411,6 +415,7 @@ ${Number(r.descuentos || 0) ? `<tr><td>Descuentos</td><td class="num">− ${rd(r
               </TableBody>
             </Table>
           )}
+          <DataPagination page={pag.page} totalPages={pag.totalPages} total={pag.total} from={pag.from} to={pag.to} pageSize={pag.pageSize} onPage={pag.setPage} onPageSize={pag.setPageSize} label="liquidaciones" />
         </CardContent>
       </Card>
 

@@ -19,6 +19,8 @@ import { haversineMeters } from "@/lib/hr-geo"
 import QRCode from "qrcode"
 import { BrowserQRCodeReader, type IScannerControls } from "@zxing/browser"
 import { composeQrPng, downloadDataUrl } from "@/lib/qr-compose"
+import { usePagination } from "@/lib/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 
 interface HrPunch {
   id: string; employee_id: string; employee_nombre?: string | null; type: string; punched_at: string
@@ -157,6 +159,7 @@ export function RrhhPonchePage() {
     const q = search.toLowerCase()
     return punches.filter(p => { const e = empMap[p.employee_id]; return `${p.employee_id} ${e?.nombre || ""} ${e?.cedula || ""} ${e?.puesto || ""} ${p.sucursal || e?.sucursal || ""}`.toLowerCase().includes(q) })
   }, [punches, search, empMap])
+  const pag = usePagination(filtered, { initialPageSize: 50, resetKey: `${search}|${showVoided}` })
 
   // Directorio de empleados reales (tenant-scoped) para el módulo de ponche.
   const empList = useMemo(() => Object.values(empMap).sort((a, b) => a.nombre.localeCompare(b.nombre)), [empMap])
@@ -429,7 +432,7 @@ export function RrhhPonchePage() {
                 <TableHead className="text-xs text-center w-16">Acciones</TableHead>
               </TableRow></TableHeader>
               <TableBody>
-                {filtered.slice(0, 300).map(p => (
+                {pag.pageItems.map(p => (
                   <TableRow key={p.id} className={p.is_deleted ? "opacity-60" : ""}>
                     <TableCell className="text-sm font-medium">{p.employee_nombre || empMap[p.employee_id]?.nombre || p.employee_id}</TableCell>
                     <TableCell className="text-xs">{p.sucursal || "—"}</TableCell>
@@ -454,6 +457,7 @@ export function RrhhPonchePage() {
             </Table>
           )}
           </div>
+          <DataPagination page={pag.page} totalPages={pag.totalPages} total={pag.total} from={pag.from} to={pag.to} pageSize={pag.pageSize} onPage={pag.setPage} onPageSize={pag.setPageSize} label="ponches" />
           <div className="mt-2"><Button variant="outline" size="sm" onClick={() => setCorrection({ type: "entrada", punched_at: new Date().toISOString().slice(0, 16) })}><Plus className="w-4 h-4 mr-1" />Marca manual (corrección)</Button></div>
         </CardContent>
       </Card>

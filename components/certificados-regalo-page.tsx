@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { apiJsonp, useAppStore } from "@/lib/store"
+import { usePagination } from "@/lib/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { loadXLSX } from "@/lib/load-xlsx"
 import {
   CERTIFICADOS_REGALO_STORAGE_KEY,
@@ -148,6 +150,11 @@ export function CertificadosRegaloPage() {
       return sortDirection === "asc" ? result : -result
     })
   }, [records, searchTerm, sortDirection, sortKey])
+
+  const pag = usePagination(filteredRecords, {
+    initialPageSize: 50,
+    resetKey: `${searchTerm}|${sortKey}|${sortDirection}`,
+  })
 
   const update = (patch: Partial<CertificadoRegaloData>) => setForm((current) => ({ ...current, ...patch }))
   const resetCode = () => update({ codigo: createCertificateCode() })
@@ -344,7 +351,7 @@ export function CertificadosRegaloPage() {
                 <th className="px-3 py-2 text-right">Acciones</th>
               </tr></thead>
               <tbody>
-                {filteredRecords.length ? filteredRecords.map((record) => (
+                {filteredRecords.length ? pag.pageItems.map((record) => (
                   <tr key={record.codigo} className="border-b">
                     <td className="px-3 py-2">{record.fecha}</td>
                     <td className="px-3 py-2">{record.tipo}</td>
@@ -368,6 +375,17 @@ export function CertificadosRegaloPage() {
               </tbody>
             </table>
           </div>
+          <DataPagination
+            page={pag.page}
+            totalPages={pag.totalPages}
+            total={pag.total}
+            from={pag.from}
+            to={pag.to}
+            pageSize={pag.pageSize}
+            onPage={pag.setPage}
+            onPageSize={pag.setPageSize}
+            label="certificados"
+          />
         </CardContent>
       </Card>
       <div className="hidden text-xs">{validationUrl}</div>

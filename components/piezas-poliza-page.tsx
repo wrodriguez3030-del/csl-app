@@ -19,6 +19,8 @@ import {
   PackageCheck, Circle, CheckCircle2, X, Save, Printer, PackagePlus, Paperclip, Loader2, FileText,
 } from "lucide-react"
 import type { PiezaPolizaLista, PiezaCatalogo, ReceivedStatus } from "@/lib/types"
+import { usePagination } from "@/lib/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { useSessionUser } from "@/hooks/use-session-user"
 import { printPiezasPoliza } from "@/lib/piezas-poliza-pdf"
@@ -223,6 +225,10 @@ export function PiezasPolizaPage() {
 
   const pendientes = filtered.filter((i) => i.Estado === "pendiente")
   const recibidas = filtered.filter((i) => i.Estado === "recibida")
+
+  const filtrosKey = `${search}|${filterSuplidor}|${filterPrioridad}|${filterRecepcion}|${filterSucursal}`
+  const pagPendientes = usePagination(pendientes, { initialPageSize: 50, resetKey: filtrosKey })
+  const pagRecibidas = usePagination(recibidas, { initialPageSize: 50, resetKey: filtrosKey })
 
   // Estado de recepción que se aplicaría con los valores actuales del form
   // (modo "auto": derivado de la cantidad recibida vs la solicitada).
@@ -553,7 +559,7 @@ export function PiezasPolizaPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {pendientes.map((item) => (
+              {pagPendientes.pageItems.map((item) => (
                 <ItemRow
                   key={item.id}
                   item={item}
@@ -564,6 +570,7 @@ export function PiezasPolizaPage() {
               ))}
             </div>
           )}
+          <DataPagination page={pagPendientes.page} totalPages={pagPendientes.totalPages} total={pagPendientes.total} from={pagPendientes.from} to={pagPendientes.to} pageSize={pagPendientes.pageSize} onPage={pagPendientes.setPage} onPageSize={pagPendientes.setPageSize} label="piezas" />
         </CardContent>
       </Card>
 
@@ -587,7 +594,7 @@ export function PiezasPolizaPage() {
               <div className="py-6 text-center text-sm text-muted-foreground">Aún no hay piezas recibidas.</div>
             ) : (
               <div className="space-y-2">
-                {recibidas.map((item) => (
+                {pagRecibidas.pageItems.map((item) => (
                   <ItemRow
                     key={item.id}
                     item={item}
@@ -599,6 +606,7 @@ export function PiezasPolizaPage() {
                 ))}
               </div>
             )}
+            <DataPagination page={pagRecibidas.page} totalPages={pagRecibidas.totalPages} total={pagRecibidas.total} from={pagRecibidas.from} to={pagRecibidas.to} pageSize={pagRecibidas.pageSize} onPage={pagRecibidas.setPage} onPageSize={pagRecibidas.setPageSize} label="piezas" />
           </CardContent>
         ) : null}
       </Card>

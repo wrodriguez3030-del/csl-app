@@ -25,6 +25,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { SEQ_HEADER_CLASS, SeqBadge } from "@/components/seq-badge"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
+import { usePagination } from "@/lib/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { getBusinessBranding } from "@/lib/business"
@@ -243,6 +245,11 @@ export function ReportesFirmadosPage() {
     })
   }, [items, query, tipoFiltro, sucursalFiltro, especialistaFiltro, estadoFiltro, fechaDesde, fechaHasta])
 
+  const pag = usePagination(filtered, {
+    initialPageSize: 50,
+    resetKey: `${query}|${tipoFiltro}|${sucursalFiltro}|${especialistaFiltro}|${estadoFiltro}|${fechaDesde}|${fechaHasta}`,
+  })
+
   const totals = useMemo(
     () => ({
       total: items.length,
@@ -458,13 +465,13 @@ export function ReportesFirmadosPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((r, i) => (
+                  pag.pageItems.map((r, i) => (
                     <TableRow
                       key={`${r.tipo}-${r.id}-${i}`}
                       className="cursor-pointer"
                       onClick={() => setDetalle(r)}
                     >
-                      <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
+                      <TableCell className="text-center"><SeqBadge n={pag.from + i} /></TableCell>
                       <TableCell className="font-semibold whitespace-nowrap">{formatDate(r.fecha)}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={`${TIPO_BADGE_CLASS[r.tipo]} gap-1 text-[10px]`}>
@@ -509,6 +516,17 @@ export function ReportesFirmadosPage() {
               </TableBody>
             </Table>
           </div>
+          <DataPagination
+            page={pag.page}
+            totalPages={pag.totalPages}
+            total={pag.total}
+            from={pag.from}
+            to={pag.to}
+            pageSize={pag.pageSize}
+            onPage={pag.setPage}
+            onPageSize={pag.setPageSize}
+            label="documentos"
+          />
         </CardContent>
       </Card>
 

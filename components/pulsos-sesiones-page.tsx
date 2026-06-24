@@ -26,6 +26,8 @@ import {
   type ParseAgendaProResult,
 } from "@/lib/agendapro-parser"
 import { operationalWeekStart, operationalWeekRangeLabel } from "@/lib/operational-week"
+import { usePagination } from "@/lib/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 
 const today = new Date().toISOString().split("T")[0]
 
@@ -634,6 +636,14 @@ export function PulsosSesionesPage() {
 
   const totalDisparos = filtered.reduce((sum, s) => sum + (Number(s.DisparosReportados) || 0), 0)
 
+  // Paginación en cliente SOLO de las filas renderizadas de la tabla principal
+  // (resumen semanal). Contadores/resúmenes/total siguen usando los arreglos
+  // completos (`resumenSemanal`, `filtered`, `resumenOp`, `totalDisparos`).
+  const pag = usePagination(resumenSemanal, {
+    initialPageSize: 50,
+    resetKey: `${filterDesde}|${filterHasta}|${filterSemana}|${filterOp}|${filterSuc}|${filterText}|${sortCol}|${sortDir}`,
+  })
+
   const resumenOp = useMemo(() => {
     const map: Record<string, number> = {}
     filtered.forEach(s => {
@@ -828,9 +838,9 @@ export function PulsosSesionesPage() {
                         Sin sesiones. Importa el Excel de AgendaPro o registra manualmente.
                       </TableCell>
                     </TableRow>
-                  ) : resumenSemanal.map((row, i) => (
+                  ) : pag.pageItems.map((row, i) => (
                     <TableRow key={`${row.Semana}-${row.Sucursal}-${row.Cabina}-${row.EquipoID}-${row.OperadoraID}`}>
-                      <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
+                      <TableCell className="text-center"><SeqBadge n={pag.from + i} /></TableCell>
                       <TableCell className="font-medium text-sm">{fmtSemana(row.Semana)}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{row.Sucursal || "-"}</TableCell>
                       <TableCell className="text-sm">{row.Cabina || "-"}</TableCell>
@@ -875,6 +885,17 @@ export function PulsosSesionesPage() {
                   ))}
                 </TableBody>
               </Table>
+              <DataPagination
+                page={pag.page}
+                totalPages={pag.totalPages}
+                total={pag.total}
+                from={pag.from}
+                to={pag.to}
+                pageSize={pag.pageSize}
+                onPage={pag.setPage}
+                onPageSize={pag.setPageSize}
+                label="resúmenes"
+              />
             </CardContent>
           </Card>
         </div>

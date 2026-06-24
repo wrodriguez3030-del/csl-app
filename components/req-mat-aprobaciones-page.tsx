@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { useAppStore, apiCallCached, apiJsonp, normalizeApiUrl, invalidateReadCache } from "@/lib/store"
+import { usePagination } from "@/lib/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -89,6 +91,8 @@ export function ReqMatAprobacionesPage() {
   const setE = (id: string, patch: Partial<{ qty: string; note: string; supplier: string; cost: string }>) =>
     setEdit((p) => ({ ...p, [id]: { ...(p[id] || { qty: "", note: "", supplier: "", cost: "" }), ...patch } }))
 
+  const pag = usePagination(items, { initialPageSize: 50, resetKey: status })
+
   return (
     <div className="space-y-5">
       <Card className="border-[color:var(--brand-border)]">
@@ -118,7 +122,7 @@ export function ReqMatAprobacionesPage() {
             <div className="py-10 text-center text-sm text-muted-foreground">No hay requisiciones.</div>
           ) : (
             <div className="divide-y">
-              {items.map((r) => (
+              {pag.pageItems.map((r) => (
                 <div key={r.id} className="flex items-center gap-3 px-4 py-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -134,6 +138,7 @@ export function ReqMatAprobacionesPage() {
               ))}
             </div>
           )}
+          <DataPagination page={pag.page} totalPages={pag.totalPages} total={pag.total} from={pag.from} to={pag.to} pageSize={pag.pageSize} onPage={pag.setPage} onPageSize={pag.setPageSize} label="requisiciones" />
         </CardContent>
       </Card>
 

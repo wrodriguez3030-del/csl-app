@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react"
 import { useAppStore } from "@/lib/store"
+import { usePagination } from "@/lib/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -35,6 +37,8 @@ export function HistorialEquiposPage() {
     return Array.from(map.values()).sort((a, b) => b.reportes - a.reportes)
   }, [db.reportes])
 
+  const pag = usePagination(rows, { initialPageSize: 50, resetKey: `${rows.length}` })
+
   return (
     <div className="csl-page-shell">
       <Card className="overflow-hidden py-0">
@@ -55,13 +59,13 @@ export function HistorialEquiposPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.length ? rows.map((row, i) => (
+              {rows.length ? pag.pageItems.map((row, i) => (
                 <TableRow
                   key={row.equipo}
                   className="cursor-pointer"
                   onClick={() => setViewEquipoId(row.equipo)}
                 >
-                  <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
+                  <TableCell className="text-center"><SeqBadge n={pag.from + i} /></TableCell>
                   <TableCell className="font-black">{row.equipo}</TableCell>
                   <TableCell>{row.sucursal}</TableCell>
                   <TableCell>{row.modelo}</TableCell>
@@ -74,6 +78,7 @@ export function HistorialEquiposPage() {
               )}
             </TableBody>
           </Table>
+          <DataPagination page={pag.page} totalPages={pag.totalPages} total={pag.total} from={pag.from} to={pag.to} pageSize={pag.pageSize} onPage={pag.setPage} onPageSize={pag.setPageSize} label="equipos" />
         </CardContent>
       </Card>
 

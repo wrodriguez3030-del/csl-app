@@ -26,6 +26,8 @@ import { useSessionUser } from "@/hooks/use-session-user"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import type { Business } from "@/lib/types"
 import { displayPhone, displayDocumento, formatPhone, formatCedula } from "@/lib/formatters"
+import { usePagination } from "@/lib/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 
 export type ConsentKind = "masajes" | "tatuajes" | "peeling"
 export type ConsentStatus = "Pendiente" | "Pendiente de revisión" | "Firmado" | "Anulado"
@@ -1173,6 +1175,14 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
       .sort((a, b) => `${b.fecha}${b.fechaRegistro}`.localeCompare(`${a.fecha}${a.fechaRegistro}`))
   }, [filterFecha, filterSucursal, query, records, onlyPendientes])
 
+  // Paginación en cliente SOLO de las filas renderizadas. Contadores (signed,
+  // pending, pendientesRevision) y KPIs siguen usando `records`/`filtered`
+  // completos.
+  const pag = usePagination(filtered, {
+    initialPageSize: 50,
+    resetKey: `${query}|${filterSucursal}|${filterFecha}|${onlyPendientes}`,
+  })
+
   const signed = records.filter((record) => record.estado === "Firmado").length
   const pending = records.filter((record) => record.estado === "Pendiente").length
   const pendientesRevision = records.filter((record) => record.estado === "Pendiente de revisión").length
@@ -1519,7 +1529,7 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.length ? filtered.map((record, seqIndex) => {
+                {filtered.length ? pag.pageItems.map((record, seqIndex) => {
                   // El nombre que mostramos es siempre el del cliente real
                   // (tabla Clientes) cuando existe el vínculo. Caemos a
                   // record.nombreCliente sólo si el cliente no se encontró
@@ -1532,7 +1542,7 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
                     className="cursor-pointer"
                     onClick={async () => setDetail(await fetchConsentCompleto(record))}
                   >
-                    <TableCell className="text-center"><SeqBadge n={seqIndex + 1} /></TableCell>
+                    <TableCell className="text-center"><SeqBadge n={pag.from + seqIndex} /></TableCell>
                     <TableCell className="font-semibold">{formatDate(record.fecha)}</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap items-center gap-2">
@@ -1571,6 +1581,17 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
               </TableBody>
             </Table>
           </div>
+          <DataPagination
+            page={pag.page}
+            totalPages={pag.totalPages}
+            total={pag.total}
+            from={pag.from}
+            to={pag.to}
+            pageSize={pag.pageSize}
+            onPage={pag.setPage}
+            onPageSize={pag.setPageSize}
+            label="consentimientos"
+          />
         </CardContent>
       </Card>
 

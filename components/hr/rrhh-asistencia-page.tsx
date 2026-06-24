@@ -15,6 +15,8 @@ import { CalendarClock, Loader2, RefreshCw, FileSpreadsheet, AlertCircle, Eye, B
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { exportHrReportExcel } from "@/lib/hr-report-excel"
+import { usePagination } from "@/lib/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 
 interface HoursRow {
   employee_id: string; employee_nombre: string; cedula: string; sucursal: string; fecha: string
@@ -64,6 +66,7 @@ export function RrhhAsistenciaPage() {
 
   const sucursales = useMemo(() => Array.from(new Set(rows.map(r => r.sucursal).filter(Boolean))).sort(), [rows])
   const filtered = useMemo(() => sucFilter === "all" ? rows : rows.filter(r => r.sucursal === sucFilter), [rows, sucFilter])
+  const pag = usePagination(filtered, { initialPageSize: 50, resetKey: `${desde}|${hasta}|${empFilter}|${sucFilter}` })
   // El detalle de tardanzas usa EXACTAMENTE la misma fuente que el KPI.
   const lateRecords = useMemo(() => getLateAttendanceRecords(filtered), [filtered])
   const totals = useMemo(() => ({
@@ -175,7 +178,7 @@ export function RrhhAsistenciaPage() {
                 <TableHead className="text-xs text-right">Tardanza</TableHead><TableHead className="text-xs text-right">Extra</TableHead><TableHead className="text-xs">Estado</TableHead>
               </TableRow></TableHeader>
               <TableBody>
-                {filtered.map((r, i) => (
+                {pag.pageItems.map((r, i) => (
                   <TableRow key={`${r.employee_id}-${r.fecha}-${i}`}>
                     <TableCell className="text-sm font-medium">{r.employee_nombre}<div className="text-[11px] text-muted-foreground">{r.cedula || "—"}</div></TableCell>
                     <TableCell className="text-xs">{r.sucursal || "—"}</TableCell>
@@ -192,6 +195,7 @@ export function RrhhAsistenciaPage() {
               </TableBody>
             </Table>
           )}
+          <DataPagination page={pag.page} totalPages={pag.totalPages} total={pag.total} from={pag.from} to={pag.to} pageSize={pag.pageSize} onPage={pag.setPage} onPageSize={pag.setPageSize} label="registros" />
         </CardContent>
       </Card>
 

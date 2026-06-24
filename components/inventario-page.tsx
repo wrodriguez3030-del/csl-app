@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
+import { usePagination } from "@/lib/use-pagination"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { loadXLSX } from "@/lib/load-xlsx"
 import { SeqBadge } from "@/components/seq-badge"
@@ -117,6 +119,11 @@ export function InventarioPage() {
       return 0
     })
   }, [inventario, search, filterSuc, filterCat, filterEstado, filterAlerta, sortCol, sortDir])
+
+  const pag = usePagination(filtered, {
+    initialPageSize: 50,
+    resetKey: `${search}|${filterSuc}|${filterCat}|${filterEstado}|${filterAlerta}|${sortCol}|${sortDir}`,
+  })
 
   const handleSort = (col: string) => {
     if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc")
@@ -509,7 +516,7 @@ export function InventarioPage() {
                       </div>
                     : "Sin resultados con los filtros aplicados"}
                 </td></tr>
-              ) : filtered.map((i, seqIndex) => {
+              ) : pag.pageItems.map((i, seqIndex) => {
                 const stock = filterSuc === "todas" ? stockTotal(i) : stockBySuc(i, filterSuc)
                 const status = stockStatus(i)
                 return (
@@ -518,7 +525,7 @@ export function InventarioPage() {
                     className="cursor-pointer border-b border-border/50 hover:bg-muted/20"
                     onClick={() => setViewItem(i)}
                   >
-                    <td className="px-3 py-2 text-center"><SeqBadge n={seqIndex + 1} /></td>
+                    <td className="px-3 py-2 text-center"><SeqBadge n={pag.from + seqIndex} /></td>
                     <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{i.CodigoBarras || "-"}</td>
                     <td className="px-3 py-2 font-semibold">{i.Pieza}</td>
                     <td className="px-3 py-2 text-xs text-muted-foreground">{normalizeCategoria(i.Categoria)}</td>
@@ -558,6 +565,7 @@ export function InventarioPage() {
               })}
             </tbody>
           </table>
+          <DataPagination page={pag.page} totalPages={pag.totalPages} total={pag.total} from={pag.from} to={pag.to} pageSize={pag.pageSize} onPage={pag.setPage} onPageSize={pag.setPageSize} label="piezas" />
         </CardContent>
       </Card>
 
