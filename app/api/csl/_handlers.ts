@@ -4032,6 +4032,14 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const bizId = effectiveBusinessId()
       if (!bizId) throw new Error("business_id no encontrado")
 
+      // Corrección manual de operadora (Auditoría/IA): override con auditoría
+      // por fila. Solo se setea corregida_por/en cuando llega un valor; si el
+      // payload no trae el campo, NO se toca (preserva una corrección previa).
+      const tieneOverride = record.operadora_corregida != null
+      const operadoraCorregida = tieneOverride
+        ? (normalizeOperadora(textFrom(record, "operadora_corregida")) || null)
+        : undefined
+
       const row: Record<string, unknown> = {
         business_id: bizId,
         equipo_id: textFrom(record, "equipo_id"),
@@ -4054,6 +4062,14 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         observaciones: textFrom(record, "observaciones") || null,
         updated_at: new Date().toISOString(),
       }
+      if (tieneOverride) {
+        row.operadora_corregida = operadoraCorregida
+        row.operadora_corregida_por = operadoraCorregida ? (user.email || user.id || null) : null
+        row.operadora_corregida_en = operadoraCorregida ? new Date().toISOString() : null
+        row.operadora_correccion_motivo = operadoraCorregida
+          ? (textFrom(record, "operadora_correccion_motivo") || "Corrección manual desde Auditoría / IA")
+          : null
+      }
       // No forzamos `id`: el conflicto se resuelve por la clave compuesta
       // (business_id, equipo_id, period_start, period_end). Incluir un id podría
       // intentar cambiar el PK de la fila existente. En INSERT nuevo, la DB
@@ -4066,6 +4082,25 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         .single()
       if (error) throw error
       if (!data) throw new Error("La lectura no se actualizó (0 filas afectadas).")
+
+      // Auditoría best-effort de la corrección de operadora. No bloquea el save.
+      if (tieneOverride) {
+        try {
+          await sb.from("hr_audit_logs").insert({
+            business_id: bizId,
+            user_id: user.id || null,
+            user_email: user.email || null,
+            module: "pulse",
+            action: "pulse_audit_operator_updated",
+            entity_type: "csl_pulse_readings",
+            entity_id: String((data as Record<string, unknown>).id ?? ""),
+            old_values: { operadora_excel: row.operadora, sucursal: row.sucursal, cabina: row.cabina, equipo_id: row.equipo_id, period_start: row.period_start, period_end: row.period_end },
+            new_values: { operadora_corregida: operadoraCorregida, motivo: row.operadora_correccion_motivo },
+          })
+        } catch {
+          // tabla/permiso de auditoría no disponible → no romper la corrección
+        }
+      }
 
       // POLÍTICA MANTENIMIENTO (estricto total): guardar una lectura de
       // PulseControl YA NO modifica csl_equipos. Antes este bloque

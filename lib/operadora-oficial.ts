@@ -51,17 +51,20 @@ export function normalizeCabinaKey(value: unknown): string {
 const CABINA_NO_ASIGNA = new Set(["", "BACKUP", "TALLER", "SIN ASIGNAR"])
 
 export interface OperadoraResolucion {
-  /** Operadora a MOSTRAR: oficial si existe, si no la del Excel (fallback). */
+  /** Operadora a MOSTRAR: corrección manual > oficial > Excel (fallback). */
   operadora: string
   /** Operadora oficial encontrada en el catálogo de equipos ("" si no hay). */
   oficial: string
   /** Operadora tal cual venía del Excel/AgendaPro (normalizada). */
   excel: string
+  /** Corrección manual aplicada desde Auditoría/IA ("" si no hay). */
+  corregida: string
   /** De dónde salió la operadora mostrada. */
-  source: "oficial" | "excel" | "none"
-  /** true si el Excel difería de la oficial (para observación/tooltip). */
+  source: "manual" | "oficial" | "excel" | "none"
+  /** true si el Excel difería de la oficial (para observación/tooltip).
+   *  Cuando hay corrección manual NO se marca mismatch (ya fue resuelto). */
   mismatch: boolean
-  /** Texto listo para observación cuando hay diferencia o fallback. */
+  /** Texto listo para observación cuando hay diferencia, fallback o corrección. */
   observacion: string
 }
 
@@ -71,6 +74,8 @@ export interface OperadoraResolver {
     cabina?: unknown
     equipo?: unknown
     operadoraExcel?: unknown
+    /** Corrección manual guardada en la lectura (operadora_corregida). */
+    operadoraCorregida?: unknown
   }): OperadoraResolucion
 }
 
@@ -99,34 +104,53 @@ export function buildOperadoraResolver(equipos: Equipo[] | undefined | null): Op
   }
 
   return {
-    resolve({ sucursal, cabina, equipo, operadoraExcel }) {
+    resolve({ sucursal, cabina, equipo, operadoraExcel, operadoraCorregida }) {
       const suc = normalizeSucursal(sucursal)
       const eq = String(equipo ?? "").trim().toUpperCase()
       const cab = normalizeCabinaKey(cabina)
       const excel = normalizeOperadora(operadoraExcel)
+      const corregida = normalizeOperadora(operadoraCorregida)
 
       const oficial =
         (suc && eq ? byEquipo.get(`${suc}|${eq}`) : "") ||
         (suc && cab ? byCabina.get(`${suc}|${cab}`) : "") ||
         ""
 
+      // PRIORIDAD 1: corrección manual desde Auditoría/IA. Gana sobre el
+      // catálogo oficial y sobre el Excel. No muestra advertencia (ya se
+      // resolvió manualmente). Persiste al recargar porque vive en la lectura.
+      if (corregida) {
+        return {
+          operadora: corregida,
+          oficial,
+          excel,
+          corregida,
+          source: "manual",
+          mismatch: false,
+          observacion: "Operadora corregida manualmente desde Auditoría / IA.",
+        }
+      }
+
+      // PRIORIDAD 2: asignación oficial del catálogo de equipos.
       if (oficial) {
         const mismatch = !!excel && excel !== oficial
         return {
           operadora: oficial,
           oficial,
           excel,
+          corregida: "",
           source: "oficial",
           mismatch,
           observacion: mismatch ? `Excel: ${excel} / Oficial: ${oficial}` : "",
         }
       }
 
-      // Sin asignación oficial → fallback Excel.
+      // PRIORIDAD 3: sin asignación oficial → fallback Excel/lectura.
       return {
         operadora: excel,
         oficial: "",
         excel,
+        corregida: "",
         source: excel ? "excel" : "none",
         mismatch: false,
         observacion: excel ? "Operadora tomada del archivo por falta de asignación oficial." : "",

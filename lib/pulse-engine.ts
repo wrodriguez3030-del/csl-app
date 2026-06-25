@@ -13,6 +13,11 @@ export interface PulseReading {
   sucursal: string
   cabina?: string | null
   operadora?: string | null
+  /** Corrección manual de operadora desde Auditoría/IA. Prioridad sobre el catálogo oficial. */
+  operadora_corregida?: string | null
+  operadora_corregida_por?: string | null
+  operadora_corregida_en?: string | null
+  operadora_correccion_motivo?: string | null
   period_start: string
   period_end: string
   period_label?: string | null

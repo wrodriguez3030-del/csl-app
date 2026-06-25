@@ -181,7 +181,10 @@ export function PulsosAuditoriaPage() {
       //   3) Fallback final: sumar csl_sesiones_cliente por rango + match key
       // Cada fuente filtra estrictamente por la misma semana y sucursal+operadora.
       let dispOperador = Number(r.disp_operador) || 0
-      const matchKey = makeAgendaMatchKey(r.sucursal, r.operadora)
+      // Operadora efectiva para el match con AgendaPro: la corrección manual
+      // manda sobre el valor del Excel/lectura.
+      const operadoraEfectiva = r.operadora_corregida || r.operadora
+      const matchKey = makeAgendaMatchKey(r.sucursal, operadoraEfectiva)
       if (dispOperador === 0 && matchKey) {
         const [sucNorm, opNorm] = matchKey.split("|")
         // Intento 2: operator_shots
@@ -236,6 +239,7 @@ export function PulsosAuditoriaPage() {
       const cabinaRaw = String(r.cabina || "").trim()
       const opRes = operadoraResolver.resolve({
         sucursal: r.sucursal, cabina: cabinaRaw, equipo: r.equipo_id, operadoraExcel: r.operadora,
+        operadoraCorregida: r.operadora_corregida,
       })
       map[desde].push({
         lecturaId: r.id,
@@ -248,6 +252,7 @@ export function PulsosAuditoriaPage() {
         operadora: opRes.operadora,
         operadoraExcel: opRes.excel,
         operadoraOficial: opRes.oficial,
+        operadoraCorregida: opRes.corregida,
         operadoraSource: opRes.source,
         operadoraMismatch: opRes.mismatch,
         operadoraObs: opRes.observacion,
@@ -685,13 +690,19 @@ export function PulsosAuditoriaPage() {
         return
       }
       const dispLaser = Math.max(0, editForm.pulsosFin - editForm.pulsosInicio)
+      // La operadora se guarda como CORRECCIÓN MANUAL (operadora_corregida), que
+      // tiene prioridad sobre el catálogo oficial y persiste al recargar. NO se
+      // pisa `operadora` (valor original del Excel/lectura) para preservar la
+      // procedencia y la advertencia histórica.
       const payload: Record<string, string | number> = {
         id: reading.id,
         equipo_id: reading.equipo_id,
         serial: reading.serial || "",
         sucursal: reading.sucursal,
         cabina: reading.cabina || "",
-        operadora: editForm.operadora,
+        operadora: reading.operadora || "",
+        operadora_corregida: editForm.operadora,
+        operadora_correccion_motivo: "Corrección manual desde Auditoría / IA",
         period_start: reading.period_start,
         period_end: reading.period_end,
         period_label: reading.period_label || "",
@@ -726,7 +737,7 @@ export function PulsosAuditoriaPage() {
             r.id === reading.id
               ? (updated ?? {
                   ...r,
-                  operadora: editForm.operadora,
+                  operadora_corregida: editForm.operadora,
                   lectura_inicial: editForm.pulsosInicio,
                   lectura_final: editForm.pulsosFin,
                   disp_laser: dispLaser,
@@ -974,6 +985,14 @@ export function PulsosAuditoriaPage() {
                     <td className="px-3 py-2 font-semibold text-sm">
                       <span className="inline-flex items-center gap-1">
                         {r.operadora || "—"}
+                        {r.operadoraSource === "manual" && (
+                          <span
+                            title={r.operadoraObs}
+                            className="text-[10px] font-normal text-emerald-500 cursor-help"
+                          >
+                            ✓ corregido
+                          </span>
+                        )}
                         {r.operadoraMismatch && (
                           <span
                             title={r.operadoraObs}

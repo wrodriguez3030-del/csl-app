@@ -737,10 +737,11 @@ export function PulsosLecturasPage() {
                           </TableCell>
                           <TableCell className="text-xs">
                             {(() => {
-                              const res = operadoraResolver.resolve({ sucursal: r.sucursal, cabina: r.cabina, equipo: r.equipo_id, operadoraExcel: r.operadora })
+                              const res = operadoraResolver.resolve({ sucursal: r.sucursal, cabina: r.cabina, equipo: r.equipo_id, operadoraExcel: r.operadora, operadoraCorregida: r.operadora_corregida })
                               return (
                                 <span className="inline-flex items-center gap-1">
                                   {res.operadora || "-"}
+                                  {res.source === "manual" && <span title={res.observacion} className="text-[10px] text-emerald-500 cursor-help">✓ corregido</span>}
                                   {res.mismatch && <span title={res.observacion} className="text-[10px] text-amber-500 cursor-help">⚠ Excel: {res.excel}</span>}
                                   {res.source === "excel" && <span title={res.observacion} className="text-[10px] text-muted-foreground cursor-help">(archivo)</span>}
                                 </span>

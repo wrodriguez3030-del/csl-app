@@ -18,6 +18,35 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.7.0] — 2026-06-25
+
+### Fixed
+- **Auditoría / IA: editar la operadora ahora guarda y se respeta al recargar.**
+  La operadora mostrada se resuelve desde el catálogo oficial de equipos
+  (`operadora-oficial.ts`), por lo que el campo `operadora` de la lectura solo
+  alimentaba la advertencia "⚠ Excel: …" y **editar nunca cambiaba el valor**.
+  Causa raíz: el display deriva del catálogo, no del valor editado, y no existía
+  ningún campo de corrección manual.
+
+### Added
+- **Corrección manual de operadora con auditoría por fila** en
+  `csl_pulse_readings`: columnas `operadora_corregida`, `operadora_corregida_por`,
+  `operadora_corregida_en`, `operadora_correccion_motivo`
+  (migración `202606250001_pulse_operadora_override.sql`, aplicada en db-cls).
+  El editor de Auditoría/IA guarda la operadora como corrección manual; se
+  preserva `operadora` (procedencia Excel) y se registra quién/cuándo/por qué
+  (+ log best-effort en `hr_audit_logs`, acción `pulse_audit_operator_updated`).
+
+### Changed
+- **Nueva prioridad del resolver de operadora** (Auditoría/IA y Lecturas):
+  `corrección manual > oficial del catálogo > Excel/lectura > Sin asignar`.
+  Con corrección manual no se muestra la advertencia y aparece un indicador
+  `✓ corregido`. La operadora corregida también manda en el match con AgendaPro
+  para `Disp. Operador`. Aislamiento multi-tenant intacto (override por fila,
+  filtrado por `business_id` activo).
+
+---
+
 ## [0.6.1] — 2026-06-24
 
 ### Changed
