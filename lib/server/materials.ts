@@ -27,6 +27,13 @@ function requireBizId(): string {
   if (!id) throw new Error("Selecciona un negocio activo para esta operación")
   return id
 }
+/** True si el usuario del request es admin del negocio o superadmin. Solo
+ *  ellos pueden cambiar estado libremente, ver eliminadas o eliminar
+ *  requisiciones ya aprobadas/en proceso. */
+function isManager(): boolean {
+  const ctx = getBusinessContext()
+  return Boolean(ctx?.isAdmin || ctx?.isSuperadmin)
+}
 
 // ── Auditoría (best-effort) ─────────────────────────────────────────────────
 async function logAudit(
@@ -103,6 +110,9 @@ function mapReq(r: Row) {
     receivedBy: r.received_by,
     receivedAt: r.received_at,
     createdAt: r.created_at,
+    deletedAt: r.deleted_at ?? null,
+    deletedBy: r.deleted_by ?? null,
+    deletedReason: r.deleted_reason ?? null,
   }
 }
 
@@ -264,6 +274,10 @@ export async function getMyRequisitions(params: ActionParams) {
   const sb = getSupabaseAdmin()
   let q = sb.from("material_requisitions").select("*").order("created_at", { ascending: false })
   if (scoped()) q = q.eq("business_id", bizId() as string)
+  // Eliminación lógica: por defecto solo activas. La vista "Eliminadas" (deleted=1)
+  // es exclusiva de admin/superadmin; un usuario normal nunca ve eliminadas.
+  const onlyDeleted = textValue(params, "deleted") === "1" && isManager()
+  q = onlyDeleted ? q.not("deleted_at", "is", null) : q.is("deleted_at", null)
   const status = textValue(params, "status")
   if (status && status !== "todas") q = q.eq("status", status)
   const { data, error } = await q
@@ -318,6 +332,7 @@ export async function submitRequisition(params: ActionParams, user: ActionUser) 
     .from("material_requisitions")
     .update({ status: "enviada", requested_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq("id", id)
+    .is("deleted_at", null)
   if (scoped()) q = q.eq("business_id", bizId() as string)
   const { data, error } = await q.select()
   if (error) throw error
@@ -327,10 +342,170 @@ export async function submitRequisition(params: ActionParams, user: ActionUser) 
   return { ok: true }
 }
 
+// ── Acciones a nivel de requisición (menú "Acciones") ───────────────────────
+
+const ALLOWED_REQ_STATUS = new Set<string>([
+  "borrador",
+  "enviada",
+  "en_revision",
+  "aprobada",
+  "rechazada",
+  "comprada",
+  "recibida_parcial",
+  "recibida_completa",
+  "devuelta",
+])
+// Estados en los que el CREADOR ya no puede eliminar por su cuenta (requiere
+// admin/superadmin): la requisición ya entró en proceso de compra/recepción.
+const LOCKED_FOR_CREATOR = new Set<string>([
+  "aprobada",
+  "comprada",
+  "recibida_parcial",
+  "recibida_completa",
+])
+
+/** Carga una requisición scopeada por business activo. */
+async function fetchReq(sb: ReturnType<typeof getSupabaseAdmin>, id: string): Promise<Row> {
+  let rq = sb.from("material_requisitions").select("*").eq("id", id)
+  if (scoped()) rq = rq.eq("business_id", bizId() as string)
+  const { data, error } = await rq.maybeSingle()
+  if (error) throw error
+  if (!data) throw new Error("Requisición no encontrada o de otro negocio")
+  return data as Row
+}
+
+/**
+ * Eliminación LÓGICA de una requisición (soft delete). Nunca borra físicamente:
+ * marca deleted_at/by/reason para conservar historial y auditoría. La quita de
+ * todas las listas y totales activos. Filtra SIEMPRE por id + business_id.
+ *
+ * Permisos: admin/superadmin pueden eliminar cualquier estado; el creador solo
+ * si la requisición aún no entró en compra (no aprobada/comprada/recibida).
+ */
+export async function deleteRequisition(params: ActionParams, user: ActionUser) {
+  const id = textValue(params, "id")
+  if (!id) throw new Error("Falta id")
+  const sb = getSupabaseAdmin()
+  const req = await fetchReq(sb, id)
+  if (req.deleted_at) return { ok: true } // idempotente: ya estaba eliminada
+
+  const manager = isManager()
+  const isCreator = Boolean(req.requested_by && user.id && String(req.requested_by) === String(user.id))
+  const canDelete = manager || (isCreator && !LOCKED_FOR_CREATOR.has(String(req.status)))
+  if (!canDelete) throw new Error("No tienes permiso para eliminar esta requisición.")
+
+  const fields: Row = {
+    deleted_at: new Date().toISOString(),
+    deleted_by: user.id || null,
+    deleted_reason: textValue(params, "reason") || null,
+    updated_at: new Date().toISOString(),
+  }
+  let uq = sb.from("material_requisitions").update(fields).eq("id", id).is("deleted_at", null)
+  if (scoped()) uq = uq.eq("business_id", bizId() as string)
+  const { data: upd, error } = await uq.select()
+  if (error) throw error
+  if (!upd || !upd.length) throw new Error("No se pudo eliminar (verifica el negocio activo)")
+  await logAudit(user, "requisition_deleted", id, null, { status: req.status }, { reason: fields.deleted_reason })
+  return { ok: true }
+}
+
+/** Restaura una requisición eliminada lógicamente. Solo admin/superadmin. */
+export async function restoreRequisition(params: ActionParams, user: ActionUser) {
+  if (!isManager()) throw new Error("Solo admin/superadmin puede restaurar requisiciones")
+  const id = textValue(params, "id")
+  if (!id) throw new Error("Falta id")
+  const sb = getSupabaseAdmin()
+  let uq = sb
+    .from("material_requisitions")
+    .update({ deleted_at: null, deleted_by: null, deleted_reason: null, updated_at: new Date().toISOString() })
+    .eq("id", id)
+  if (scoped()) uq = uq.eq("business_id", bizId() as string)
+  const { data: upd, error } = await uq.select()
+  if (error) throw error
+  if (!upd || !upd.length) throw new Error("Requisición no encontrada o de otro negocio")
+  await logAudit(user, "requisition_restored", id, null, null, null)
+  return { ok: true }
+}
+
+/** Rechaza la requisición completa con motivo (todos sus ítems → rechazada). */
+export async function rejectRequisition(params: ActionParams, user: ActionUser) {
+  const id = textValue(params, "id")
+  if (!id) throw new Error("Falta id")
+  const reason = textValue(params, "reason").trim()
+  if (!reason) throw new Error("Indica el motivo del rechazo")
+  const sb = getSupabaseAdmin()
+  const req = await fetchReq(sb, id)
+  if (req.deleted_at) throw new Error("Requisición no encontrada o de otro negocio")
+  await sb
+    .from("material_requisition_items")
+    .update({ status: "rechazada", approval_note: reason, updated_at: new Date().toISOString() })
+    .eq("requisition_id", id)
+    .neq("status", "rechazada")
+  let uq = sb
+    .from("material_requisitions")
+    .update({
+      status: "rechazada",
+      rejected_by: user.id || null,
+      rejected_at: new Date().toISOString(),
+      rejection_reason: reason,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+  if (scoped()) uq = uq.eq("business_id", bizId() as string)
+  const { data: upd, error } = await uq.select()
+  if (error) throw error
+  if (!upd || !upd.length) throw new Error("No se pudo rechazar")
+  await logAudit(user, "requisition_rejected", id, null, { status: req.status }, { reason })
+  return { ok: true }
+}
+
+/** Devuelve la requisición para corrección (estado 'devuelta') con motivo. */
+export async function returnRequisition(params: ActionParams, user: ActionUser) {
+  const id = textValue(params, "id")
+  if (!id) throw new Error("Falta id")
+  const reason = textValue(params, "reason").trim()
+  if (!reason) throw new Error("Indica el motivo de la devolución")
+  const sb = getSupabaseAdmin()
+  const req = await fetchReq(sb, id)
+  if (req.deleted_at) throw new Error("Requisición no encontrada o de otro negocio")
+  let uq = sb
+    .from("material_requisitions")
+    .update({ status: "devuelta", rejection_reason: reason, updated_at: new Date().toISOString() })
+    .eq("id", id)
+  if (scoped()) uq = uq.eq("business_id", bizId() as string)
+  const { data: upd, error } = await uq.select()
+  if (error) throw error
+  if (!upd || !upd.length) throw new Error("No se pudo devolver")
+  await logAudit(user, "requisition_returned", id, null, { status: req.status }, { reason })
+  return { ok: true }
+}
+
+/** Cambia el estado de la requisición a un valor permitido. Solo admin/superadmin. */
+export async function setRequisitionStatus(params: ActionParams, user: ActionUser) {
+  if (!isManager()) throw new Error("Solo admin/superadmin puede cambiar el estado")
+  const id = textValue(params, "id")
+  if (!id) throw new Error("Falta id")
+  const status = textValue(params, "status")
+  if (!ALLOWED_REQ_STATUS.has(status)) throw new Error("Estado inválido")
+  const sb = getSupabaseAdmin()
+  const req = await fetchReq(sb, id)
+  if (req.deleted_at) throw new Error("Requisición no encontrada o de otro negocio")
+  let uq = sb
+    .from("material_requisitions")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", id)
+  if (scoped()) uq = uq.eq("business_id", bizId() as string)
+  const { data: upd, error } = await uq.select()
+  if (error) throw error
+  if (!upd || !upd.length) throw new Error("No se pudo cambiar el estado")
+  await logAudit(user, "requisition_status_set", id, null, { status: req.status }, { status })
+  return { ok: true }
+}
+
 // ── Consolidado (compras/admin) ─────────────────────────────────────────────
 export async function getMaterialConsolidado(params: ActionParams) {
   const sb = getSupabaseAdmin()
-  let rq = sb.from("material_requisitions").select("*")
+  let rq = sb.from("material_requisitions").select("*").is("deleted_at", null)
   if (scoped()) rq = rq.eq("business_id", bizId() as string)
   const status = textValue(params, "status")
   if (status && status !== "todas") rq = rq.eq("status", status)
@@ -514,7 +689,7 @@ export async function receiveItem(params: ActionParams, user: ActionUser) {
 // ── Dashboard ────────────────────────────────────────────────────────────────
 export async function getMaterialDashboard(params: ActionParams) {
   const sb = getSupabaseAdmin()
-  let rq = sb.from("material_requisitions").select("*")
+  let rq = sb.from("material_requisitions").select("*").is("deleted_at", null)
   if (scoped()) rq = rq.eq("business_id", bizId() as string)
   const desde = dateValue(params.desde)
   const hasta = dateValue(params.hasta)

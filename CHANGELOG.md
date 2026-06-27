@@ -18,6 +18,32 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.8.0] — 2026-06-27
+
+### Added
+- **Requisición de materiales › Aprobaciones: menú "Acciones" por requisición + eliminación lógica.**
+  Cada fila reemplaza el botón único «Gestionar» por un menú **Acciones** (⋮) con:
+  Ver detalle, Gestionar, Aprobar todo, Rechazar (con motivo), Devolver /
+  corrección (con motivo, nuevo estado `devuelta`), Reenviar (estados rechazada/
+  devuelta), Imprimir / PDF (de la requisición), Cambiar estado (solo admin/
+  superadmin) y **Eliminar** (en rojo). Las acciones se ocultan/deshabilitan
+  según estado y permiso.
+- **Eliminación lógica (soft delete) de requisiciones.** Nuevas columnas
+  `deleted_at` / `deleted_by` / `deleted_reason` en `material_requisitions`
+  (migración `202606270001_materiales_soft_delete.sql`, aplicada a db-cls). Al
+  eliminar, la requisición sale de Aprobaciones, Mis requisiciones, Consolidado
+  y totales/Dashboard, conservando historial y auditoría. Modal de confirmación
+  con sucursal/estado/fecha/#materiales + motivo opcional; mensaje «Requisición
+  eliminada correctamente.». Permisos: admin/superadmin eliminan cualquier
+  estado (aviso reforzado si ya está aprobada/en proceso); el creador solo si la
+  requisición aún no entró en compra; sin permiso, opción deshabilitada con
+  tooltip. Filtro **«Eliminadas»** y acción **Restaurar** solo para admin/
+  superadmin. Todo scopeado por `business_id` activo (no mezcla CSL/Depicenter).
+- Nuevas acciones de API: `deleteRequisition`, `restoreRequisition`,
+  `rejectRequisition`, `returnRequisition`, `setRequisitionStatus`.
+
+---
+
 ## [0.7.1] — 2026-06-26
 
 ### Fixed

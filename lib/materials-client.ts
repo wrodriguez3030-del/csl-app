@@ -9,6 +9,7 @@ export type ReqStatus =
   | "en_revision"
   | "aprobada"
   | "rechazada"
+  | "devuelta"
   | "comprada"
   | "recibida_parcial"
   | "recibida_completa"
@@ -66,6 +67,9 @@ export interface Requisition {
   purchasedAt?: string | null
   receivedAt?: string | null
   createdAt?: string | null
+  deletedAt?: string | null
+  deletedBy?: string | null
+  deletedReason?: string | null
   itemsCount?: number
   totalQty?: number
   items?: ReqItem[]
@@ -77,6 +81,7 @@ export const REQ_STATUS_LABEL: Record<ReqStatus, string> = {
   en_revision: "En revisión",
   aprobada: "Aprobada",
   rechazada: "Rechazada",
+  devuelta: "Devuelta",
   comprada: "Comprada",
   recibida_parcial: "Recibida parcial",
   recibida_completa: "Recibida completa",
@@ -88,6 +93,7 @@ export const REQ_STATUS_BADGE: Record<ReqStatus, string> = {
   en_revision: "bg-blue-100 text-blue-700 border-blue-200",
   aprobada: "bg-emerald-100 text-emerald-700 border-emerald-200",
   rechazada: "bg-red-100 text-red-700 border-red-200",
+  devuelta: "bg-purple-100 text-purple-700 border-purple-200",
   comprada: "bg-indigo-100 text-indigo-700 border-indigo-200",
   recibida_parcial: "bg-orange-100 text-orange-700 border-orange-200",
   recibida_completa: "bg-emerald-100 text-emerald-700 border-emerald-200",

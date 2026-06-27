@@ -2,8 +2,8 @@
  * Exportes del consolidado de Requisición de Materiales: Excel (HTML→.xls) y
  * PDF (HTML→window.print()). Cliente, sin dependencias de servidor.
  */
-import type { ConsolidatedRow } from "./materials-client"
-import { fmtNum } from "./materials-client"
+import type { ConsolidatedRow, Requisition } from "./materials-client"
+import { fmtNum, REQ_STATUS_LABEL } from "./materials-client"
 
 const esc = (v: unknown) =>
   String(v ?? "")
@@ -83,6 +83,52 @@ export function exportConsolidadoExcel(opts: ExportOpts): void {
   a.click()
   document.body.removeChild(a)
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+/** Imprime / PDF de UNA requisición (cabecera + líneas) vía window.print(). */
+export function printRequisitionPdf(req: Requisition, businessName: string): void {
+  const generado = new Date().toLocaleString("es-DO", { dateStyle: "long", timeStyle: "short" })
+  const estado = REQ_STATUS_LABEL[req.status] || req.status
+  const fecha = (req.requestedAt || req.createdAt || "").slice(0, 10)
+  const items = req.items || []
+  const rows = items
+    .map(
+      (it) => `
+      <tr>
+        <td class="l">${esc(it.supplierGroup || "—")}</td>
+        <td class="l">${esc(it.materialName)}</td>
+        <td>${fmtNum(it.requestedQty)}</td>
+        <td>${it.approvedQty != null ? fmtNum(it.approvedQty) : "—"}</td>
+        <td>${esc(it.unit || "")}</td>
+        <td class="l">${esc(it.note || "")}</td>
+      </tr>`,
+    )
+    .join("")
+  const html = `<!doctype html><html><head><meta charset="utf-8">
+    <title>requisicion-${esc(req.branch)}</title>
+    <style>
+      @page{ size: letter portrait; margin: 12mm; }
+      @media print{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body{ font-family: Arial, sans-serif; color:#0f172a; }
+      h1{ font-size:18px; margin:0 0 2px; }
+      .meta{ font-size:11px; color:#475569; margin-bottom:10px; }
+      table{ width:100%; border-collapse:collapse; font-size:11px; }
+      th,td{ border:1px solid #cbd5e1; padding:4px 6px; text-align:center; }
+      th{ background:#0891b2; color:#fff; }
+      td.l, th.l{ text-align:left; }
+    </style></head><body>
+    <h1>REQUISICIÓN DE MATERIALES</h1>
+    <div class="meta">${esc(businessName)} · Sucursal: <b>${esc(req.branch)}</b> · Estado: ${esc(estado)} · Fecha: ${esc(fecha)} · ${esc(items.length)} materiales · Generado: ${esc(generado)}</div>
+    ${req.notes ? `<div class="meta">Nota: ${esc(req.notes)}</div>` : ""}
+    <table><thead><tr>
+      <th class="l">Proveedor</th><th class="l">Material</th><th>Solicitado</th><th>Aprobado</th><th>Unidad</th><th class="l">Observación</th>
+    </tr></thead><tbody>${rows}</tbody></table>
+    </body></html>`
+  const popup = window.open("", "_blank", "width=1100,height=900")
+  if (!popup) return
+  popup.document.write(html)
+  popup.document.close()
+  popup.onload = () => setTimeout(() => popup.print(), 400)
 }
 
 export function printConsolidadoPdf(opts: ExportOpts): void {

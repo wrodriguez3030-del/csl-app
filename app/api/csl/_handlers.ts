@@ -3270,6 +3270,16 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await materials.getRequisition(params)
     case "submitRequisition":
       return await materials.submitRequisition(params, user)
+    case "deleteRequisition":
+      return await materials.deleteRequisition(params, user)
+    case "restoreRequisition":
+      return await materials.restoreRequisition(params, user)
+    case "rejectRequisition":
+      return await materials.rejectRequisition(params, user)
+    case "returnRequisition":
+      return await materials.returnRequisition(params, user)
+    case "setRequisitionStatus":
+      return await materials.setRequisitionStatus(params, user)
     case "getMaterialConsolidado":
       return await materials.getMaterialConsolidado(params)
     case "approveMaterialItem":
