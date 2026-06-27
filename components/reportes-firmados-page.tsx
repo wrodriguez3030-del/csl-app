@@ -14,6 +14,7 @@ import {
   Trash2,
   UserRound,
   X,
+  Zap,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -47,7 +48,7 @@ import { normalizeEspecialista, dedupeEspecialistas } from "@/lib/especialistas"
  * abrir el cliente vinculado y abrir el módulo original (atajos del sidebar).
  */
 
-type TipoReporte = "ficha" | "masajes" | "peeling" | "tatuajes"
+type TipoReporte = "ficha" | "masajes" | "peeling" | "tatuajes" | "depilacion_laser"
 
 interface ReporteUnificado {
   id: string
@@ -71,6 +72,7 @@ const TIPO_LABEL: Record<TipoReporte, string> = {
   masajes: "Consentimiento Masajes",
   peeling: "Consentimiento Peeling",
   tatuajes: "Consentimiento Tatuajes y Cejas",
+  depilacion_laser: "Consentimiento Depilación Láser",
 }
 
 const TIPO_ICON: Record<TipoReporte, React.ReactNode> = {
@@ -78,6 +80,7 @@ const TIPO_ICON: Record<TipoReporte, React.ReactNode> = {
   masajes: <FileSignature className="h-3.5 w-3.5" />,
   peeling: <FileSignature className="h-3.5 w-3.5" />,
   tatuajes: <FileSignature className="h-3.5 w-3.5" />,
+  depilacion_laser: <Zap className="h-3.5 w-3.5" />,
 }
 
 const TIPO_BADGE_CLASS: Record<TipoReporte, string> = {
@@ -85,6 +88,7 @@ const TIPO_BADGE_CLASS: Record<TipoReporte, string> = {
   masajes: "bg-emerald-50 text-emerald-700 border-emerald-200",
   peeling: "bg-amber-50 text-amber-700 border-amber-200",
   tatuajes: "bg-pink-50 text-pink-700 border-pink-200",
+  depilacion_laser: "bg-violet-50 text-violet-700 border-violet-200",
 }
 
 const TIPO_DELETE_ACTION: Record<TipoReporte, string> = {
@@ -92,13 +96,15 @@ const TIPO_DELETE_ACTION: Record<TipoReporte, string> = {
   masajes: "deleteConsentMasaje",
   peeling: "deleteConsentPeeling",
   tatuajes: "deleteConsentTatuajeCeja",
+  depilacion_laser: "deleteConsentDepilacionLaser",
 }
 
-const TIPO_ROUTE: Record<TipoReporte, "cosmiatria-ficha" | "consent-masajes" | "consent-peeling" | "consent-tatuajes-cejas"> = {
+const TIPO_ROUTE: Record<TipoReporte, "cosmiatria-ficha" | "consent-masajes" | "consent-peeling" | "consent-tatuajes-cejas" | "consent-depilacion-laser"> = {
   ficha: "cosmiatria-ficha",
   masajes: "consent-masajes",
   peeling: "consent-peeling",
   tatuajes: "consent-tatuajes-cejas",
+  depilacion_laser: "consent-depilacion-laser",
 }
 
 function formatDate(value?: string) {
@@ -142,7 +148,7 @@ function fichaToUnified(rows: Record<string, unknown>[]): ReporteUnificado[] {
   }))
 }
 
-function consentToUnified(rows: Record<string, unknown>[], tipo: "masajes" | "peeling" | "tatuajes"): ReporteUnificado[] {
+function consentToUnified(rows: Record<string, unknown>[], tipo: "masajes" | "peeling" | "tatuajes" | "depilacion_laser"): ReporteUnificado[] {
   return rows.map((row) => ({
     id: pickString(row.id, row.consent_id, row.consentId),
     tipo,
@@ -183,17 +189,19 @@ export function ReportesFirmadosPage() {
     if (!silent) setLoading(true)
     try {
       const normalized = normalizeApiUrl(apiUrl)
-      const [fichas, masajes, peeling, tatuajes] = await Promise.all([
+      const [fichas, masajes, peeling, tatuajes, depilacionLaser] = await Promise.all([
         apiJsonp(normalized, { action: "getFichasDermatologia" }),
         apiJsonp(normalized, { action: "getConsentMasajes" }),
         apiJsonp(normalized, { action: "getConsentPeeling" }),
         apiJsonp(normalized, { action: "getConsentTatuajesCejas" }),
+        apiJsonp(normalized, { action: "getConsentDepilacionLaser" }),
       ])
       const merged: ReporteUnificado[] = [
         ...fichaToUnified((fichas.records as Record<string, unknown>[]) || []),
         ...consentToUnified((masajes.records as Record<string, unknown>[]) || [], "masajes"),
         ...consentToUnified((peeling.records as Record<string, unknown>[]) || [], "peeling"),
         ...consentToUnified((tatuajes.records as Record<string, unknown>[]) || [], "tatuajes"),
+        ...consentToUnified((depilacionLaser.records as Record<string, unknown>[]) || [], "depilacion_laser"),
       ].sort((a, b) => `${b.fecha}${b.id}`.localeCompare(`${a.fecha}${a.id}`))
       setItems(merged)
     } catch (error) {
@@ -373,6 +381,7 @@ export function ReportesFirmadosPage() {
                 <SelectItem value="masajes">Consentimiento Masajes</SelectItem>
                 <SelectItem value="peeling">Consentimiento Peeling</SelectItem>
                 <SelectItem value="tatuajes">Tatuajes y Cejas</SelectItem>
+                <SelectItem value="depilacion_laser">Depilación Láser</SelectItem>
               </SelectContent>
             </Select>
           </div>

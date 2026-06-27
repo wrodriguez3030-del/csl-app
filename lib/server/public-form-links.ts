@@ -21,6 +21,7 @@ export type FormType =
   | "consentimiento_masajes"
   | "consentimiento_peeling"
   | "consentimiento_tatuajes_cejas"
+  | "consentimiento_depilacion_laser"
   | "solicitud_empleo"
 
 export const FORM_TYPE_LABEL: Record<FormType, string> = {
@@ -28,6 +29,7 @@ export const FORM_TYPE_LABEL: Record<FormType, string> = {
   consentimiento_masajes: "Consentimiento de Masajes",
   consentimiento_peeling: "Consentimiento Informado para Peeling",
   consentimiento_tatuajes_cejas: "Consentimiento de Eliminación de Tatuajes y Cejas",
+  consentimiento_depilacion_laser: "Consentimiento de Depilación Láser",
   solicitud_empleo: "Solicitud de empleo",
 }
 

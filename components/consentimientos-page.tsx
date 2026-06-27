@@ -29,7 +29,7 @@ import { displayPhone, displayDocumento, formatPhone, formatCedula } from "@/lib
 import { usePagination } from "@/lib/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 
-export type ConsentKind = "masajes" | "tatuajes" | "peeling"
+export type ConsentKind = "masajes" | "tatuajes" | "peeling" | "depilacion-laser"
 export type ConsentStatus = "Pendiente" | "Pendiente de revisión" | "Firmado" | "Anulado"
 
 interface FichaResumen {
@@ -487,6 +487,13 @@ const PROTECCION_DATOS_PEELING =
 const AUTORIZACION_FINAL_PEELING =
   "He podido aclarar todas mis dudas y he entendido totalmente este DOCUMENTO DE CONSENTIMIENTO INFORMADO PARA PEELING, reafirmándome en todos y cada uno de sus puntos. Doy mi consentimiento libre, voluntario e informado para realizarme el procedimiento en Cibao Spa Láser, y declaro que la información suministrada por mí es verdadera y completa."
 
+// Texto base del Consentimiento de Depilación Láser (eliminación del vello no
+// deseado). El documento legal completo, por secciones, vive en el formulario
+// público `public-depilacion-laser-consent-form.tsx`; este resumen es el que se
+// muestra/edita en el módulo interno. Corregir aquí si cambia el texto oficial.
+const DEPILACION_LASER_TEXT =
+  "Consentimiento informado para el procedimiento de eliminación del vello no deseado mediante depilación láser. He sido informado/a sobre el procedimiento, incluidos los riesgos, complicaciones y beneficios, las instrucciones previas, los cuidados posteriores, las contraindicaciones y las políticas de la empresa. He tenido la oportunidad de hacer preguntas y he recibido respuestas satisfactorias. Entiendo que los resultados pueden variar de una persona a otra y que no se garantiza la eliminación completa del vello no deseado. Doy mi consentimiento para realizar el procedimiento en Cibao Spa Laser y libero a Cibao Spa Laser y su personal de cualquier responsabilidad Legal en lo Penal y Civil en caso de complicaciones que puedan surgir durante o después del tratamiento. ACEPTO LAS POLÍTICAS DE LA EMPRESA."
+
 const KIND_CONFIG = {
   masajes: {
     title: "Consentimiento Masajes",
@@ -520,6 +527,17 @@ const KIND_CONFIG = {
     deleteAction: "deleteConsentTatuajeCeja",
     idPrefix: "CTC",
     defaultText: TATUAJE_TEXT,
+  },
+  "depilacion-laser": {
+    title: "Consentimiento Depilación Láser",
+    subtitle: "Autorización informada para la eliminación del vello no deseado con láser.",
+    badge: "Depilación láser",
+    getAction: "getConsentDepilacionLaser",
+    getCompletoAction: "getConsentDepilacionLaserCompleto",
+    saveAction: "saveConsentDepilacionLaser",
+    deleteAction: "deleteConsentDepilacionLaser",
+    idPrefix: "CDL",
+    defaultText: DEPILACION_LASER_TEXT,
   },
 } satisfies Record<ConsentKind, Record<string, string>>
 
@@ -1068,11 +1086,15 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
     ? "consentimiento_masajes"
     : kind === "peeling"
     ? "consentimiento_peeling"
+    : kind === "depilacion-laser"
+    ? "consentimiento_depilacion_laser"
     : "consentimiento_tatuajes_cejas"
   const publicFormTitle = kind === "masajes"
     ? "Enviar Consentimiento de Masajes a un cliente"
     : kind === "peeling"
     ? "Enviar Consentimiento de Peeling a un cliente"
+    : kind === "depilacion-laser"
+    ? "Enviar Consentimiento de Depilación Láser a un cliente"
     : "Enviar Consentimiento de Tatuajes/Cejas a un cliente"
 
   const loadRecords = useCallback(async () => {

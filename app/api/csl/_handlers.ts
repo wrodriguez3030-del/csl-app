@@ -2615,6 +2615,12 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const record = await getRecordCompleto("csl_consent_peeling", id)
       return record ? { ok: true, record } : { ok: false, error: "Consentimiento no encontrado" }
     }
+    case "getConsentDepilacionLaserCompleto": {
+      const id = textValue(params, "id") || textValue(params, "consentId")
+      if (!id) throw new Error("id obligatorio")
+      const record = await getRecordCompleto("csl_consent_depilacion_laser", id)
+      return record ? { ok: true, record } : { ok: false, error: "Consentimiento no encontrado" }
+    }
     case "getClientesCosmiatria":
       return { ok: true, records: await getRows("cosmiatria_clientes") }
     case "getFichasDermatologia":
@@ -2628,6 +2634,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true, records: await getRows("csl_consent_tatuajes_cejas", { columns: CONSENT_LIST_COLS }) }
     case "getConsentPeeling":
       return { ok: true, records: await getRows("csl_consent_peeling", { columns: CONSENT_LIST_COLS }) }
+    case "getConsentDepilacionLaser":
+      return { ok: true, records: await getRows("csl_consent_depilacion_laser", { columns: CONSENT_LIST_COLS }) }
     case "getCertificadosRegalo":
       return { ok: true, records: await getRows("certificados_regalo") }
     case "getRowsPaged": {
@@ -3694,6 +3702,18 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "deleteConsentPeeling":
       await deleteRow("csl_consent_peeling", textValue(params, "id") || textValue(params, "consentId"))
       return { ok: true }
+    case "saveConsentDepilacionLaser": {
+      const payload = parsePayload(params)
+      const clienteId = await resolveClienteId(payload)
+      const cliente = await upsertClienteCosmiatriaPreserving(clienteCosmiatriaToDb({ ...payload, ClienteID: clienteId }))
+      const row = consentToDb({ ...payload, clienteId: cliente.cliente_id }, "depilacion-laser")
+      await upsertRow("csl_consent_depilacion_laser", row)
+      await syncFichasCliente(cliente)
+      return { ok: true, record: fromDb("csl_consent_depilacion_laser", row) }
+    }
+    case "deleteConsentDepilacionLaser":
+      await deleteRow("csl_consent_depilacion_laser", textValue(params, "id") || textValue(params, "consentId"))
+      return { ok: true }
     case "getClienteHistorial": {
       // Devuelve TODO lo relacionado con un cliente: ficha + consents.
       // Útil para la vista "Historial" del módulo Clientes y para que el
@@ -3724,10 +3744,11 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         return (res.data || []) as Row[]
       }
 
-      const [consMas, consPeel, consTat] = await Promise.all([
+      const [consMas, consPeel, consTat, consDep] = await Promise.all([
         safeQueryConsents("csl_consent_masajes"),
         safeQueryConsents("csl_consent_peeling"),
         safeQueryConsents("csl_consent_tatuajes_cejas"),
+        safeQueryConsents("csl_consent_depilacion_laser"),
       ])
 
       // Sesiones PulseControl: el campo `cliente` es texto libre (nombre).
@@ -3758,6 +3779,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         consentMasajes: consMas.map((row) => fromDb("csl_consent_masajes", row)),
         consentPeeling: consPeel.map((row) => fromDb("csl_consent_peeling", row)),
         consentTatuajesCejas: consTat.map((row) => fromDb("csl_consent_tatuajes_cejas", row)),
+        consentDepilacionLaser: consDep.map((row) => fromDb("csl_consent_depilacion_laser", row)),
         sesionesPulse: sesionesPulse.map((row) => fromDb("sesiones_cliente", row)),
       }
     }

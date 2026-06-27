@@ -67,6 +67,16 @@ const SERVICIOS_TATUAJES = [
   "Evaluación previa",
 ] as const
 
+const SERVICIOS_DEPILACION_LASER = [
+  "Depilación láser facial",
+  "Depilación láser axilas",
+  "Depilación láser piernas",
+  "Depilación láser brazos",
+  "Depilación láser zona íntima / bikini",
+  "Depilación láser corporal completa",
+  "Evaluación previa",
+] as const
+
 const SERVICIO_OTRO = "__servicio_otro__"
 
 type FormType =
@@ -74,6 +84,7 @@ type FormType =
   | "consentimiento_masajes"
   | "consentimiento_peeling"
   | "consentimiento_tatuajes_cejas"
+  | "consentimiento_depilacion_laser"
 
 interface Props {
   open: boolean
@@ -825,7 +836,7 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                           <SelectValue placeholder="Seleccionar servicio" />
                         </SelectTrigger>
                         <SelectContent>
-                          {(formType === "consentimiento_masajes" ? SERVICIOS_MASAJES : formType === "consentimiento_peeling" ? SERVICIOS_PEELING : SERVICIOS_TATUAJES).map((s) => (
+                          {(formType === "consentimiento_masajes" ? SERVICIOS_MASAJES : formType === "consentimiento_peeling" ? SERVICIOS_PEELING : formType === "consentimiento_depilacion_laser" ? SERVICIOS_DEPILACION_LASER : SERVICIOS_TATUAJES).map((s) => (
                             <SelectItem key={s} value={s}>{s}</SelectItem>
                           ))}
                           <SelectItem value={SERVICIO_OTRO}>+ Otro</SelectItem>

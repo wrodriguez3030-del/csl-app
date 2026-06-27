@@ -38,6 +38,7 @@ const CONSENT_NAME_BY_TYPE: Record<FormType, string> = {
   consentimiento_masajes: "Consentimiento de Masajes",
   consentimiento_peeling: "Consentimiento Informado para Peeling",
   consentimiento_tatuajes_cejas: "Consentimiento de Eliminación de Tatuajes y Cejas",
+  consentimiento_depilacion_laser: "Consentimiento de Depilación Láser",
   solicitud_empleo: "Solicitud de empleo",
 }
 

@@ -87,6 +87,7 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "consent-masajes", label: "Consentimiento Masajes", section: "Clientes y Consentimientos" },
   { id: "consent-peeling", label: "Consentimiento Peeling", section: "Clientes y Consentimientos" },
   { id: "consent-tatuajes-cejas", label: "Consentimiento Eliminación de Tatuajes y Cejas", section: "Clientes y Consentimientos" },
+  { id: "consent-depilacion-laser", label: "Consentimiento Depilación Láser", section: "Clientes y Consentimientos" },
   { id: "reportes-firmados", label: "Historial Fichas y Consentimientos", section: "Clientes y Consentimientos" },
   // Permiso de acción (no navegable): muestra el botón "Sincronizar
   // directamente con la API" en la pantalla de Clientes.

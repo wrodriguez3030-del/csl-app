@@ -84,6 +84,7 @@ export const ENTITY_TABLES: Record<string, { table: string; key: string; order?:
   csl_consent_masajes: { table: "csl_consent_masajes", key: "consent_id", order: "fecha" },
   csl_consent_peeling: { table: "csl_consent_peeling", key: "consent_id", order: "fecha" },
   csl_consent_tatuajes_cejas: { table: "csl_consent_tatuajes_cejas", key: "consent_id", order: "fecha" },
+  csl_consent_depilacion_laser: { table: "csl_consent_depilacion_laser", key: "consent_id", order: "fecha" },
   certificados_regalo: { table: "csl_certificados_regalo", key: "codigo", order: "fecha" },
   certificados_depicenter: { table: "csl_certificados_depicenter", key: "codigo", order: "fecha" },
   piezas_poliza_lista: { table: "csl_piezas_poliza_lista", key: "id", order: "fecha_solicitada" },
@@ -493,7 +494,7 @@ const SESIONES_RECENT_DAYS = 42
  *     demanda con la action `getReporte`, `getSolicitud`, etc.
  */
 export async function getAllData() {
-  const [sucursales, equipos, reportes, piezas, tecnicos, inventario, consentMasajes, consentPeeling, consentTatuajesCejas] = await Promise.all([
+  const [sucursales, equipos, reportes, piezas, tecnicos, inventario, consentMasajes, consentPeeling, consentTatuajesCejas, consentDepilacionLaser] = await Promise.all([
     getRows("sucursales"),
     getRows("equipos"),
     getRows("reportes", { columns: REPORTES_LIST_COLS }),
@@ -503,6 +504,7 @@ export async function getAllData() {
     getRows("csl_consent_masajes", { columns: CONSENT_LIST_COLS }).catch(() => []),
     getRows("csl_consent_peeling", { columns: CONSENT_LIST_COLS }).catch(() => []),
     getRows("csl_consent_tatuajes_cejas", { columns: CONSENT_LIST_COLS }).catch(() => []),
+    getRows("csl_consent_depilacion_laser", { columns: CONSENT_LIST_COLS }).catch(() => []),
   ])
   return {
     sucursales: scopeByBranch(sucursales, (s) => (s as Row).Nombre),
@@ -512,6 +514,7 @@ export async function getAllData() {
     consentMasajes: scopeByBranch(consentMasajes as Row[], (c) => (c as Row).sucursal),
     consentPeeling: scopeByBranch(consentPeeling as Row[], (c) => (c as Row).sucursal),
     consentTatuajesCejas: scopeByBranch(consentTatuajesCejas as Row[], (c) => (c as Row).sucursal),
+    consentDepilacionLaser: scopeByBranch(consentDepilacionLaser as Row[], (c) => (c as Row).sucursal),
   }
 }
 

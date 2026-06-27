@@ -18,6 +18,34 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.9.0] — 2026-06-27
+
+### Added
+- **Clientes y Consentimientos › nuevo "Consentimiento Depilación Láser"** (eliminación
+  del vello no deseado). Se agrega como cuarto tipo de consentimiento, ubicado en el
+  menú lateral **justo debajo de "Eliminación Tatuajes y Cejas"** y encima de
+  "Historial Fichas y Consentimientos". Reutiliza por completo la infraestructura
+  existente de consentimientos (mismo flujo, permisos, link público de un solo uso /
+  12 h, WhatsApp, firma del cliente, PDF, historial), clonando el tipo *peeling/tatuajes*:
+  - **Formulario público** `public-depilacion-laser-consent-form.tsx`: datos del cliente
+    en modo lectura, documento legal completo por secciones (Descripción, Confirmación,
+    Instrucciones previas, Cuidados posteriores, Consideraciones generales, Beneficios,
+    Probabilidad de éxito, Riesgos, Contraindicaciones, Políticas, Protección de datos y
+    Autorización con el texto oficial), casilla obligatoria **"ACEPTO LAS POLÍTICAS DE LA
+    EMPRESA"**, firma y envío. El PDF lleva el encabezado *CONSENTIMIENTO INFORMADO /
+    PROCEDIMIENTO: ELIMINACIÓN DEL VELLO NO DESEADO* con logo y nombre de la empresa activa.
+  - **Tabla nueva** `csl_consent_depilacion_laser` (clon multi-tenant de
+    `csl_consent_peeling`, RLS por `business_id`) y nuevo valor de `form_type`
+    `consentimiento_depilacion_laser` en el CHECK de `csl_public_form_links`.
+  - Wiring de menú (`menus.ts`, `sidebar.tsx` con ícono ⚡ y badge de pendientes,
+    `app/page.tsx`, `types.ts`), handlers CRUD (`getConsentDepilacionLaser`,
+    `saveConsentDepilacionLaser`, `deleteConsentDepilacionLaser`, `…Completo`),
+    transformaciones (`consentToDb`/`fromDb`), flujo público (`public-form-page`,
+    `formulario-publico/[token]`, submit route), generador de link y **Historial Fichas
+    y Consentimientos** (nuevo tipo filtrable, badge violeta, ver/imprimir/PDF/eliminar).
+
+---
+
 ## [0.8.0] — 2026-06-27
 
 ### Added

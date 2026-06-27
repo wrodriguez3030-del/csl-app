@@ -154,6 +154,36 @@ export function fromDb(entity: string, row: Row): Row {
         clienteId: row.cliente_id || null,
         fichaId: row.ficha_id || null,
       }
+    case "csl_consent_depilacion_laser":
+      // payload_json carga el ConsentimientoRecord completo (camelCase).
+      // Acá re-proyectamos las columnas dedicadas (espejo de peeling).
+      return {
+        ...((row.payload_json as Row) || {}),
+        id: row.consent_id,
+        fecha: row.fecha,
+        sucursal: row.sucursal,
+        nombreCliente: row.nombre_cliente || row.cliente_nombre,
+        documento: row.documento,
+        telefono: row.telefono,
+        correo: row.correo,
+        direccion: row.direccion,
+        fechaNacimiento: row.fecha_nacimiento,
+        edad: row.edad,
+        tipoDepilacion: row.tipo_depilacion,
+        zonaTratar: row.zona_tratar,
+        fototipo: row.fototipo,
+        tipoVello: row.tipo_vello,
+        observaciones: row.observaciones,
+        observacionesMedicas: row.observaciones_medicas,
+        firmaCliente: row.firma_cliente,
+        firmaEspecialista: row.firma_especialista,
+        nombreEspecialista: row.especialista || row.especialista_nombre,
+        estado: row.estado,
+        fechaRegistro: row.fecha_registro || row.created_at,
+        pdfUrl: row.pdf_url,
+        clienteId: row.cliente_id || null,
+        fichaId: row.ficha_id || null,
+      }
     case "certificados_regalo":
       return { codigo: row.codigo, otorgadoA: row.otorgado_a, cortesiaDe: row.cortesia_de, validoPor: row.valido_por, fecha: row.fecha, sucursal: row.sucursal, tipo: row.tipo, firma: row.firma, emitidoEn: row.emitido_en, estado: row.estado, canjeadoEn: row.canjeado_en, notasEstado: row.notas_estado }
     case "piezas_poliza_lista":
@@ -271,8 +301,8 @@ function jsonArray(value: unknown) {
   return raw ? [raw] : []
 }
 
-export function consentToDb(payload: Row, kind: "masajes" | "tatuajes" | "peeling") {
-  const prefix = kind === "masajes" ? "CM" : kind === "peeling" ? "CP" : "CTC"
+export function consentToDb(payload: Row, kind: "masajes" | "tatuajes" | "peeling" | "depilacion-laser") {
+  const prefix = kind === "masajes" ? "CM" : kind === "peeling" ? "CP" : kind === "depilacion-laser" ? "CDL" : "CTC"
   const id = String(payload.id ?? payload.ID ?? payload.consentId ?? `${prefix}-${Date.now()}`)
   const clienteId = String(payload.clienteId ?? payload.ClienteID ?? payload.cliente_id ?? "").trim() || null
   const fichaIdRaw = String(payload.fichaId ?? payload.FichaID ?? payload.ficha_id ?? "").trim()
@@ -324,6 +354,28 @@ export function consentToDb(payload: Row, kind: "masajes" | "tatuajes" | "peelin
       acepta_proteccion_datos: boolValue(payload.aceptaProteccionDatos ?? payload.AceptaProteccionDatos),
       observaciones_medicas: String(payload.observacionesMedicas ?? payload.ObservacionesMedicas ?? ""),
       created_by: String(payload.createdBy ?? payload.CreatedBy ?? "") || null,
+    }
+  }
+
+  if (kind === "depilacion-laser") {
+    return {
+      ...base,
+      tipo_depilacion: String(payload.tipoDepilacion ?? payload.TipoDepilacion ?? ""),
+      zona_tratar_otro: String(payload.zonaTratarOtro ?? payload.ZonaTratarOtro ?? ""),
+      fototipo: String(payload.fototipo ?? payload.Fototipo ?? ""),
+      tipo_vello: String(payload.tipoVello ?? payload.TipoVello ?? ""),
+      contraindicaciones: jsonArray(payload.contraindicacionesList ?? payload.contraindicaciones ?? payload.Contraindicaciones),
+      cuidados_antes: jsonArray(payload.instruccionesAntes ?? payload.cuidadosAntes ?? payload.CuidadosAntes),
+      cuidados_despues: jsonArray(payload.cuidadosDespuesList ?? payload.cuidadosDespues ?? payload.CuidadosDespues),
+      riesgos_aceptados: jsonArray(payload.riesgosAceptadosList ?? payload.riesgosAceptados ?? payload.RiesgosAceptados),
+      politicas: jsonArray(payload.politicasAceptadas ?? payload.politicas ?? payload.Politicas),
+      acepta_procedimiento: boolValue(payload.aceptaProcedimiento ?? payload.AceptaProcedimiento),
+      acepta_riesgos: boolValue(payload.aceptaRiesgos ?? payload.AceptaRiesgos),
+      acepta_politicas: boolValue(payload.aceptaPoliticas ?? payload.AceptaPoliticas),
+      acepta_proteccion_datos: boolValue(payload.aceptaProteccionDatos ?? payload.AceptaProteccionDatos),
+      observaciones_medicas: String(payload.observacionesMedicas ?? payload.ObservacionesMedicas ?? ""),
+      created_by: String(payload.createdBy ?? payload.CreatedBy ?? "") || null,
+      updated_by: String(payload.updatedBy ?? payload.UpdatedBy ?? "") || null,
     }
   }
 

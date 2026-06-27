@@ -6,6 +6,7 @@ import { PublicFichaConsentForm } from "@/components/public-ficha-consent-form"
 import { PublicMasajesConsentForm } from "@/components/public-masajes-consent-form"
 import { PublicPeelingConsentForm } from "@/components/public-peeling-consent-form"
 import { PublicTatuajesConsentForm } from "@/components/public-tatuajes-consent-form"
+import { PublicDepilacionLaserConsentForm } from "@/components/public-depilacion-laser-consent-form"
 import { SolicitudEmpleoPublicaPage } from "@/app/solicitud-empleo/solicitud-empleo-form"
 
 type FormType =
@@ -13,6 +14,7 @@ type FormType =
   | "consentimiento_masajes"
   | "consentimiento_peeling"
   | "consentimiento_tatuajes_cejas"
+  | "consentimiento_depilacion_laser"
   | "solicitud_empleo"
 
 type LinkStatus = "valido" | "usado" | "expirado" | "cancelado" | "invalido" | "loading" | "error"
@@ -240,6 +242,13 @@ export function PublicFormPage({ token }: { token: string }) {
     return (
       <main className="min-h-screen bg-background">
         <PublicPeelingConsentForm businessSlug={businessSlug} prefill={commonPrefill} onSubmit={async (value) => { await submit(value) }} />
+      </main>
+    )
+  }
+  if (formType === "consentimiento_depilacion_laser") {
+    return (
+      <main className="min-h-screen bg-background">
+        <PublicDepilacionLaserConsentForm businessSlug={businessSlug} prefill={commonPrefill} onSubmit={async (value) => { await submit(value) }} />
       </main>
     )
   }

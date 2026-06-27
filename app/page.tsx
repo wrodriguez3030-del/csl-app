@@ -385,6 +385,8 @@ export default function HomePage() {
         return <ConsentimientosPage kind="peeling" />
       case "consent-tatuajes-cejas":
         return <ConsentimientosPage kind="tatuajes" />
+      case "consent-depilacion-laser":
+        return <ConsentimientosPage kind="depilacion-laser" />
       case "reportes-firmados":
         return <ReportesFirmadosPage />
       case "cliente-certificados":

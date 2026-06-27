@@ -473,6 +473,7 @@ export type TabId =
   | "consent-masajes"
   | "consent-peeling"
   | "consent-tatuajes-cejas"
+  | "consent-depilacion-laser"
   | "reportes-firmados"
   // Permiso de acción (no es un tab navegable): habilita el botón
   // "Sincronizar directamente con la API" en la pantalla de Clientes.
