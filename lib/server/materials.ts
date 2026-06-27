@@ -194,13 +194,15 @@ export async function saveRequisition(params: ActionParams, user: ActionUser) {
   } catch {
     throw new Error("Lista de materiales inválida")
   }
+  // Solo materiales con cantidad real > 0 (acepta decimales). NO se fuerza
+  // ningún valor por defecto: una cantidad vacía/0 descarta la línea.
   const clean = items
-    .filter((it) => it && it.materialName && Number(it.requestedQty) >= 1)
+    .filter((it) => it && it.materialName && Number(it.requestedQty) > 0)
     .map((it) => ({
       materialId: it.materialId || null,
       materialName: String(it.materialName).toUpperCase(),
       supplierGroup: it.supplierGroup || null,
-      requestedQty: Math.max(1, Number(it.requestedQty) || 1),
+      requestedQty: Number(it.requestedQty),
       unit: it.unit || "unidad",
       note: it.note || null,
     }))

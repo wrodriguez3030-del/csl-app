@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ClipboardList, Send, Eraser, CheckSquare, Save } from "lucide-react"
 import type { Material } from "@/lib/materials-client"
 
-type Line = { checked: boolean; qty: number; note: string }
+type Line = { checked: boolean; qty: string; note: string }
 
 export function ReqMatNuevaPage() {
   const { apiUrl, showToast } = useAppStore()
@@ -54,7 +54,7 @@ export function ReqMatNuevaPage() {
     return Object.entries(g).sort((a, b) => a[0].localeCompare(b[0]))
   }, [catalog])
 
-  const get = (id: string): Line => lines[id] || { checked: false, qty: 1, note: "" }
+  const get = (id: string): Line => lines[id] || { checked: false, qty: "", note: "" }
   const setLine = (id: string, patch: Partial<Line>) =>
     setLines((prev) => ({ ...prev, [id]: { ...get(id), ...patch } }))
 
@@ -70,20 +70,29 @@ export function ReqMatNuevaPage() {
   }
   const clearAll = () => setLines({})
 
+  // Solo materiales MARCADOS y con cantidad > 0 (acepta decimales). Los no
+  // marcados o con cantidad vacía se ignoran por completo.
   const buildItems = () =>
     catalog
-      .filter((m) => get(m.id).checked && get(m.id).qty >= 1)
+      .filter((m) => {
+        const l = get(m.id)
+        return l.checked && Number(l.qty) > 0
+      })
       .map((m) => ({
         materialId: m.id,
         materialName: m.name,
         supplierGroup: m.supplierGroup,
         unit: m.unit || "unidad",
-        requestedQty: get(m.id).qty,
+        requestedQty: Number(get(m.id).qty),
         note: get(m.id).note || "",
       }))
 
   const submit = async (status: "borrador" | "enviada") => {
     if (!branch) return showToast("Selecciona una sucursal", "error")
+    const checked = catalog.filter((m) => get(m.id).checked)
+    // Un material marcado SIN cantidad válida es un error de captura.
+    const missingQty = checked.some((m) => !(Number(get(m.id).qty) > 0))
+    if (status === "enviada" && missingQty) return showToast("Indica la cantidad solicitada.", "error")
     const items = buildItems()
     if (status === "enviada" && items.length === 0) return showToast("Marca al menos un material con cantidad", "error")
     setSending(true)
@@ -171,17 +180,29 @@ export function ReqMatNuevaPage() {
                               type="checkbox"
                               className="h-4 w-4 cursor-pointer accent-[color:var(--brand-primary)]"
                               checked={l.checked}
-                              onChange={(e) => setLine(m.id, { checked: e.target.checked })}
+                              onChange={(e) => {
+                                const isChecked = e.target.checked
+                                // Al desmarcar se limpia la cantidad; al marcar se
+                                // mantiene vacía y se enfoca el campo cantidad.
+                                setLine(m.id, isChecked ? { checked: true } : { checked: false, qty: "" })
+                                if (isChecked) {
+                                  requestAnimationFrame(() => document.getElementById(`qty-${m.id}`)?.focus())
+                                }
+                              }}
                             />
                           </td>
                           <td className="py-1.5 font-medium">{m.name}</td>
                           <td className="py-1.5">
                             <Input
+                              id={`qty-${m.id}`}
                               type="number"
-                              min={1}
+                              min={0}
+                              step="any"
+                              inputMode="decimal"
+                              placeholder="Cantidad"
                               disabled={!l.checked}
                               value={l.qty}
-                              onChange={(e) => setLine(m.id, { qty: Math.max(1, Number(e.target.value) || 1) })}
+                              onChange={(e) => setLine(m.id, { qty: e.target.value })}
                               className="h-8 w-20"
                             />
                           </td>

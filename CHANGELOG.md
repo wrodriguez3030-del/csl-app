@@ -18,6 +18,24 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.7.1] — 2026-06-26
+
+### Fixed
+- **Requisición de materiales › Nueva requisición: la cantidad ya no sale con `1` por defecto.**
+  Todos los materiales aparecían con cantidad `1` aunque estuvieran desmarcados,
+  y la encargada no podía dejar el campo en blanco para escribir el monto real.
+  Causa raíz: el default de cada fila era `qty: 1` (`req-mat-nueva-page.tsx`) y el
+  `onChange` forzaba `Math.max(1, Number(value) || 1)`, mientras el backend
+  (`lib/server/materials.ts`) convertía la cantidad a `Math.max(1, … || 1)`.
+  Ahora: la cantidad inicia **vacía** y el campo se habilita solo al marcar el
+  check (con foco automático); al desmarcar se limpia; se aceptan números `> 0`
+  con decimales (`step="any"`); si se marca un material sin cantidad se muestra
+  la validación «Indica la cantidad solicitada.»; solo se envían materiales
+  marcados con cantidad real y el backend descarta cualquier línea con cantidad
+  vacía o `0` (sin forzar `1`). El consolidado refleja la cantidad real.
+
+---
+
 ## [0.7.0] — 2026-06-25
 
 ### Fixed
