@@ -18,6 +18,20 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.9.1] — 2026-06-27
+
+### Changed
+- **Consentimiento Depilación Láser: texto legal reemplazado por el contenido LITERAL del
+  PDF oficial** "PROCEDIMIENTO: ELIMINACIÓN DEL VELLO NO DESEADO" (Descripción, Confirmación
+  del cliente, Instrucciones previas, Cuidados posteriores, Consideraciones generales,
+  Beneficios, Probabilidad de éxito, Riesgos/complicaciones, Contraindicaciones,
+  Declaraciones finales, Políticas, Protección de datos, Autorización y aceptación de
+  políticas). Se corrigieron solo erratas evidentes del original ("Iibremente"→"libremente",
+  "se Allan aplicado"→"se hayan aplicado", "La La depilación"→"La depilación"). Aplica tanto
+  al documento web como al PDF descargable.
+
+---
+
 ## [0.9.0] — 2026-06-27
 
 ### Added

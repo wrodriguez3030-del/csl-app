@@ -12,8 +12,9 @@ import { displayPhone, displayDocumento } from "@/lib/formatters"
 // Public form de Consentimiento de Depilación Láser (eliminación del vello no
 // deseado). Mismo modelo que Tatuajes/Cejas: el cliente solo ve "Cliente
 // vinculado" (lectura) + documento formal + aceptación de políticas + firma.
-// Los campos clínicos (zona, fototipo, sesiones, etc.) los completa el
-// especialista después desde el sistema interno.
+// Texto LITERAL del PDF oficial "PROCEDIMIENTO: ELIMINACIÓN DEL VELLO NO
+// DESEADO" (con erratas evidentes corregidas). Mantener ambos bloques
+// sincronizados: buildPrintHtml (PDF) y el JSX de render (web).
 
 function ReadOnlyField({ label, value, className }: { label: string; value?: string; className?: string }) {
   return (
@@ -128,113 +129,102 @@ function buildPrintHtml(args: {
 </div>
 
 <h2>Descripción del procedimiento</h2>
-<p>La depilación láser es un procedimiento estético que utiliza la energía de un haz de luz láser para destruir de forma selectiva el folículo piloso, reduciendo el crecimiento del vello no deseado. La luz es absorbida por el pigmento (melanina) del vello y transformada en calor, dañando la estructura que produce el pelo. Es un tratamiento progresivo que requiere varias sesiones, ya que el láser actúa principalmente sobre el vello que se encuentra en fase de crecimiento activo.</p>
+<p>La depilación láser es un método efectivo y duradero para eliminar el vello no deseado en diferentes áreas del cuerpo. En Cibao Spa Laser, ofrecemos una experiencia segura y profesional, utilizando tecnología de vanguardia.</p>
 
 <h2>Confirmación del cliente</h2>
 <ol>
-  <li>Confirmo que ${escapeHtml(businessName)} me ha explicado de manera detallada y en palabras comprensibles la naturaleza del procedimiento de depilación láser, incluyendo sus posibles riesgos, molestias, alternativas y cuidados posteriores. Todas mis preguntas han sido contestadas a mi satisfacción.</li>
-  <li>Comprendo que la depilación láser es un proceso estético progresivo y que nadie puede garantizar la eliminación total o permanente del vello.</li>
-  <li>Entiendo que los resultados dependen de factores individuales como el tipo de piel, el color y grosor del vello, la zona tratada, los cambios hormonales y el cumplimiento de las indicaciones.</li>
-  <li>Consiento aportar mis datos personales y de salud antes y durante el tratamiento, los cuales forman parte de mi historia clínica y son propiedad de ${escapeHtml(businessName)}.</li>
-  <li>Me comprometo a seguir fielmente las instrucciones impartidas por el personal antes, durante y después de cada sesión.</li>
-  <li>Acepto que ${escapeHtml(businessName)} pueda retrasar o suspender una sesión si lo considera necesario para mi seguridad.</li>
-  <li>Entiendo que el personal se basará en la información que yo declare para determinar si el procedimiento es seguro para mí.</li>
+  <li><b>CONFIRMO</b> que Cibao Spa Laser me ha explicado detalladamente, en palabras comprensibles para mí, el efecto y la naturaleza del (los) procedimientos a efectuar; incluyendo los posibles riesgos, otras soluciones alternativas de procedimientos (cuando existan), así como las molestias que se pueden sentir, aun teniendo un periodo post-tratamiento normal. Han sido contestadas a satisfacción todas las preguntas que libremente he formulado acerca de todo el procedimiento.</li>
+  <li><b>ACEPTO y CONSIENTO</b>, que al firmar cada sesión recibida, estaré firmando además el consentimiento informado del tratamiento.</li>
 </ol>
 
 <h2>Instrucciones antes del procedimiento</h2>
 <ul>
-  <li>Evitar la exposición solar y las camas bronceadoras en la zona a tratar durante al menos dos semanas antes de la sesión.</li>
-  <li>No aplicar autobronceadores ni cremas bronceadoras en la zona durante las dos semanas previas.</li>
-  <li>Rasurar (afeitar) la zona a tratar entre 12 y 24 horas antes de la sesión. No depilar con cera, pinza, hilo ni decolorar el vello en las semanas previas, ya que el láser necesita la raíz intacta.</li>
-  <li>No aplicar cremas, lociones, perfumes, maquillaje ni desodorante en la zona el día de la sesión.</li>
-  <li>Informar al especialista sobre cualquier medicamento que esté tomando, especialmente fotosensibilizantes, anticoagulantes, isotretinoína o antibióticos.</li>
-  <li>Informar sobre embarazo, lactancia, tatuajes, lunares, infecciones activas, herpes u otras condiciones de la piel en la zona a tratar.</li>
-  <li>Mantener la piel limpia, hidratada y sin lesiones el día del procedimiento.</li>
+  <li><b>Evitar la Exposición al Sol:</b> No expongas el área a tratar al sol durante al menos 2 semanas antes del procedimiento. La piel bronceada puede aumentar el riesgo de efectos secundarios.</li>
+  <li><b>No Utilizar Autobronceadores:</b> Abstente de usar cremas bronceadoras o autobronceadores en la zona afectada al menos 2 semanas antes del tratamiento.</li>
+  <li><b>Informar sobre Medicación:</b> Informa a tu médico o especialista sobre cualquier medicamento que estés tomando, especialmente anticoagulantes, o si tienes algún tratamiento de piel en curso.</li>
+  <li><b>Evitar Antiinflamatorios y Alcohol:</b> Evita el uso de antiinflamatorios (como aspirina o ibuprofeno) y alcohol 48 horas antes del procedimiento para reducir el riesgo de sangrado y hematomas.</li>
+  <li><b>No Usar Crema en la Zona a Tratar:</b> El día del procedimiento, no apliques cremas, lociones o maquillaje en el área que será tratada.</li>
+  <li><b>Hidratar la Piel:</b> Mantén la piel bien hidratada días antes del procedimiento, aplicando crema hidratante en las áreas a tratar, salvo indicación contraria.</li>
+  <li><b>Consultar sobre Alergias:</b> Asegúrate de informar al profesional sobre cualquier alergia, especialmente a anestésicos locales o productos similares que puedan usarse durante el procedimiento.</li>
+  <li><b>Preparar Preguntas:</b> Haz una lista de preguntas que quieras hacerle al profesional antes del procedimiento. Asegúrate de entender completamente el proceso y los cuidados posteriores.</li>
 </ul>
 
 <h2>Cuidados después del tratamiento</h2>
 <ul>
-  <li>Evitar la exposición solar directa en la zona tratada durante al menos dos semanas y aplicar protector solar SPF 30 o superior.</li>
-  <li>Evitar saunas, jacuzzis, baños calientes, piscinas y ejercicio intenso durante 24 a 48 horas.</li>
-  <li>No frotar, rascar ni exfoliar la zona tratada; mantenerla limpia e hidratada con productos suaves recomendados por el especialista.</li>
-  <li>No depilar con cera, pinza ni hilo entre sesiones. Solo se permite el rasurado.</li>
-  <li>Evitar el uso de perfumes, desodorantes con alcohol y productos irritantes sobre la zona durante las primeras 24 a 48 horas.</li>
-  <li>Es normal que aparezca enrojecimiento leve o sensación similar a una quemadura solar durante las primeras horas.</li>
-  <li>Acudir a las sesiones en los intervalos recomendados por el especialista para lograr mejores resultados.</li>
-  <li>Comunicarse con el centro si presenta ampollas, costras, dolor intenso, signos de infección u otra reacción inusual.</li>
+  <li><b>Evitar la exposición solar prolongada:</b> Después de la sesión, evita la exposición al sol en el área tratada durante al menos 1 semana. Usa bloqueador solar con un alto factor de protección (SPF) para proteger la piel y prevenir manchas.</li>
+  <li><b>Cuidado de la Piel:</b> Mantén la piel limpia e hidratada. Utiliza cremas o lociones suaves recomendadas por nuestro especialista.</li>
+  <li><b>No Rasurarse ni Depilar:</b> No uses cera, pinzas ni otros métodos de depilación durante el tratamiento. Es normal que el vello caiga en las semanas siguientes.</li>
+  <li><b>Evitar Actividades Intensas:</b> Evita ejercicios físicos intensos, saunas o jacuzzis durante los primeros días después del tratamiento, ya que el sudor puede causar irritación en la piel.</li>
+  <li>Si experimentas enrojecimiento o hinchazón, aplica compresas frías y, si es necesario, puedes tomar un analgésico suave. Si los síntomas persisten, contacta a nuestro equipo.</li>
 </ul>
 
 <h2>Consideraciones generales</h2>
 <ul>
-  <li>La depilación láser requiere varias sesiones porque el vello crece en distintas fases y el láser actúa sobre el que está en crecimiento activo.</li>
-  <li>El número de sesiones varía según la zona, el tipo de piel y vello, y la respuesta individual de cada persona.</li>
-  <li>El intervalo entre sesiones suele ser de cuatro a ocho semanas según la zona tratada.</li>
-  <li>Los cambios hormonales (embarazo, síndrome de ovario poliquístico, medicamentos hormonales) pueden estimular nuevo crecimiento de vello y requerir sesiones de mantenimiento.</li>
-  <li>El vello rubio, canoso, pelirrojo o muy fino responde con menor eficacia porque contiene poca melanina.</li>
-  <li>El procedimiento es realizado por personal capacitado siguiendo los protocolos de seguridad del centro.</li>
+  <li><b>Modo de acción del tratamiento.</b> La luz láser penetra la piel y luego es absorbida por la melanina o pigmento del vello, causando un calentamiento rápido del tallo y raíz del mismo. Este proceso debilita el folículo completo del vello.</li>
+  <li>La reducción del vello mediante el láser es un procedimiento común que es practicado de forma segura y efectiva en miles de pacientes cada año. Las complicaciones son extremadamente raras, y normalmente menores; sin embargo, algunas complicaciones pueden ocurrir.</li>
+  <li><b>Las sesiones.</b> Las sesiones láser se realizan cada 5 semanas las primeras 5 sesiones, luego va aumentando el tiempo según los resultados, las citas se van colocando cada 7 u 8 semanas.</li>
+  <li><b>Información.</b> El láser no penetra más allá de las capas de la piel (epidermis y la dermis), lo que quiere decir que no afecta ninguna glándula, ni vasos, ni músculos.</li>
+  <li><b>Exposición de los ojos.</b> Lentes protectores serán puestos durante el proceso. Es muy importante mantener puestos estos lentes durante todo el tratamiento con láser para proteger los ojos, ya que no deben ser expuestos accidentalmente a la luz del láser.</li>
+  <li><b>Herpes.</b> Los pacientes que en alguna ocasión han presentado herpes labial, deben usar Aciclovir tres días antes de cada sesión del tratamiento como prevención.</li>
+  <li><b>Advertencia.</b> Los vellos muy rubios, muy finos y blancos (canas) no se eliminan con el láser.</li>
 </ul>
 
 <h2>Beneficios</h2>
-<ul>
-  <li>Reducción progresiva y duradera del vello no deseado.</li>
-  <li>Disminución de la irritación, foliculitis y vellos encarnados asociados a otros métodos de depilación.</li>
-  <li>Piel más suave y mejor apariencia estética de la zona tratada.</li>
-  <li>Ahorro de tiempo y comodidad frente a métodos tradicionales como la cera o el afeitado frecuente.</li>
-</ul>
+<p>Los beneficios del tratamiento mediante láser: para la mayoría de los pacientes este proceso causará la reducción considerable del vello. Esto supone una reducción estable y a largo plazo del número o cantidad de vello que volverá a crecer después del tratamiento.</p>
 
 <h2>Probabilidad de éxito</h2>
-<p>La depilación láser logra en la mayoría de los casos una reducción significativa y duradera del vello, especialmente en pieles claras con vello oscuro y grueso. Sin embargo, no se garantiza la eliminación del 100% del vello. Algunos folículos pueden reactivarse con el tiempo o por cambios hormonales, por lo que pueden ser necesarias sesiones de mantenimiento. Los resultados varían de una persona a otra.</p>
+<p>El láser destruye el folículo del vello en crecimiento, pero no el de los folículos latente o inactivo. El resultado de cada tratamiento es la destrucción de un porcentaje de los folículos del vello. Varios tratamientos serán necesarios para la reducción del vello. La reducción del vello será prolongada e incluso permanente. No obstante, algunos pacientes pueden no experimentar una total eliminación de su vello hasta después de varios procesos con láser. Los resultados dependen del tipo de piel y vello, así como de la asociación de la producción de vello a alguna entidad médica; ejemplo: ovario poliquístico.</p>
+<p>Luego de examinar su tipo de piel y vello, el o la especialista le recomendará un número determinado de sesiones para lograr la eliminación o reducción máxima del vello. Al finalizar las sesiones recomendadas, el paciente debe darse mantenimiento cada dos meses; dependiendo cada caso en particular, de ser necesario.</p>
 
 <h2>Riesgos y posibles complicaciones</h2>
-<p>A pesar de tomar las precauciones adecuadas, el procedimiento de depilación láser puede conllevar ciertos riesgos y complicaciones, incluyendo, pero no limitado a:</p>
+<p><b>COMPRENDO</b> que los procesos estéticos no son una ciencia exacta y que nadie puede garantizar la perfección absoluta, por lo que se me han informado los riesgos y posibles complicaciones. A pesar de que se tomen precauciones, la depilación láser puede conllevar ciertos riesgos y complicaciones.</p>
 <ul>
-  <li>Enrojecimiento, hinchazón o irritación temporal en la zona tratada.</li>
-  <li>Sensación de calor, ardor o molestia durante y después de la sesión.</li>
-  <li>Cambios temporales o permanentes en la pigmentación de la piel (hipopigmentación o hiperpigmentación), más frecuentes en pieles oscuras o bronceadas.</li>
-  <li>Formación de ampollas, costras o, en casos excepcionales, quemaduras.</li>
-  <li>Riesgo de infección si no se siguen los cuidados indicados.</li>
-  <li>Cicatrices en casos poco frecuentes.</li>
-  <li>Reactivación de herpes en personas predispuestas.</li>
-  <li>Foliculitis (inflamación del folículo) transitoria.</li>
-  <li>Crecimiento paradójico del vello en zonas adyacentes, poco frecuente.</li>
-  <li>Eliminación incompleta del vello o necesidad de sesiones adicionales.</li>
-  <li>Aumento de la sensibilidad al sol en la zona tratada.</li>
+  <li><b>Malestar o incomodidad.</b> Algún dolor ligero puede sentirse durante el tratamiento con láser, aunque la mayoría de las personas toleran bien el proceso.</li>
+  <li><b>Cicatrización.</b> El tratamiento láser puede provocar hinchazón, llagas o sequedad del área tratada, que requerirán para su total desaparición de un período de entre 1 a 3 semanas. Una vez recuperada la superficie de la piel, puede quedar rosada y sensible a los rayos del sol durante 2 – 4 semanas adicionales. Solo un porcentaje muy reducido de pacientes experimentan este problema.</li>
+  <li><b>Hematomas / Hinchazón / Infección.</b> Hematomas podrán verse en el área tratada durante un período de 2 – 3 días. Hinchazón: puede ocurrir después del procedimiento y durar varias horas, especialmente si han sido tratadas las áreas de la nariz o los pómulos. Una infección cutánea de la piel es una complicación rara pero posible.</li>
+  <li><b>Cambios en la pigmentación (cambios en el color de la piel).</b> El área tratada puede volverse más clara o bien más oscura que la piel a su alrededor; este efecto se resuelve normalmente de manera espontánea en un período de varios meses, pero puede durar bastante más. Para disminuir este riesgo le explicamos al paciente que debe usar filtro solar tres veces al día y evitar la exposición al sol durante el tratamiento.</li>
+  <li><b>Cicatrices.</b> La formación de una cicatriz es algo poco probable; sin embargo, es una posibilidad siempre y cuando sea intervenida la superficie de la piel. Para minimizar las posibilidades de tal complicación es extremadamente importante seguir todas las instrucciones que le serán dadas antes y después de su tratamiento con láser.</li>
 </ul>
 
 <h2>Contraindicaciones</h2>
 <ul>
-  <li>Embarazo y lactancia.</li>
-  <li>Piel bronceada o exposición solar reciente en la zona a tratar.</li>
-  <li>Uso reciente de isotretinoína u otros medicamentos fotosensibilizantes.</li>
-  <li>Infecciones activas, herpes, heridas abiertas o lesiones en la zona.</li>
-  <li>Antecedentes de queloides o cicatrización anormal.</li>
-  <li>Enfermedades de la piel activas en la zona (dermatitis, psoriasis, vitíligo en fase activa).</li>
-  <li>Tatuajes o micropigmentación en la zona a tratar (el láser no debe aplicarse sobre la tinta).</li>
-  <li>Condiciones médicas que el especialista considere de riesgo según la evaluación individual.</li>
+  <li><b>Embarazo y Lactancia:</b> Aunque no hay estudios concluyentes sobre la seguridad del láser en mujeres embarazadas, se suele recomendar evitar el procedimiento durante este periodo. La lactancia tampoco es un momento ideal para realizarlo.</li>
+  <li><b>Piel Bronceada:</b> La exposición solar o el uso de camas de bronceado antes del tratamiento pueden aumentar el riesgo de quemaduras y cambios en la pigmentación de la piel. Se recomienda no haber estado expuesto al sol al menos 4-6 semanas antes de la sesión.</li>
+  <li><b>Trastornos de la Piel:</b> Condiciones como eczema, psoriasis, dermatitis o infecciones cutáneas en el área a tratar pueden contraindicar el uso de láser hasta que la piel esté completamente sana.</li>
+  <li><b>Uso de Medicamentos:</b> Algunos medicamentos, como los que sensibilizan la piel (por ejemplo, retinoides o ciertos antibióticos), pueden aumentar el riesgo de efectos secundarios. Es importante informar al especialista sobre cualquier medicación.</li>
+  <li><b>Historial de Cicatrices Queloides:</b> Las personas con tendencia a formar cicatrices queloides pueden tener un mayor riesgo de desarrollar cicatrices anormales después del tratamiento.</li>
+  <li><b>Diabetes No Controlada:</b> Las personas con diabetes mal controlada pueden tener un mayor riesgo de infecciones o complicaciones en la piel.</li>
+  <li><b>Síndromes de Hipersensibilidad:</b> Algunas condiciones que implican hipersensibilidad de la piel o trastornos de coagulación pueden impedir la realización del tratamiento.</li>
+  <li><b>Tatuajes en el Área:</b> La depilación láser no se debe realizar sobre tatuajes, ya que el láser puede afectar la tinta y causar quemaduras o reacciones adversas.</li>
+  <li><b>Ciertas Condiciones Médicas:</b> Enfermedades o condiciones como lupus eritematoso, enfermedades autoinmunitarias o enfermedades que afectan la piel pueden ser contraindicaciones.</li>
+  <li><b>Uso de Productos Irritantes:</b> El uso reciente de productos químicos o tratamientos estéticos que irritan la piel, como peelings químicos o microdermoabrasión, puede requerir un periodo de espera antes de la depilación láser.</li>
 </ul>
+
+<h2>Declaraciones finales del cliente</h2>
+<p>El fin del procedimiento que he solicitado tiene como objetivo mejorar mi apariencia física.</p>
+<p><b>COMPRENDO</b> que los resultados están en relación directamente proporcional a la capacidad que tiene mi organismo de eliminación de los materiales que se hayan aplicado.</p>
+<p><b>CONSIENTO</b> en aportar datos personales antes y después del tratamiento, siendo este material de diagnóstico y de registro para mi historia clínica, propiedad de Cibao Spa Laser.</p>
+<p><b>Acepto</b> que Cibao Spa Laser retrase o suspenda el procedimiento si lo cree preciso.</p>
+<p><b>ME COMPROMETO</b> a seguir fielmente, en la mejor medida de mis posibilidades, las instrucciones impartidas por Cibao Spa Laser para antes, durante y después de la intervención arriba mencionada.</p>
+<p>Yo entiendo que el personal médico y otros asistentes se basarán en declaraciones hechas por mí con el fin de determinar si el proceso puede ser seguro y efectivo para mi persona. Yo entiendo que la reducción del vello mediante tratamiento con láser no es una ciencia exacta, y que no se me pueden ofrecer garantías o seguridad total en cuanto a los resultados de este procedimiento.</p>
 
 <h2>Políticas y procedimientos</h2>
 <ul>
-  <li>Reservas y cancelaciones deben realizarse con 48 horas de antelación.</li>
-  <li>Horario: lunes a viernes de 9:00 a.m. a 8:00 p.m. y sábados de 8:00 a.m. a 4:00 p.m.</li>
-  <li>Si la cancelación o reprogramación no es comunicada, la sesión se dará por realizada.</li>
-  <li>Los pagos pueden realizarse en efectivo, transferencia o tarjeta de crédito.</li>
-  <li>Los precios en ${escapeHtml(businessName)} no incluyen ITBIS.</li>
-  <li>El tiempo de la cita no puede extenderse si afecta el itinerario programado.</li>
-  <li>Si el retraso es responsabilidad del centro, el tiempo será repuesto.</li>
-  <li>Si el retraso es responsabilidad del cliente, será atendido solo durante el tiempo restante de su cita.</li>
+  <li>Reservas y cancelaciones con 48 h de antelación.</li>
+  <li>Horario de lunes a viernes de 9:00 a.m. a 8:00 p.m.; sábados de 8:00 a.m. a 4:00 p.m. Si la cancelación de la cita o reprogramación no es comunicada, se dará por realizada la sesión.</li>
+  <li>Validez: 2 años desde la fecha de compra.</li>
+  <li>Los pagos se podrán realizar en efectivo, transferencias o con tarjeta de crédito. Los precios en Cibao Spa Laser no incluyen el ITBIS.</li>
+  <li>El tiempo de la cita no puede extenderse bajo ningún motivo porque perjudicará nuestro itinerario programado.</li>
+  <li>Si atendemos alguna cita con retraso por responsabilidad nuestra, los tiempos serán repuestos por el Centro. Si los retrasos son ocasionados por el cliente, lo atenderemos solo el tiempo restante hasta completar la hora del término de cita.</li>
 </ul>
 
 <h2>Protección de datos</h2>
-<p>${escapeHtml(businessName)} podrá enviar información, respuestas a consultas y contactos generales mientras dure nuestra relación y cuente con el consentimiento del destinatario. Los datos personales no serán cedidos a terceros, salvo obligación legal.</p>
+<p>Cibao Spa Laser enviará información, respuesta a consultas y contactos genéricos, mientras dure nuestra relación y tengamos su consentimiento de destinatario. No se cederán datos a terceros salvo obligación legal.</p>
 
 <h2>Autorización</h2>
-<p>He sido informado/a sobre el procedimiento de eliminación del vello no deseado, incluidos los riesgos, complicaciones y beneficios. He tenido la oportunidad de hacer preguntas y he recibido respuestas satisfactorias. Entiendo que los resultados pueden variar de una persona a otra y que no se garantiza la eliminación completa del vello no deseado.</p>
+<p>He sido informado sobre el procedimiento de eliminación del vello no deseado, incluidos los riesgos, complicaciones y beneficios. He tenido la oportunidad de hacer preguntas y he recibido respuestas satisfactorias. Entiendo que los resultados pueden variar de una persona a otra y que no se garantiza la eliminación completa del vello no deseado.</p>
 <p>Doy mi consentimiento para realizar el procedimiento en Cibao Spa Laser y libero a Cibao Spa Laser y su personal de cualquier responsabilidad Legal en lo Penal y Civil en caso de complicaciones que puedan surgir durante o después del tratamiento.</p>
-
-<h2>Aceptación de políticas y firma</h2>
-<p>Declaro que he leído, comprendido y aceptado el contenido de este consentimiento informado, así como las políticas de la empresa. Confirmo que la información suministrada es verdadera y completa, y autorizo a ${escapeHtml(businessName)} y a su personal a realizar el procedimiento descrito.</p>
-<div class="accept">ACEPTO LAS POLÍTICAS DE LA EMPRESA</div>
+<div class="accept">☑ ACEPTO LAS POLÍTICAS DE LA EMPRESA</div>
 
 <div class="sign-box">
   ${firmaDataUrl ? `<img class="sign-img" src="${firmaDataUrl}" alt="Firma del cliente" />` : '<div class="sign-img"></div>'}
@@ -242,7 +232,7 @@ function buildPrintHtml(args: {
 </div>
 
 <div class="footer">
-  ${escapeHtml(businessName)} · cibaospalaser@gmail.com · Documento generado el ${escapeHtml(new Date().toLocaleString("es-DO"))} · Ref ${escapeHtml(recordId)}
+  ${escapeHtml(businessName)} · cibaospa.consentimientos@gmail.com · Documento generado el ${escapeHtml(new Date().toLocaleString("es-DO"))} · Ref ${escapeHtml(recordId)}
 </div>
 
 </body></html>`
@@ -396,148 +386,152 @@ export function PublicDepilacionLaserConsentForm({ prefill = {}, onSubmit, busin
         <CardContent className="space-y-4 text-[13px] leading-relaxed text-foreground/90">
           <Section title="Descripción del procedimiento">
             <p>
-              La depilación láser es un procedimiento estético que utiliza la energía de un haz de
-              luz láser para destruir de forma selectiva el folículo piloso, reduciendo el
-              crecimiento del vello no deseado. La luz es absorbida por el pigmento (melanina) del
-              vello y transformada en calor, dañando la estructura que produce el pelo. Es un
-              tratamiento progresivo que requiere varias sesiones, ya que el láser actúa
-              principalmente sobre el vello que se encuentra en fase de crecimiento activo.
+              La depilación láser es un método efectivo y duradero para eliminar el vello no
+              deseado en diferentes áreas del cuerpo. En Cibao Spa Laser, ofrecemos una experiencia
+              segura y profesional, utilizando tecnología de vanguardia.
             </p>
           </Section>
 
           <Section title="Confirmación del cliente">
             <ol className="ml-5 list-decimal space-y-2">
-              <li>Confirmo que {businessName} me ha explicado de manera detallada y en palabras comprensibles la naturaleza del procedimiento de depilación láser, incluyendo sus posibles riesgos, molestias, alternativas y cuidados posteriores. Todas mis preguntas han sido contestadas a mi satisfacción.</li>
-              <li>Comprendo que la depilación láser es un proceso estético progresivo y que nadie puede garantizar la eliminación total o permanente del vello.</li>
-              <li>Entiendo que los resultados dependen de factores individuales como el tipo de piel, el color y grosor del vello, la zona tratada, los cambios hormonales y el cumplimiento de las indicaciones.</li>
-              <li>Consiento aportar mis datos personales y de salud antes y durante el tratamiento, los cuales forman parte de mi historia clínica y son propiedad de {businessName}.</li>
-              <li>Me comprometo a seguir fielmente las instrucciones impartidas por el personal antes, durante y después de cada sesión.</li>
-              <li>Acepto que {businessName} pueda retrasar o suspender una sesión si lo considera necesario para mi seguridad.</li>
-              <li>Entiendo que el personal se basará en la información que yo declare para determinar si el procedimiento es seguro para mí.</li>
+              <li><strong>CONFIRMO</strong> que Cibao Spa Laser me ha explicado detalladamente, en palabras comprensibles para mí, el efecto y la naturaleza del (los) procedimientos a efectuar; incluyendo los posibles riesgos, otras soluciones alternativas de procedimientos (cuando existan), así como las molestias que se pueden sentir, aun teniendo un periodo post-tratamiento normal. Han sido contestadas a satisfacción todas las preguntas que libremente he formulado acerca de todo el procedimiento.</li>
+              <li><strong>ACEPTO y CONSIENTO</strong>, que al firmar cada sesión recibida, estaré firmando además el consentimiento informado del tratamiento.</li>
             </ol>
           </Section>
 
           <Section title="Instrucciones antes del procedimiento">
             <ul className="ml-5 list-disc space-y-1">
-              <li>Evitar la exposición solar y las camas bronceadoras en la zona a tratar durante al menos dos semanas antes de la sesión.</li>
-              <li>No aplicar autobronceadores ni cremas bronceadoras en la zona durante las dos semanas previas.</li>
-              <li>Rasurar (afeitar) la zona a tratar entre 12 y 24 horas antes de la sesión. No depilar con cera, pinza, hilo ni decolorar el vello en las semanas previas, ya que el láser necesita la raíz intacta.</li>
-              <li>No aplicar cremas, lociones, perfumes, maquillaje ni desodorante en la zona el día de la sesión.</li>
-              <li>Informar al especialista sobre cualquier medicamento que esté tomando, especialmente fotosensibilizantes, anticoagulantes, isotretinoína o antibióticos.</li>
-              <li>Informar sobre embarazo, lactancia, tatuajes, lunares, infecciones activas, herpes u otras condiciones de la piel en la zona a tratar.</li>
-              <li>Mantener la piel limpia, hidratada y sin lesiones el día del procedimiento.</li>
+              <li><strong>Evitar la Exposición al Sol:</strong> No expongas el área a tratar al sol durante al menos 2 semanas antes del procedimiento. La piel bronceada puede aumentar el riesgo de efectos secundarios.</li>
+              <li><strong>No Utilizar Autobronceadores:</strong> Abstente de usar cremas bronceadoras o autobronceadores en la zona afectada al menos 2 semanas antes del tratamiento.</li>
+              <li><strong>Informar sobre Medicación:</strong> Informa a tu médico o especialista sobre cualquier medicamento que estés tomando, especialmente anticoagulantes, o si tienes algún tratamiento de piel en curso.</li>
+              <li><strong>Evitar Antiinflamatorios y Alcohol:</strong> Evita el uso de antiinflamatorios (como aspirina o ibuprofeno) y alcohol 48 horas antes del procedimiento para reducir el riesgo de sangrado y hematomas.</li>
+              <li><strong>No Usar Crema en la Zona a Tratar:</strong> El día del procedimiento, no apliques cremas, lociones o maquillaje en el área que será tratada.</li>
+              <li><strong>Hidratar la Piel:</strong> Mantén la piel bien hidratada días antes del procedimiento, aplicando crema hidratante en las áreas a tratar, salvo indicación contraria.</li>
+              <li><strong>Consultar sobre Alergias:</strong> Asegúrate de informar al profesional sobre cualquier alergia, especialmente a anestésicos locales o productos similares que puedan usarse durante el procedimiento.</li>
+              <li><strong>Preparar Preguntas:</strong> Haz una lista de preguntas que quieras hacerle al profesional antes del procedimiento. Asegúrate de entender completamente el proceso y los cuidados posteriores.</li>
             </ul>
           </Section>
 
           <Section title="Cuidados después del tratamiento">
             <ul className="ml-5 list-disc space-y-1">
-              <li>Evitar la exposición solar directa en la zona tratada durante al menos dos semanas y aplicar protector solar SPF 30 o superior.</li>
-              <li>Evitar saunas, jacuzzis, baños calientes, piscinas y ejercicio intenso durante 24 a 48 horas.</li>
-              <li>No frotar, rascar ni exfoliar la zona tratada; mantenerla limpia e hidratada con productos suaves recomendados por el especialista.</li>
-              <li>No depilar con cera, pinza ni hilo entre sesiones. Solo se permite el rasurado.</li>
-              <li>Evitar el uso de perfumes, desodorantes con alcohol y productos irritantes sobre la zona durante las primeras 24 a 48 horas.</li>
-              <li>Es normal que aparezca enrojecimiento leve o sensación similar a una quemadura solar durante las primeras horas.</li>
-              <li>Acudir a las sesiones en los intervalos recomendados por el especialista para lograr mejores resultados.</li>
-              <li>Comunicarse con el centro si presenta ampollas, costras, dolor intenso, signos de infección u otra reacción inusual.</li>
+              <li><strong>Evitar la exposición solar prolongada:</strong> Después de la sesión, evita la exposición al sol en el área tratada durante al menos 1 semana. Usa bloqueador solar con un alto factor de protección (SPF) para proteger la piel y prevenir manchas.</li>
+              <li><strong>Cuidado de la Piel:</strong> Mantén la piel limpia e hidratada. Utiliza cremas o lociones suaves recomendadas por nuestro especialista.</li>
+              <li><strong>No Rasurarse ni Depilar:</strong> No uses cera, pinzas ni otros métodos de depilación durante el tratamiento. Es normal que el vello caiga en las semanas siguientes.</li>
+              <li><strong>Evitar Actividades Intensas:</strong> Evita ejercicios físicos intensos, saunas o jacuzzis durante los primeros días después del tratamiento, ya que el sudor puede causar irritación en la piel.</li>
+              <li>Si experimentas enrojecimiento o hinchazón, aplica compresas frías y, si es necesario, puedes tomar un analgésico suave. Si los síntomas persisten, contacta a nuestro equipo.</li>
             </ul>
           </Section>
 
           <Section title="Consideraciones generales">
             <ul className="ml-5 list-disc space-y-1">
-              <li>La depilación láser requiere varias sesiones porque el vello crece en distintas fases y el láser actúa sobre el que está en crecimiento activo.</li>
-              <li>El número de sesiones varía según la zona, el tipo de piel y vello, y la respuesta individual de cada persona.</li>
-              <li>El intervalo entre sesiones suele ser de cuatro a ocho semanas según la zona tratada.</li>
-              <li>Los cambios hormonales (embarazo, síndrome de ovario poliquístico, medicamentos hormonales) pueden estimular nuevo crecimiento de vello y requerir sesiones de mantenimiento.</li>
-              <li>El vello rubio, canoso, pelirrojo o muy fino responde con menor eficacia porque contiene poca melanina.</li>
-              <li>El procedimiento es realizado por personal capacitado siguiendo los protocolos de seguridad del centro.</li>
+              <li><strong>Modo de acción del tratamiento.</strong> La luz láser penetra la piel y luego es absorbida por la melanina o pigmento del vello, causando un calentamiento rápido del tallo y raíz del mismo. Este proceso debilita el folículo completo del vello.</li>
+              <li>La reducción del vello mediante el láser es un procedimiento común que es practicado de forma segura y efectiva en miles de pacientes cada año. Las complicaciones son extremadamente raras, y normalmente menores; sin embargo, algunas complicaciones pueden ocurrir.</li>
+              <li><strong>Las sesiones.</strong> Las sesiones láser se realizan cada 5 semanas las primeras 5 sesiones, luego va aumentando el tiempo según los resultados, las citas se van colocando cada 7 u 8 semanas.</li>
+              <li><strong>Información.</strong> El láser no penetra más allá de las capas de la piel (epidermis y la dermis), lo que quiere decir que no afecta ninguna glándula, ni vasos, ni músculos.</li>
+              <li><strong>Exposición de los ojos.</strong> Lentes protectores serán puestos durante el proceso. Es muy importante mantener puestos estos lentes durante todo el tratamiento con láser para proteger los ojos, ya que no deben ser expuestos accidentalmente a la luz del láser.</li>
+              <li><strong>Herpes.</strong> Los pacientes que en alguna ocasión han presentado herpes labial, deben usar Aciclovir tres días antes de cada sesión del tratamiento como prevención.</li>
+              <li><strong>Advertencia.</strong> Los vellos muy rubios, muy finos y blancos (canas) no se eliminan con el láser.</li>
             </ul>
           </Section>
 
           <Section title="Beneficios">
-            <ul className="ml-5 list-disc space-y-1">
-              <li>Reducción progresiva y duradera del vello no deseado.</li>
-              <li>Disminución de la irritación, foliculitis y vellos encarnados asociados a otros métodos de depilación.</li>
-              <li>Piel más suave y mejor apariencia estética de la zona tratada.</li>
-              <li>Ahorro de tiempo y comodidad frente a métodos tradicionales como la cera o el afeitado frecuente.</li>
-            </ul>
+            <p>
+              Los beneficios del tratamiento mediante láser: para la mayoría de los pacientes este
+              proceso causará la reducción considerable del vello. Esto supone una reducción estable
+              y a largo plazo del número o cantidad de vello que volverá a crecer después del
+              tratamiento.
+            </p>
           </Section>
 
           <Section title="Probabilidad de éxito">
             <p>
-              La depilación láser logra en la mayoría de los casos una reducción significativa y
-              duradera del vello, especialmente en pieles claras con vello oscuro y grueso. Sin
-              embargo, no se garantiza la eliminación del 100% del vello. Algunos folículos pueden
-              reactivarse con el tiempo o por cambios hormonales, por lo que pueden ser necesarias
-              sesiones de mantenimiento. Los resultados varían de una persona a otra.
+              El láser destruye el folículo del vello en crecimiento, pero no el de los folículos
+              latente o inactivo. El resultado de cada tratamiento es la destrucción de un porcentaje
+              de los folículos del vello. Varios tratamientos serán necesarios para la reducción del
+              vello. La reducción del vello será prolongada e incluso permanente. No obstante,
+              algunos pacientes pueden no experimentar una total eliminación de su vello hasta
+              después de varios procesos con láser. Los resultados dependen del tipo de piel y vello,
+              así como de la asociación de la producción de vello a alguna entidad médica; ejemplo:
+              ovario poliquístico.
+            </p>
+            <p>
+              Luego de examinar su tipo de piel y vello, el o la especialista le recomendará un
+              número determinado de sesiones para lograr la eliminación o reducción máxima del vello.
+              Al finalizar las sesiones recomendadas, el paciente debe darse mantenimiento cada dos
+              meses; dependiendo cada caso en particular, de ser necesario.
             </p>
           </Section>
 
           <Section title="Riesgos y posibles complicaciones">
             <p>
-              A pesar de tomar las precauciones adecuadas, el procedimiento de depilación láser
-              puede conllevar ciertos riesgos y complicaciones, incluyendo, pero no limitado a:
+              <strong>COMPRENDO</strong> que los procesos estéticos no son una ciencia exacta y que
+              nadie puede garantizar la perfección absoluta, por lo que se me han informado los
+              riesgos y posibles complicaciones. A pesar de que se tomen precauciones, la depilación
+              láser puede conllevar ciertos riesgos y complicaciones.
             </p>
             <ul className="ml-5 list-disc space-y-1">
-              <li>Enrojecimiento, hinchazón o irritación temporal en la zona tratada.</li>
-              <li>Sensación de calor, ardor o molestia durante y después de la sesión.</li>
-              <li>Cambios temporales o permanentes en la pigmentación de la piel (hipopigmentación o hiperpigmentación), más frecuentes en pieles oscuras o bronceadas.</li>
-              <li>Formación de ampollas, costras o, en casos excepcionales, quemaduras.</li>
-              <li>Riesgo de infección si no se siguen los cuidados indicados.</li>
-              <li>Cicatrices en casos poco frecuentes.</li>
-              <li>Reactivación de herpes en personas predispuestas.</li>
-              <li>Foliculitis (inflamación del folículo) transitoria.</li>
-              <li>Crecimiento paradójico del vello en zonas adyacentes, poco frecuente.</li>
-              <li>Eliminación incompleta del vello o necesidad de sesiones adicionales.</li>
-              <li>Aumento de la sensibilidad al sol en la zona tratada.</li>
+              <li><strong>Malestar o incomodidad.</strong> Algún dolor ligero puede sentirse durante el tratamiento con láser, aunque la mayoría de las personas toleran bien el proceso.</li>
+              <li><strong>Cicatrización.</strong> El tratamiento láser puede provocar hinchazón, llagas o sequedad del área tratada, que requerirán para su total desaparición de un período de entre 1 a 3 semanas. Una vez recuperada la superficie de la piel, puede quedar rosada y sensible a los rayos del sol durante 2 – 4 semanas adicionales. Solo un porcentaje muy reducido de pacientes experimentan este problema.</li>
+              <li><strong>Hematomas / Hinchazón / Infección.</strong> Hematomas podrán verse en el área tratada durante un período de 2 – 3 días. Hinchazón: puede ocurrir después del procedimiento y durar varias horas, especialmente si han sido tratadas las áreas de la nariz o los pómulos. Una infección cutánea de la piel es una complicación rara pero posible.</li>
+              <li><strong>Cambios en la pigmentación (cambios en el color de la piel).</strong> El área tratada puede volverse más clara o bien más oscura que la piel a su alrededor; este efecto se resuelve normalmente de manera espontánea en un período de varios meses, pero puede durar bastante más. Para disminuir este riesgo le explicamos al paciente que debe usar filtro solar tres veces al día y evitar la exposición al sol durante el tratamiento.</li>
+              <li><strong>Cicatrices.</strong> La formación de una cicatriz es algo poco probable; sin embargo, es una posibilidad siempre y cuando sea intervenida la superficie de la piel. Para minimizar las posibilidades de tal complicación es extremadamente importante seguir todas las instrucciones que le serán dadas antes y después de su tratamiento con láser.</li>
             </ul>
           </Section>
 
           <Section title="Contraindicaciones">
             <ul className="ml-5 list-disc space-y-1">
-              <li>Embarazo y lactancia.</li>
-              <li>Piel bronceada o exposición solar reciente en la zona a tratar.</li>
-              <li>Uso reciente de isotretinoína u otros medicamentos fotosensibilizantes.</li>
-              <li>Infecciones activas, herpes, heridas abiertas o lesiones en la zona.</li>
-              <li>Antecedentes de queloides o cicatrización anormal.</li>
-              <li>Enfermedades de la piel activas en la zona (dermatitis, psoriasis, vitíligo en fase activa).</li>
-              <li>Tatuajes o micropigmentación en la zona a tratar (el láser no debe aplicarse sobre la tinta).</li>
-              <li>Condiciones médicas que el especialista considere de riesgo según la evaluación individual.</li>
+              <li><strong>Embarazo y Lactancia:</strong> Aunque no hay estudios concluyentes sobre la seguridad del láser en mujeres embarazadas, se suele recomendar evitar el procedimiento durante este periodo. La lactancia tampoco es un momento ideal para realizarlo.</li>
+              <li><strong>Piel Bronceada:</strong> La exposición solar o el uso de camas de bronceado antes del tratamiento pueden aumentar el riesgo de quemaduras y cambios en la pigmentación de la piel. Se recomienda no haber estado expuesto al sol al menos 4-6 semanas antes de la sesión.</li>
+              <li><strong>Trastornos de la Piel:</strong> Condiciones como eczema, psoriasis, dermatitis o infecciones cutáneas en el área a tratar pueden contraindicar el uso de láser hasta que la piel esté completamente sana.</li>
+              <li><strong>Uso de Medicamentos:</strong> Algunos medicamentos, como los que sensibilizan la piel (por ejemplo, retinoides o ciertos antibióticos), pueden aumentar el riesgo de efectos secundarios. Es importante informar al especialista sobre cualquier medicación.</li>
+              <li><strong>Historial de Cicatrices Queloides:</strong> Las personas con tendencia a formar cicatrices queloides pueden tener un mayor riesgo de desarrollar cicatrices anormales después del tratamiento.</li>
+              <li><strong>Diabetes No Controlada:</strong> Las personas con diabetes mal controlada pueden tener un mayor riesgo de infecciones o complicaciones en la piel.</li>
+              <li><strong>Síndromes de Hipersensibilidad:</strong> Algunas condiciones que implican hipersensibilidad de la piel o trastornos de coagulación pueden impedir la realización del tratamiento.</li>
+              <li><strong>Tatuajes en el Área:</strong> La depilación láser no se debe realizar sobre tatuajes, ya que el láser puede afectar la tinta y causar quemaduras o reacciones adversas.</li>
+              <li><strong>Ciertas Condiciones Médicas:</strong> Enfermedades o condiciones como lupus eritematoso, enfermedades autoinmunitarias o enfermedades que afectan la piel pueden ser contraindicaciones.</li>
+              <li><strong>Uso de Productos Irritantes:</strong> El uso reciente de productos químicos o tratamientos estéticos que irritan la piel, como peelings químicos o microdermoabrasión, puede requerir un periodo de espera antes de la depilación láser.</li>
             </ul>
+          </Section>
+
+          <Section title="Declaraciones finales del cliente">
+            <p>El fin del procedimiento que he solicitado tiene como objetivo mejorar mi apariencia física.</p>
+            <p><strong>COMPRENDO</strong> que los resultados están en relación directamente proporcional a la capacidad que tiene mi organismo de eliminación de los materiales que se hayan aplicado.</p>
+            <p><strong>CONSIENTO</strong> en aportar datos personales antes y después del tratamiento, siendo este material de diagnóstico y de registro para mi historia clínica, propiedad de Cibao Spa Laser.</p>
+            <p><strong>Acepto</strong> que Cibao Spa Laser retrase o suspenda el procedimiento si lo cree preciso.</p>
+            <p><strong>ME COMPROMETO</strong> a seguir fielmente, en la mejor medida de mis posibilidades, las instrucciones impartidas por Cibao Spa Laser para antes, durante y después de la intervención arriba mencionada.</p>
+            <p>Yo entiendo que el personal médico y otros asistentes se basarán en declaraciones hechas por mí con el fin de determinar si el proceso puede ser seguro y efectivo para mi persona. Yo entiendo que la reducción del vello mediante tratamiento con láser no es una ciencia exacta, y que no se me pueden ofrecer garantías o seguridad total en cuanto a los resultados de este procedimiento.</p>
           </Section>
 
           <Section title="Políticas y procedimientos">
             <ul className="ml-5 list-disc space-y-1">
-              <li>Reservas y cancelaciones deben realizarse con 48 horas de antelación.</li>
-              <li>Horario: lunes a viernes de 9:00 a.m. a 8:00 p.m. y sábados de 8:00 a.m. a 4:00 p.m.</li>
-              <li>Si la cancelación o reprogramación no es comunicada, la sesión se dará por realizada.</li>
-              <li>Los pagos pueden realizarse en efectivo, transferencia o tarjeta de crédito.</li>
-              <li>Los precios en {businessName} no incluyen ITBIS.</li>
-              <li>El tiempo de la cita no puede extenderse si afecta el itinerario programado.</li>
-              <li>Si el retraso es responsabilidad del centro, el tiempo será repuesto.</li>
-              <li>Si el retraso es responsabilidad del cliente, será atendido solo durante el tiempo restante de su cita.</li>
+              <li>Reservas y cancelaciones con 48 h de antelación.</li>
+              <li>Horario de lunes a viernes de 9:00 a.m. a 8:00 p.m.; sábados de 8:00 a.m. a 4:00 p.m. Si la cancelación de la cita o reprogramación no es comunicada, se dará por realizada la sesión.</li>
+              <li>Validez: 2 años desde la fecha de compra.</li>
+              <li>Los pagos se podrán realizar en efectivo, transferencias o con tarjeta de crédito. Los precios en Cibao Spa Laser no incluyen el ITBIS.</li>
+              <li>El tiempo de la cita no puede extenderse bajo ningún motivo porque perjudicará nuestro itinerario programado.</li>
+              <li>Si atendemos alguna cita con retraso por responsabilidad nuestra, los tiempos serán repuestos por el Centro. Si los retrasos son ocasionados por el cliente, lo atenderemos solo el tiempo restante hasta completar la hora del término de cita.</li>
             </ul>
           </Section>
 
           <Section title="Protección de datos">
             <p>
-              {businessName} podrá enviar información, respuestas a consultas y contactos generales
-              mientras dure nuestra relación y cuente con el consentimiento del destinatario. Los
-              datos personales no serán cedidos a terceros, salvo obligación legal.
+              Cibao Spa Laser enviará información, respuesta a consultas y contactos genéricos,
+              mientras dure nuestra relación y tengamos su consentimiento de destinatario. No se
+              cederán datos a terceros salvo obligación legal.
             </p>
           </Section>
 
           <Section title="Autorización">
             <p>
-              He sido informado/a sobre el procedimiento de eliminación del vello no deseado,
-              incluidos los riesgos, complicaciones y beneficios. He tenido la oportunidad de hacer
-              preguntas y he recibido respuestas satisfactorias. Entiendo que los resultados pueden
-              variar de una persona a otra y que no se garantiza la eliminación completa del vello
-              no deseado.
+              He sido informado sobre el procedimiento de eliminación del vello no deseado, incluidos
+              los riesgos, complicaciones y beneficios. He tenido la oportunidad de hacer preguntas y
+              he recibido respuestas satisfactorias. Entiendo que los resultados pueden variar de una
+              persona a otra y que no se garantiza la eliminación completa del vello no deseado.
             </p>
             <p>
               Doy mi consentimiento para realizar el procedimiento en Cibao Spa Laser y libero a
-              Cibao Spa Laser y su personal de cualquier responsabilidad Legal en lo Penal y Civil
-              en caso de complicaciones que puedan surgir durante o después del tratamiento.
+              Cibao Spa Laser y su personal de cualquier responsabilidad Legal en lo Penal y Civil en
+              caso de complicaciones que puedan surgir durante o después del tratamiento.
             </p>
           </Section>
         </CardContent>
