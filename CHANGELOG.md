@@ -18,6 +18,18 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.9.3] — 2026-06-29
+
+### Fixed
+- **Header mostraba "Dashboard Ejecutivo" sobre las pantallas de Requisición de Materiales.**
+  `components/header.tsx` no tenía entradas en `pageMeta` para los 6 tabs `req-mat-*`, así que
+  caía al fallback `panel` ("Dashboard Ejecutivo / Resumen general de mantenimiento") aunque el
+  contenido fuera, p. ej., "Mis requisiciones". Agregadas las 6 entradas (título, descripción,
+  eyebrow "Requisición de materiales"). El routing del contenido (`app/page.tsx switch`) ya era
+  correcto; solo el encabezado estaba desacoplado del tab activo.
+
+---
+
 ## [0.9.2] — 2026-06-29
 
 ### Fixed
