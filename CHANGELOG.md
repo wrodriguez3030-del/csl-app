@@ -18,6 +18,28 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.9.2] — 2026-06-29
+
+### Fixed
+- **Menú/permisos congelados tras cambiar permisos de un usuario (CARLOS).** El sidebar lee
+  el usuario desde un snapshot en `localStorage` que solo se escribía al hacer login. Cuando un
+  admin cambiaba los menús de un usuario en `csl_user_profiles`, su sesión activa seguía con los
+  permisos viejos (solo "Nueva requisición" visible, p. ej.) hasta un logout+login manual.
+  Ahora `app/page.tsx → sync()` re-sincroniza la sesión desde `csl_user_profiles` (fuente de
+  verdad) en cada carga vía nuevo `refreshSessionUser()` en `lib/security.ts`; el botón
+  **Actualizar** también refresca menús/permisos, no solo los datos. Cambio reflejado sin
+  necesidad de cerrar sesión. Solo reescribe el snapshot cuando algo cambió (evita loops).
+- **Superadmin sin menús explícitos quedaba sin sidebar.** `userFromProfile` solo daba acceso
+  total a `isAdmin`; ahora `isAdmin || isSuperadmin` recibe `ALL_MENU_IDS`.
+
+### Changed
+- **Encargadas de Requisición de Materiales: sucursal + seguimiento.** Las 3 encargadas
+  (Villa Olga, Los Jardines, Rafael Vidal) quedaron restringidas a su sucursal en
+  `user_branch_permissions` y con el menú `req-mat-mis` para dar seguimiento a sus requisiciones
+  (antes sin sucursal veían todas — hueco de aislamiento; sin `req-mat-mis` no daban seguimiento).
+
+---
+
 ## [0.9.1] — 2026-06-27
 
 ### Changed

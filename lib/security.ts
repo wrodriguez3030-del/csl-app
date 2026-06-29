@@ -79,7 +79,9 @@ function userFromProfile(profile: Record<string, unknown>, fallbackId: string, f
     password: "",
     activo: profile.activo !== false,
     isAdmin,
-    menus: isAdmin ? [...ALL_MENU_IDS] : normalizeMenus(profile.menus),
+    // Admin y Superadmin tienen acceso total. Antes solo se contemplaba isAdmin,
+    // de modo que un superadmin con menus=[] quedaba sin menús visibles.
+    menus: isAdmin || isSuperadmin ? [...ALL_MENU_IDS] : normalizeMenus(profile.menus),
     createdAt: String(profile.created_at ?? profile.createdAt ?? nowIso()),
     businessId,
     businessSlug: businessSlug === "csl" || businessSlug === "depicenter" ? businessSlug : undefined,
@@ -204,6 +206,70 @@ export function getSessionUser(): SystemUser | null {
   } catch {
     return null
   }
+}
+
+/** Lee el perfil canónico (csl_user_profiles + businesses) y arma el SystemUser. */
+async function fetchSessionUserFromDb(userId: string, email: string): Promise<SystemUser | null> {
+  const { data: profile } = await withTimeout(
+    Promise.resolve(
+      supabaseBrowser
+        .from("csl_user_profiles")
+        .select("*, businesses(slug, name)")
+        .eq("user_id", userId)
+        .maybeSingle()
+    ),
+    "Supabase no respondio la tabla csl_user_profiles."
+  )
+  if (!profile) return null
+  return userFromProfile(profile as Record<string, unknown>, userId, email)
+}
+
+/**
+ * Re-sincroniza el usuario en sesión desde csl_user_profiles (fuente única de
+ * verdad) usando la sesión de Supabase vigente. Mantiene menús/permisos al día
+ * SIN exigir logout+login manual cuando un admin cambia permisos: el sidebar lee
+ * el snapshot de localStorage, así que sin esto los permisos quedaban congelados.
+ *
+ * Devuelve el usuario fresco, o null si no hay sesión de Supabase / perfil / o
+ * hubo error transitorio (el caller debe caer al snapshot local en ese caso).
+ * Si el usuario quedó inactivo, cierra la sesión. Solo reescribe localStorage y
+ * emite `csl-auth-changed` cuando algo cambió (evita loops con los listeners).
+ */
+export async function refreshSessionUser(): Promise<SystemUser | null> {
+  if (typeof window === "undefined") return null
+  let sessionUser: { id: string; email?: string } | null = null
+  try {
+    const { data } = await supabaseBrowser.auth.getSession()
+    sessionUser = data?.session?.user ?? null
+  } catch {
+    return null
+  }
+  if (!sessionUser) return null
+
+  let fresh: SystemUser | null = null
+  try {
+    fresh = await fetchSessionUserFromDb(sessionUser.id, sessionUser.email || "")
+  } catch {
+    return null // error de red/transitorio → el caller usa el snapshot local
+  }
+  if (!fresh) return null
+
+  if (!fresh.activo) {
+    await supabaseBrowser.auth.signOut()
+    clearLocalSession()
+    return null
+  }
+
+  // Solo persistir + notificar cuando el snapshot realmente cambió. En estado
+  // estable (prev === next) no se emite evento, evitando un loop con el listener
+  // `csl-auth-changed` de app/page.tsx que vuelve a llamar a esta función.
+  const prevRaw = localStorage.getItem(SESSION_STORAGE_KEY)
+  const nextRaw = JSON.stringify(fresh)
+  if (prevRaw !== nextRaw) {
+    localStorage.setItem(SESSION_STORAGE_KEY, nextRaw)
+    dispatchAuthChanged()
+  }
+  return fresh
 }
 
 export function canAccessMenu(user: SystemUser | null, tab: TabId): boolean {

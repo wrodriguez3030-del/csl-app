@@ -69,7 +69,7 @@ import { CertificadosRegaloTalonarioPage } from "@/components/certificados-regal
 import { CertificadosRegaloValidezPage } from "@/components/certificados-regalo-validez-page"
 import { LoginPage } from "@/components/login-page"
 import { AdminUsersPage } from "@/components/admin-users-page"
-import { canAccessMenu, clearLocalSession, getFirstAllowedMenu, getSessionUser, type SystemUser } from "@/lib/security"
+import { canAccessMenu, clearLocalSession, getFirstAllowedMenu, getSessionUser, refreshSessionUser, type SystemUser } from "@/lib/security"
 import { supabaseBrowser } from "@/lib/supabase-client"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
@@ -124,13 +124,27 @@ export default function HomePage() {
         return
       }
 
-      setUser(localUser)
+      // Re-sincroniza menús/permisos desde csl_user_profiles (fuente de verdad)
+      // en cada carga. Sin esto, el sidebar usaba el snapshot de localStorage
+      // congelado al login y los cambios de permisos no se reflejaban hasta un
+      // logout+login manual. Si el refresco falla (red), se usa el snapshot
+      // local; si el usuario quedó inactivo, refreshSessionUser cierra sesión y
+      // onAuthStateChange vuelve a disparar este sync.
+      const refreshed = await refreshSessionUser()
+      const effectiveUser = refreshed ?? getSessionUser()
+      if (!effectiveUser) {
+        setUser(null)
+        setIsReady(true)
+        return
+      }
+
+      setUser(effectiveUser)
       setIsReady(true)
       // Inicializa el business activo al del usuario logueado SOLO si aún no
       // hay uno fijado (primer load). Nunca arranca en "Todos". No pisa una
       // selección hecha por el superadmin durante la sesión.
-      if (!useAppStore.getState().activeBusinessSlug && localUser.businessSlug) {
-        setActiveBusinessSlug(localUser.businessSlug)
+      if (!useAppStore.getState().activeBusinessSlug && effectiveUser.businessSlug) {
+        setActiveBusinessSlug(effectiveUser.businessSlug)
       }
     }
     void sync()
@@ -179,6 +193,17 @@ export default function HomePage() {
       setLoadingMessage("Actualizando datos...")
     }
 
+    // El botón "Actualizar" también re-sincroniza menús/permisos desde la DB,
+    // no solo los datos de pantalla. Así un cambio de permisos se refleja sin
+    // requerir logout. refreshSessionUser actualiza localStorage + emite el
+    // evento que reconstruye el sidebar (vía useSessionUser). No bloqueante.
+    try {
+      const refreshed = await refreshSessionUser()
+      if (refreshed) setUser(refreshed)
+    } catch {
+      /* error transitorio: se mantiene la sesión actual */
+    }
+
     try {
       const result = await apiJsonp(normalized, { action: "getAllData" })
       if (result && result.ok && result.data) {
@@ -209,7 +234,7 @@ export default function HomePage() {
       setIsSyncing(false)
       if (!silent) setIsLoading(false)
     }
-  }, [apiUrl, setDb, setDbPulsos, setIsLoading, setLoadingMessage, showToast, setIsConnected, setLastSyncAt, setIsSyncing])
+  }, [apiUrl, setDb, setDbPulsos, setIsLoading, setLoadingMessage, showToast, setIsConnected, setLastSyncAt, setIsSyncing, setUser])
 
   // ---- Cambio de business activo (switcher superadmin) ----
   // Limpia cache + store en memoria y recarga, para que NUNCA queden datos
