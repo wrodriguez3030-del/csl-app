@@ -169,6 +169,9 @@ export function NuevoReportePage() {
       Modelo: equipo.Modelo || "",
       Serie: equipo.Serie || "",
       Numero: equipo.Numero || "",
+      // Número de fuente del maestro de equipos → prellena el "No. fuente de
+      // poder" del reporte (el técnico puede editarlo si difiere en la visita).
+      PowerSourceNumber: equipo.SourceNumber || "",
       P_Cabeza: Number(String(equipo.P_Cabeza || 0).replace(/,/g, "")),
       P_Totales: Number(String(equipo.P_Totales || 0).replace(/,/g, "")),
     }
@@ -233,6 +236,7 @@ export function NuevoReportePage() {
       Modelo: equipoFields?.Modelo || "",
       Serie: equipoFields?.Serie || "",
       Numero: equipoFields?.Numero || "",
+      PowerSourceNumber: equipoFields?.PowerSourceNumber || "",
       P_Cabeza: equipoFields?.P_Cabeza || 0,
       P_Totales: equipoFields?.P_Totales || 0,
     }))

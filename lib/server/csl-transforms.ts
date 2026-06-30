@@ -35,6 +35,8 @@ export function fromDb(entity: string, row: Row): Row {
         business_id: row.business_id,
         EquipoID: row.equipo_id, Sucursal: row.sucursal, Empresa: row.empresa, Domicilio: row.domicilio,
         Modelo: row.modelo, Serie: row.serie, Numero: row.numero,
+        // Columna añadida por 202606300001_equipos_source_number.sql.
+        SourceNumber: row.source_number,
         P_Cabeza: row.p_cabeza, P_Totales: row.p_totales, Max_Cabeza: row.max_cabeza,
         Estado: row.estado, Observaciones: row.observaciones,
         // Columnas añadidas por 202605280001_equipos_cabina_operadora.sql.

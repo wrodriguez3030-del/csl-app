@@ -117,12 +117,12 @@ export function ReportePDF({ reporte, piezas, firmaCliente, firmaTecnico }: Repo
       <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "4px" }}>
         <tbody>
           <tr>
-            <td style={{ width: "120px" }}></td>
+            <td style={labelStyle}>NO. FUENTE:</td>
+            <td style={{ ...valueStyle, width: "120px" }}>{reporte.PowerSourceNumber}</td>
             <td style={labelStyle}>N/S FUENTE:</td>
-            <td style={{ ...valueStyle, width: "150px" }}></td>
-            <td style={{ width: "20px" }}></td>
+            <td style={{ ...valueStyle, width: "120px" }}>{reporte.PowerSourceSerial}</td>
             <td style={labelStyle}>N/S FIBRA:</td>
-            <td style={{ ...valueStyle, width: "150px" }}></td>
+            <td style={{ ...valueStyle, width: "120px" }}>{reporte.FiberSerial}</td>
           </tr>
         </tbody>
       </table>

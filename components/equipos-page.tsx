@@ -35,7 +35,7 @@ import type { Equipo } from "@/lib/types"
 // Depicenter → "Depicenter Skin Láser", o el equivalente del tenant futuro).
 const emptyEquipo: Equipo = {
   EquipoID: "", Sucursal: "", Empresa: "",
-  Domicilio: "", Modelo: "", Serie: "", Numero: "",
+  Domicilio: "", Modelo: "", Serie: "", Numero: "", SourceNumber: "",
   P_Cabeza: 0, P_Totales: 0, Max_Cabeza: 6000000,
   Estado: "Activo", Observaciones: "",
   Cabina: "", Operadora: "", OperadoraID: "",
@@ -227,6 +227,7 @@ export function EquiposPage() {
       case "Operadora": va = a.Operadora || ""; vb = b.Operadora || ""; break
       case "Modelo": va = a.Modelo; vb = b.Modelo; break
       case "Serie": va = a.Serie || ""; vb = b.Serie || ""; break
+      case "SourceNumber": va = a.SourceNumber || ""; vb = b.SourceNumber || ""; break
       case "P_Cabeza": va = Number(a.P_Cabeza) || 0; vb = Number(b.P_Cabeza) || 0; break
       case "P_Totales": va = Number(a.P_Totales) || 0; vb = Number(b.P_Totales) || 0; break
       case "Estado": va = a.Estado; vb = b.Estado; break
@@ -275,6 +276,7 @@ export function EquiposPage() {
       put("modelo", snapshot.Modelo)
       put("serie", snapshot.Serie)
       put("numero", snapshot.Numero)
+      put("sourceNumber", snapshot.SourceNumber)
       put("pcabeza", snapshot.P_Cabeza)
       put("ptotales", snapshot.P_Totales)
       put("maxCabeza", snapshot.Max_Cabeza)
@@ -307,6 +309,7 @@ export function EquiposPage() {
         modelo: snapshot.Modelo,
         serie: snapshot.Serie || "",
         numero: snapshot.Numero || "",
+        sourceNumber: snapshot.SourceNumber || "",
         pcabeza: String(snapshot.P_Cabeza || 0),
         ptotales: String(snapshot.P_Totales || 0),
         maxCabeza: String(snapshot.Max_Cabeza || 6000000),
@@ -602,6 +605,7 @@ export function EquiposPage() {
                 <TableHead className="cursor-pointer select-none" onClick={() => handleSort("Operadora")}>Operadora{sortIcon("Operadora")}</TableHead>
                 <TableHead className="cursor-pointer select-none" onClick={() => handleSort("Modelo")}>Modelo{sortIcon("Modelo")}</TableHead>
                 <TableHead className="cursor-pointer select-none" onClick={() => handleSort("Serie")}>Serie{sortIcon("Serie")}</TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("SourceNumber")}>Núm. fuente{sortIcon("SourceNumber")}</TableHead>
                 <TableHead className="cursor-pointer select-none" onClick={() => handleSort("P_Cabeza")}>Pulsos cabeza{sortIcon("P_Cabeza")}</TableHead>
                 <TableHead className="cursor-pointer select-none" onClick={() => handleSort("P_Totales")}>Pulsos totales{sortIcon("P_Totales")}</TableHead>
                 <TableHead className="cursor-pointer select-none" onClick={() => handleSort("Estado")}>Estado{sortIcon("Estado")}</TableHead>
@@ -611,7 +615,7 @@ export function EquiposPage() {
             <TableBody>
               {db.equipos.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
                     No hay equipos registrados
                   </TableCell>
                 </TableRow>
@@ -635,6 +639,7 @@ export function EquiposPage() {
                     <TableCell className="text-xs">{operadoraShow}</TableCell>
                     <TableCell>{eq.Modelo}</TableCell>
                     <TableCell className="text-muted-foreground">{eq.Serie || "-"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{eq.SourceNumber || "—"}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5">
                         <Progress value={pct(eq)} className="h-1.5 w-12 flex-shrink-0" />
@@ -817,6 +822,10 @@ export function EquiposPage() {
             <div className="space-y-1.5">
               <Label>Número</Label>
               <Input value={formData.Numero} onChange={e => setFormData({ ...formData, Numero: e.target.value })} placeholder="Número" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Número de fuente</Label>
+              <Input value={formData.SourceNumber ?? ""} onChange={e => setFormData({ ...formData, SourceNumber: e.target.value })} placeholder="Ej: Fuente 1, F-01, PS-001" />
             </div>
             <div className="space-y-1.5">
               <Label>Pulsos cabeza</Label>

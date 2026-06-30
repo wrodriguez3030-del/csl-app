@@ -18,6 +18,32 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.10.0] — 2026-06-30
+
+### Added
+- **Campo "Número de fuente" en el maestro de Equipos (Mantenimiento → Equipos).**
+  Nueva columna `source_number` en `csl_equipos` (migración aditiva
+  `202606300001_equipos_source_number.sql`, aplicada a db-cls). Guarda el número
+  de la fuente de poder del equipo (texto libre: "Fuente 1", "F-01", "PS-001").
+  - Modal *Editar equipo*: input "Número de fuente" debajo de "Número".
+  - Lista de equipos: nueva columna "Núm. fuente" (muestra "—" si vacío) con orden.
+  - Guardado real vía `saveEquipo` / `updateEquipoCampos` (mapeo
+    `sourceNumber`↔`source_number`); el CRUD estampa `updated_at` / `updated_by` /
+    `change_source` y devuelve el registro con `.select()`. Si la columna falta,
+    error real (no se tolera silenciosamente).
+  - Vista de equipo (`RecordViewDialog`) muestra el campo automáticamente.
+
+### Changed
+- **El "No. fuente de poder" de los reportes se prellena desde el equipo.**
+  Al elegir un equipo (o cambiar de sucursal) en *Nuevo reporte*, `PowerSourceNumber`
+  toma el `SourceNumber` del maestro de equipos; el técnico puede editarlo si
+  difiere en la visita.
+- **PDF de reporte (`reporte-pdf.tsx`): sección N/S ahora muestra datos reales.**
+  La fila antes vacía ahora rinde `NO. FUENTE` (`PowerSourceNumber`),
+  `N/S FUENTE` (`PowerSourceSerial`) y `N/S FIBRA` (`FiberSerial`).
+
+---
+
 ## [0.9.3] — 2026-06-29
 
 ### Fixed

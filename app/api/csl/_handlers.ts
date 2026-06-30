@@ -2916,6 +2916,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         modelo: textValue(params, "modelo"),
         serie: textValue(params, "serie"),
         numero: textValue(params, "numero"),
+        // Columna añadida por 202606300001_equipos_source_number.sql.
+        source_number: textValue(params, "sourceNumber"),
         p_cabeza: numberValue(params, "pcabeza"),
         p_totales: numberValue(params, "ptotales"),
         max_cabeza: numberValue(params, "maxCabeza", 6000000),
@@ -2978,6 +2980,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         ["modelo", "modelo"],
         ["serie", "serie"],
         ["numero", "numero"],
+        ["sourceNumber", "source_number"],
         ["estado", "estado"],
         ["observaciones", "observaciones"],
         ["ultimaActualizacionPulsos", "ultima_actualizacion_pulsos"],

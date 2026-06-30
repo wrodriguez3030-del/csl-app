@@ -21,6 +21,10 @@ export interface Equipo {
   Modelo: string
   Serie?: string
   Numero?: string
+  /** Número de fuente (fuente de poder) del equipo. Texto libre alfanumérico
+   *  ("Fuente 1", "F-01", "PS-001"). Prellena PowerSourceNumber en reportes.
+   *  Añadido en migración 202606300001_equipos_source_number.sql. */
+  SourceNumber?: string
   P_Cabeza?: number
   P_Totales?: number
   Max_Cabeza?: number
