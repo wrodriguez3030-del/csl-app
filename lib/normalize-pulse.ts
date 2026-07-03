@@ -156,6 +156,23 @@ export function sucursalesForTenant(slug: string): string[] {
 }
 
 /**
+ * Slug del tenant DUEÑO de una sucursal, o null si la sucursal no pertenece
+ * a ningún tenant conocido. Inverso de `sucursalesForTenant`. Lo usa el
+ * backend para rutear cada fila de un import al business_id correcto: el
+ * Excel semanal trae sucursales de CSL y DEPICENTER mezcladas, y estampar
+ * todas con el business activo era la fuente de la contaminación
+ * cross-tenant recurrente.
+ */
+export function tenantSlugForSucursal(sucursal: unknown): string | null {
+  const norm = normalizeSucursal(sucursal)
+  if (!norm) return null
+  for (const [slug, sucs] of Object.entries(TENANT_SUCURSALES)) {
+    if (sucs.includes(norm)) return slug
+  }
+  return null
+}
+
+/**
  * Clave canónica para el match AgendaPro ↔ Excel equipos.
  *
  * Formato: "SUCURSAL_CANÓNICA|OPERADORA_CANÓNICA"

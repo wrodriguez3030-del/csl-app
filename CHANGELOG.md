@@ -18,6 +18,38 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.11.0] — 2026-07-02
+
+### Fixed
+- **Causa raíz de la contaminación cross-tenant recurrente del import de pulsos.**
+  El Excel semanal (equipos + AgendaPro) trae sucursales de CSL y DEPICENTER
+  mezcladas, pero `savePulseReading`, `saveOperatorShots` y `saveSesionesBatch`
+  estampaban TODAS las filas con el `business_id` ACTIVO de la UI. Resultado:
+  cada import con CSL activo re-creaba filas DEPICENTER bajo CSL, que la guardia
+  `sucursalAllowedForTenant` luego ocultaba a ambos tenants ("Depicenter no trae
+  disparos"). Ya se había limpiado data dos veces (06-13, 06-14) y el import la
+  volvía a contaminar.
+  - Nuevo `tenantSlugForSucursal()` en `lib/normalize-pulse.ts` (inverso de
+    `sucursalesForTenant`).
+  - Nuevo `businessIdForRowSucursal()` en `_handlers.ts`: el `business_id` de
+    cada fila se deriva de SU sucursal. Superadmin → la fila se rutea al tenant
+    dueño automáticamente (el import semanal "simplemente funciona" sin cambiar
+    de negocio activo). Usuario normal → la fila cross-tenant se rechaza
+    (`savePulseReading` da error claro; los guardados masivos la omiten y
+    reportan `skipped`).
+  - `saveSesionesBatch`: la dedupe por `import_hash` contra la DB ahora agrupa
+    por tenant (las filas de un mismo lote pueden ir a más de un `business_id`;
+    el índice `csl_sesiones_cliente_import_hash_uidx` es por
+    `(business_id, import_hash)`).
+  - Cuadre semanal (UI): toast informativo con el conteo de filas omitidas por
+    pertenecer a otro negocio.
+  - Data: quedan 6 filas basura en `csl_pulse_readings` (Depicenter bajo CSL,
+    semanas 06-01 y 06-08, lecturas incoherentes; las canónicas ya existen bajo
+    Depicenter). Invisibles para ambos tenants; su borrado requiere
+    confirmación explícita del usuario (política de datos cross-tenant).
+
+---
+
 ## [0.10.0] — 2026-06-30
 
 ### Added

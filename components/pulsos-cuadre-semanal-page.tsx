@@ -458,6 +458,7 @@ export function PulsosCuadreSemanalPage() {
       // y seguimos sin error (gradual rollout).
       let shotsUpserted = 0
       let shotsTableMissing = false
+      let crossTenantOmitidas = 0
       if (agendaFile && weekBuckets.length > 0) {
         const shotsPayload: Record<string, unknown>[] = []
         for (const bucket of weekBuckets) {
@@ -482,9 +483,10 @@ export function PulsosCuadreSemanalPage() {
           const res = await apiCallLocal({
             action: "saveOperatorShots",
             data: JSON.stringify({ rows: shotsPayload }),
-          }) as { ok?: boolean; upserted?: number; tableMissing?: boolean }
+          }) as { ok?: boolean; upserted?: number; tableMissing?: boolean; skipped?: number }
           shotsUpserted = Number(res?.upserted) || 0
           shotsTableMissing = Boolean(res?.tableMissing)
+          crossTenantOmitidas += Number(res?.skipped) || 0
         }
       }
 
@@ -543,9 +545,10 @@ export function PulsosCuadreSemanalPage() {
           setProgressMsg(`Guardando ${sesionesPayload.length} sesiones…`)
           try {
             const res = await apiCallLocal({ action: "saveSesionesBatch", data: JSON.stringify({ sesiones: sesionesPayload }) }) as
-              { ok?: boolean; inserted?: number; duplicates?: number; errors?: number }
+              { ok?: boolean; inserted?: number; duplicates?: number; errors?: number; skipped?: number }
             sesionesInsertadas = Number(res?.inserted) || 0
             sesionesDuplicadas = Number(res?.duplicates) || 0
+            crossTenantOmitidas += Number(res?.skipped) || 0
             if (sesionesInsertadas > 0) sesionesLocal.push(...sesionesPayload)
           } catch (err) {
             console.warn("saveSesionesBatch error:", err)
@@ -586,6 +589,12 @@ export function PulsosCuadreSemanalPage() {
           `${sesionesInsertadas} sesión(es) AgendaPro guardada(s)` +
             (sesionesDuplicadas > 0 ? ` · ${sesionesDuplicadas} duplicada(s) omitida(s)` : ""),
           "success",
+        )
+      }
+      if (crossTenantOmitidas > 0) {
+        showToast(
+          `${crossTenantOmitidas} fila(s) de sucursales de otro negocio omitida(s) (no tienes acceso a ese tenant)`,
+          "info",
         )
       }
       setStep(3)

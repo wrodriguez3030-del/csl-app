@@ -124,7 +124,8 @@ async function resolveMaintenanceTargetBusiness(
 }
 import { createHash, randomBytes } from "node:crypto"
 import { haversineMeters } from "@/lib/hr-geo"
-import { makeAgendaMatchKey, normalizeSucursal, normalizeOperadora, sucursalesForTenant, sucursalAllowedForTenant } from "@/lib/normalize-pulse"
+import { makeAgendaMatchKey, normalizeSucursal, normalizeOperadora, sucursalesForTenant, sucursalAllowedForTenant, tenantSlugForSucursal } from "@/lib/normalize-pulse"
+import { businessIdForSlug } from "@/lib/business"
 import { toUpperField, toUpperFieldOrNull } from "@/lib/normalize-fields"
 import {
   clienteCosmiatriaToDb,
@@ -162,6 +163,29 @@ function effectiveBusinessId(): string | null {
 function shouldScopeTenant(): boolean {
   const ctx = getBusinessContext()
   return Boolean(ctx && !ctx.bypassTenantFilter)
+}
+
+/**
+ * business_id CORRECTO para una fila de pulsos según SU sucursal, no según el
+ * business activo de la UI. El Excel semanal trae sucursales de CSL y
+ * DEPICENTER mezcladas; estampar todas con el business activo era la causa de
+ * la contaminación cross-tenant recurrente (filas DEPICENTER bajo CSL que la
+ * guardia `sucursalAllowedForTenant` luego oculta a ambos tenants).
+ *
+ * Reglas:
+ *  - sucursal del tenant activo o de tenant desconocido → business activo.
+ *  - sucursal de OTRO tenant conocido:
+ *      · superadmin → business_id del tenant dueño (ruteo automático).
+ *      · usuario normal → null (fila rechazada; no puede escribir cross-tenant).
+ */
+function businessIdForRowSucursal(sucursal: unknown): string | null {
+  const ctx = getBusinessContext()
+  const activeBiz = ctx?.businessId ?? null
+  const ownerSlug = tenantSlugForSucursal(sucursal)
+  if (!ownerSlug) return activeBiz
+  const ownerBiz = businessIdForSlug(ownerSlug)
+  if (!ownerBiz || ownerBiz === activeBiz) return activeBiz
+  return ctx?.isSuperadmin ? ownerBiz : null
 }
 
 /** Base estándar de días hábiles RD para el sueldo diario. */
@@ -3924,13 +3948,26 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         businessId = prof?.business_id ? String(prof.business_id) : null
       }
       if (!businessId) throw new Error("business_id no encontrado")
+      // business_id por FILA según su sucursal (misma regla que
+      // businessIdForRowSucursal, con el fallback a perfil de arriba): el
+      // AgendaPro trae sucursales de ambos tenants mezcladas. Superadmin
+      // rutea al tenant dueño; para usuario normal la fila cross-tenant se
+      // omite (skipped) en vez de contaminar csl_sesiones_cliente.
+      const ctxBatch = getBusinessContext()
+      const resolveRowBiz = (sucursal: unknown): string | null => {
+        const ownerSlug = tenantSlugForSucursal(sucursal)
+        if (!ownerSlug) return businessId
+        const ownerBiz = businessIdForSlug(ownerSlug)
+        if (!ownerBiz || ownerBiz === businessId) return businessId
+        return ctxBatch?.isSuperadmin ? ownerBiz : null
+      }
       const now = new Date().toISOString()
       const mapRow = (raw: unknown) => {
         const r = raw as Record<string, unknown>
         const importHash = typeof r.ImportHash === "string" && r.ImportHash.trim() ? r.ImportHash.trim() : null
         return {
           sesion_id: String(r.SesionID ?? `ses_${Date.now()}_${Math.floor(Math.random() * 1e9)}`),
-          business_id: businessId,
+          business_id: resolveRowBiz(r.Sucursal) as string,
           fecha: dateValue(r.Fecha),
           sucursal: r.Sucursal ?? "",
           cabina: toUpperField(r.Cabina),
@@ -3951,20 +3988,32 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
           updated_at: now,
         }
       }
-      const rows = input.map(mapRow)
-      const received = rows.length
+      const allRows = input.map(mapRow)
+      const received = allRows.length
+      // Filas cross-tenant no permitidas (usuario normal) → se omiten.
+      const rows = allRows.filter(r => Boolean(r.business_id))
+      const skipped = received - rows.length
       // Dedupe en-lote por import_hash.
       const seen = new Set<string>(); const deduped: typeof rows = []
       for (const r of rows) { if (r.import_hash) { if (seen.has(r.import_hash)) continue; seen.add(r.import_hash) } deduped.push(r) }
-      // Hashes ya existentes en DB (este tenant), por chunks.
+      // Hashes ya existentes en DB, por chunks y POR TENANT (las filas pueden
+      // rutearse a más de un business_id).
       const existing = new Set<string>()
-      const hashes = [...seen]
-      for (let i = 0; i < hashes.length; i += 200) {
-        const part = hashes.slice(i, i + 200)
-        const { data } = await sb.from("csl_sesiones_cliente").select("import_hash").eq("business_id", businessId).in("import_hash", part)
-        for (const d of ((data || []) as { import_hash: string | null }[])) if (d.import_hash) existing.add(d.import_hash)
+      const hashesByBiz = new Map<string, string[]>()
+      for (const r of deduped) {
+        if (!r.import_hash) continue
+        const list = hashesByBiz.get(r.business_id) || []
+        list.push(r.import_hash)
+        hashesByBiz.set(r.business_id, list)
       }
-      const toInsert = deduped.filter(r => !r.import_hash || !existing.has(r.import_hash))
+      for (const [biz, hashes] of hashesByBiz) {
+        for (let i = 0; i < hashes.length; i += 200) {
+          const part = hashes.slice(i, i + 200)
+          const { data } = await sb.from("csl_sesiones_cliente").select("import_hash").eq("business_id", biz).in("import_hash", part)
+          for (const d of ((data || []) as { import_hash: string | null }[])) if (d.import_hash) existing.add(`${biz}|${d.import_hash}`)
+        }
+      }
+      const toInsert = deduped.filter(r => !r.import_hash || !existing.has(`${r.business_id}|${r.import_hash}`))
       let inserted = 0, errors = 0
       for (let i = 0; i < toInsert.length; i += 500) {
         const chunk = toInsert.slice(i, i + 500)
@@ -3978,8 +4027,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
           }
         } else inserted += (data?.length || 0)
       }
-      const duplicates = Math.max(0, received - inserted - errors)
-      return { ok: true, received, inserted, duplicates, errors }
+      const duplicates = Math.max(0, received - inserted - errors - skipped)
+      return { ok: true, received, inserted, duplicates, errors, skipped }
     }
     case "deleteSesion":
       await deleteRow("sesiones_cliente", textValue(params, "id"))
@@ -4060,12 +4109,18 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "savePulseReading": {
       const record = parsePayload(params)
       const sb = getSupabaseAdmin()
-      // business_id ACTIVO (el que la UI seleccionó), NO el del perfil del
-      // usuario. Antes esto tomaba profile.business_id (CSL para el superadmin),
-      // así que editar una lectura de Depicenter intentaba guardar bajo CSL y la
-      // fila real de Depicenter nunca se actualizaba (el FIN "no se guardaba").
-      const bizId = effectiveBusinessId()
-      if (!bizId) throw new Error("business_id no encontrado")
+      // business_id según la SUCURSAL de la fila (no ciegamente el activo):
+      // el import semanal trae CSL y DEPICENTER mezclados y estampar todo con
+      // el business activo contaminaba csl_pulse_readings cada semana. Para
+      // superadmin la fila se rutea al tenant dueño de la sucursal; un usuario
+      // normal no puede escribir en otro tenant (error claro, no silencioso).
+      if (!effectiveBusinessId()) throw new Error("business_id no encontrado")
+      const bizId = businessIdForRowSucursal(record.sucursal)
+      if (!bizId) {
+        throw new Error(
+          `La sucursal "${textFrom(record, "sucursal")}" pertenece a otro negocio; esta lectura no se guardó. Cambia al negocio correcto o quita la fila del archivo.`,
+        )
+      }
 
       // Corrección manual de operadora (Auditoría/IA): override con auditoría
       // por fila. Solo se setea corregida_por/en cuando llega un valor; si el
@@ -4272,18 +4327,20 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const rowsInput = Array.isArray(payload.rows) ? payload.rows : []
       if (!rowsInput.length) return { ok: true, upserted: 0 }
       const sb = getSupabaseAdmin()
-      // business_id ACTIVO: los shots de Depicenter se guardan en Depicenter,
-      // NO bajo el perfil del superadmin (CSL). Esta era la fuente de la
-      // contaminación cross-tenant semanal de csl_operator_shots.
-      const bizId = effectiveBusinessId()
-      if (!bizId) throw new Error("business_id no encontrado")
-      const profile = { business_id: bizId }
+      // business_id por FILA según su sucursal (businessIdForRowSucursal):
+      // el AgendaPro semanal trae sucursales de ambos tenants; estampar todo
+      // con el business activo era la fuente de la contaminación cross-tenant
+      // semanal de csl_operator_shots. Superadmin rutea al tenant dueño;
+      // filas de otro tenant para un usuario normal se OMITEN (skipped).
+      if (!effectiveBusinessId()) throw new Error("business_id no encontrado")
 
       const now = new Date().toISOString()
+      let skipped = 0
       const toUpsert = rowsInput.map((raw) => {
         const r = raw as Record<string, unknown>
+        const rowBiz = businessIdForRowSucursal(r.sucursal_normalizada ?? r.sucursal_original)
         return {
-          business_id: profile.business_id,
+          business_id: rowBiz as string,
           period_start: String(r.period_start || ""),
           period_end: String(r.period_end || ""),
           period_label: r.period_label ? String(r.period_label) : null,
@@ -4297,10 +4354,11 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
           source_type: r.source_type ? String(r.source_type) : "agendapro",
           updated_at: now,
         }
-      }).filter(r =>
-        r.period_start && r.period_end && r.sucursal_normalizada && r.operadora_normalizada
-      )
-      if (!toUpsert.length) return { ok: true, upserted: 0 }
+      }).filter(r => {
+        if (!r.business_id) { skipped++; return false }
+        return Boolean(r.period_start && r.period_end && r.sucursal_normalizada && r.operadora_normalizada)
+      })
+      if (!toUpsert.length) return { ok: true, upserted: 0, skipped }
 
       const { data, error } = await sb
         .from("csl_operator_shots")
@@ -4316,7 +4374,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         }
         throw error
       }
-      return { ok: true, upserted: (data || []).length }
+      return { ok: true, upserted: (data || []).length, skipped }
     }
 
     case "recalculateDispOperador": {
