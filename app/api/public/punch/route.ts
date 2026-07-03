@@ -6,6 +6,12 @@
  * Valida QR del empleado, geocerca (Haversine) y horario, y registra la marca.
  * Devuelve JSON con error ESPECÍFICO (no genérico).
  *
+ * Aplica hr_punch_modality_config (alcance empleado > sucursal > global, igual
+ * que /api/public/mobile-punch): allow_qr/allow_kiosk apagan el kiosko,
+ * require_location=false tolera falta de GPS y allow_remote_punch permite
+ * ponchar fuera de la geocerca. Antes el kiosko ignoraba la configuración de
+ * RR.HH. → Modalidades y solo el ponche móvil la respetaba.
+ *
  * body: { mode: "resolve"|"punch", device_token, qr_token, punch_type?, latitude?, longitude?, device_info? }
  */
 import { NextResponse } from "next/server"
@@ -33,6 +39,17 @@ async function empInfo(sb: SB, businessId: string, employeeId: string) {
   const s = sol as { nombre?: string; apellido?: string; payload_json?: Record<string, unknown> } | null
   if (s) return { nombre: `${s.nombre ?? ""} ${s.apellido ?? ""}`.trim() || employeeId, sucursal: t((s.payload_json || {}).sucursal, (s.payload_json || {}).Sucursal) }
   return { nombre: employeeId, sucursal: "" }
+}
+
+/** Config de modalidades efectiva: empleado > sucursal > global (solo activas).
+ *  Espejo del resolver de mobile-punch — misma precedencia en ambos endpoints. */
+async function resolveModalityConfig(sb: SB, businessId: string, sucursal: string | null, employeeId: string) {
+  const { data } = await sb.from("hr_punch_modality_config").select("*").eq("business_id", businessId)
+  const rows = ((data || []) as Record<string, unknown>[]).filter((r) => r.active !== false)
+  const byEmp = rows.find((r) => r.employee_id === employeeId)
+  const bySuc = rows.find((r) => !r.employee_id && r.sucursal && sucursal && r.sucursal === sucursal)
+  const global = rows.find((r) => !r.employee_id && !r.sucursal)
+  return (byEmp || bySuc || global || null) as Record<string, unknown> | null
 }
 
 async function schedDay(sb: SB, businessId: string, employeeId: string, dateStr: string, sucursal: string | null) {
@@ -93,6 +110,16 @@ export async function POST(request: Request) {
   if (mode === "resolve") return json({ ok: true, employee_nombre: info.nombre, sucursal })
 
   // 3) Punch.
+  // Modalidades (RR.HH. → Modalidades): el kiosko QR debe respetar la config
+  // igual que el ponche móvil. allow_qr apaga la modalidad QR; allow_kiosk
+  // apaga el kiosko como canal.
+  const cfg = await resolveModalityConfig(sb, businessId, sucursal, employeeId)
+  if (cfg && (cfg.allow_qr === false || cfg.allow_kiosk === false)) {
+    return json({ ok: false, code: "modality_off", error: "El ponche por QR en kiosko no está habilitado (revisa RR.HH. → Configuración de modalidades)" })
+  }
+  const allowRemote = Boolean(cfg && cfg.allow_remote_punch === true)
+  const requireLocation = !cfg || cfg.require_location !== false
+
   const punchType = String(body.punch_type || "entrada")
   const lat = body.latitude != null && body.latitude !== "" ? Number(body.latitude) : null
   const lng = body.longitude != null && body.longitude !== "" ? Number(body.longitude) : null
@@ -101,8 +128,12 @@ export async function POST(request: Request) {
   const { data: geo } = await sb.from("hr_branch_geofences").select("latitude, longitude, radius_meters, active").eq("business_id", businessId).eq("sucursal", sucursal || "").maybeSingle()
   const g = geo as { latitude: number; longitude: number; radius_meters: number; active: boolean } | null
   if (g && g.active && (Number(g.latitude) !== 0 || Number(g.longitude) !== 0)) {
-    if (lat == null || lng == null) { status = "rejected"; code = "no_gps"; reason = "Ubicación no disponible (activa el GPS y otorga permiso)" }
-    else { distance = haversineMeters(lat, lng, Number(g.latitude), Number(g.longitude)); if (distance > Number(g.radius_meters)) { status = "rejected"; code = "geofence"; reason = `Fuera de la ubicación autorizada (${Math.round(distance)} m > ${g.radius_meters} m)` } }
+    if (lat == null || lng == null) {
+      if (requireLocation) { status = "rejected"; code = "no_gps"; reason = "Ubicación no disponible (activa el GPS y otorga permiso)" }
+    } else {
+      distance = haversineMeters(lat, lng, Number(g.latitude), Number(g.longitude))
+      if (distance > Number(g.radius_meters) && !allowRemote) { status = "rejected"; code = "geofence"; reason = `Fuera de la ubicación autorizada (${Math.round(distance)} m > ${g.radius_meters} m)` }
+    }
   }
 
   if (status === "approved") {
@@ -139,7 +170,7 @@ export async function POST(request: Request) {
 
   const { error: insErr } = await sb.from("hr_punches").insert({
     business_id: businessId, employee_id: employeeId, type: punchType, punched_at: nowDate.toISOString(), sucursal,
-    source: "qr_kiosk", is_correction: false, latitude: lat, longitude: lng, distance_meters: distance, device_id: dev.id,
+    source: "qr_kiosk", modality: "qr", is_correction: false, latitude: lat, longitude: lng, distance_meters: distance, device_id: dev.id,
     status, rejection_reason: reason, device_info: String(body.device_info || "") || null,
     scheduled_start: scheduledStart, scheduled_end: scheduledEnd, expected_minutes: expectedMin,
     worked_minutes: workedMin, late_minutes: lateMin, early_leave_minutes: earlyMin, overtime_minutes: overtimeMin,

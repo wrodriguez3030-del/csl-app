@@ -18,6 +18,28 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.13.0] — 2026-07-03
+
+### Fixed
+- **El kiosko QR ignoraba la configuración de modalidades de RR.HH.**
+  `/api/public/punch` no leía `hr_punch_modality_config` (pendiente documentado
+  del epic Ponche): apagar el QR para un empleado/sucursal en RR.HH. →
+  Configuración de modalidades solo afectaba al ponche móvil. Ahora el kiosko
+  aplica la config con la misma precedencia (empleado > sucursal > global):
+  - `allow_qr=false` o `allow_kiosk=false` → rechaza con `modality_off` y
+    mensaje claro (no registra la marca).
+  - `require_location=false` → tolera falta de GPS aunque haya geocerca.
+  - `allow_remote_punch=true` → permite ponchar fuera de la geocerca
+    (la distancia se sigue registrando).
+  - El insert ahora estampa `modality="qr"` (antes quedaba null; el dashboard
+    de ponche ya segmenta por modalidad).
+  Probado e2e contra server local + db-cls
+  (`scripts/_test-kiosk-modality.js`, 5/5 PASS con dispositivo/QR/config
+  sintéticos y auto-limpieza). Config global actual (allow_qr=t en ambos
+  tenants) → cero cambio de comportamiento hasta que se configure lo contrario.
+
+---
+
 ## [0.12.1] — 2026-07-03
 
 ### Added
