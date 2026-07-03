@@ -26,6 +26,10 @@ export interface SystemUser {
   businessId?: string
   /** Si true, ignora filtros multi-tenant (acceso global). undefined = false. */
   isSuperadmin?: boolean
+  /** Permisos granulares (csl_user_profiles.permissions), p.ej.
+   *  "material_requisitions.delete". Independientes de menus y de
+   *  isAdmin/isSuperadmin. undefined = pre-migración 202607020001. */
+  permissions?: string[]
 }
 
 export const USERS_STORAGE_KEY = "csl_system_users_v1"
@@ -86,6 +90,9 @@ function userFromProfile(profile: Record<string, unknown>, fallbackId: string, f
     businessId,
     businessSlug: businessSlug === "csl" || businessSlug === "depicenter" ? businessSlug : undefined,
     isSuperadmin,
+    permissions: Array.isArray(profile.permissions)
+      ? (profile.permissions as unknown[]).filter((p): p is string => typeof p === "string" && p.length > 0)
+      : [],
   }
 }
 

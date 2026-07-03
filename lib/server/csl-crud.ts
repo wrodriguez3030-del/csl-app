@@ -814,7 +814,7 @@ export async function loadBusinessContext(userId: string): Promise<BusinessConte
   try {
     const { data, error } = await supabase
       .from("csl_user_profiles")
-      .select("business_id, is_superadmin, is_admin, businesses(slug)")
+      .select("business_id, is_superadmin, is_admin, permissions, businesses(slug)")
       .eq("user_id", userId)
       .maybeSingle()
     if (error || !data) return null
@@ -837,6 +837,10 @@ export async function loadBusinessContext(userId: string): Promise<BusinessConte
         if (branches.length) branchScope = { all: false, branches }
       } catch { /* tabla aún no migrada → all */ }
     }
+    // Permisos granulares (202607020001). Solo strings válidos.
+    const permissions = Array.isArray(row.permissions)
+      ? (row.permissions as unknown[]).filter((p): p is string => typeof p === "string" && p.length > 0)
+      : []
     return {
       businessId,
       businessSlug: String(businesses?.slug ?? "csl"),
@@ -846,6 +850,7 @@ export async function loadBusinessContext(userId: string): Promise<BusinessConte
       // lo apaga en cuanto la UI manda un business activo.
       bypassTenantFilter: isSuperadmin,
       branchScope,
+      permissions,
     }
   } catch {
     // Si la columna no existe (pre-migración), Supabase retorna error 42703.

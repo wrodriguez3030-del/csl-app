@@ -51,4 +51,9 @@ export interface BusinessContext {
    *  (admin/superadmin o usuario sin restricción). Si all=false, solo ve
    *  registros cuya sucursal normalizada esté en `branches`. */
   branchScope?: { all: boolean; branches: string[] }
+  /** Permisos granulares por usuario (csl_user_profiles.permissions), tipo
+   *  "material_requisitions.delete". Independientes de menus (visibilidad de
+   *  tabs) y de is_admin/is_superadmin (roles): permiten habilitar UNA acción
+   *  concreta a un usuario normal sin elevarlo a admin. */
+  permissions?: string[]
 }

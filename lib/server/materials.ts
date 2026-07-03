@@ -35,6 +35,16 @@ function isManager(): boolean {
   return Boolean(ctx?.isAdmin || ctx?.isSuperadmin)
 }
 
+/** Permiso granular para eliminar requisiciones sin ser admin/superadmin
+ *  (csl_user_profiles.permissions, migración 202607020001). Espejo del check
+ *  del frontend en req-mat-aprobaciones-page.tsx — el backend nunca confía
+ *  solo en la UI. Sigue scopeado al business_id activo del usuario. */
+const PERM_REQ_DELETE = "material_requisitions.delete"
+function canDeleteRequisitions(): boolean {
+  const ctx = getBusinessContext()
+  return Boolean(ctx?.isAdmin || ctx?.isSuperadmin || ctx?.permissions?.includes(PERM_REQ_DELETE))
+}
+
 // ── Auditoría (best-effort) ─────────────────────────────────────────────────
 async function logAudit(
   user: ActionUser,
@@ -389,7 +399,10 @@ export async function deleteRequisition(params: ActionParams, user: ActionUser) 
   const req = await fetchReq(sb, id)
   if (req.deleted_at) return { ok: true } // idempotente: ya estaba eliminada
 
-  const manager = isManager()
+  // Puede eliminar: admin/superadmin, usuario con el permiso granular
+  // material_requisitions.delete (p.ej. Carlos Arias, compras), o el creador
+  // mientras la requisición no haya entrado en compra/recepción.
+  const manager = canDeleteRequisitions()
   const isCreator = Boolean(req.requested_by && user.id && String(req.requested_by) === String(user.id))
   const canDelete = manager || (isCreator && !LOCKED_FOR_CREATOR.has(String(req.status)))
   if (!canDelete) throw new Error("No tienes permiso para eliminar esta requisición.")

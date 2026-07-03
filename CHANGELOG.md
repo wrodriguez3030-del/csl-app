@@ -18,6 +18,39 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.12.0] — 2026-07-02
+
+### Added
+- **Permisos granulares por usuario (`csl_user_profiles.permissions text[]`).**
+  Migración aditiva `202607020001_user_profile_permissions.sql` (aplicada a
+  db-cls). Permiten habilitar UNA acción concreta a un usuario normal sin
+  elevarlo a admin. Independientes de `menus` (visibilidad) y de
+  `is_admin`/`is_superadmin` (roles). Fluyen por `loadBusinessContext`
+  (backend, `BusinessContext.permissions`) y por la sesión del navegador
+  (`SystemUser.permissions`; el resync de v0.9.2 los mantiene al día sin
+  re-login).
+- **Primer permiso: `material_requisitions.delete`** otorgado a CARLOS
+  (Carlos Arias, compras). En Requisición de Materiales → Aprobaciones el
+  menú Acciones → Eliminar ya no le sale deshabilitado: abre el modal
+  "Eliminar requisición" (sucursal, fecha, estado, materiales, motivo
+  opcional) y hace el soft delete existente (`deleted_at`/`deleted_by`/
+  `deleted_reason` + `updated_at`, `deleted_by` = usuario real, auditado en
+  `material_requisition_audit_logs`).
+
+### Fixed
+- **Eliminar salía deshabilitado para usuarios con rol de compras.** El gate
+  (frontend `canDelete` y backend `deleteRequisition`) solo contemplaba
+  admin/superadmin o al creador de la requisición. Ahora también acepta el
+  permiso granular. La validación real sigue en el backend
+  (`canDeleteRequisitions()` en `lib/server/materials.ts`) y todo queda
+  scopeado al `business_id` del usuario (sin mezclar CSL con Depicenter).
+  Probado end-to-end contra el server local + db-cls
+  (`scripts/_test-reqmat-delete-perm.js`, 7/7 PASS: elimina con permiso,
+  campos de soft delete correctos, usuario normal sin permiso no elimina,
+  cross-tenant bloqueado).
+
+---
+
 ## [0.11.0] — 2026-07-02
 
 ### Fixed

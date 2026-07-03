@@ -136,8 +136,12 @@ export function ReqMatAprobacionesPage() {
     }
   }
 
+  // Permiso granular espejo del backend (materials.ts PERM_REQ_DELETE):
+  // habilita Eliminar a un usuario normal (p.ej. Carlos Arias, compras) sin
+  // elevarlo a admin. La validación real la hace SIEMPRE el backend.
+  const hasDeletePerm = Boolean(user?.permissions?.includes("material_requisitions.delete"))
   const canDelete = (r: Requisition): boolean => {
-    if (isManager) return true
+    if (isManager || hasDeletePerm) return true
     const isCreator = Boolean(user?.id && r.requestedBy && String(user.id) === String(r.requestedBy))
     return isCreator && !LOCKED_FOR_CREATOR.includes(r.status)
   }
