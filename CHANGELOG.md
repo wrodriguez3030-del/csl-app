@@ -18,6 +18,19 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.12.1] — 2026-07-03
+
+### Added
+- **Prueba e2e del flujo completo de Requisición de Materiales**
+  (`scripts/_test-reqmat-full-flow.js`): crear (2 ítems) → listar → aprobar
+  con ajuste de cantidad → rechazar con motivo → comprar (costo + suplidor) →
+  recibir completo → estados finales → consolidado → dashboard. Corre contra
+  el server local + db-cls con un admin desechable y limpia todo al final.
+  11/11 PASS — cierra el pendiente "validar flujo de compras" del módulo
+  (v0.3.0). Sin cambios de producto.
+
+---
+
 ## [0.12.0] — 2026-07-02
 
 ### Added
