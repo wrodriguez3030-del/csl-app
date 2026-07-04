@@ -18,6 +18,24 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.14.1] — 2026-07-03
+
+### Fixed
+- **Contratos y Documentos de RR.HH. operaban sobre el business del PERFIL,
+  no el activo.** Los 6 handlers (`getHrContracts`, `saveHrContract`,
+  `deleteHrContract`, `getHrDocuments`, `saveHrDocument`, `deleteHrDocument`)
+  hacían su propio lookup de `csl_user_profiles.business_id`, ignorando el
+  negocio seleccionado en la UI: un superadmin viendo Depicenter leía y
+  escribía contratos/documentos de CSL. Ahora usan `effectiveBusinessId()`
+  (mismo patrón v0.2.13 del resto de handlers). Barrido del antipatrón en
+  todo `_handlers.ts`: no quedan más instancias (los `profile = { business_id:
+  bizId }` de operator_shots/recálculo son alias correctos del activo).
+  Regresión e2e `scripts/_test-hr-contracts-scoping.js` (6/6 PASS): contrato
+  guardado con Depicenter activo cae bajo DEPICENTER, no se ve desde CSL, y
+  se borra con el tenant correcto.
+
+---
+
 ## [0.14.0] — 2026-07-03
 
 ### Fixed

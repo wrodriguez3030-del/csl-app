@@ -589,13 +589,15 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     }
     case "getHrContracts": {
       const sb = getSupabaseAdmin()
-      const { data: profile } = await sb
-        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
-      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      // business_id ACTIVO (el que la UI seleccionó), NO el del perfil del
+      // usuario: para un superadmin viendo Depicenter debe operar Depicenter.
+      // (Mismo patrón v0.2.13 aplicado al resto de handlers pulse.)
+      const bizId = effectiveBusinessId()
+      if (!bizId) throw new Error("business_id no encontrado")
       const { data, error } = await sb
         .from("hr_contracts")
         .select("*")
-        .eq("business_id", profile.business_id)
+        .eq("business_id", bizId)
         .order("start_date", { ascending: false })
       if (error) {
         const code = (error as { code?: string }).code
@@ -608,11 +610,13 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "saveHrContract": {
       const record = parsePayload(params)
       const sb = getSupabaseAdmin()
-      const { data: profile } = await sb
-        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
-      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      // business_id ACTIVO (el que la UI seleccionó), NO el del perfil del
+      // usuario: para un superadmin viendo Depicenter debe operar Depicenter.
+      // (Mismo patrón v0.2.13 aplicado al resto de handlers pulse.)
+      const bizId = effectiveBusinessId()
+      if (!bizId) throw new Error("business_id no encontrado")
       const row: Record<string, unknown> = {
-        business_id: profile.business_id,
+        business_id: bizId,
         employee_id: textFrom(record, "employee_id"),
         contract_type: textFrom(record, "contract_type") || "indefinido",
         start_date: textFrom(record, "start_date"),
@@ -665,14 +669,16 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const id = textValue(params, "id")
       if (!id) throw new Error("id obligatorio")
       const sb = getSupabaseAdmin()
-      const { data: profile } = await sb
-        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
-      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      // business_id ACTIVO (el que la UI seleccionó), NO el del perfil del
+      // usuario: para un superadmin viendo Depicenter debe operar Depicenter.
+      // (Mismo patrón v0.2.13 aplicado al resto de handlers pulse.)
+      const bizId = effectiveBusinessId()
+      if (!bizId) throw new Error("business_id no encontrado")
       const { error } = await sb
         .from("hr_contracts")
         .delete()
         .eq("id", id)
-        .eq("business_id", profile.business_id)
+        .eq("business_id", bizId)
       if (error) {
         const code = (error as { code?: string }).code
         if (code === "42P01") return { ok: true, tableMissing: true }
@@ -684,13 +690,15 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     // ── HR · Fase 1 · Documentos empleados ───────────────────────────────
     case "getHrDocuments": {
       const sb = getSupabaseAdmin()
-      const { data: profile } = await sb
-        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
-      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      // business_id ACTIVO (el que la UI seleccionó), NO el del perfil del
+      // usuario: para un superadmin viendo Depicenter debe operar Depicenter.
+      // (Mismo patrón v0.2.13 aplicado al resto de handlers pulse.)
+      const bizId = effectiveBusinessId()
+      if (!bizId) throw new Error("business_id no encontrado")
       const { data, error } = await sb
         .from("hr_documents")
         .select("*")
-        .eq("business_id", profile.business_id)
+        .eq("business_id", bizId)
         .order("uploaded_at", { ascending: false })
       if (error) {
         const code = (error as { code?: string }).code
@@ -703,11 +711,13 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "saveHrDocument": {
       const record = parsePayload(params)
       const sb = getSupabaseAdmin()
-      const { data: profile } = await sb
-        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
-      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      // business_id ACTIVO (el que la UI seleccionó), NO el del perfil del
+      // usuario: para un superadmin viendo Depicenter debe operar Depicenter.
+      // (Mismo patrón v0.2.13 aplicado al resto de handlers pulse.)
+      const bizId = effectiveBusinessId()
+      if (!bizId) throw new Error("business_id no encontrado")
       const row: Record<string, unknown> = {
-        business_id: profile.business_id,
+        business_id: bizId,
         employee_id: textFrom(record, "employee_id"),
         document_type: textFrom(record, "document_type") || "otros",
         title: textFrom(record, "title"),
@@ -736,14 +746,16 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const id = textValue(params, "id")
       if (!id) throw new Error("id obligatorio")
       const sb = getSupabaseAdmin()
-      const { data: profile } = await sb
-        .from("csl_user_profiles").select("business_id").eq("user_id", user.id).single()
-      if (!profile?.business_id) throw new Error("business_id no encontrado")
+      // business_id ACTIVO (el que la UI seleccionó), NO el del perfil del
+      // usuario: para un superadmin viendo Depicenter debe operar Depicenter.
+      // (Mismo patrón v0.2.13 aplicado al resto de handlers pulse.)
+      const bizId = effectiveBusinessId()
+      if (!bizId) throw new Error("business_id no encontrado")
       const { error } = await sb
         .from("hr_documents")
         .delete()
         .eq("id", id)
-        .eq("business_id", profile.business_id)
+        .eq("business_id", bizId)
       if (error) {
         const code = (error as { code?: string }).code
         if (code === "42P01") return { ok: true, tableMissing: true }
