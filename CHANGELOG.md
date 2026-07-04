@@ -18,6 +18,29 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.14.0] — 2026-07-03
+
+### Fixed
+- **Cerrado el último path de escritura cross-tenant de pulsos:
+  `saveSesion`/`saveLectura` (legacy fila-a-fila).** El import Excel de la
+  pantalla *Sesiones* y el sync de *Auditoría* usan estas acciones, que aún
+  estampaban el business ACTIVO sin mirar la sucursal de la fila (la misma
+  familia del bug corregido en v0.11.0 para el asistente de cuadre). Ahora
+  rutean con `businessIdForRowSucursal` vía `upsertRow(..., {targetBusinessId})`.
+- **`upsertRow`: la guardia anti-fuga de `targetBusinessId` ahora exime al
+  superadmin** (antes exigía `bypassTenantFilter`, así que un superadmin
+  scopeado a un negocio no podía rutear filas al tenant dueño). Un usuario
+  normal sigue bloqueado de escribir en otro tenant.
+
+### Added
+- **Prueba e2e del ruteo multi-tenant de pulsos**
+  (`scripts/_test-pulse-tenant-routing.js`, 8/8 PASS): superadmin con CSL
+  activo guarda lectura/sesión de Depicenter y caen bajo DEPICENTER; usuario
+  normal recibe error claro sin escribir nada; `saveOperatorShots` reporta
+  `skipped`. Cubre también el fix de v0.11.0 que había salido sin test.
+
+---
+
 ## [0.13.0] — 2026-07-03
 
 ### Fixed

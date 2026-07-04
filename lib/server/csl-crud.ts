@@ -231,9 +231,12 @@ export async function upsertRow(entity: string, row: Row, opts?: { targetBusines
   }
   if (!exempt) {
     if (opts?.targetBusinessId) {
-      // Tenant explícito (incluye superadmin en "Todos"): la fila pertenece a
-      // ESE negocio. Anti-fuga: un no-superadmin no puede apuntar a otro tenant.
-      if (ctx && !ctx.bypassTenantFilter && opts.targetBusinessId !== ctx.businessId) {
+      // Tenant explícito: la fila pertenece a ESE negocio. Anti-fuga: un
+      // no-superadmin no puede apuntar a otro tenant. Un superadmin SÍ puede
+      // aunque esté scopeado (bypassTenantFilter=false): el ruteo por sucursal
+      // de los imports (businessIdForRowSucursal) manda cada fila a su tenant
+      // dueño sin que el superadmin cambie el negocio activo.
+      if (ctx && !ctx.bypassTenantFilter && !ctx.isSuperadmin && opts.targetBusinessId !== ctx.businessId) {
         throw new Error(`Intento de escribir en business_id ajeno bloqueado`)
       }
       payload.business_id = opts.targetBusinessId

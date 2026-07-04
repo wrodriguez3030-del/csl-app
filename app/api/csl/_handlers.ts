@@ -3882,8 +3882,14 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "updateLectura":
     case "saveLectura": {
       const record = parsePayload(params)
+      // Ruteo por sucursal (misma regla que savePulseReading): la fila va al
+      // tenant DUEÑO de su sucursal, no ciegamente al business activo.
+      const rowBizLectura = businessIdForRowSucursal(record.Sucursal)
+      if (!rowBizLectura) {
+        throw new Error(`La sucursal "${textFrom(record, "Sucursal")}" pertenece a otro negocio; la lectura no se guardó.`)
+      }
       const row = { lectura_id: String(record.LecturaID ?? params.id ?? `lec_${Date.now()}`), fecha_semana: dateValue(record.FechaSemana), equipo_id: record.EquipoID ?? "", sucursal: record.Sucursal ?? "", cabina: toUpperField(record.Cabina), operadora_id: record.OperadoraID ?? "", lectura_inicial: numberFrom(record, "LecturaInicial"), lectura_final: numberFrom(record, "LecturaFinal"), diferencia_real: numberFrom(record, "DiferenciaReal"), observaciones: record.Observaciones ?? "" }
-      await upsertRow("lecturas_semanales", row)
+      await upsertRow("lecturas_semanales", row, { targetBusinessId: rowBizLectura })
       return { ok: true, record: fromDb("lecturas_semanales", row) }
     }
     case "deleteLectura":
@@ -3917,8 +3923,14 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         fila_origen: typeof record.FilaOrigen === "number" ? record.FilaOrigen : null,
         import_hash: importHash,
       }
+      // Ruteo por sucursal (misma regla que saveSesionesBatch): el import
+      // fila-a-fila de la pantalla Sesiones también trae sucursales mezcladas.
+      const rowBizSesion = businessIdForRowSucursal(record.Sucursal)
+      if (!rowBizSesion) {
+        throw new Error(`La sucursal "${textFrom(record, "Sucursal")}" pertenece a otro negocio; la sesión no se guardó.`)
+      }
       try {
-        await upsertRow("sesiones_cliente", row)
+        await upsertRow("sesiones_cliente", row, { targetBusinessId: rowBizSesion })
       } catch (err) {
         // El UNIQUE parcial csl_sesiones_cliente_import_hash_uidx dispara
         // 23505 cuando el mismo Excel se sube dos veces. Esto NO es error
