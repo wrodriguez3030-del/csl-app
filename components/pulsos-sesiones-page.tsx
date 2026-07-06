@@ -26,6 +26,7 @@ import {
   type ParseAgendaProResult,
 } from "@/lib/agendapro-parser"
 import { operationalWeekStart, operationalWeekRangeLabel } from "@/lib/operational-week"
+import { normalizeOperadora } from "@/lib/normalize-pulse"
 import { usePagination } from "@/lib/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 
@@ -575,7 +576,10 @@ export function PulsosSesionesPage() {
       if (filterDesde && s.Fecha < filterDesde) return false
       if (filterHasta && s.Fecha > filterHasta) return false
       if (filterSemana !== "todas" && weekStartIso(s.Fecha) !== filterSemana) return false
-      if (filterOp !== "todas" && s.OperadoraID !== filterOp) return false
+      // Filtro por NOMBRE normalizado (alias incluidos): las sesiones guardan el
+      // nombre de la operadora tal como vino de la fuente (ej. "Katherine"),
+      // y el filtro ofrece el nombre oficial del catálogo (ej. "KATHERIN").
+      if (filterOp !== "todas" && normalizeOperadora(s.OperadoraID) !== normalizeOperadora(filterOp)) return false
       if (filterSuc !== "todas" && s.Sucursal !== filterSuc) return false
       if (needle) {
         const haystack = [
@@ -775,7 +779,7 @@ export function PulsosSesionesPage() {
             <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="todas">Todas</SelectItem>
-              {dbPulsos.operadoras.map(o => <SelectItem key={o.OperadoraID} value={o.OperadoraID}>{o.Nombre}</SelectItem>)}
+              {dbPulsos.operadoras.map(o => <SelectItem key={o.OperadoraID} value={o.Nombre}>{o.Nombre}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
@@ -978,8 +982,11 @@ export function PulsosSesionesPage() {
               }}>
                 <SelectTrigger><SelectValue placeholder="Operadora" /></SelectTrigger>
                 <SelectContent>
+                  {/* value = NOMBRE (no el id técnico op_...): la sesión guarda el
+                      nombre visible, que es lo que muestran Registro/Auditoría y lo
+                      que matchea el cálculo de DISP OPERADOR (makeAgendaMatchKey). */}
                   {dbPulsos.operadoras.filter(o => o.Estado === "Activa").map(o => (
-                    <SelectItem key={o.OperadoraID} value={o.OperadoraID}>{o.Nombre}</SelectItem>
+                    <SelectItem key={o.OperadoraID} value={o.Nombre}>{o.Nombre}</SelectItem>
                   ))}
                   {dbPulsos.operadoras.length === 0 && (
                     <>

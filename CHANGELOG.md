@@ -18,6 +18,26 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.15.1] — 2026-07-06
+
+### Fixed
+- **Operadoras: la columna "ID" mostraba ids técnicos** (`op_1777497348146`,
+  alias legacy "Emely"/"Katherine"). La columna se eliminó de la vista: el
+  dato principal es el NOMBRE oficial (columna "Operadora", primera de la
+  tabla). El `OperadoraID` técnico se CONSERVA internamente (key de fila,
+  editar, eliminar, updateOperadora/deleteOperadora) — solo dejó de mostrarse.
+  Ver/Imprimir también muestran únicamente campos legibles (Nombre, Sucursal,
+  Estado, Notas).
+- **Registro de servicios: Nueva Sesión guardaba el id técnico como
+  operadora.** El dropdown ahora guarda el NOMBRE (lo que muestran las tablas
+  y lo que matchea `makeAgendaMatchKey` en Auditoría/Cuadre; un `op_...` nunca
+  matcheaba y la sesión manual no contaba para DISP OPERADOR).
+- **Filtro "Operadora" del Registro** ahora filtra por nombre normalizado con
+  alias ("Katherine" del Excel matchea el oficial "KATHERIN") en vez de
+  comparación exacta contra el id del catálogo, que no encontraba nada.
+
+---
+
 ## [0.15.0] — 2026-07-06
 
 ### Fixed

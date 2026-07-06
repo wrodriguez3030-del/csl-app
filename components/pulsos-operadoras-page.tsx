@@ -157,7 +157,6 @@ export function PulsosOperadorasPage() {
     if (!sortCol) return 0
     let va: any, vb: any
     switch(sortCol) {
-      case "OperadoraID": va = String(a.OperadoraID || ""); vb = String(b.OperadoraID || ""); break
       case "Nombre": va = String(a.Nombre || ""); vb = String(b.Nombre || ""); break
       case "Sucursal": va = String(a.Sucursal || ""); vb = String(b.Sucursal || ""); break
       case "Estado": va = String(a.Estado || ""); vb = String(b.Estado || ""); break
@@ -189,8 +188,10 @@ export function PulsosOperadorasPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className={SEQ_HEADER_CLASS}>#</TableHead>
-                <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("OperadoraID")}>ID{sortIcon("OperadoraID")}</TableHead>
-                <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Nombre")}>Nombre{sortIcon("Nombre")}</TableHead>
+                {/* El id técnico (OperadoraID: "op_...", alias legacy) NO se muestra:
+                    el dato principal para el usuario es el NOMBRE. El id se conserva
+                    internamente como key/relación para editar, eliminar y sesiones. */}
+                <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Nombre")}>Operadora{sortIcon("Nombre")}</TableHead>
                 <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Sucursal")}>Sucursal{sortIcon("Sucursal")}</TableHead>
                 <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Estado")}>Estado{sortIcon("Estado")}</TableHead>
                 <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("Notas")}>Notas{sortIcon("Notas")}</TableHead>
@@ -200,7 +201,7 @@ export function PulsosOperadorasPage() {
             <TableBody>
               {dbPulsos.operadoras.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
                     No hay operadoras registradas. Agrega la primera.
                   </TableCell>
                 </TableRow>
@@ -208,7 +209,6 @@ export function PulsosOperadorasPage() {
                 sortedOperadoras.map((op, i) => (
                   <TableRow key={op.OperadoraID}>
                     <TableCell className="text-center"><SeqBadge n={i + 1} /></TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{op.OperadoraID}</TableCell>
                     <TableCell className="font-medium">{op.Nombre}</TableCell>
                     <TableCell>{op.Sucursal}</TableCell>
                     <TableCell>
@@ -221,7 +221,13 @@ export function PulsosOperadorasPage() {
                       <div className="flex gap-1 justify-end">
                         <RecordActions
                           title={`Operadora: ${op.Nombre}`}
-                          record={op as unknown as Record<string, unknown>}
+                          // Ver/Imprimir sin el id técnico: solo campos legibles.
+                          record={{
+                            Nombre: op.Nombre,
+                            Sucursal: op.Sucursal,
+                            Estado: op.Estado,
+                            Notas: op.Notas || "-",
+                          }}
                           onEdit={() => openEdit(op)}
                           onDelete={() => handleDelete(op)}
                         />
