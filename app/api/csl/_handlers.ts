@@ -4146,6 +4146,18 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         )
       }
 
+      // GUARDIA: nunca aceptar una semana invertida (start > end). Un período
+      // invertido (ej. filename "29_04_Julio" parseado como 29-jul → 04-jul)
+      // hace que ningún disparo de operadora caiga en el rango y toda la
+      // semana quede con DISP OPERADOR = 0 falso en la Auditoría.
+      const psGuard = textFrom(record, "period_start").slice(0, 10)
+      const peGuard = textFrom(record, "period_end").slice(0, 10)
+      if (psGuard && peGuard && psGuard > peGuard) {
+        throw new Error(
+          `Período inválido: empieza ${psGuard} pero termina ${peGuard}. Revisa el rango de la semana (¿la semana cruza de mes?).`,
+        )
+      }
+
       // Corrección manual de operadora (Auditoría/IA): override con auditoría
       // por fila. Solo se setea corregida_por/en cuando llega un valor; si el
       // payload no trae el campo, NO se toca (preserva una corrección previa).
@@ -4432,20 +4444,40 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       // Fuente PRIMARIA: csl_operator_shots (resumen semanal por sucursal+op).
       // Fuente FALLBACK: csl_sesiones_cliente (filas individuales) cuando el
       // tenant no tiene operator_shots o la tabla no existe.
-      const shotsByKey = new Map<string, number>()
-      try {
+      // Los errores de consulta NO se tragan en silencio: se reportan en
+      // `warnings` para que el caller pueda distinguir "sin datos" de "falló
+      // la consulta" (un fallo silencioso aquí dejaba DISP OPERADOR=0 falso).
+      const warnings: string[] = []
+      // Match exacto (start|end|suc|op) y match por semana (start|suc|op): los
+      // readings importados lun-dom (end domingo) no matcheaban los shots
+      // lun-sáb por period_end. El ancla real de la semana es period_start.
+      const shotsByExactKey = new Map<string, number>()
+      const shotsByWeekKey = new Map<string, { disparos: number; updated: string }>()
+      {
         const { data: shots, error: shErr } = await sb
           .from("csl_operator_shots")
-          .select("period_start, period_end, sucursal_normalizada, operadora_normalizada, disparos")
+          .select("period_start, period_end, sucursal_normalizada, operadora_normalizada, disparos, updated_at")
           .eq("business_id", profile.business_id)
-        if (!shErr && shots) {
-          for (const s of shots) {
-            const k = `${String(s.period_start).slice(0, 10)}|${String(s.period_end).slice(0, 10)}|${String(s.sucursal_normalizada || "").toUpperCase()}|${String(s.operadora_normalizada || "").toUpperCase()}`
-            shotsByKey.set(k, (shotsByKey.get(k) || 0) + Number(s.disparos || 0))
+        if (shErr) {
+          if (!isMissingTable(shErr)) {
+            console.error("recalculateDispOperador: csl_operator_shots falló:", shErr.message)
+            warnings.push(`csl_operator_shots: ${shErr.message}`)
+          }
+        } else {
+          for (const s of shots || []) {
+            const start = String(s.period_start).slice(0, 10)
+            const suc = String(s.sucursal_normalizada || "").toUpperCase()
+            const op = String(s.operadora_normalizada || "").toUpperCase()
+            const exact = `${start}|${String(s.period_end).slice(0, 10)}|${suc}|${op}`
+            shotsByExactKey.set(exact, (shotsByExactKey.get(exact) || 0) + Number(s.disparos || 0))
+            const week = `${start}|${suc}|${op}`
+            const updated = String(s.updated_at || "")
+            const prev = shotsByWeekKey.get(week)
+            if (!prev || updated > prev.updated) {
+              shotsByWeekKey.set(week, { disparos: Number(s.disparos || 0), updated })
+            }
           }
         }
-      } catch {
-        // operator_shots no disponible — usaremos solo sesiones_cliente
       }
 
       // Sesiones individuales como fallback / complemento
@@ -4485,9 +4517,11 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         const hasta = String(r.period_end).slice(0, 10)
         const [sucNorm, opNorm] = matchKey.split("|")
 
-        // 1) Intento por operator_shots (match exacto por período + clave)
-        const shotsKey = `${desde}|${hasta}|${sucNorm}|${opNorm}`
-        let suma = shotsByKey.get(shotsKey) || 0
+        // 1) Intento por operator_shots: match exacto por período, y si no,
+        //    por semana (period_start + clave) tolerando period_end distinto.
+        let suma = shotsByExactKey.get(`${desde}|${hasta}|${sucNorm}|${opNorm}`)
+          ?? shotsByWeekKey.get(`${desde}|${sucNorm}|${opNorm}`)?.disparos
+          ?? 0
 
         // 2) Si no hay shot, fallback a sesionesCliente sumando por rango
         if (suma === 0) {
@@ -4525,6 +4559,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         unchanged,
         skipped,
         total: (readings || []).length,
+        warnings,
       }
     }
 

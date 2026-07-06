@@ -18,6 +18,52 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.15.0] — 2026-07-06
+
+### Fixed
+- **DISP OPERADOR = 0 en Auditoría PULSE con disparos reales (semana
+  29-jun → 04-jul).** Causa raíz: `detectPeriodFromFilename` aplicaba el mes
+  del nombre del archivo a AMBOS días. Con `29_04_Julio_2026.xlsx` producía
+  `period_start=2026-07-29` / `period_end=2026-07-04` — una semana INVERTIDA
+  (la real es 29-jun → 04-jul). Ningún disparo AgendaPro caía en ese rango
+  imposible, los shots (guardados correctamente bajo 2026-06-29) nunca
+  matcheaban, y toda la semana quedaba DISP OPERADOR=0 → DIFERENCIA -100% →
+  Crítico falso. Ahora, cuando el día inicial > día final, el inicio se ancla
+  al mes anterior (y a diciembre del año anterior si el fin es enero), con
+  guardia que devuelve null antes que un período invertido. Bug latente desde
+  `a6f424e` (redesign PulseControl): esta fue la primera semana que cruzó de
+  mes desde el go-live.
+- **Match de shots tolerante a `period_end` distinto.** Los readings
+  importados como lun-dom (end domingo, ej. semana 06-08 con end 06-14) no
+  matcheaban los shots lun-sáb (end 06-13) por la comparación exacta de
+  `period_end`. Auditoría PULSE y `recalculateDispOperador` ahora matchean por
+  `period_start` (ancla de la semana operativa) + sucursal + operadora, con
+  preferencia al match exacto y a la fila más recién actualizada.
+- **`recalculateDispOperador` ya no traga errores en silencio.** Un fallo en
+  la consulta de `csl_operator_shots` dejaba DISP OPERADOR=0 falso sin señal;
+  ahora se registra en consola y se devuelve en `warnings`.
+- **Guardia anti período invertido en `savePulseReading`.** Cualquier intento
+  de guardar una lectura con `period_start > period_end` se rechaza con error
+  claro (defensa en profundidad para todas las vías de escritura).
+- **Backfill aplicado en db-cls** (`scripts/_backfill-disp-operador-0629.js`,
+  idempotente, con `--dry-run`): 10 readings de la semana rota corregidos a
+  `2026-06-29` + 36 `disp_operador`/`diferencia_pct` recalculados desde
+  `csl_operator_shots`/`csl_sesiones_cliente` en ambos tenants (incluye la
+  semana 06-08 de CSL y el cruce CLARIBEL/NOELIA de Depicenter 06-08,
+  verificado contra shots y sesiones individuales). Sin datos → null (nunca 0
+  falso); tablas fuente intactas.
+
+### Added
+- **Prueba anti-regresión** `scripts/_test-disp-operador-cero.js`: unit del
+  parser (cruce de mes/año, invariante sin períodos invertidos en 31×31
+  combinaciones) + e2e contra db-cls (ningún reading con shots reales puede
+  tener DISP OPERADOR nulo/0; ningún período invertido). 12/12 pass.
+- Diagnóstico `scripts/_diag-disp-operador.js`: compara readings vs shots vs
+  sesiones por (tenant, semana, sucursal, operadora) y detecta dónde se
+  pierde el valor, más chequeo cross-tenant de shots.
+
+---
+
 ## [0.14.1] — 2026-07-03
 
 ### Fixed

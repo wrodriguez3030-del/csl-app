@@ -187,14 +187,21 @@ export function PulsosAuditoriaPage() {
       const matchKey = makeAgendaMatchKey(r.sucursal, operadoraEfectiva)
       if (dispOperador === 0 && matchKey) {
         const [sucNorm, opNorm] = matchKey.split("|")
-        // Intento 2: operator_shots
-        const shot = (dbPulsos.operatorShots ?? []).find(
+        // Intento 2: operator_shots. Match por period_start (ancla lunes de la
+        // semana operativa) + sucursal + operadora. NO exigir period_end exacto:
+        // los readings importados como lun-dom (end domingo) no matcheaban los
+        // shots lun-sáb (end sábado) y DISP OPERADOR caía a 0 falso. Si hay
+        // varias filas con el mismo start (ends distintos por re-imports), se
+        // prefiere el match exacto de end y luego la más recién actualizada.
+        const candidates = (dbPulsos.operatorShots ?? []).filter(
           os =>
             String(os.period_start).slice(0, 10) === desde &&
-            String(os.period_end).slice(0, 10) === hasta &&
             String(os.sucursal_normalizada || "").toUpperCase() === sucNorm &&
             String(os.operadora_normalizada || "").toUpperCase() === opNorm,
         )
+        const shot =
+          candidates.find(os => String(os.period_end).slice(0, 10) === hasta) ??
+          candidates.sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")))[0]
         if (shot) {
           dispOperador = Number(shot.disparos) || 0
         } else {

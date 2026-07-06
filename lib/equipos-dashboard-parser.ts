@@ -38,6 +38,12 @@ export interface EquiposDashboardResult {
 /**
  * Intenta detectar el período semanal del nombre del archivo.
  * Formato esperado: DD_DD_Mes_YYYY  (ej: "25_30_Mayo_2026" o "25_30_mayo_2026")
+ *
+ * El mes del nombre corresponde al FINAL de la semana. Cuando la semana cruza
+ * de mes (día inicial > día final, ej. "29_04_Julio_2026" = 29 jun → 04 jul),
+ * el día inicial pertenece al mes ANTERIOR (y a diciembre del año anterior si
+ * el fin es enero). Sin esto, la semana quedaba invertida (start > end) y
+ * ningún disparo de operadora matcheaba el período → DISP OPERADOR = 0.
  */
 export function detectPeriodFromFilename(filename: string): { start: string; end: string; label: string } | null {
   const m = filename.match(/(\d{1,2})_(\d{1,2})_([A-Za-záéíóúÁÉÍÓÚñÑ]+)_(\d{4})/i)
@@ -45,9 +51,24 @@ export function detectPeriodFromFilename(filename: string): { start: string; end
   const [, d1, d2, mesRaw, year] = m
   const mes = MESES[mesRaw.toLowerCase()]
   if (!mes) return null
-  const start = `${year}-${mes}-${d1.padStart(2, "0")}`
-  const end = `${year}-${mes}-${d2.padStart(2, "0")}`
-  return { start, end, label: `${d1}/${mes}/${year} al ${d2}/${mes}/${year}` }
+  const p2 = (n: number) => String(n).padStart(2, "0")
+  const endYear = Number(year)
+  const endMonth = Number(mes)
+  let startYear = endYear
+  let startMonth = endMonth
+  if (Number(d1) > Number(d2)) {
+    startMonth = endMonth === 1 ? 12 : endMonth - 1
+    if (endMonth === 1) startYear = endYear - 1
+  }
+  const start = `${startYear}-${p2(startMonth)}-${d1.padStart(2, "0")}`
+  const end = `${endYear}-${p2(endMonth)}-${d2.padStart(2, "0")}`
+  // Guardia: jamás devolver un período invertido — mejor pedir el rango manual.
+  if (start > end) return null
+  return {
+    start,
+    end,
+    label: `${d1.padStart(2, "0")}/${p2(startMonth)}/${startYear} al ${d2.padStart(2, "0")}/${p2(endMonth)}/${endYear}`,
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
