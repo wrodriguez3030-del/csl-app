@@ -18,6 +18,29 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.15.2] — 2026-07-07
+
+### Fixed
+- **Auditoría PULSE → Editar: el selector "Operador" y el encabezado mostraban
+  el id técnico** (`op_1777497348146`, y duplicados por mayúsculas
+  `OP_...`/`op_...`). Causa raíz: `operadorasEditables` armaba las opciones con
+  `op.OperadoraID` (el código del catálogo `csl_operadoras`) en vez de
+  `op.Nombre`, y las mezclaba con `lecturas.OperadoraID` sin resolver. Ahora:
+  - Nuevo resolvedor id→nombre (`resolveOperadoraNombre`) contra el catálogo,
+    case-insensitive, que colapsa `OP_123`/`op_123` al mismo nombre y descarta
+    cualquier código sin nombre (nunca se muestra crudo).
+  - El selector lista **solo nombres** reales, deduplicados sin importar
+    mayúsculas/minúsculas.
+  - El encabezado del modal y el valor cargado al abrir muestran el **nombre**.
+  - Al guardar se persiste el nombre en `operadora_corregida` (que es lo que usa
+    el match de disparos), así que corregir manualmente ya no rompe DISP
+    OPERADOR. No se toca ningún id interno ni se crean duplicados.
+  - Verificado en db-cls: 0 lecturas tenían un código guardado en
+    `operadora`/`operadora_corregida` — el código solo vivía en las opciones del
+    dropdown, así que no hizo falta backfill de datos.
+
+---
+
 ## [0.15.1] — 2026-07-06
 
 ### Fixed

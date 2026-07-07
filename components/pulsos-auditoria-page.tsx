@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { useAppStore } from "@/lib/store"
 import { loadXLSX } from "@/lib/load-xlsx"
 import { SeqBadge } from "@/components/seq-badge"
@@ -104,6 +104,31 @@ export function PulsosAuditoriaPage() {
   // business_id activo en el backend). La operadora mostrada sale de aquí, no
   // del Excel. Ver lib/operadora-oficial.ts.
   const operadoraResolver = useMemo(() => buildOperadoraResolver(db.equipos), [db.equipos])
+  // Mapa id-técnico → NOMBRE real desde el catálogo de operadoras (case-insensitive).
+  // El catálogo guarda `operadora_id` (a veces un código "op_...") + `nombre`; el
+  // usuario NUNCA debe ver el código, solo el nombre. Clave en minúsculas para
+  // que "OP_123" y "op_123" resuelvan al mismo nombre (evita duplicados visuales).
+  const operadoraNombrePorId = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const op of dbPulsos.operadoras) {
+      const id = String(op.OperadoraID || "").trim().toLowerCase()
+      const nombre = String(op.Nombre || "").trim()
+      if (id && nombre) m.set(id, nombre)
+    }
+    return m
+  }, [dbPulsos.operadoras])
+  // Resuelve cualquier valor (nombre o código técnico) a un NOMBRE visible.
+  // - Si matchea un id del catálogo → devuelve el nombre real.
+  // - Si es un código "op_..." sin match → "" (se oculta; nunca se muestra crudo).
+  // - Si ya es un nombre → se devuelve tal cual.
+  const resolveOperadoraNombre = useCallback((value: unknown): string => {
+    const s = String(value ?? "").trim()
+    if (!s) return ""
+    const byId = operadoraNombrePorId.get(s.toLowerCase())
+    if (byId) return byId
+    if (/^op_/i.test(s)) return "" // código técnico sin nombre: no mostrarlo
+    return s
+  }, [operadoraNombrePorId])
   const activeBusinessSlug = useAppStore((s) => s.activeBusinessSlug)
   const business = useCurrentBusiness()
   const [filterSuc, setFilterSuc] = useState("todas")
@@ -416,11 +441,27 @@ export function PulsosAuditoriaPage() {
     totOp: allRows.reduce((s: number, r: any) => s + r.dispOperador, 0),
   }
 
-  const operadorasEditables = Array.from(new Set([
-    ...dbPulsos.operadoras.filter(op => op.Estado !== "Inactiva").map(op => op.OperadoraID || op.Nombre),
-    ...dbPulsos.lecturasSemanales.map(item => item.OperadoraID),
-    editForm.operadora,
-  ].filter(Boolean))).sort((a, b) => String(a).localeCompare(String(b)))
+  // Opciones del selector = NOMBRES reales (nunca el id técnico op_...). El
+  // catálogo aporta la ortografía oficial; se agregan nombres que aparezcan en
+  // lecturas y el valor actual, resolviendo cualquier código a su nombre.
+  // Dedup case-insensitive: "OP_123"/"op_123" y "Katherine"/"katherine" no se
+  // duplican. Se descarta cualquier valor que siga siendo un código sin nombre.
+  const operadorasEditables = (() => {
+    const byLower = new Map<string, string>()
+    const add = (raw: unknown) => {
+      const n = resolveOperadoraNombre(raw)
+      if (!n) return
+      const k = n.toLowerCase()
+      if (!byLower.has(k)) byLower.set(k, n)
+    }
+    for (const op of dbPulsos.operadoras) {
+      if (op.Estado === "Inactiva") continue
+      add(op.Nombre || op.OperadoraID)
+    }
+    for (const item of dbPulsos.lecturasSemanales) add(item.OperadoraID)
+    add(editForm.operadora)
+    return Array.from(byLower.values()).sort((a, b) => a.localeCompare(b))
+  })()
 
   const exportExcel = async () => {
     let XLSX: any
@@ -658,7 +699,10 @@ export function PulsosAuditoriaPage() {
   const openEdit = (row: any) => {
     setEditRow(row)
     setEditForm({
-      operadora: String(row.operadora || ""),
+      // Cargar el NOMBRE resuelto (no un código): así el selector matchea una
+      // opción y el encabezado muestra el nombre. Al guardar se persiste este
+      // nombre en operadora_corregida, que es lo que usa el match de disparos.
+      operadora: resolveOperadoraNombre(row.operadora) || String(row.operadora || ""),
       pulsosInicio: Number(row.pulsosInicio) || 0,
       pulsosFin: Number(row.pulsosFin) || 0,
       dispOperador: Number(row.dispOperador) || 0,
@@ -1088,7 +1132,7 @@ export function PulsosAuditoriaPage() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
-              <p className="font-semibold">{editForm.operadora || editRow?.operadora || "-"}</p>
+              <p className="font-semibold">{resolveOperadoraNombre(editForm.operadora) || resolveOperadoraNombre(editRow?.operadora) || "-"}</p>
               <p className="text-xs text-muted-foreground">
                 {editRow?.sucursal || "-"} · Cabina {editRow?.cabina || "-"} · Equipo {editRow?.equipo || "-"}
               </p>
