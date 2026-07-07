@@ -395,7 +395,16 @@ export function EquiposPage() {
       setDbCabins(prev => prev.some(c => c.id === saved.id) ? prev : [...prev, saved])
       setFormData(fd => ({ ...fd, Cabina: saved.name }))
       setCabinModalOpen(false)
-      showToast(res.reused ? "La cabina ya existía — seleccionada" : `Cabina "${prettyCabina(saved.name)}" creada`, "success")
+      // Duplicado (mismo negocio + sucursal + nombre normalizado): el backend
+      // NO bloquea — reutiliza la existente y la deja seleccionada. Mensaje
+      // claro y no bloqueante. Nombres iguales en sucursales distintas SÍ se
+      // permiten (la unicidad es por business_id + branch + lower(name)).
+      showToast(
+        res.reused
+          ? `Ya existe "${prettyCabina(saved.name)}"${saved.branch ? ` en ${saved.branch}` : ""} — seleccionada`
+          : `Cabina "${prettyCabina(saved.name)}" creada`,
+        res.reused ? "info" : "success",
+      )
     } catch (e) {
       showToast(e instanceof Error ? e.message : "No se pudo crear la cabina", "error")
     } finally {
@@ -950,7 +959,7 @@ export function EquiposPage() {
             </Button>
             <Button onClick={handleSaveCabin} disabled={savingCabin || !newCabin.name.trim()}>
               {savingCabin ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
-              Crear cabina
+              {savingCabin ? "Creando…" : "Crear cabina"}
             </Button>
           </DialogFooter>
         </DialogContent>

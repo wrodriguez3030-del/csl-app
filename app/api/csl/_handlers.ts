@@ -3082,10 +3082,15 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true, records: (data || []) as Row[] }
     }
     case "saveMaintenanceCabin": {
-      // Crea una cabina nueva desde el editor de equipos. Solo admin/superadmin.
-      // El nombre se guarda en MAYÚSCULA (regla global de cabinas). No duplica
-      // por (negocio, sucursal, nombre): si ya existe viva, la reutiliza.
-      await requireAdmin(user.id)
+      // Crea una cabina nueva desde el editor de equipos. El nombre se guarda en
+      // MAYÚSCULA (regla global de cabinas). No duplica por (negocio, sucursal,
+      // nombre): si ya existe viva, la reutiliza.
+      //
+      // Permiso: NO requiere admin. El botón "+Agregar cabina" vive dentro del
+      // editor de Equipos y guardar un equipo (saveEquipo / updateEquipoCampos)
+      // tampoco exige admin — exigirlo solo aquí dejaba a encargados/recepción
+      // (que sí tienen el menú Equipos) con un formulario que fallaba en silencio.
+      // Sigue scopeado por business_id del contexto → nunca cruza CSL/Depicenter.
       const businessId = effectiveBusinessId() || textValue(params, "businessId")
       if (!businessId || !isKnownBusinessId(businessId)) throw new Error("Selecciona la empresa")
       const name = toUpperField(textValue(params, "name"))

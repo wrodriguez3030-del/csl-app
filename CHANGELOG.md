@@ -18,6 +18,61 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.16.0] — 2026-07-07
+
+### Fixed
+- **"Crear cabina" no hacía nada para usuarios NO-admin (encargados/recepción).**
+  Causa raíz REAL (la nota "Verified" de v0.15.3 fue un diagnóstico incompleto:
+  solo se probó como admin/owner, donde el bug no ocurre):
+
+  1. **Permiso inconsistente (por qué NO se creaba la cabina).** El handler
+     `saveMaintenanceCabin` exigía `requireAdmin(user.id)` y lanzaba
+     `"Solo un administrador puede gestionar usuarios"` para cualquier no-admin.
+     Pero el botón **"+ Agregar cabina"** vive dentro del editor de **Equipos**,
+     que SÍ es accesible a roles no-admin (verificado: los perfiles `Cibao` y
+     `CARLOS` tienen `equipos` en su menú), y **guardar un equipo**
+     (`saveEquipo` / `updateEquipoCampos`) **no** exige admin. Resultado: una
+     encargada de Los Jardines que edita equipos y necesita agregar una cabina
+     era rechazada en el servidor antes del INSERT. El INSERT en sí siempre
+     funcionó (Supabase local db-cls, status 201; no era DB/constraint/RLS/
+     business_id). **Fix:** se quitó `requireAdmin` de `saveMaintenanceCabin`;
+     la acción sigue **scopeada por `business_id` del contexto** (nunca cruza
+     CSL/Depicenter) y deduplica por negocio+sucursal+nombre. `requireAdmin`
+     queda intacto en las acciones realmente admin-only (gestión de usuarios,
+     etc. — verificado que un no-admin sigue bloqueado ahí).
+
+  2. **Mensajes de error/éxito invisibles con un modal abierto (por qué "no
+     pasaba nada", sin mensaje).** `ToastNotification` se renderiza en el árbol
+     normal con `z-50`, mientras el overlay del `Dialog` (Radix, portaleado al
+     final de `<body>`) también es `z-50` y, al ir después en el DOM, lo tapaba.
+     Cualquier error del servidor quedaba oculto tras el overlay → el formulario
+     parecía "congelado". **Fix:** el toast sube a `z-[200]` (por encima de
+     Dialog/Sheet/overlay `z-50` y del toast primitivo `z-[100]`) + `role=alert`
+     / `aria-live=assertive`. Verificado por captura de pantalla: el toast se
+     pinta nítido sobre el overlay del modal.
+
+- **UX del botón:** ahora muestra "Creando…" mientras guarda (además del spinner)
+  y el mensaje de duplicado es claro y **no bloqueante** — si la cabina ya existe
+  en ese negocio+sucursal, la reutiliza y la deja seleccionada
+  (`Ya existe "X" en <sucursal> — seleccionada`). Nombres iguales en sucursales
+  distintas SÍ se permiten.
+
+### Verified
+- **e2e (`scripts/_test-cabina-noadmin-create.js`):** un usuario throwaway
+  NO-admin (tenant CSL, menú `equipos`) inicia sesión y `POST saveMaintenanceCabin`
+  crea la cabina "COSMIATRIA 2 / Los Jardines": `ok:true`, `business_id` = CSL,
+  sucursal correcta, nombre en MAYÚSCULA, persistida en db-cls, y un 2º POST
+  idéntico devuelve `reused` (doble clic no duplica). El mismo token no-admin
+  sigue recibiendo `"Solo un administrador…"` en `getUsers` (gate intacto).
+- **Navegador (Chrome desktop):** logueado como encargada NO-admin de Los
+  Jardines se creó "COSMIATRIA 2" desde el editor de Equipos → el botón respondió,
+  el modal cerró, apareció el toast "Cabina Cosmiatria 2 creada" y la cabina quedó
+  seleccionada. En DB: `created_by` = UUID del usuario NO-admin, `business_id` =
+  CSL. Dato de prueba y usuario throwaway eliminados. **NO se usó Supabase Cloud.**
+- `tsc --noEmit` (lint) y `next build`: OK.
+
+---
+
 ## [0.15.3] — 2026-07-07
 
 ### Fixed
