@@ -18,6 +18,33 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.15.3] — 2026-07-07
+
+### Fixed
+- **Selector de Operadora (editor de Equipos) no mostraba EIDYLEE en Villa
+  Olga.** Causa raíz: `operadoraOptions` usaba una lista OFICIAL hardcodeada por
+  sucursal (`OPERADORAS_OFICIALES_CSL`, ej. `VILLA OLGA → ["SAHOMY","YESSICA"]`)
+  que **reemplazaba** al catálogo real en vez de complementarlo; EIDYLEE existe
+  como operadora activa de Villa Olga en `csl_operadoras` pero nunca se agregaba.
+  Ahora la fuente PRINCIPAL es el catálogo real (`dbPulsos.operadoras`) filtrado
+  por la MISMA sucursal del equipo (dinámico, sin hardcodear); la lista oficial
+  se suma solo como respaldo de completitud. Resultado Villa Olga: EIDYLEE,
+  SAHOMY, YESSICA. `normalizeOperadora` colapsa duplicados de alias
+  (RIQUELMI/ROQUELMI) y el filtro por sucursal impide que aparezcan operadoras
+  de otra sucursal. No se reasigna ningún equipo/cabina — solo cambian las
+  opciones disponibles del selector. Multi-tenant intacto: `dbPulsos.operadoras`
+  ya viene filtrado por `business_id` activo (Cibao no ve Depicenter).
+
+### Verified (sin cambio de código)
+- **Creación de cabinas:** verificada end-to-end en producción — se creó
+  "COSMIATRIA 1" en Villa Olga desde el editor de Equipos: la fila se guardó en
+  Supabase local (db-cls), el modal cerró y la cabina quedó seleccionada. El
+  handler `saveMaintenanceCabin` y la tabla `maintenance_cabins` funcionan
+  correctamente (insert 201, dedup por negocio+sucursal+nombre). El fallo
+  reportado correspondía a un bundle viejo en caché del navegador.
+
+---
+
 ## [0.15.2] — 2026-07-07
 
 ### Fixed

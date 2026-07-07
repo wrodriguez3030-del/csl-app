@@ -7,7 +7,7 @@ import { SuperadminBusinessFilter, filterValueToBusinessId, type BusinessFilterV
 import { loadXLSX } from "@/lib/load-xlsx"
 import { fmtN, parseN } from "@/lib/fmt"
 import { detectExcelType } from "@/lib/excel-type-detector"
-import { normalizeOperadora } from "@/lib/normalize-pulse"
+import { normalizeOperadora, normalizeSucursal } from "@/lib/normalize-pulse"
 import { parseEquiposBaseWorkbook, type ParsedEquipoBaseRow, type ParseEquiposBaseResult } from "@/lib/equipos-base-parser"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -128,21 +128,31 @@ export function EquiposPage() {
       .sort((a, b) => (a.Nombre || "").localeCompare(b.Nombre || "", "es"))
   }, [dbPulsos.operadoras])
 
-  // Opciones del dropdown de operadora (forma canónica, MAYÚSCULA). Para CSL se
-  // restringe a las operadoras OFICIALES de la sucursal del equipo (al cambiar
-  // la sucursal cambia la lista). Si la sucursal no tiene lista oficial (otra
-  // sucursal / Depicenter) cae al catálogo real del tenant + respaldo. SIEMPRE
-  // incluye la operadora actual del equipo para no perderla al editar.
+  // Opciones del dropdown de operadora (forma canónica, MAYÚSCULA). La fuente
+  // PRINCIPAL es el catálogo REAL de operadoras (dbPulsos.operadoras), filtrado
+  // por la MISMA sucursal del equipo — así aparece toda operadora activa de esa
+  // sucursal (p.ej. EIDYLEE en Villa Olga) y NUNCA una de otra sucursal. La
+  // lista oficial hardcodeada por sucursal (CSL) se suma solo como garantía de
+  // completitud (que las históricas SAHOMY/YESSICA nunca falten), NO reemplaza
+  // al catálogo. Fallback del tenant solo si no hubo nada. SIEMPRE incluye la
+  // operadora actual del equipo para no perderla al editar.
   const operadoraOptions = useMemo(() => {
     const set = new Set<string>()
+    const sucNorm = normalizeSucursal(formData.Sucursal)
+    // 1) Catálogo real: operadoras ACTIVAS de la MISMA sucursal (dinámico).
+    for (const o of operadorasActivas) {
+      if (sucNorm && normalizeSucursal(o.Sucursal) !== sucNorm) continue
+      const n = normalizeOperadora(o.Nombre)
+      if (n) set.add(n)
+    }
+    // 2) Oficiales de la sucursal (solo CSL) como respaldo de completitud.
     const sucKey = (formData.Sucursal || "").trim().replace(/\s+/g, " ").toUpperCase()
     const oficiales = business.slug === "csl" ? OPERADORAS_OFICIALES_CSL[sucKey] : undefined
-    if (oficiales && oficiales.length) {
-      for (const n of oficiales) set.add(normalizeOperadora(n))
-    } else {
-      for (const o of operadorasActivas) { const n = normalizeOperadora(o.Nombre); if (n) set.add(n) }
-      for (const n of (FALLBACK_OPERADORAS[business.slug] || [])) set.add(normalizeOperadora(n))
-    }
+    if (oficiales) for (const n of oficiales) set.add(normalizeOperadora(n))
+    // 3) Si aún no hay nada (catálogo vacío o sin sucursal seleccionada),
+    //    respaldo del tenant para no dejar el selector vacío.
+    if (set.size === 0) for (const n of (FALLBACK_OPERADORAS[business.slug] || [])) set.add(normalizeOperadora(n))
+    // 4) Nunca perder la operadora actual del equipo al editar.
     if (formData.Operadora) set.add(normalizeOperadora(formData.Operadora))
     return Array.from(set).sort((a, b) => a.localeCompare(b, "es"))
   }, [operadorasActivas, business.slug, formData.Sucursal, formData.Operadora])
