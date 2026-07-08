@@ -430,6 +430,12 @@ export type TabId =
   | "req-mat-dashboard"
   | "req-mat-inventario"
   | "req-mat-inventario-historico"
+  // Módulo Compras
+  | "compras-dashboard"
+  | "compras-facturas"
+  | "compras-pagos"
+  | "compras-gastos-menores"
+  | "compras-recurrentes"
   // Módulo Pulsos
   | "pulse-dashboard"
   | "pulse-equipos"

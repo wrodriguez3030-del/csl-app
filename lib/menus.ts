@@ -40,6 +40,12 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "req-mat-inventario", label: "Inventario de materiales", section: "Requisición de materiales" },
   { id: "req-mat-inventario-historico", label: "Histórico de inventarios", section: "Requisición de materiales" },
   { id: "req-mat-dashboard", label: "Dashboard materiales", section: "Requisición de materiales" },
+  // Compras (facturas de proveedores, pagos/gastos, gastos menores, recurrentes)
+  { id: "compras-dashboard", label: "Dashboard compras", section: "Compras" },
+  { id: "compras-facturas", label: "Facturas de proveedores", section: "Compras" },
+  { id: "compras-pagos", label: "Pagos / gastos", section: "Compras" },
+  { id: "compras-gastos-menores", label: "Gastos menores", section: "Compras" },
+  { id: "compras-recurrentes", label: "Pagos recurrentes", section: "Compras" },
   { id: "pulse-dashboard", label: "Dashboard", section: "PulseControl CSL" },
   { id: "pulse-equipos", label: "Equipos", section: "PulseControl CSL" },
   { id: "pulsos-operadoras", label: "Operadoras", section: "Pulsos" },

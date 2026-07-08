@@ -15,6 +15,7 @@ import { getSupabaseAdmin, requireAuthenticatedUser } from "@/lib/server/supabas
 import { requireSuperadmin } from "@/lib/server/csl-crud"
 import { errorMessage } from "@/lib/server/csl-helpers"
 import { ALL_MENU_IDS, MENU_ID_SET, type MenuPermission } from "@/lib/menus"
+import { normalizePermissions } from "@/lib/permissions"
 import { normalizeSucursal } from "@/lib/normalize-pulse"
 
 export const runtime = "nodejs"
@@ -119,6 +120,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     if (typeof body.isAdmin === "boolean") updates.is_admin = body.isAdmin
     if (typeof body.activo === "boolean") updates.activo = body.activo
     if (Array.isArray(body.menus)) updates.menus = normalizeMenus(body.menus)
+    if (Array.isArray(body.permissions)) updates.permissions = normalizePermissions(body.permissions)
     if (typeof body.isSuperadmin === "boolean") updates.is_superadmin = body.isSuperadmin
 
     // Si caller se está auto-modificando para quitarse superadmin o desactivarse,

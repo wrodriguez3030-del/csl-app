@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { SeqBadge } from "@/components/seq-badge"
 import { MENU_OPTIONS, type MenuPermission } from "@/lib/menus"
+import { PERMISSION_OPTIONS } from "@/lib/permissions"
 import { useSessionUser } from "@/hooks/use-session-user"
 
 type RoleKey = "usuario" | "admin" | "superadmin"
@@ -30,6 +31,7 @@ interface AdminUserRow {
   business_id: string
   menus: string[]
   branches?: string[]
+  permissions?: string[]
   created_at?: string
   businesses?: { slug: string; name: string } | null
 }
@@ -44,6 +46,7 @@ interface FormState {
   activo: boolean
   menus: MenuPermission[]
   branches: string[]
+  permissions: string[]
 }
 
 const emptyForm: FormState = {
@@ -56,6 +59,7 @@ const emptyForm: FormState = {
   activo: true,
   menus: [],
   branches: [],
+  permissions: [],
 }
 
 // Menús base sugeridos por rol/business (UX, no security — el backend
@@ -176,6 +180,7 @@ export function AdminUsersPage() {
       activo: u.activo,
       menus: (u.menus || []) as MenuPermission[],
       branches: (u.branches || []) as string[],
+      permissions: (u.permissions || []) as string[],
     })
     setFormError(null)
     setOpen(true)
@@ -195,6 +200,7 @@ export function AdminUsersPage() {
         activo: form.activo,
         menus: form.menus,
         branches: form.role === "usuario" ? form.branches : [],
+        permissions: form.permissions,
       }
       if (editing) {
         // En edit, no enviar email (es read-only); enviar password solo si se cambió
@@ -206,6 +212,7 @@ export function AdminUsersPage() {
           activo: payload.activo,
           menus: payload.menus,
           branches: payload.branches,
+          permissions: payload.permissions,
         }
         if (payload.password) patchBody.password = payload.password
         await authedFetch(`/api/admin/users/${editing.user_id}`, {
@@ -601,6 +608,46 @@ export function AdminUsersPage() {
                                     ? [...form.menus, opt.id]
                                     : form.menus.filter(m => m !== opt.id)
                                   setForm({...form, menus: next})
+                                }}
+                                className="h-4 w-4 flex-shrink-0"
+                              />
+                              <span className="break-words">{opt.label}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {form.role === "usuario" && (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Label className="text-sm">Permisos de acción · <span className="text-muted-foreground font-normal">{form.permissions.length} seleccionados</span></Label>
+                  <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setForm({ ...form, permissions: [] })}>Limpiar</Button>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/20 p-4 max-h-[35vh] overflow-y-auto">
+                  {Object.entries(
+                    PERMISSION_OPTIONS.reduce<Record<string, typeof PERMISSION_OPTIONS>>((acc, opt) => {
+                      ;(acc[opt.section] = acc[opt.section] || []).push(opt)
+                      return acc
+                    }, {})
+                  ).map(([section, opts]) => (
+                    <div key={section} className="mb-4 last:mb-0">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2 border-b border-border/50 pb-1">{section}</p>
+                      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                        {opts.map((opt) => {
+                          const checked = form.permissions.includes(opt.id)
+                          return (
+                            <label key={opt.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors hover:bg-white/80" title={opt.id}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  const next = e.target.checked ? [...form.permissions, opt.id] : form.permissions.filter((p) => p !== opt.id)
+                                  setForm({ ...form, permissions: next })
                                 }}
                                 className="h-4 w-4 flex-shrink-0"
                               />

@@ -25,6 +25,11 @@ import { ReqMatMaterialesPage } from "@/components/req-mat-materiales-page"
 import { ReqMatDashboardPage } from "@/components/req-mat-dashboard-page"
 import { ReqMatInventarioPage } from "@/components/req-mat-inventario-page"
 import { ReqMatInventarioHistoricoPage } from "@/components/req-mat-inventario-historico-page"
+import { ComprasDashboardPage } from "@/components/compras-dashboard-page"
+import { ComprasFacturasPage } from "@/components/compras-facturas-page"
+import { ComprasPagosPage } from "@/components/compras-pagos-page"
+import { ComprasGastosMenoresPage } from "@/components/compras-gastos-menores-page"
+import { ComprasRecurrentesPage } from "@/components/compras-recurrentes-page"
 import { CredencialesPage } from "@/components/credenciales-page"
 import { RecursosHumanosPage } from "@/components/recursos-humanos-page"
 import { EmpleadosPage } from "@/components/empleados-page"
@@ -330,6 +335,16 @@ export default function HomePage() {
         return <ReqMatInventarioHistoricoPage />
       case "req-mat-dashboard":
         return <ReqMatDashboardPage />
+      case "compras-dashboard":
+        return <ComprasDashboardPage />
+      case "compras-facturas":
+        return <ComprasFacturasPage />
+      case "compras-pagos":
+        return <ComprasPagosPage />
+      case "compras-gastos-menores":
+        return <ComprasGastosMenoresPage />
+      case "compras-recurrentes":
+        return <ComprasRecurrentesPage />
       case "credenciales":
         return <CredencialesPage />
       case "pulse-dashboard":

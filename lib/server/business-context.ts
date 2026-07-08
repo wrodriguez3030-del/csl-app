@@ -80,6 +80,21 @@ export function requireBusinessContext(): BusinessContext {
 }
 
 /**
+ * Permisos granulares (csl_user_profiles.permissions). Admin/superadmin
+ * bypassa cualquier permiso (misma convención que canDeleteRequisitions en
+ * materials.ts). Catálogo de strings válidos en `lib/permissions.ts`.
+ */
+export function hasPermission(perm: string): boolean {
+  const ctx = getBusinessContext()
+  return Boolean(ctx?.isAdmin || ctx?.isSuperadmin || ctx?.permissions?.includes(perm))
+}
+
+/** Igual a hasPermission pero lanza si falta. Úsalo en handlers de mutación. */
+export function requirePermission(perm: string): void {
+  if (!hasPermission(perm)) throw new Error("No tienes permiso para realizar esta acción.")
+}
+
+/**
  * UUIDs reales de los businesses en producción (Supabase pfqnyzbtwhfkemkixril).
  * Espejo del mapa cliente en `components/superadmin-business-filter.tsx`.
  * Sirve para validar el `activeBusinessId` que manda la UI antes de scopear.

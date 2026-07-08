@@ -22,6 +22,7 @@ import { getSupabaseAdmin, requireAuthenticatedUser } from "@/lib/server/supabas
 import { requireSuperadmin } from "@/lib/server/csl-crud"
 import { errorMessage } from "@/lib/server/csl-helpers"
 import { ALL_MENU_IDS, MENU_ID_SET, type MenuPermission } from "@/lib/menus"
+import { normalizePermissions } from "@/lib/permissions"
 import { normalizeSucursal } from "@/lib/normalize-pulse"
 
 /** Persiste las sucursales permitidas del usuario (normalizadas). Revoca con
@@ -74,7 +75,7 @@ export async function GET(request: Request) {
     const { data, error } = await supabase
       .from("csl_user_profiles")
       .select(
-        "user_id, nombre, username, is_admin, is_superadmin, activo, business_id, menus, created_at, businesses(slug, name)",
+        "user_id, nombre, username, is_admin, is_superadmin, activo, business_id, menus, permissions, created_at, businesses(slug, name)",
       )
       .order("nombre", { ascending: true })
 
@@ -274,6 +275,7 @@ export async function POST(request: Request) {
       activo,
       business_id: businessId,
       menus: effectiveMenus,
+      permissions: normalizePermissions(body.permissions),
     }
     const { error: profileError } = await supabase
       .from("csl_user_profiles")

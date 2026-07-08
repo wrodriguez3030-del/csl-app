@@ -45,6 +45,7 @@ import {
 import { runWithBusinessContext, applyActiveBusiness, getBusinessContext, isKnownBusinessId, scopeByBranch, getBranchScope } from "@/lib/server/business-context"
 import { runWithMaintenanceWriteScope, recordMaintenanceAudit, type MaintenanceChangeSource } from "@/lib/server/maintenance-guard"
 import * as materials from "@/lib/server/materials"
+import * as purchases from "@/lib/server/purchases"
 
 /**
  * Acciones MANUALES del módulo de Mantenimiento. Solo estas pueden escribir en
@@ -3366,6 +3367,66 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await materials.correctInventoryItem(params, user)
     case "getInventoryAuditLogs":
       return await materials.getInventoryAuditLogs(params)
+
+    // ── Compras (facturas, pagos/gastos, gastos menores, recurrentes) ───────
+    case "getPurchaseBranches":
+      return purchases.getPurchaseBranches()
+    case "getPurchaseSuppliers":
+      return await purchases.getPurchaseSuppliers()
+    case "getPurchaseDashboard":
+      return await purchases.getPurchaseDashboard(params)
+    case "getPurchaseAttachmentUrl":
+      return await purchases.getPurchaseAttachmentUrl(params)
+    // Facturas
+    case "getPurchaseInvoices":
+      return await purchases.getPurchaseInvoices(params)
+    case "getPurchaseInvoice":
+      return await purchases.getPurchaseInvoice(params)
+    case "savePurchaseInvoice":
+      return await purchases.savePurchaseInvoice(params, user)
+    case "voidPurchaseInvoice":
+      return await purchases.voidPurchaseInvoice(params, user)
+    case "deletePurchaseInvoice":
+      return await purchases.deletePurchaseInvoice(params, user)
+    case "registerInvoicePayment":
+      return await purchases.registerInvoicePayment(params, user)
+    case "getInvoicePayments":
+      return await purchases.getInvoicePayments(params)
+    case "deleteInvoicePayment":
+      return await purchases.deleteInvoicePayment(params, user)
+    case "createInvoiceFromConsolidado":
+      return await purchases.createInvoiceFromConsolidado(params, user)
+    // Pagos/gastos generales
+    case "getExpenses":
+      return await purchases.getExpenses(params)
+    case "saveExpense":
+      return await purchases.saveExpense(params, user)
+    case "voidExpense":
+      return await purchases.voidExpense(params, user)
+    case "deleteExpense":
+      return await purchases.deleteExpense(params, user)
+    // Gastos menores
+    case "getPettyExpenses":
+      return await purchases.getPettyExpenses(params)
+    case "savePettyExpense":
+      return await purchases.savePettyExpense(params, user)
+    case "setPettyStatus":
+      return await purchases.setPettyStatus(params, user)
+    case "deletePettyExpense":
+      return await purchases.deletePettyExpense(params, user)
+    // Pagos recurrentes
+    case "getRecurringPayments":
+      return await purchases.getRecurringPayments(params)
+    case "saveRecurringPayment":
+      return await purchases.saveRecurringPayment(params, user)
+    case "setRecurringActive":
+      return await purchases.setRecurringActive(params, user)
+    case "deleteRecurringPayment":
+      return await purchases.deleteRecurringPayment(params, user)
+    case "registerRecurringPayment":
+      return await purchases.registerRecurringPayment(params, user)
+    case "getRecurringHistory":
+      return await purchases.getRecurringHistory(params)
 
     case "saveReporte": {
       const row = { report_id: textValue(params, "reportId"), fecha: dateValue(params.fecha), equipo_id: textValue(params, "equipoId"), sucursal: textValue(params, "sucursal"), empresa: textValue(params, "empresa"), cliente: textValue(params, "cliente"), domicilio: textValue(params, "domicilio"), ciudad: textValue(params, "ciudad", "Santiago"), modelo: textValue(params, "modelo"), serie: textValue(params, "serie"), numero: textValue(params, "numero"), tipo: textValue(params, "tipo", "Preventivo"), estado_equipo: textValue(params, "estadoEquipo", "Operativo"), prioridad: textValue(params, "prioridad", "Baja"), problema: textValue(params, "problema"), correccion: textValue(params, "correccion"), observaciones: textValue(params, "observaciones"), checklist: textValue(params, "checklist"), p_cabeza: numberValue(params, "pcabeza"), p_totales: numberValue(params, "ptotales"), atendio: textValue(params, "atendio"), power_source_number: textValue(params, "powerSourceNumber"), power_source_serial: textValue(params, "powerSourceSerial"), fiber_serial: textValue(params, "fiberSerial"), hv_value: textValue(params, "hv"), joules_value: textValue(params, "joules"), bs_value: textValue(params, "bs"), bc_value: textValue(params, "bc"), hv_ref_value: textValue(params, "hvRef"), vdc_value: textValue(params, "vdc"), voltage_value: textValue(params, "voltage"), tx_value: textValue(params, "tx"), software_version: textValue(params, "software"), piezas_json: textValue(params, "piezasJson", "[]"), partes_texto: textValue(params, "partesTexto"), firma_cliente: textValue(params, "firmaCliente"), firma_tecnico: textValue(params, "firmaTecnico"), fotos: textValue(params, "fotos", "[]") }

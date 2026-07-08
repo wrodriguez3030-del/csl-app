@@ -18,6 +18,65 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.18.0] — 2026-07-08
+
+### Added
+- **Módulo COMPRAS completo** — nuevo grupo de menú "Compras" con 5 pantallas:
+  **Dashboard de compras**, **Facturas de proveedores**, **Pagos / gastos**,
+  **Gastos menores** y **Pagos recurrentes**. Reutiliza proveedores (texto, como
+  `material_catalog.supplier_group`) y materiales — NO duplica catálogos.
+  - **Facturas de proveedores**: número, NCF, proveedor, RNC/Cédula, fechas,
+    sucursal, tipo de compra, forma de pago, condición (contado/crédito),
+    subtotal/descuento/ITBIS/total, monto pagado, balance, estados
+    (borrador/pendiente/parcial/pagada/vencida/anulada), detalle por líneas,
+    **adjunto con foto o PDF** (bucket privado `purchase-docs`, `capture` de
+    cámara). Acciones: ver detalle, editar, registrar pago, PDF, ver pagos,
+    anular, eliminar borrador (soft delete). El balance sale SOLO de
+    `purchase_payments` (ledger único → anti-doble-conteo).
+  - **Pagos / gastos**: registro general (gasto operativo/servicio/otro); un
+    "Pago de factura" se enruta al ledger de pagos de la factura (no duplica).
+  - **Gastos menores**: caja chica con estados pendiente/aprobado/rechazado/
+    pagado; aprobar, rechazar (con motivo), marcar pagado; filtros y comprobante.
+  - **Pagos recurrentes**: frecuencias semanal…anual, próxima fecha, día habitual,
+    activo/inactivo; muestra próximos y vencidos; registrar pago avanza la próxima
+    fecha automáticamente y guarda historial; pausar/reactivar; anti-duplicado por
+    período.
+  - **Dashboard**: total compras del mes, total pagado, balance pendiente,
+    facturas vencidas, gastos generales/menores del mes, recurrentes próximos y
+    vencidos. Filtro por **mes** + sucursal (mes presente en todas las pantallas).
+  - **PDF profesional** (logo empresa activa) + **Excel** por consulta
+    (`lib/purchases-export.ts`); PDF por factura con detalle + pagos.
+  - **Integración con requisiciones**: "Desde requisición" crea una factura
+    borrador desde el consolidado aprobado (reutiliza proveedor + materiales,
+    guarda `requisition_id`). **Una factura NUNCA aumenta inventario** — la
+    entrada real sigue siendo la recepción de materiales de la requisición.
+  - **RBAC granular** (nuevo catálogo `lib/permissions.ts`): `compras.ver/crear/
+    editar/pagar/aprobar/anular/eliminar/exportar`, validados en backend
+    (`requirePermission`, admin/superadmin bypassa) y frontend (`canPerm`).
+    Asignables desde Configuración › Usuarios (checkboxes). Aislamiento por
+    tenant + sucursal; Cibao/Depicenter nunca se mezclan.
+  - **BD** (`202607080001_purchases_module.sql`, aplicada a db-cls): 8 tablas
+    `purchase_invoices`, `purchase_invoice_items`, `purchase_payments`,
+    `expenses`, `petty_expenses`, `recurring_payments`,
+    `recurring_payment_history`, `purchase_audit_logs` — multi-tenant + RLS +
+    soft delete + `created_by/updated_by/deleted_*`. Bucket privado `purchase-docs`.
+  - Backend `lib/server/purchases.ts` + subida `app/api/purchases/documents/upload`.
+  - Test e2e `scripts/_test-compras-flow.js` (20/20 pasos).
+
+### Verified
+- **e2e** (`scripts/_test-compras-flow.js`, contra db-cls, 20/20): factura con
+  detalle, pago parcial→pagada con balance correcto, gasto, gasto menor
+  (aprobar/pagar), recurrente con próxima fecha automática (+1 mes), filtros
+  mes/sucursal, factura desde requisición con referencia, **factura NO aumenta
+  inventario**, soft delete, **RBAC** (sin permiso rechazado), business_id=CSL,
+  dashboard. **Solo Supabase local.**
+- **Navegador (Chrome)** como NO-admin con permisos compras.*: 5 menús visibles,
+  formulario de factura completo con **"Tomar foto"** (cámara), creación real →
+  toast + fila en lista.
+- `tsc --noEmit` (lint) y `next build`: OK.
+
+---
+
 ## [0.17.0] — 2026-07-07
 
 ### Added
