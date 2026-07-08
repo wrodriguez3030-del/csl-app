@@ -3346,6 +3346,27 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await materials.receiveItem(params, user)
     case "getMaterialDashboard":
       return await materials.getMaterialDashboard(params)
+
+    // ── Inventario de materiales por sucursal (conteo físico histórico) ──────
+    case "getInventoryDraft":
+      return await materials.getInventoryDraft(params)
+    case "saveInventory":
+      return await materials.saveInventory(params, user)
+    case "getInventories":
+      return await materials.getInventories(params)
+    case "getInventory":
+      return await materials.getInventory(params)
+    case "deleteInventory":
+      return await materials.deleteInventory(params, user)
+    case "restoreInventory":
+      return await materials.restoreInventory(params, user)
+    case "duplicateInventory":
+      return await materials.duplicateInventory(params, user)
+    case "correctInventoryItem":
+      return await materials.correctInventoryItem(params, user)
+    case "getInventoryAuditLogs":
+      return await materials.getInventoryAuditLogs(params)
+
     case "saveReporte": {
       const row = { report_id: textValue(params, "reportId"), fecha: dateValue(params.fecha), equipo_id: textValue(params, "equipoId"), sucursal: textValue(params, "sucursal"), empresa: textValue(params, "empresa"), cliente: textValue(params, "cliente"), domicilio: textValue(params, "domicilio"), ciudad: textValue(params, "ciudad", "Santiago"), modelo: textValue(params, "modelo"), serie: textValue(params, "serie"), numero: textValue(params, "numero"), tipo: textValue(params, "tipo", "Preventivo"), estado_equipo: textValue(params, "estadoEquipo", "Operativo"), prioridad: textValue(params, "prioridad", "Baja"), problema: textValue(params, "problema"), correccion: textValue(params, "correccion"), observaciones: textValue(params, "observaciones"), checklist: textValue(params, "checklist"), p_cabeza: numberValue(params, "pcabeza"), p_totales: numberValue(params, "ptotales"), atendio: textValue(params, "atendio"), power_source_number: textValue(params, "powerSourceNumber"), power_source_serial: textValue(params, "powerSourceSerial"), fiber_serial: textValue(params, "fiberSerial"), hv_value: textValue(params, "hv"), joules_value: textValue(params, "joules"), bs_value: textValue(params, "bs"), bc_value: textValue(params, "bc"), hv_ref_value: textValue(params, "hvRef"), vdc_value: textValue(params, "vdc"), voltage_value: textValue(params, "voltage"), tx_value: textValue(params, "tx"), software_version: textValue(params, "software"), piezas_json: textValue(params, "piezasJson", "[]"), partes_texto: textValue(params, "partesTexto"), firma_cliente: textValue(params, "firmaCliente"), firma_tecnico: textValue(params, "firmaTecnico"), fotos: textValue(params, "fotos", "[]") }
       const config = tableConfig("reportes")

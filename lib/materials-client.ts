@@ -153,3 +153,68 @@ export function fmtNum(n: number | null | undefined): string {
   const v = Number(n) || 0
   return Number.isInteger(v) ? String(v) : v.toFixed(2)
 }
+
+// ── Inventario de materiales por sucursal (conteo físico histórico) ──────────
+export type InvStatus = "borrador" | "finalizado"
+
+export interface MaterialInventoryItem {
+  id: string
+  inventoryId?: string
+  materialId?: string | null
+  materialName: string
+  supplierGroup?: string | null
+  quantity: number | null
+  unit?: string | null
+  observation?: string | null
+}
+
+export interface MaterialInventory {
+  id: string
+  branch: string
+  inventoryDate: string
+  status: InvStatus
+  notes?: string | null
+  createdBy?: string | null
+  createdByName?: string | null
+  finalizedBy?: string | null
+  finalizedByName?: string | null
+  createdAt?: string | null
+  finalizedAt?: string | null
+  updatedAt?: string | null
+  deletedAt?: string | null
+  deletedBy?: string | null
+  deletedReason?: string | null
+  itemsCount?: number
+  totalQty?: number
+  items?: MaterialInventoryItem[]
+}
+
+export interface InventoryAuditLog {
+  id: string
+  action: string
+  oldValues?: Record<string, unknown> | null
+  newValues?: Record<string, unknown> | null
+  reason?: string | null
+  userId?: string | null
+  createdAt?: string | null
+}
+
+export const INV_STATUS_LABEL: Record<InvStatus, string> = {
+  borrador: "Borrador",
+  finalizado: "Finalizado",
+}
+
+export const INV_STATUS_BADGE: Record<InvStatus, string> = {
+  borrador: "bg-amber-100 text-amber-700 border-amber-200",
+  finalizado: "bg-emerald-100 text-emerald-700 border-emerald-200",
+}
+
+export const INV_AUDIT_ACTION_LABEL: Record<string, string> = {
+  inventory_created: "Borrador creado",
+  inventory_saved: "Borrador guardado",
+  inventory_finalized: "Inventario finalizado",
+  inventory_deleted: "Inventario eliminado",
+  inventory_restored: "Inventario restaurado",
+  inventory_duplicated: "Duplicado como nuevo conteo",
+  inventory_item_corrected: "Corrección de cantidad",
+}

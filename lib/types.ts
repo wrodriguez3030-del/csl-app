@@ -428,6 +428,8 @@ export type TabId =
   | "req-mat-aprobaciones"
   | "req-mat-materiales"
   | "req-mat-dashboard"
+  | "req-mat-inventario"
+  | "req-mat-inventario-historico"
   // Módulo Pulsos
   | "pulse-dashboard"
   | "pulse-equipos"

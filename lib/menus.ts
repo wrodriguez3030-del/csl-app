@@ -37,6 +37,8 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "req-mat-consolidado", label: "Consolidado de compras", section: "Requisición de materiales" },
   { id: "req-mat-aprobaciones", label: "Aprobaciones", section: "Requisición de materiales" },
   { id: "req-mat-materiales", label: "Materiales", section: "Requisición de materiales" },
+  { id: "req-mat-inventario", label: "Inventario de materiales", section: "Requisición de materiales" },
+  { id: "req-mat-inventario-historico", label: "Histórico de inventarios", section: "Requisición de materiales" },
   { id: "req-mat-dashboard", label: "Dashboard materiales", section: "Requisición de materiales" },
   { id: "pulse-dashboard", label: "Dashboard", section: "PulseControl CSL" },
   { id: "pulse-equipos", label: "Equipos", section: "PulseControl CSL" },

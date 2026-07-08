@@ -786,3 +786,495 @@ export async function getMaterialDashboard(params: ActionParams) {
     charts: { porSucursal, materialesTop, gastoPorProveedor, estados, tendencia },
   }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// Inventario de Materiales por Sucursal (conteo físico histórico)
+//
+// Reutiliza el catálogo maestro (material_catalog) — NO crea catálogo nuevo. Es
+// un conteo independiente: NO toca requisiciones, compras, aprobaciones ni el
+// catálogo. Mismo aislamiento multi-tenant + por sucursal que las requisiciones.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Auditoría de inventarios (best-effort; nunca rompe la operación). */
+async function logInvAudit(
+  user: ActionUser,
+  action: string,
+  inventoryId: string | null,
+  itemId: string | null,
+  oldValues: unknown,
+  newValues: unknown,
+  reason?: string | null,
+): Promise<void> {
+  const business_id = bizId()
+  if (!business_id) return
+  try {
+    await getSupabaseAdmin().from("material_inventory_audit_logs").insert({
+      business_id,
+      inventory_id: inventoryId,
+      item_id: itemId,
+      action,
+      old_values: oldValues ?? null,
+      new_values: newValues ?? null,
+      reason: reason ?? null,
+      user_id: user.id || null,
+    })
+  } catch {
+    /* no rompe la operación principal */
+  }
+}
+
+function mapInventory(r: Row) {
+  return {
+    id: r.id,
+    branch: r.branch,
+    inventoryDate: r.inventory_date,
+    status: r.status,
+    notes: r.notes,
+    createdBy: r.created_by,
+    createdByName: r.created_by_name ?? null,
+    finalizedBy: r.finalized_by,
+    finalizedByName: r.finalized_by_name ?? null,
+    createdAt: r.created_at,
+    finalizedAt: r.finalized_at,
+    updatedAt: r.updated_at,
+    deletedAt: r.deleted_at ?? null,
+    deletedBy: r.deleted_by ?? null,
+    deletedReason: r.deleted_reason ?? null,
+  }
+}
+
+function mapInvItem(r: Row) {
+  return {
+    id: r.id,
+    inventoryId: r.inventory_id,
+    materialId: r.material_id,
+    materialName: r.material_name_snapshot,
+    supplierGroup: r.supplier_group_snapshot,
+    quantity: r.quantity == null ? null : Number(r.quantity),
+    unit: r.unit,
+    observation: r.observation,
+  }
+}
+
+type IncomingInvItem = {
+  materialId?: string
+  materialName?: string
+  supplierGroup?: string
+  unit?: string
+  quantity?: number | string
+  observation?: string
+}
+
+/** Carga un inventario scopeado por business activo. Lanza si no existe/otro negocio. */
+async function fetchInv(sb: ReturnType<typeof getSupabaseAdmin>, id: string): Promise<Row> {
+  let q = sb.from("material_inventories").select("*").eq("id", id)
+  if (scoped()) q = q.eq("business_id", bizId() as string)
+  const { data, error } = await q.maybeSingle()
+  if (error) throw error
+  if (!data) throw new Error("Inventario no encontrado o de otro negocio")
+  return data as Row
+}
+
+/** Valida sucursal contra tenant + scope del usuario. Devuelve la sucursal normalizada. */
+function requireBranchInScope(rawBranch: string): string {
+  const ctx = getBusinessContext()
+  const slug = ctx?.businessSlug || "csl"
+  const branch = normalizeSucursal(rawBranch)
+  if (!branch) throw new Error("Selecciona una sucursal")
+  if (!sucursalAllowedForTenant(branch, slug)) throw new Error("Sucursal no pertenece a este negocio")
+  const scope = getBranchScope()
+  if (!scope.all && scope.branches.length && !scope.branches.includes(branch)) {
+    throw new Error("No tienes permiso para inventariar esa sucursal")
+  }
+  return branch
+}
+
+/** Normaliza los ítems entrantes: conserva solo los que traen una cantidad
+ *  numérica (incluye 0 = "contado, sin existencia"). Un material SIN entrada se
+ *  omite → cuenta como "sin contar" en los KPIs. Acepta decimales. */
+function cleanInvItems(raw: IncomingInvItem[]): Array<{
+  materialId: string | null
+  materialName: string
+  supplierGroup: string | null
+  quantity: number
+  unit: string
+  observation: string | null
+}> {
+  return raw
+    .filter((it) => {
+      if (!it || !it.materialName) return false
+      const q = Number(it.quantity)
+      return Number.isFinite(q) && q >= 0 && String(it.quantity).trim() !== ""
+    })
+    .map((it) => ({
+      materialId: it.materialId || null,
+      materialName: String(it.materialName).toUpperCase(),
+      supplierGroup: it.supplierGroup || null,
+      quantity: Number(it.quantity),
+      unit: it.unit || "unidad",
+      observation: it.observation ? String(it.observation) : null,
+    }))
+}
+
+/**
+ * Devuelve el BORRADOR vivo de una (sucursal, fecha) con sus ítems, para
+ * reanudar el conteo (autoguardado / "salir y volver"). null si no hay borrador.
+ */
+export async function getInventoryDraft(params: ActionParams) {
+  const branch = requireBranchInScope(textValue(params, "branch"))
+  const inventoryDate = dateValue(params.inventoryDate)
+  if (!inventoryDate) throw new Error("Selecciona la fecha del inventario")
+  const business_id = requireBizId()
+  const sb = getSupabaseAdmin()
+  const { data: inv, error } = await sb
+    .from("material_inventories")
+    .select("*")
+    .eq("business_id", business_id)
+    .eq("branch", branch)
+    .eq("inventory_date", inventoryDate)
+    .eq("status", "borrador")
+    .is("deleted_at", null)
+    .maybeSingle()
+  if (error) throw error
+  if (!inv) return { ok: true, record: null }
+  const { data: items } = await sb
+    .from("material_inventory_items")
+    .select("*")
+    .eq("inventory_id", (inv as Row).id as string)
+  return { ok: true, record: { ...mapInventory(inv as Row), items: (items || []).map(mapInvItem) } }
+}
+
+/**
+ * Guarda un inventario (borrador o finalizado). Reemplaza los ítems.
+ *  - Reanuda el borrador de (sucursal, fecha) si existe (no duplica).
+ *  - Un inventario ya FINALIZADO es inmutable: no se puede editar por esta vía
+ *    (usar correctInventoryItem o duplicateInventory).
+ */
+export async function saveInventory(params: ActionParams, user: ActionUser) {
+  const business_id = requireBizId()
+  const branch = requireBranchInScope(textValue(params, "branch"))
+  const inventoryDate = dateValue(params.inventoryDate)
+  if (!inventoryDate) throw new Error("Selecciona la fecha del inventario")
+  const status = textValue(params, "status") === "finalizado" ? "finalizado" : "borrador"
+
+  let items: IncomingInvItem[] = []
+  try {
+    items = JSON.parse(textValue(params, "items") || "[]")
+  } catch {
+    throw new Error("Lista de materiales inválida")
+  }
+  const clean = cleanInvItems(items)
+  if (status === "finalizado" && clean.length === 0) {
+    throw new Error("Registra al menos un material contado para finalizar")
+  }
+
+  const sb = getSupabaseAdmin()
+  let id = textValue(params, "id")
+
+  if (id) {
+    const existing = await fetchInv(sb, id)
+    if (existing.deleted_at) throw new Error("Inventario eliminado")
+    if (existing.status === "finalizado") {
+      throw new Error("Este inventario ya está finalizado y no se puede editar. Usa Corregir (admin) o Duplicar como nuevo conteo.")
+    }
+  } else {
+    // Reanudar el borrador existente de (sucursal, fecha) → evita duplicados.
+    const { data: draft } = await sb
+      .from("material_inventories")
+      .select("id")
+      .eq("business_id", business_id)
+      .eq("branch", branch)
+      .eq("inventory_date", inventoryDate)
+      .eq("status", "borrador")
+      .is("deleted_at", null)
+      .maybeSingle()
+    if (draft) id = (draft as Row).id as string
+  }
+
+  const now = new Date().toISOString()
+  const invRow: Row = {
+    business_id,
+    branch,
+    inventory_date: inventoryDate,
+    status,
+    notes: textValue(params, "notes") || null,
+    updated_at: now,
+  }
+  const userName = textValue(params, "userName") || null
+  if (id) invRow.id = id
+  else {
+    invRow.created_by = user.id || null
+    invRow.created_by_name = userName
+  }
+  if (status === "finalizado") {
+    invRow.finalized_by = user.id || null
+    invRow.finalized_by_name = userName
+    invRow.finalized_at = now
+  }
+
+  let savedInv: Row
+  try {
+    const { data, error } = await sb.from("material_inventories").upsert(invRow, { onConflict: "id" }).select().single()
+    if (error) throw error
+    savedInv = data as Row
+  } catch (e) {
+    // Índice único parcial: ya hay un borrador para esa sucursal+fecha (doble clic/carrera).
+    if ((e as { code?: string }).code === "23505") {
+      throw new Error("Ya hay un inventario en borrador para esa sucursal y fecha. Recárgalo para continuar.")
+    }
+    throw e
+  }
+  const inventoryId = savedInv.id as string
+
+  // Reemplazar ítems (borrador editable): borrar e insertar.
+  await sb.from("material_inventory_items").delete().eq("inventory_id", inventoryId).eq("business_id", business_id)
+  if (clean.length) {
+    const itemRows = clean.map((it) => ({
+      business_id,
+      inventory_id: inventoryId,
+      material_id: it.materialId,
+      material_name_snapshot: it.materialName,
+      supplier_group_snapshot: it.supplierGroup,
+      quantity: it.quantity,
+      unit: it.unit,
+      observation: it.observation,
+    }))
+    const { error: itErr } = await sb.from("material_inventory_items").insert(itemRows)
+    if (itErr) throw itErr
+  }
+
+  await logInvAudit(
+    user,
+    status === "finalizado" ? "inventory_finalized" : id ? "inventory_saved" : "inventory_created",
+    inventoryId,
+    null,
+    null,
+    { branch, status, items: clean.length },
+  )
+  return { ok: true, record: { ...mapInventory(savedInv), itemsCount: clean.length } }
+}
+
+/** Lista de inventarios (histórico) con resumen. Scopeado por tenant + sucursal. */
+export async function getInventories(params: ActionParams) {
+  const sb = getSupabaseAdmin()
+  let q = sb.from("material_inventories").select("*").order("inventory_date", { ascending: false }).order("created_at", { ascending: false })
+  if (scoped()) q = q.eq("business_id", bizId() as string)
+  const onlyDeleted = textValue(params, "deleted") === "1" && isManager()
+  q = onlyDeleted ? q.not("deleted_at", "is", null) : q.is("deleted_at", null)
+  const status = textValue(params, "status")
+  if (status && status !== "todos") q = q.eq("status", status)
+  const branchFilter = normalizeSucursal(textValue(params, "branch"))
+  if (branchFilter) q = q.eq("branch", branchFilter)
+  const desde = dateValue(params.desde)
+  const hasta = dateValue(params.hasta)
+  if (desde) q = q.gte("inventory_date", desde)
+  if (hasta) q = q.lte("inventory_date", hasta)
+  const { data, error } = await q
+  if (error) throw error
+  const invs = scopeByBranch((data || []) as Row[], (r) => r.branch)
+  const ids = invs.map((r) => r.id as string)
+  let itemsByInv: Record<string, Row[]> = {}
+  if (ids.length) {
+    const { data: items } = await sb.from("material_inventory_items").select("inventory_id, quantity").in("inventory_id", ids)
+    itemsByInv = (items || []).reduce((acc: Record<string, Row[]>, it: Row) => {
+      const k = it.inventory_id as string
+      ;(acc[k] = acc[k] || []).push(it)
+      return acc
+    }, {})
+  }
+  const records = invs.map((r) => {
+    const its = itemsByInv[r.id as string] || []
+    return {
+      ...mapInventory(r),
+      itemsCount: its.length,
+      totalQty: its.reduce((s, it) => s + (Number(it.quantity) || 0), 0),
+    }
+  })
+  return { ok: true, records }
+}
+
+/** Un inventario con todos sus ítems (detalle / PDF). */
+export async function getInventory(params: ActionParams) {
+  const id = textValue(params, "id")
+  if (!id) throw new Error("Falta id")
+  const sb = getSupabaseAdmin()
+  const inv = await fetchInv(sb, id)
+  const { data: items } = await sb
+    .from("material_inventory_items")
+    .select("*")
+    .eq("inventory_id", id)
+    .order("supplier_group_snapshot")
+    .order("material_name_snapshot")
+  return { ok: true, record: { ...mapInventory(inv), items: (items || []).map(mapInvItem) } }
+}
+
+/** Eliminación LÓGICA (soft delete). Solo borradores para el creador; los
+ *  finalizados solo admin/superadmin (conserva el histórico). */
+export async function deleteInventory(params: ActionParams, user: ActionUser) {
+  const id = textValue(params, "id")
+  if (!id) throw new Error("Falta id")
+  const sb = getSupabaseAdmin()
+  const inv = await fetchInv(sb, id)
+  if (inv.deleted_at) return { ok: true } // idempotente
+  const isCreator = Boolean(inv.created_by && user.id && String(inv.created_by) === String(user.id))
+  const canDelete = isManager() || (isCreator && inv.status === "borrador")
+  if (!canDelete) throw new Error("No tienes permiso para eliminar este inventario.")
+  const fields: Row = {
+    deleted_at: new Date().toISOString(),
+    deleted_by: user.id || null,
+    deleted_reason: textValue(params, "reason") || null,
+    updated_at: new Date().toISOString(),
+  }
+  let uq = sb.from("material_inventories").update(fields).eq("id", id).is("deleted_at", null)
+  if (scoped()) uq = uq.eq("business_id", bizId() as string)
+  const { data: upd, error } = await uq.select()
+  if (error) throw error
+  if (!upd || !upd.length) throw new Error("No se pudo eliminar (verifica el negocio activo)")
+  await logInvAudit(user, "inventory_deleted", id, null, { status: inv.status }, { reason: fields.deleted_reason })
+  return { ok: true }
+}
+
+/** Restaura un inventario eliminado lógicamente. Solo admin/superadmin. */
+export async function restoreInventory(params: ActionParams, user: ActionUser) {
+  if (!isManager()) throw new Error("Solo admin/superadmin puede restaurar inventarios")
+  const id = textValue(params, "id")
+  if (!id) throw new Error("Falta id")
+  const sb = getSupabaseAdmin()
+  let uq = sb
+    .from("material_inventories")
+    .update({ deleted_at: null, deleted_by: null, deleted_reason: null, updated_at: new Date().toISOString() })
+    .eq("id", id)
+  if (scoped()) uq = uq.eq("business_id", bizId() as string)
+  const { data: upd, error } = await uq.select()
+  if (error) throw error
+  if (!upd || !upd.length) throw new Error("Inventario no encontrado o de otro negocio")
+  await logInvAudit(user, "inventory_restored", id, null, null, null)
+  return { ok: true }
+}
+
+/**
+ * Duplica un inventario como NUEVO borrador (mismo/otra fecha), copiando sus
+ * ítems y cantidades para reconteo. No modifica el original.
+ */
+export async function duplicateInventory(params: ActionParams, user: ActionUser) {
+  const id = textValue(params, "id")
+  if (!id) throw new Error("Falta id")
+  const business_id = requireBizId()
+  const sb = getSupabaseAdmin()
+  const src = await fetchInv(sb, id)
+  const branch = requireBranchInScope(String(src.branch))
+  const inventoryDate = dateValue(params.inventoryDate) || new Date().toISOString().slice(0, 10)
+
+  // No duplicar si ya hay un borrador para esa sucursal+fecha (evita choque con el índice único).
+  const { data: draft } = await sb
+    .from("material_inventories")
+    .select("id")
+    .eq("business_id", business_id)
+    .eq("branch", branch)
+    .eq("inventory_date", inventoryDate)
+    .eq("status", "borrador")
+    .is("deleted_at", null)
+    .maybeSingle()
+  if (draft) throw new Error("Ya existe un borrador para esa sucursal y fecha. Ábrelo para continuar el conteo.")
+
+  const now = new Date().toISOString()
+  const { data: newInv, error } = await sb
+    .from("material_inventories")
+    .insert({
+      business_id,
+      branch,
+      inventory_date: inventoryDate,
+      status: "borrador",
+      notes: src.notes || null,
+      created_by: user.id || null,
+      created_by_name: textValue(params, "userName") || null,
+      updated_at: now,
+    })
+    .select()
+    .single()
+  if (error) {
+    if ((error as { code?: string }).code === "23505") throw new Error("Ya existe un borrador para esa sucursal y fecha.")
+    throw error
+  }
+  const newId = (newInv as Row).id as string
+  const { data: srcItems } = await sb.from("material_inventory_items").select("*").eq("inventory_id", id)
+  if (srcItems && srcItems.length) {
+    const rows = (srcItems as Row[]).map((it) => ({
+      business_id,
+      inventory_id: newId,
+      material_id: it.material_id,
+      material_name_snapshot: it.material_name_snapshot,
+      supplier_group_snapshot: it.supplier_group_snapshot,
+      quantity: it.quantity,
+      unit: it.unit,
+      observation: it.observation,
+    }))
+    await sb.from("material_inventory_items").insert(rows)
+  }
+  await logInvAudit(user, "inventory_duplicated", newId, null, { from: id }, { branch, inventoryDate })
+  return { ok: true, record: mapInventory(newInv as Row) }
+}
+
+/**
+ * Corrección de un ítem de un inventario FINALIZADO. Solo admin/superadmin.
+ * Registra auditoría con valor anterior, valor nuevo, motivo y usuario.
+ */
+export async function correctInventoryItem(params: ActionParams, user: ActionUser) {
+  if (!isManager()) throw new Error("Solo admin/superadmin puede corregir un inventario finalizado")
+  const itemId = textValue(params, "itemId")
+  if (!itemId) throw new Error("Falta itemId")
+  const reason = textValue(params, "reason").trim()
+  if (!reason) throw new Error("Indica el motivo de la corrección")
+  const sb = getSupabaseAdmin()
+  // Cargar el ítem scopeado por tenant.
+  let iq = sb.from("material_inventory_items").select("*").eq("id", itemId)
+  if (scoped()) iq = iq.eq("business_id", bizId() as string)
+  const { data: item, error: iErr } = await iq.maybeSingle()
+  if (iErr) throw iErr
+  if (!item) throw new Error("Ítem no encontrado o de otro negocio")
+  const it = item as Row
+  const inv = await fetchInv(sb, String(it.inventory_id))
+  if (inv.status !== "finalizado") throw new Error("La corrección con auditoría es solo para inventarios finalizados")
+
+  const hasQty = String(params.quantity ?? "").trim() !== ""
+  const newQty = hasQty ? Math.max(0, numberValue(params, "quantity", Number(it.quantity) || 0)) : Number(it.quantity) || 0
+  const hasObs = params.observation !== undefined
+  const newObs = hasObs ? (textValue(params, "observation") || null) : (it.observation ?? null)
+  const oldValues = { quantity: Number(it.quantity), observation: it.observation ?? null }
+  const newValues = { quantity: newQty, observation: newObs }
+
+  await sb
+    .from("material_inventory_items")
+    .update({ quantity: newQty, observation: newObs, updated_at: new Date().toISOString() })
+    .eq("id", itemId)
+  await sb.from("material_inventories").update({ updated_at: new Date().toISOString() }).eq("id", it.inventory_id)
+  await logInvAudit(user, "inventory_item_corrected", String(it.inventory_id), itemId, oldValues, newValues, reason)
+  return { ok: true }
+}
+
+/** Historial de cambios (auditoría) de un inventario. */
+export async function getInventoryAuditLogs(params: ActionParams) {
+  const inventoryId = textValue(params, "id")
+  if (!inventoryId) throw new Error("Falta id")
+  const sb = getSupabaseAdmin()
+  // Verifica pertenencia al tenant antes de exponer la auditoría.
+  await fetchInv(sb, inventoryId)
+  let q = sb
+    .from("material_inventory_audit_logs")
+    .select("*")
+    .eq("inventory_id", inventoryId)
+    .order("created_at", { ascending: false })
+  if (scoped()) q = q.eq("business_id", bizId() as string)
+  const { data, error } = await q
+  if (error) throw error
+  const records = (data || []).map((r: Row) => ({
+    id: r.id,
+    action: r.action,
+    oldValues: r.old_values,
+    newValues: r.new_values,
+    reason: r.reason,
+    userId: r.user_id,
+    createdAt: r.created_at,
+  }))
+  return { ok: true, records }
+}

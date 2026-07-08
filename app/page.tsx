@@ -23,6 +23,8 @@ import { ReqMatConsolidadoPage } from "@/components/req-mat-consolidado-page"
 import { ReqMatAprobacionesPage } from "@/components/req-mat-aprobaciones-page"
 import { ReqMatMaterialesPage } from "@/components/req-mat-materiales-page"
 import { ReqMatDashboardPage } from "@/components/req-mat-dashboard-page"
+import { ReqMatInventarioPage } from "@/components/req-mat-inventario-page"
+import { ReqMatInventarioHistoricoPage } from "@/components/req-mat-inventario-historico-page"
 import { CredencialesPage } from "@/components/credenciales-page"
 import { RecursosHumanosPage } from "@/components/recursos-humanos-page"
 import { EmpleadosPage } from "@/components/empleados-page"
@@ -322,6 +324,10 @@ export default function HomePage() {
         return <ReqMatAprobacionesPage />
       case "req-mat-materiales":
         return <ReqMatMaterialesPage />
+      case "req-mat-inventario":
+        return <ReqMatInventarioPage />
+      case "req-mat-inventario-historico":
+        return <ReqMatInventarioHistoricoPage />
       case "req-mat-dashboard":
         return <ReqMatDashboardPage />
       case "credenciales":

@@ -18,6 +18,63 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.17.0] — 2026-07-07
+
+### Added
+- **Inventario de materiales por sucursal (conteo físico histórico)** — nuevo
+  módulo dentro de Requisición de Materiales, con dos menús:
+  **Inventario de materiales** (captura) e **Histórico de inventarios** (lista).
+  - **Reutiliza el catálogo maestro existente** (`material_catalog`) — NO crea
+    catálogo nuevo. La lista se muestra agrupada por proveedor (BRAVO, NACIONAL,
+    PRICES MART, SUPLIDOR), igual que en las requisiciones.
+  - **Captura:** selección de Sucursal + Fecha + buscador; KPIs (Total / Contados
+    / Sin contar / Cantidad total); campo "Cantidad en existencia" (enteros y
+    decimales, teclado numérico) + Observación por material. **Autoguardado** de
+    borrador (evita pérdida en conteos largos), **Guardar borrador**, **Finalizar
+    inventario**, **Limpiar** y **PDF**. Reanuda el borrador de (sucursal, fecha)
+    al volver (conserva las cantidades).
+  - **Histórico:** columnas Fecha · Sucursal · Materiales · Estado · Creado por ·
+    Finalizado por · Fecha finalización + menú **Acciones**: Ver detalle,
+    Imprimir/PDF, Duplicar como nuevo conteo, Editar (solo borrador), Corregir
+    (solo Admin/Superadmin, con auditoría), Eliminar (soft delete), Ver historial
+    de cambios. Filtros por sucursal, estado y rango de fechas.
+  - **PDF profesional** (`lib/inventario-materiales-pdf.ts`): logo de la empresa
+    activa, título "INVENTARIO DE MATERIALES", sucursal/fecha/responsable/estado,
+    tabla (# · Material · Unidad · Cantidad en existencia · Observación) agrupada
+    por proveedor, total de materiales y fecha/hora + usuario de generación.
+  - **Inmutabilidad:** un inventario **finalizado** no se edita por la vía normal;
+    solo Admin/Superadmin lo corrige con auditoría (usuario, fecha, valor
+    anterior, valor nuevo, motivo). Índice único parcial evita duplicar el
+    borrador de una misma (sucursal, fecha) — el doble clic no crea duplicados.
+  - **BD** (`202607070001_material_inventories.sql`, aplicada a db-cls):
+    `material_inventories` + `material_inventory_items` (FK → `material_catalog`,
+    snapshots de nombre/proveedor) + `material_inventory_audit_logs`. Multi-tenant
+    (`business_id`) + RLS por tenant + soft delete. Aislamiento por sucursal
+    (`scopeByBranch`) — la encargada ve solo su(s) sucursal(es); Cibao/Depicenter
+    nunca se mezclan.
+  - **RBAC:** crear/borrador/finalizar/ver-históricos/PDF para usuarios
+    autorizados en sus sucursales; corregir/gestionar eliminaciones solo
+    Admin/Superadmin. El módulo **NO** modifica requisiciones, compras,
+    aprobaciones ni el catálogo (conteo independiente).
+  - Backend en `lib/server/materials.ts` (acciones `getInventoryDraft`,
+    `saveInventory`, `getInventories`, `getInventory`, `deleteInventory`,
+    `restoreInventory`, `duplicateInventory`, `correctInventoryItem`,
+    `getInventoryAuditLogs`) + registro en `app/api/csl/_handlers.ts`.
+  - Test e2e de regresión: `scripts/_test-inventario-flow.js` (20/20).
+
+### Verified
+- **e2e** (`scripts/_test-inventario-flow.js`, contra db-cls): NO-admin usa el
+  módulo; catálogo reutilizado (58, sin duplicar); borrador + reanudar (decimales
+  1.5); re-guardar reutiliza el id (sin duplicar); finalizar → inmutable;
+  histórico con conteo + "Creado/Finalizado por"; RBAC (corrección/eliminación de
+  finalizado rechazadas a NO-admin); `business_id`=CSL. **Solo Supabase local.**
+- **Navegador (Chrome)** como encargada NO-admin de Los Jardines: ambos menús
+  visibles; 58 materiales agrupados por proveedor; KPIs reactivos con decimales;
+  Guardar borrador → toast; histórico con columnas correctas y snapshot de nombre.
+- `tsc --noEmit` (lint) y `next build`: OK.
+
+---
+
 ## [0.16.0] — 2026-07-07
 
 ### Fixed

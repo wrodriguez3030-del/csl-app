@@ -31,6 +31,8 @@ const pageMeta: Partial<Record<TabId, { title: string; description: string; eyeb
   "req-mat-consolidado": { title: "Consolidado de compras", description: "Pivote por proveedor y material × sucursal", eyebrow: "Requisición de materiales" },
   "req-mat-aprobaciones": { title: "Aprobaciones", description: "Aprobar, ajustar, comprar y recibir por ítem", eyebrow: "Requisición de materiales" },
   "req-mat-materiales": { title: "Materiales", description: "Catálogo de materiales por proveedor", eyebrow: "Requisición de materiales" },
+  "req-mat-inventario": { title: "Inventario de materiales", description: "Conteo físico de existencias por sucursal y fecha", eyebrow: "Requisición de materiales" },
+  "req-mat-inventario-historico": { title: "Histórico de inventarios", description: "Inventarios finalizados por sucursal con acciones", eyebrow: "Requisición de materiales" },
   "req-mat-dashboard": { title: "Dashboard materiales", description: "KPIs y gráficos de requisiciones de materiales", eyebrow: "Requisición de materiales" },
   "pulse-dashboard": { title: "PulseControl CSL", description: "Panel integrado de control de pulsos GentleYAG", eyebrow: "Láser" },
   "pulse-equipos": { title: "Equipos GentleYAG", description: "11 equipos controlados por sucursal y cabina", eyebrow: "PulseControl" },
