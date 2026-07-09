@@ -1,6 +1,6 @@
 {
   "name": "my-project",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -50,6 +50,7 @@
     "cmdk": "1.1.1",
     "date-fns": "4.1.0",
     "embla-carousel-react": "8.6.0",
+    "exceljs": "^4.4.0",
     "input-otp": "1.4.2",
     "lucide-react": "^0.564.0",
     "next": "16.2.0",

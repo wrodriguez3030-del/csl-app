@@ -24,7 +24,8 @@ import {
   INV_STATUS_BADGE, INV_STATUS_LABEL, INV_AUDIT_ACTION_LABEL, fmtNum,
 } from "@/lib/materials-client"
 import type { MaterialInventory, MaterialInventoryItem, InventoryAuditLog } from "@/lib/materials-client"
-import { printInventarioPdf, exportInventarioExcel } from "@/lib/inventario-materiales-pdf"
+import { printInventarioPdf } from "@/lib/inventario-materiales-pdf"
+import { exportInventarioXlsx } from "@/lib/inventario-materiales-xlsx"
 import { canPerm } from "@/lib/permissions"
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
@@ -110,14 +111,19 @@ export function ReqMatInventarioHistoricoPage() {
 
   const printFull = (full: MaterialInventory) =>
     printInventarioPdf({ inventory: full, business, responsable: full.createdByName || responsable, generadoPor: responsable, origin: window.location.origin })
-  const excelFull = (full: MaterialInventory) =>
-    exportInventarioExcel({ inventory: full, business, responsable: full.createdByName || responsable, generadoPor: responsable, origin: window.location.origin })
+  const excelFull = async (full: MaterialInventory) => {
+    try {
+      await exportInventarioXlsx({ inventory: full, business, responsable: full.createdByName || responsable, generadoPor: responsable, origin: window.location.origin })
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "No se pudo generar el Excel", "error")
+    }
+  }
 
   const doPrint = async (r: MaterialInventory) => { const full = await fetchFull(r.id); if (full) printFull(full) }
   // "Generar PDF": misma vista branded del sistema; el usuario elige "Guardar
   // como PDF" (el <title> ya sugiere INVENTARIO_MATERIALES_...).
   const doPdf = doPrint
-  const doExcel = async (r: MaterialInventory) => { const full = await fetchFull(r.id); if (full) excelFull(full) }
+  const doExcel = async (r: MaterialInventory) => { const full = await fetchFull(r.id); if (full) await excelFull(full) }
 
   const doEdit = (r: MaterialInventory) => {
     if (r.status !== "borrador") return

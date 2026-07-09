@@ -18,6 +18,28 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.21.0] — 2026-07-09
+
+### Changed
+- **Exportar Excel del inventario ahora genera un `.xlsx` NATIVO** (motor
+  `lib/inventario-materiales-xlsx.ts` con **ExcelJS**), reemplazando el enfoque
+  HTML→`.xls` de v0.20.0. Incluye, verificado por lectura de vuelta del archivo:
+  **autofiltro** (`A6:F6`), **freeze panes** (encabezado congelado, `ySplit 6`),
+  logo embebido (best-effort), encabezado corporativo, columnas con color de
+  marca + negrita, bordes, anchos de columna definidos, cantidad con formato
+  numérico alineada a la derecha, fila de totales y página **A4**. Nombre de
+  archivo: `INVENTARIO_MATERIALES_<SUCURSAL>_<FECHA>.xlsx`.
+
+### Added
+- Dependencia `exceljs@^4.4.0` (browser build, importada dinámicamente para no
+  cargar el bundle inicial).
+
+### Removed
+- `buildInventarioExcelHtml` / `exportInventarioExcel` (HTML→`.xls`) de
+  `lib/inventario-materiales-pdf.ts`, sustituidos por el `.xlsx` nativo.
+
+---
+
 ## [0.20.0] — 2026-07-09
 
 ### Added
