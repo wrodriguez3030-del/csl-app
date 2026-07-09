@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { useAppStore, apiCallCached, apiJsonp, normalizeApiUrl, invalidateReadCache } from "@/lib/store"
 import { useSessionUser } from "@/hooks/use-session-user"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
@@ -25,6 +25,7 @@ import {
   ShieldCheck, Check, X, ShoppingCart, PackageCheck, CheckCheck, RefreshCcw, Settings2,
   MoreVertical, Eye, CornerUpLeft, Send, Printer, SlidersHorizontal, Trash2, RotateCcw,
 } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { REQ_STATUS_BADGE, REQ_STATUS_LABEL, ITEM_STATUS_BADGE, ITEM_STATUS_LABEL, fmtNum } from "@/lib/materials-client"
 import { printRequisitionPdf } from "@/lib/materials-export"
 import type { Requisition, ReqItem, ReqStatus } from "@/lib/materials-client"
@@ -190,9 +191,37 @@ export function ReqMatAprobacionesPage() {
     await act("approveAllRequisition", { id: detail.id })
     showToast("Requisición aprobada", "success")
   }
+  // "Rechazar todo" desde el detalle: cierra el modal y abre el de motivo
+  // reutilizando el flujo de rechazo a nivel de requisición completa.
+  const rejectAllFromDetail = () => {
+    if (!detail) return
+    const req = detail
+    setDetail(null)
+    setReason({ kind: "rechazar", req })
+    setReasonText("")
+  }
 
   const setE = (id: string, patch: Partial<{ qty: string; note: string; supplier: string; cost: string }>) =>
     setEdit((p) => ({ ...p, [id]: { ...(p[id] || { qty: "", note: "", supplier: "", cost: "" }), ...patch } }))
+
+  // Acciones por ítem en horizontal, reutilizadas en tabla (desktop) y tarjetas (móvil).
+  const renderItemActions = (it: ReqItem, align: string): ReactNode => {
+    if (detail?.deletedAt) return <span className="text-[11px] text-muted-foreground">—</span>
+    const canApprove = it.status === "enviada"
+    const canPurchase = it.status === "aprobada"
+    const canReceive = it.status === "comprada" || it.status === "recibida_parcial"
+    const wrap = (children: ReactNode) => <div className={cn("flex flex-wrap items-center gap-2", align)}>{children}</div>
+    if (canApprove)
+      return wrap(
+        <>
+          <Button size="sm" className="h-8" disabled={busy} onClick={() => approveItem(it)}><Check className="mr-1 h-3.5 w-3.5" />Aprobar</Button>
+          <Button size="sm" variant="outline" className="h-8 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700" disabled={busy} onClick={() => rejectItem(it)}><X className="mr-1 h-3.5 w-3.5" />Rechazar</Button>
+        </>,
+      )
+    if (canPurchase) return wrap(<Button size="sm" className="h-8" disabled={busy} onClick={() => purchaseItem(it)}><ShoppingCart className="mr-1 h-3.5 w-3.5" />Comprar</Button>)
+    if (canReceive) return wrap(<Button size="sm" className="h-8" disabled={busy} onClick={() => receiveItem(it)}><PackageCheck className="mr-1 h-3.5 w-3.5" />Recibir</Button>)
+    return <span className="text-[11px] text-muted-foreground">—</span>
+  }
 
   const pag = usePagination(items, { initialPageSize: 50, resetKey: status })
 
@@ -289,70 +318,108 @@ export function ReqMatAprobacionesPage() {
         </CardContent>
       </Card>
 
-      {/* Diálogo Gestionar (por ítem) */}
+      {/* Diálogo Gestionar (por ítem) — ancho amplio, cabecera fija, scroll interno */}
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {detail?.branch}
+        <DialogContent className="flex max-h-[90vh] w-[calc(100vw-48px)] max-w-[1400px] flex-col gap-0 overflow-hidden p-0 sm:max-w-[1400px]">
+          {/* Cabecera fija */}
+          <DialogHeader className="shrink-0 border-b border-[color:var(--brand-border)] px-6 py-4 pr-14 text-left">
+            <div className="flex flex-wrap items-center gap-2">
+              <DialogTitle className="text-lg">{detail?.branch}</DialogTitle>
               {detail ? <Badge variant="outline" className={REQ_STATUS_BADGE[detail.status]}>{REQ_STATUS_LABEL[detail.status]}</Badge> : null}
-              {detail && !detail.deletedAt ? <Button size="sm" className="ml-auto" onClick={approveAll} disabled={busy}><CheckCheck className="mr-1.5 h-4 w-4" />Aprobar todo</Button> : null}
-            </DialogTitle>
+              <span className="text-xs text-muted-foreground">{detail?.items?.length ?? detail?.itemsCount ?? 0} materiales</span>
+              {detail && !detail.deletedAt ? (
+                <div className="ml-auto flex items-center gap-2">
+                  {PENDING.includes(detail.status) ? (
+                    <Button size="sm" variant="outline" className="h-8 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700" onClick={rejectAllFromDetail} disabled={busy}>
+                      <X className="mr-1.5 h-4 w-4" />Rechazar todo
+                    </Button>
+                  ) : null}
+                  <Button size="sm" className="h-8" onClick={approveAll} disabled={busy}>
+                    <CheckCheck className="mr-1.5 h-4 w-4" />Aprobar todo
+                  </Button>
+                </div>
+              ) : null}
+            </div>
           </DialogHeader>
-          <div className="max-h-[65vh] overflow-y-auto">
-            <table className="w-full text-sm">
+
+          {/* Cuerpo con scroll vertical interno */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+            {/* Desktop / tablet: tabla de ancho completo con columnas proporcionales */}
+            <table className="hidden w-full table-fixed text-sm md:table">
+              <colgroup>
+                <col style={{ width: "22%" }} />
+                <col style={{ width: "8%" }} />
+                <col style={{ width: "12%" }} />
+                <col style={{ width: "22%" }} />
+                <col style={{ width: "12%" }} />
+                <col style={{ width: "24%" }} />
+              </colgroup>
               <thead>
                 <tr className="border-b text-left text-[11px] uppercase text-muted-foreground">
-                  <th className="py-1.5">Material</th>
-                  <th className="py-1.5 text-right">Sol.</th>
-                  <th className="py-1.5">Cantidad / Costo</th>
-                  <th className="py-1.5">Observación / Suplidor</th>
-                  <th className="py-1.5">Estado</th>
+                  <th className="py-1.5 pr-2">Material</th>
+                  <th className="py-1.5 pr-2 text-center">Solicitado</th>
+                  <th className="py-1.5 pr-2">Cant. aprobada</th>
+                  <th className="py-1.5 pr-2">Observación / suplidor</th>
+                  <th className="py-1.5 pr-2">Estado</th>
                   <th className="py-1.5 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {(detail?.items || []).map((it) => {
                   const e = edit[it.id] || { qty: "", note: "", supplier: "", cost: "" }
-                  const canApprove = it.status === "enviada"
                   const canPurchase = it.status === "aprobada"
-                  const canReceive = it.status === "comprada" || it.status === "recibida_parcial"
                   return (
                     <tr key={it.id} className="border-b align-top last:border-0">
-                      <td className="py-2 font-medium">{it.materialName}<div className="text-[11px] text-muted-foreground">{it.supplierGroup}</div></td>
-                      <td className="py-2 text-right">{fmtNum(it.requestedQty)}</td>
-                      <td className="py-2">
-                        <Input className="h-8 w-24" type="number" min={0} value={e.qty} onChange={(ev) => setE(it.id, { qty: ev.target.value })} placeholder="Cant." />
-                        {canPurchase ? <Input className="mt-1 h-8 w-24" value={e.cost} onChange={(ev) => setE(it.id, { cost: ev.target.value })} placeholder="Costo" /> : null}
+                      <td className="py-2 pr-2">
+                        <div className="font-medium break-words">{it.materialName}</div>
+                        <div className="text-[11px] text-muted-foreground break-words">{it.supplierGroup}</div>
                       </td>
-                      <td className="py-2">
-                        <Input className="h-8" value={e.note} onChange={(ev) => setE(it.id, { note: ev.target.value })} placeholder="Observación / motivo" />
-                        {canPurchase ? <Input className="mt-1 h-8" value={e.supplier} onChange={(ev) => setE(it.id, { supplier: ev.target.value })} placeholder="Suplidor final" /> : null}
+                      <td className="py-2 pr-2 text-center tabular-nums">{fmtNum(it.requestedQty)}</td>
+                      <td className="py-2 pr-2">
+                        <Input className="h-8 w-20 text-center" type="number" min={0} value={e.qty} onChange={(ev) => setE(it.id, { qty: ev.target.value })} placeholder="Cant." />
+                        {canPurchase ? <Input className="mt-1 h-8 w-24 text-center" value={e.cost} onChange={(ev) => setE(it.id, { cost: ev.target.value })} placeholder="Costo" /> : null}
                       </td>
-                      <td className="py-2"><Badge variant="outline" className={ITEM_STATUS_BADGE[it.status]}>{ITEM_STATUS_LABEL[it.status]}</Badge></td>
-                      <td className="py-2">
-                        <div className="flex flex-col items-end gap-1">
-                          {detail?.deletedAt ? (
-                            <span className="text-[11px] text-muted-foreground">—</span>
-                          ) : canApprove ? (
-                            <>
-                              <Button size="sm" className="h-7 w-full" disabled={busy} onClick={() => approveItem(it)}><Check className="mr-1 h-3.5 w-3.5" />Aprobar</Button>
-                              <Button size="sm" variant="outline" className="h-7 w-full text-red-600" disabled={busy} onClick={() => rejectItem(it)}><X className="mr-1 h-3.5 w-3.5" />Rechazar</Button>
-                            </>
-                          ) : canPurchase ? (
-                            <Button size="sm" className="h-7 w-full" disabled={busy} onClick={() => purchaseItem(it)}><ShoppingCart className="mr-1 h-3.5 w-3.5" />Comprar</Button>
-                          ) : canReceive ? (
-                            <Button size="sm" className="h-7 w-full" disabled={busy} onClick={() => receiveItem(it)}><PackageCheck className="mr-1 h-3.5 w-3.5" />Recibir</Button>
-                          ) : (
-                            <span className="text-[11px] text-muted-foreground">—</span>
-                          )}
-                        </div>
+                      <td className="py-2 pr-2">
+                        <Input className="h-8 w-full" value={e.note} onChange={(ev) => setE(it.id, { note: ev.target.value })} placeholder="Observación / motivo" />
+                        {canPurchase ? <Input className="mt-1 h-8 w-full" value={e.supplier} onChange={(ev) => setE(it.id, { supplier: ev.target.value })} placeholder="Suplidor final" /> : null}
                       </td>
+                      <td className="py-2 pr-2"><Badge variant="outline" className={ITEM_STATUS_BADGE[it.status]}>{ITEM_STATUS_LABEL[it.status]}</Badge></td>
+                      <td className="py-2">{renderItemActions(it, "justify-end")}</td>
                     </tr>
                   )
                 })}
               </tbody>
             </table>
+
+            {/* Móvil: tarjetas apiladas (sin scroll horizontal) */}
+            <div className="space-y-3 md:hidden">
+              {(detail?.items || []).map((it) => {
+                const e = edit[it.id] || { qty: "", note: "", supplier: "", cost: "" }
+                const canPurchase = it.status === "aprobada"
+                return (
+                  <div key={it.id} className="rounded-lg border border-[color:var(--brand-border)] p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-medium break-words">{it.materialName}</div>
+                        <div className="text-[11px] text-muted-foreground break-words">{it.supplierGroup}</div>
+                      </div>
+                      <Badge variant="outline" className={ITEM_STATUS_BADGE[it.status]}>{ITEM_STATUS_LABEL[it.status]}</Badge>
+                    </div>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Solicitado: <b className="text-foreground tabular-nums">{fmtNum(it.requestedQty)}</b>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <Input className="h-8 w-24 text-center" type="number" min={0} value={e.qty} onChange={(ev) => setE(it.id, { qty: ev.target.value })} placeholder="Cant. aprob." />
+                      {canPurchase ? <Input className="h-8 w-24 text-center" value={e.cost} onChange={(ev) => setE(it.id, { cost: ev.target.value })} placeholder="Costo" /> : null}
+                    </div>
+                    <Input className="mt-2 h-8 w-full" value={e.note} onChange={(ev) => setE(it.id, { note: ev.target.value })} placeholder="Observación / motivo" />
+                    {canPurchase ? <Input className="mt-2 h-8 w-full" value={e.supplier} onChange={(ev) => setE(it.id, { supplier: ev.target.value })} placeholder="Suplidor final" /> : null}
+                    <div className="mt-3">{renderItemActions(it, "justify-start")}</div>
+                  </div>
+                )
+              })}
+              {(detail?.items || []).length === 0 ? <div className="py-6 text-center text-sm text-muted-foreground">Sin materiales.</div> : null}
+            </div>
           </div>
         </DialogContent>
       </Dialog>

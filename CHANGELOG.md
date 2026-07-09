@@ -18,6 +18,34 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.19.0] — 2026-07-09
+
+### Changed
+- **Modal de aprobación de requisiciones de materiales** (Requisición de
+  Materiales → Aprobaciones → *Gestionar / Ver detalle*): rediseño de la vista
+  de detalle por ítem para aprovechar el ancho disponible y eliminar el scroll
+  horizontal.
+  - Ancho amplio en desktop: `width: calc(100vw - 48px)`, `max-width: 1400px`,
+    `max-height: 90vh`.
+  - Tabla con columnas proporcionales (`table-fixed`): Material 22% ·
+    Solicitado 8% · Cant. aprobada 12% · Observación/suplidor 22% · Estado 12% ·
+    Acciones 24%. La columna Acciones ya no queda cortada.
+  - **Cabecera fija** (sucursal, estado, conteo y acciones globales) con
+    **scroll vertical interno** en el cuerpo; se elimina el doble scroll previo.
+  - Botones de acción por fila **en horizontal** `[Aprobar] [Rechazar]` (antes
+    apilados verticalmente).
+  - Input de *Cantidad aprobada* más compacto y centrado; nombres de material
+    largos ahora hacen *wrap* en lugar de ensanchar la tabla.
+  - **Adaptación a móvil**: por debajo de `md` la tabla se sustituye por
+    tarjetas apiladas, sin scroll horizontal.
+
+### Added
+- Botón **"Rechazar todo"** en la cabecera del modal de detalle (junto a
+  "Aprobar todo"), visible cuando la requisición está *enviada* / *en revisión*;
+  reutiliza el flujo existente de rechazo a nivel de requisición (con motivo).
+
+---
+
 ## [0.18.0] — 2026-07-08
 
 ### Added
