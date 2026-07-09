@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { Fragment, useCallback, useEffect, useState } from "react"
 import { useAppStore, apiCallCached, apiJsonp, normalizeApiUrl, invalidateReadCache } from "@/lib/store"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { useSessionUser } from "@/hooks/use-session-user"
@@ -18,14 +18,26 @@ import {
 } from "@/components/ui/dropdown-menu"
 import {
   History, RefreshCcw, MoreHorizontal, Eye, Printer, Copy, Pencil, Wrench, Trash2, ScrollText, Loader2,
+  FileSpreadsheet, FileText,
 } from "lucide-react"
 import {
   INV_STATUS_BADGE, INV_STATUS_LABEL, INV_AUDIT_ACTION_LABEL, fmtNum,
 } from "@/lib/materials-client"
 import type { MaterialInventory, MaterialInventoryItem, InventoryAuditLog } from "@/lib/materials-client"
-import { printInventarioPdf } from "@/lib/inventario-materiales-pdf"
+import { printInventarioPdf, exportInventarioExcel } from "@/lib/inventario-materiales-pdf"
+import { canPerm } from "@/lib/permissions"
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
+
+/** Agrupa ítems del inventario por proveedor/categoría (orden alfabético). */
+function groupInvBySupplier(items: MaterialInventoryItem[]): [string, MaterialInventoryItem[]][] {
+  const g: Record<string, MaterialInventoryItem[]> = {}
+  for (const it of items) {
+    const k = it.supplierGroup || "—"
+    ;(g[k] = g[k] || []).push(it)
+  }
+  return Object.entries(g).sort((a, b) => a[0].localeCompare(b[0]))
+}
 
 export function ReqMatInventarioHistoricoPage() {
   const { apiUrl, showToast, setActiveTab } = useAppStore()
@@ -33,6 +45,13 @@ export function ReqMatInventarioHistoricoPage() {
   const sessionUser = useSessionUser()
   const isManager = Boolean(sessionUser?.isAdmin || sessionUser?.isSuperadmin)
   const responsable = sessionUser?.nombre || sessionUser?.username || "—"
+
+  // Permisos granulares (admin/superadmin bypassan vía canPerm).
+  const canView = canPerm(sessionUser, "materials.inventory.view")
+  const canPrintInv = canPerm(sessionUser, "materials.inventory.print")
+  const canExcel = canPerm(sessionUser, "materials.inventory.export_excel")
+  const canPdf = canPerm(sessionUser, "materials.inventory.export_pdf")
+  const canAnyExport = canView || canPrintInv || canExcel || canPdf
 
   const [items, setItems] = useState<MaterialInventory[]>([])
   const [branches, setBranches] = useState<string[]>([])
@@ -89,17 +108,16 @@ export function ReqMatInventarioHistoricoPage() {
     if (full) setDetail(full)
   }
 
-  const doPrint = async (r: MaterialInventory) => {
-    const full = await fetchFull(r.id)
-    if (!full) return
-    printInventarioPdf({
-      inventory: full,
-      business,
-      responsable: full.createdByName || responsable,
-      generadoPor: responsable,
-      origin: window.location.origin,
-    })
-  }
+  const printFull = (full: MaterialInventory) =>
+    printInventarioPdf({ inventory: full, business, responsable: full.createdByName || responsable, generadoPor: responsable, origin: window.location.origin })
+  const excelFull = (full: MaterialInventory) =>
+    exportInventarioExcel({ inventory: full, business, responsable: full.createdByName || responsable, generadoPor: responsable, origin: window.location.origin })
+
+  const doPrint = async (r: MaterialInventory) => { const full = await fetchFull(r.id); if (full) printFull(full) }
+  // "Generar PDF": misma vista branded del sistema; el usuario elige "Guardar
+  // como PDF" (el <title> ya sugiere INVENTARIO_MATERIALES_...).
+  const doPdf = doPrint
+  const doExcel = async (r: MaterialInventory) => { const full = await fetchFull(r.id); if (full) excelFull(full) }
 
   const doEdit = (r: MaterialInventory) => {
     if (r.status !== "borrador") return
@@ -156,6 +174,15 @@ export function ReqMatInventarioHistoricoPage() {
     const full = await fetchFull(r.id)
     if (full) setCorrect(full)
   }
+
+  // Datos derivados del inventario abierto (para el modal "Ver inventario").
+  const detailItems = detail?.items || []
+  const detailTotalQty = detailItems.reduce((s, it) => s + (Number(it.quantity) || 0), 0)
+  let detailNo = 0
+  const detailGroups = groupInvBySupplier(detailItems).map(([supplier, its]) => ({
+    supplier,
+    rows: its.map((it) => ({ it, no: ++detailNo })),
+  }))
 
   return (
     <div className="space-y-5">
@@ -238,9 +265,12 @@ export function ReqMatInventarioHistoricoPage() {
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-52">
-                            <DropdownMenuItem onClick={() => openDetail(r)}><Eye className="mr-2 h-4 w-4" />Ver detalle</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => doPrint(r)}><Printer className="mr-2 h-4 w-4" />Imprimir / PDF</DropdownMenuItem>
+                          <DropdownMenuContent align="end" className="w-56">
+                            {canView && <DropdownMenuItem onClick={() => openDetail(r)}><Eye className="mr-2 h-4 w-4" />Ver inventario</DropdownMenuItem>}
+                            {canPrintInv && <DropdownMenuItem onClick={() => doPrint(r)}><Printer className="mr-2 h-4 w-4" />Imprimir</DropdownMenuItem>}
+                            {canExcel && <DropdownMenuItem onClick={() => doExcel(r)}><FileSpreadsheet className="mr-2 h-4 w-4" />Exportar Excel</DropdownMenuItem>}
+                            {canPdf && <DropdownMenuItem onClick={() => doPdf(r)}><FileText className="mr-2 h-4 w-4" />Generar PDF</DropdownMenuItem>}
+                            {canAnyExport && <DropdownMenuSeparator />}
                             <DropdownMenuItem onClick={() => doDuplicate(r)}><Copy className="mr-2 h-4 w-4" />Duplicar como nuevo conteo</DropdownMenuItem>
                             {r.status === "borrador" && (
                               <DropdownMenuItem onClick={() => doEdit(r)}><Pencil className="mr-2 h-4 w-4" />Editar</DropdownMenuItem>
@@ -268,38 +298,85 @@ export function ReqMatInventarioHistoricoPage() {
         </CardContent>
       </Card>
 
-      {/* Detalle */}
+      {/* Ver inventario — encabezado completo, agrupado por proveedor, responsive */}
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex flex-wrap items-center gap-2">
-              {detail?.branch} · {(detail?.inventoryDate || "").slice(0, 10)}
-              {detail ? <Badge variant="outline" className={INV_STATUS_BADGE[detail.status]}>{INV_STATUS_LABEL[detail.status]}</Badge> : null}
-            </DialogTitle>
+        <DialogContent className="flex max-h-[90vh] w-[calc(100vw-32px)] max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+          {/* Cabecera fija con metadatos y acciones */}
+          <DialogHeader className="shrink-0 border-b border-[color:var(--brand-border)] px-5 py-4 pr-12 text-left">
+            <DialogTitle className="text-base font-black tracking-tight text-[color:var(--brand-primary)]">INVENTARIO DE MATERIALES</DialogTitle>
+            <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-3">
+              <div>Sucursal: <b className="text-foreground">{detail?.branch}</b></div>
+              <div>Fecha: <b className="text-foreground">{(detail?.inventoryDate || "").slice(0, 10)}</b></div>
+              <div className="flex items-center gap-1">Estado: {detail ? <Badge variant="outline" className={INV_STATUS_BADGE[detail.status]}>{INV_STATUS_LABEL[detail.status]}</Badge> : null}</div>
+              <div>Creado por: <b className="text-foreground">{detail?.createdByName || "—"}</b></div>
+              <div>Total de materiales: <b className="text-foreground">{detailItems.length}</b></div>
+              <div>Cantidad total: <b className="text-foreground tabular-nums">{fmtNum(detailTotalQty)}</b></div>
+            </div>
+            {detail && (canPrintInv || canExcel || canPdf) ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {canPrintInv ? <Button size="sm" variant="outline" className="h-8" onClick={() => printFull(detail)}><Printer className="mr-1.5 h-4 w-4" />Imprimir</Button> : null}
+                {canExcel ? <Button size="sm" variant="outline" className="h-8" onClick={() => excelFull(detail)}><FileSpreadsheet className="mr-1.5 h-4 w-4" />Excel</Button> : null}
+                {canPdf ? <Button size="sm" variant="outline" className="h-8" onClick={() => printFull(detail)}><FileText className="mr-1.5 h-4 w-4" />PDF</Button> : null}
+              </div>
+            ) : null}
           </DialogHeader>
-          <div className="max-h-[60vh] overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-[11px] uppercase text-muted-foreground">
-                  <th className="py-1.5">Material</th>
-                  <th className="py-1.5">Proveedor</th>
-                  <th className="py-1.5">Unidad</th>
-                  <th className="py-1.5 text-right">Cantidad</th>
-                  <th className="py-1.5">Observación</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(detail?.items || []).map((it: MaterialInventoryItem) => (
-                  <tr key={it.id} className="border-b last:border-0">
-                    <td className="py-1.5 font-medium">{it.materialName}</td>
-                    <td className="py-1.5 text-xs text-muted-foreground">{it.supplierGroup}</td>
-                    <td className="py-1.5 text-xs text-muted-foreground">{it.unit}</td>
-                    <td className="py-1.5 text-right">{fmtNum(it.quantity)}</td>
-                    <td className="py-1.5 text-xs">{it.observation}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+
+          {/* Cuerpo con scroll vertical interno */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+            {detailItems.length === 0 ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">Sin materiales registrados.</div>
+            ) : (
+              <>
+                {/* Desktop / tablet: tabla agrupada por proveedor */}
+                <table className="hidden w-full text-sm sm:table">
+                  <thead>
+                    <tr className="border-b text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="w-10 py-1.5 pr-2 text-center">No.</th>
+                      <th className="py-1.5 pr-2">Material</th>
+                      <th className="w-24 py-1.5 pr-2 text-right">Cantidad</th>
+                      <th className="w-24 py-1.5 pr-2">Unidad</th>
+                      <th className="py-1.5">Observación</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailGroups.map((g) => (
+                      <Fragment key={g.supplier}>
+                        <tr className="bg-slate-100"><td colSpan={5} className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">{g.supplier}</td></tr>
+                        {g.rows.map(({ it, no }) => (
+                          <tr key={it.id} className="border-b last:border-0">
+                            <td className="py-1.5 pr-2 text-center tabular-nums text-muted-foreground">{no}</td>
+                            <td className="py-1.5 pr-2 font-medium">{it.materialName}</td>
+                            <td className="py-1.5 pr-2 text-right tabular-nums">{fmtNum(it.quantity)}</td>
+                            <td className="py-1.5 pr-2 text-xs text-muted-foreground">{it.unit}</td>
+                            <td className="py-1.5 text-xs">{it.observation}</td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+
+                {/* Móvil: tarjetas agrupadas (sin scroll horizontal) */}
+                <div className="space-y-4 sm:hidden">
+                  {detailGroups.map((g) => (
+                    <div key={g.supplier}>
+                      <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-600">{g.supplier}</div>
+                      <div className="space-y-2">
+                        {g.rows.map(({ it, no }) => (
+                          <div key={it.id} className="rounded-lg border border-[color:var(--brand-border)] p-2.5 text-sm">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 font-medium break-words">{no}. {it.materialName}</div>
+                              <div className="shrink-0 font-semibold tabular-nums">{fmtNum(it.quantity)} <span className="text-xs font-normal text-muted-foreground">{it.unit}</span></div>
+                            </div>
+                            {it.observation ? <div className="mt-1 text-xs text-muted-foreground break-words">{it.observation}</div> : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>

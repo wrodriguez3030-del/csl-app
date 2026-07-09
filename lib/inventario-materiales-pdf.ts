@@ -22,6 +22,16 @@ interface InvPdfOpts {
   origin: string // window.location.origin (el popup es about:blank → logo necesita URL absoluta)
 }
 
+/** Nombre de archivo profesional: INVENTARIO_MATERIALES_<SUCURSAL>_<FECHA>. */
+export function inventarioFileBase(inventory: MaterialInventory): string {
+  const suc = String(inventory.branch || "SUCURSAL")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+  const fecha = String(inventory.inventoryDate || "").slice(0, 10)
+  return `INVENTARIO_MATERIALES_${suc}_${fecha}`
+}
+
 /** Agrupa los ítems por proveedor preservando orden alfabético. */
 function groupBySupplier(items: NonNullable<MaterialInventory["items"]>): [string, typeof items][] {
   const g: Record<string, typeof items> = {}
@@ -64,10 +74,10 @@ export function buildInventarioPdfHtml(opts: InvPdfOpts): string {
     .join("")
 
   return `<!doctype html><html lang="es"><head><meta charset="utf-8">
-  <title>inventario-materiales-${esc(business.slug)}-${esc(fecha)}</title>
+  <title>${esc(inventarioFileBase(inventory))}</title>
   <style>
     :root { --brand: ${brand}; }
-    @page { size: letter portrait; margin: 12mm; }
+    @page { size: A4 portrait; margin: 14mm; }
     @media print { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     * { box-sizing: border-box; }
     body { font-family: Arial, Helvetica, sans-serif; color: #0f172a; margin: 0; }
@@ -135,4 +145,102 @@ export function printInventarioPdf(opts: InvPdfOpts): void {
   popup.document.write(html)
   popup.document.close()
   popup.onload = () => setTimeout(() => popup.print(), 400)
+}
+
+/**
+ * Excel profesional del inventario (mismo enfoque del sistema: HTML → .xls que
+ * Excel abre con formato). Reutiliza la marca del negocio activo (logo, color)
+ * igual que `hr-report-excel` / `purchases-export`. NO genera un Excel plano:
+ * incluye logo, encabezado corporativo, columnas con color, bordes, anchos
+ * definidos, números alineados a la derecha y fila de totales.
+ *
+ * Columnas: No. · Material · Proveedor/Categoría · Cantidad · Unidad · Observación.
+ * Filas ordenadas por proveedor y luego por material.
+ */
+export function buildInventarioExcelHtml(opts: InvPdfOpts): string {
+  const { inventory, business, responsable, generadoPor, origin } = opts
+  const brand = business.primaryColor || "#0891b2"
+  const logoSrc = business.logoUrl
+    ? (/^https?:/.test(business.logoUrl) ? business.logoUrl : `${origin}${business.logoUrl}`)
+    : ""
+  const items = [...(inventory.items || [])].sort((a, b) => {
+    const s = String(a.supplierGroup || "").localeCompare(String(b.supplierGroup || ""))
+    return s !== 0 ? s : String(a.materialName || "").localeCompare(String(b.materialName || ""))
+  })
+  const total = items.length
+  const totalQty = items.reduce((s, it) => s + (Number(it.quantity) || 0), 0)
+  const estado = INV_STATUS_LABEL[inventory.status] || inventory.status
+  const fecha = String(inventory.inventoryDate || "").slice(0, 10)
+  const generado = new Date().toLocaleString("es-DO")
+
+  const bodyRows = items.length
+    ? items
+        .map((it, i) => `<tr>
+          <td class="c">${i + 1}</td>
+          <td>${esc(it.materialName)}</td>
+          <td>${esc(it.supplierGroup || "—")}</td>
+          <td class="num" style="mso-number-format:'General'">${Number(it.quantity) || 0}</td>
+          <td class="c">${esc(it.unit || "")}</td>
+          <td>${esc(it.observation || "")}</td>
+        </tr>`)
+        .join("")
+    : `<tr><td colspan="6" class="c">Sin materiales registrados</td></tr>`
+
+  const html = `<!doctype html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" lang="es"><head><meta charset="utf-8"/>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;color:#0f172a}
+    .head{display:flex;align-items:center;gap:12px;border-bottom:3px solid ${brand};padding-bottom:8px;margin-bottom:6px}
+    .head img{width:54px;height:54px}
+    .bn{font-size:18px;font-weight:900;color:${brand}}
+    .st{font-size:10px;color:#64748b}
+    h1{font-size:16px;margin:8px 0 2px;color:${brand}}
+    .meta{font-size:11px;color:#475569;margin:2px 0}
+    .meta b{color:#0f172a}
+    table{border-collapse:collapse;width:100%;margin-top:8px}
+    th,td{border:1px solid #94a3b8;padding:5px 8px;font-size:11px}
+    th{background:${brand};color:#fff;text-align:left;text-transform:uppercase;font-size:10px}
+    td.c,th.c{text-align:center}
+    td.num,th.num{text-align:right}
+    tfoot td{font-weight:800;background:#f1f5f9}
+  </style></head><body>
+    <div class="head">
+      ${logoSrc ? `<img src="${esc(logoSrc)}" alt=""/>` : ""}
+      <div><div class="bn">${esc((business.name || "").toUpperCase())}</div><div class="st">Sistema Integral de Mantenimientos</div></div>
+    </div>
+    <h1>INVENTARIO DE MATERIALES</h1>
+    <div class="meta">Sucursal: <b>${esc(inventory.branch)}</b> · Fecha: <b>${esc(fecha)}</b> · Estado: <b>${esc(estado)}</b></div>
+    <div class="meta">Creado por: <b>${esc(inventory.createdByName || responsable || "—")}</b> · Total de materiales: <b>${total}</b></div>
+    <table>
+      <colgroup>
+        <col style="width:44px"/><col style="width:280px"/><col style="width:150px"/>
+        <col style="width:90px"/><col style="width:90px"/><col style="width:240px"/>
+      </colgroup>
+      <thead><tr>
+        <th class="c">No.</th><th>Material</th><th>Proveedor / Categoría</th>
+        <th class="num">Cantidad</th><th class="c">Unidad</th><th>Observación</th>
+      </tr></thead>
+      <tbody>${bodyRows}</tbody>
+      <tfoot><tr>
+        <td class="c"></td><td>TOTALES</td><td class="c">${total} materiales</td>
+        <td class="num">${totalQty}</td><td class="c"></td><td></td>
+      </tr></tfoot>
+    </table>
+    <p style="font-size:9px;color:#94a3b8;margin-top:10px">${esc(business.name)} · Inventario de materiales · Generado: ${esc(generado)}${generadoPor ? ` · Por: ${esc(generadoPor)}` : ""}</p>
+  </body></html>`
+
+  return html
+}
+
+/** Descarga el Excel profesional del inventario (.xls con formato del sistema). */
+export function exportInventarioExcel(opts: InvPdfOpts): void {
+  const html = buildInventarioExcelHtml(opts)
+  const blob = new Blob(["﻿" + html], { type: "application/vnd.ms-excel;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `${inventarioFileBase(opts.inventory)}.xls`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

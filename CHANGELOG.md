@@ -18,6 +18,38 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.20.0] — 2026-07-09
+
+### Added
+- **Acciones de inventario en el Histórico de inventarios** (Requisición de
+  Materiales → Histórico de inventarios). El menú ⋮ de cada fila ahora incluye,
+  gateadas por permiso:
+  - **Ver inventario** — modal a pantalla completa con encabezado corporativo
+    (INVENTARIO DE MATERIALES, sucursal, fecha, estado, creado por, total de
+    materiales y cantidad total), tabla **agrupada por proveedor/categoría**,
+    numerada (No.) y responsive (tabla en desktop, tarjetas en móvil). El modal
+    ofrece además botones directos de Imprimir / Excel / PDF.
+  - **Imprimir** — versión limpia A4 con logo y marca vía `window.print()`.
+  - **Exportar Excel** — `.xls` con el **formato profesional del sistema**
+    (logo, encabezado corporativo, columnas No./Material/Proveedor·Categoría/
+    Cantidad/Unidad/Observación, colores de marca, bordes, anchos de columna,
+    cantidad alineada a la derecha, fila de totales). Reutiliza el mismo enfoque
+    HTML→Excel de `hr-report-excel` / `purchases-export`. Nombre de archivo
+    profesional: `INVENTARIO_MATERIALES_<SUCURSAL>_<FECHA>.xls`.
+  - **Generar PDF** — misma vista branded A4; el `<title>` sugiere
+    `INVENTARIO_MATERIALES_<SUCURSAL>_<FECHA>` al guardar como PDF.
+- **Permisos granulares** en el catálogo (`lib/permissions.ts`):
+  `materials.inventory.view`, `materials.inventory.print`,
+  `materials.inventory.export_excel`, `materials.inventory.export_pdf`
+  (admin/superadmin bypassan; asignables por UI a usuarios normales).
+
+### Changed
+- `lib/inventario-materiales-pdf.ts`: página de impresión a **A4**, título de
+  documento con el nombre profesional, y nuevos builders reutilizables
+  `buildInventarioExcelHtml` / `exportInventarioExcel` + `inventarioFileBase`.
+
+---
+
 ## [0.19.0] — 2026-07-09
 
 ### Changed

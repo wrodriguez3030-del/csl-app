@@ -25,6 +25,11 @@ export const PERMISSION_OPTIONS: PermissionOption[] = [
   { id: "compras.exportar", label: "Exportar PDF/Excel", section: "Compras" },
   // Requisición de materiales (ya existía suelto — lo formalizamos en el catálogo)
   { id: "material_requisitions.delete", label: "Eliminar requisiciones", section: "Requisición de materiales" },
+  // Inventario de materiales (histórico): ver detalle y exportar
+  { id: "materials.inventory.view", label: "Ver detalle de inventarios", section: "Requisición de materiales" },
+  { id: "materials.inventory.print", label: "Imprimir inventarios", section: "Requisición de materiales" },
+  { id: "materials.inventory.export_excel", label: "Exportar inventarios a Excel", section: "Requisición de materiales" },
+  { id: "materials.inventory.export_pdf", label: "Generar PDF de inventarios", section: "Requisición de materiales" },
 ]
 
 export const ALL_PERMISSION_IDS: string[] = PERMISSION_OPTIONS.map((p) => p.id)
