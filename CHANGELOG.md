@@ -18,6 +18,28 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.23.0] — 2026-07-09
+
+### Added
+- **Comisión de Ventas — Fase 2b: importador (clasificación + agregación)**,
+  verificado contra el archivo real de Cibao (Jun 2026, 779 ventas, RD$2,558,505).
+  - `lib/commission/classification.ts` — deriva la CATEGORÍA del nombre del
+    servicio (Depilación Láser→LÁSER, C-1→FACIALES, T-1→TATUAJES, M-1→MASAJES,
+    HOLLYWOOD→HOLLYWOOD/AQUA PEEL, tipo Producto→PRODUCTO) con catálogo
+    configurable; y `classifyProvider` (rol entre paréntesis → excluye
+    recepción/POS/administración/"Sin Información").
+  - `lib/commission/aggregate.ts` — `toSaleRecord` (normaliza+clasifica) y
+    `aggregateSales` (por empleado/categoría/sucursal + motor: incentivo
+    productos, comisión por categoría, fondo láser por escala).
+  - **Verificado real**: bruto cuadra 2,558,505; ~98% clasificado (solo 12
+    filas OTROS); sucursales normalizadas; fondo láser total 1,761,100→4%→70,444;
+    15 empleados comisionables; expone 126 filas sin sucursal y 521 sin
+    prestador (láser "Sin Información") para conciliación.
+  - El RD$25,815.11 permanece como prueba unitaria del motor (Fase 1); importar
+    datos reales produce los números reales del período (decisión del usuario).
+
+---
+
 ## [0.22.0] — 2026-07-09
 
 ### Added
