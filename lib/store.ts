@@ -32,6 +32,12 @@ interface AppState {
   setActiveTab: (tab: TabId) => void
   sidebarOpen: boolean
   setSidebarOpen: (open: boolean) => void
+  /** Preferencia VISUAL desktop: sidebar oculto por completo (persistida; nunca gobierna permisos). */
+  sidebarCollapsed: boolean
+  setSidebarCollapsed: (collapsed: boolean) => void
+  /** Acordeón del menú: único grupo abierto a la vez (persistido; solo preferencia visual). */
+  expandedGroup: string | null
+  setExpandedGroup: (group: string | null) => void
   pulsosSectionOpen: boolean
   setPulsosSectionOpen: (open: boolean) => void
   db: Database
@@ -102,6 +108,10 @@ export const useAppStore = create<AppState>()(
       setActiveTab: (tab) => set({ activeTab: tab }),
       sidebarOpen: false,
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
+      sidebarCollapsed: false,
+      setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+      expandedGroup: null,
+      setExpandedGroup: (group) => set({ expandedGroup: group }),
       pulsosSectionOpen: false,
       setPulsosSectionOpen: (open) => set({ pulsosSectionOpen: open }),
       db: { sucursales: [], equipos: [], reportes: [], piezas: [], tecnicos: [] },
@@ -157,6 +167,9 @@ export const useAppStore = create<AppState>()(
         apiUrl: "/api/csl",
         activeTab: state.activeTab,
         pulsosSectionOpen: state.pulsosSectionOpen,
+        // Preferencias visuales del menú (nunca permisos):
+        sidebarCollapsed: state.sidebarCollapsed,
+        expandedGroup: state.expandedGroup,
       }),
     }
   )

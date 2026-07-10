@@ -30,6 +30,7 @@ import {
   History,
   KeyRound,
   LayoutDashboard,
+  Menu,
   Package,
   Settings,
   ShieldCheck,
@@ -216,8 +217,21 @@ const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
   { label: "Sistema", items: [{ id: "config", label: "Configuracion", icon: <Settings className="h-4 w-4" /> }] },
 ]
 
+const PULSE_LABEL = "PulseControl"
+
+/** Grupo (label) al que pertenece un tab — para auto-abrir el acordeón. */
+function groupLabelOf(tab: TabId): string | null {
+  for (const g of CORE_GROUPS) if (g.items.some((i) => i.id === tab)) return g.label
+  if (PULSE_ITEMS.some((i) => i.id === tab)) return PULSE_LABEL
+  for (const g of EXTRA_GROUPS) if (g.items.some((i) => i.id === tab)) return g.label
+  return null
+}
+
 export function Sidebar() {
-  const { activeTab, setActiveTab, sidebarOpen, setSidebarOpen, pulsosSectionOpen, setPulsosSectionOpen, db } = useAppStore()
+  const {
+    activeTab, setActiveTab, sidebarOpen, setSidebarOpen,
+    sidebarCollapsed, setSidebarCollapsed, expandedGroup, setExpandedGroup, db,
+  } = useAppStore()
   const user = useSessionUser()
   // Multi-tenant: branding dinámico según el business del usuario logueado.
   // Pre-migración (user sin businessSlug) cae a CSL → comportamiento idéntico.
@@ -225,7 +239,47 @@ export function Sidebar() {
 
   const visiblePulse = useMemo(() => PULSE_ITEMS.filter((item) => canAccessMenu(user, item.id)), [user])
   const isPulseActive = visiblePulse.some((item) => item.id === activeTab)
-  const isPulseOpen = pulsosSectionOpen || isPulseActive
+  const isPulseOpen = expandedGroup === PULSE_LABEL
+
+  // Acordeón: alternar un grupo (abrir uno cierra el resto). Preferencia visual.
+  const toggleGroup = (label: string) => setExpandedGroup(expandedGroup === label ? null : label)
+
+  // Auto-abrir el grupo del tab activo (al montar y al navegar).
+  useEffect(() => {
+    const g = groupLabelOf(activeTab)
+    if (g) setExpandedGroup(g)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
+
+  // Preferencia visual desktop → atributo en <body> que consume globals.css
+  // (display:none del sidebar + padding-left:0 del contenido).
+  useEffect(() => {
+    document.body.setAttribute("data-sidebar-collapsed", sidebarCollapsed ? "true" : "false")
+  }, [sidebarCollapsed])
+
+  // Drawer móvil: cerrar con Escape + bloquear scroll del fondo mientras abierto.
+  useEffect(() => {
+    if (!sidebarOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSidebarOpen(false) }
+    window.addEventListener("keydown", onKey)
+    const isMobile = window.matchMedia("(max-width: 1179.98px)").matches
+    const prevOverflow = document.body.style.overflow
+    if (isMobile) document.body.style.overflow = "hidden"
+    return () => {
+      window.removeEventListener("keydown", onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [sidebarOpen, setSidebarOpen])
+
+  // "Ocultar menú": en desktop colapsa (display:none via body attr);
+  // en móvil/tablet simplemente cierra el drawer.
+  const handleHide = () => {
+    if (typeof window !== "undefined" && window.matchMedia("(min-width: 1180px)").matches) {
+      setSidebarCollapsed(true)
+    } else {
+      setSidebarOpen(false)
+    }
+  }
 
   // Contadores de "Pendiente de revisión" para badges del menú —
   // consents vienen ya cargados en el db global (getAllData los incluye).
@@ -295,7 +349,13 @@ export function Sidebar() {
                 <p className="mt-0.5 text-[11px] font-medium text-slate-500">Sistema Integral {business.shortName}</p>
               </div>
             </div>
-            <Button data-csl-sidebar-toggle variant="ghost" size="icon" onClick={() => setSidebarOpen(false)}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Ocultar menú"
+              title="Ocultar menú"
+              onClick={handleHide}
+            >
               <X className="h-4 w-4" />
             </Button>
           </div>
@@ -312,13 +372,23 @@ export function Sidebar() {
 
         <nav className="relative flex-1 space-y-4 overflow-y-auto px-3 py-4">
           {CORE_GROUPS.map((group) => (
-            <NavGroup key={group.label} label={group.label} items={group.items.filter((item) => canAccessMenu(user, item.id))} activeTab={activeTab} onSelect={handleNavClick} />
+            <NavGroup
+              key={group.label}
+              label={group.label}
+              items={group.items.filter((item) => canAccessMenu(user, item.id))}
+              activeTab={activeTab}
+              onSelect={handleNavClick}
+              open={expandedGroup === group.label}
+              onToggle={() => toggleGroup(group.label)}
+            />
           ))}
 
           {visiblePulse.length ? (
             <div className="rounded-xl bg-[color:var(--brand-primary-soft)] p-1.5 ring-1 ring-[color:var(--brand-primary)]/10">
               <button
-                onClick={() => setPulsosSectionOpen(!isPulseOpen)}
+                onClick={() => toggleGroup(PULSE_LABEL)}
+                aria-expanded={isPulseOpen}
+                aria-controls="nav-group-pulsecontrol"
                 className={cn(
                   "flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left text-[13px] font-bold transition-colors",
                   isPulseActive ? "bg-white text-[color:var(--brand-primary-dark)] ring-1 ring-[color:var(--brand-primary)]/20 shadow-sm" : "text-[color:var(--brand-primary-dark)] hover:bg-white/70"
@@ -336,7 +406,7 @@ export function Sidebar() {
                 {isPulseOpen ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
               </button>
               {isPulseOpen ? (
-                <div className="mt-1 space-y-0.5 border-l-2 border-[color:var(--brand-primary)]/15 pl-2">
+                <div id="nav-group-pulsecontrol" className="mt-1 space-y-0.5 border-l-2 border-[color:var(--brand-primary)]/15 pl-2">
                   {visiblePulse.map((item) => (
                     <NavSubBtn key={item.id} item={item} active={activeTab === item.id} onClick={() => handleNavClick(item.id)} />
                   ))}
@@ -368,6 +438,8 @@ export function Sidebar() {
                 })}
               activeTab={activeTab}
               onSelect={handleNavClick}
+              open={expandedGroup === group.label}
+              onToggle={() => toggleGroup(group.label)}
             />
           ))}
         </nav>
@@ -379,6 +451,18 @@ export function Sidebar() {
           </div>
         </div>
       </aside>
+
+      {/* Botón "Mostrar menú": visible SOLO en desktop cuando el sidebar está
+          oculto (globals.css lo controla vía body[data-sidebar-collapsed]). */}
+      <button
+        data-csl-sidebar-show
+        aria-label="Mostrar menú"
+        title="Mostrar menú"
+        onClick={() => setSidebarCollapsed(false)}
+        className="fixed left-3 top-3 z-40 items-center gap-2 rounded-xl border border-[color:var(--brand-border)] bg-white px-3 py-2 text-[13px] font-bold text-[color:var(--brand-primary-dark)] shadow-md transition-colors hover:bg-[color:var(--brand-bg-subtle)]"
+      >
+        <Menu className="h-4 w-4" /> Mostrar menú
+      </button>
     </>
   )
 }
@@ -388,23 +472,52 @@ function NavGroup({
   items,
   activeTab,
   onSelect,
+  open,
+  onToggle,
 }: {
   label: string
   items: NavItem[]
   activeTab: TabId
   onSelect: (id: TabId) => void
+  open: boolean
+  onToggle: () => void
 }) {
   if (!items.length) return null
+  const hasActive = items.some((item) => item.id === activeTab)
+  const panelId = `nav-group-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`
+  const pendingCount = items.reduce((sum, item) => sum + (item.count || 0), 0)
   return (
     <section>
-      <div className="px-3 pb-1 pt-1">
-        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">{label}</span>
-      </div>
-      <div className="space-y-0.5">
-        {items.map((item) => (
-          <NavBtn key={item.id} item={item} active={activeTab === item.id} onClick={() => onSelect(item.id)} />
-        ))}
-      </div>
+      <button
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={panelId}
+        className={cn(
+          "flex w-full items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-left transition-colors hover:bg-[color:var(--brand-bg-subtle)]",
+        )}
+      >
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-[10px] font-bold uppercase tracking-[0.2em]",
+            hasActive ? "text-[color:var(--brand-primary-dark)]" : "text-slate-400",
+          )}
+        >
+          {label}
+        </span>
+        {!open && pendingCount > 0 ? (
+          <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-blue-500 px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">{pendingCount}</span>
+        ) : null}
+        {open
+          ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+          : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+      </button>
+      {open ? (
+        <div id={panelId} className="mt-0.5 space-y-0.5">
+          {items.map((item) => (
+            <NavBtn key={item.id} item={item} active={activeTab === item.id} onClick={() => onSelect(item.id)} />
+          ))}
+        </div>
+      ) : null}
     </section>
   )
 }

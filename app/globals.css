@@ -302,10 +302,16 @@ input:focus, textarea:focus,
   }
 }
 
-/* ≥ 1180px: sidebar fijo visible siempre. Contenido con margen 18rem */
+/* ≥ 1180px: sidebar fijo visible, SALVO que el usuario lo oculte
+   (body[data-sidebar-collapsed="true"], preferencia visual persistida).
+   Oculto = display:none — sin columna residual ni flechas sueltas — y el
+   contenido principal ocupa el 100% del ancho útil. */
 @media (min-width: 1180px) {
   [data-csl-sidebar] {
     transform: translateX(0) !important;
+  }
+  body[data-sidebar-collapsed="true"] [data-csl-sidebar] {
+    display: none !important;
   }
   [data-csl-overlay] {
     display: none !important;
@@ -315,6 +321,20 @@ input:focus, textarea:focus,
   }
   [data-csl-main] {
     padding-left: 18rem !important;
+  }
+  body[data-sidebar-collapsed="true"] [data-csl-main] {
+    padding-left: 0 !important;
+  }
+}
+
+/* Botón flotante "☰ Mostrar menú": solo existe en desktop con el sidebar
+   oculto. En móvil/tablet el drawer se abre con la hamburguesa del header. */
+[data-csl-sidebar-show] {
+  display: none;
+}
+@media (min-width: 1180px) {
+  body[data-sidebar-collapsed="true"] [data-csl-sidebar-show] {
+    display: inline-flex;
   }
 }
 
