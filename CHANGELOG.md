@@ -18,6 +18,50 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.29.0] — 2026-07-10
+
+### Fixed
+- **Sidebar ocultable y grupos colapsables.** Causa raíz de la "columna con
+  flechas": en desktop el CSS forzaba el sidebar siempre visible
+  (`translateX(0) !important`), ocultaba el botón de cierre y reservaba
+  `padding-left: 18rem` fijo — no existía modo oculto.
+  - Desktop: botón **"Ocultar menú"** (X) → `display:none` del aside +
+    contenido al 100% (sin columna residual); botón flotante **"☰ Mostrar
+    menú"** para restaurar.
+  - **Todos los grupos plegables con acordeón** (uno abierto a la vez), chevron
+    ▸/▾, `aria-expanded`/`aria-controls`, badge de pendientes al cerrar; el
+    grupo del tab activo se abre automáticamente.
+  - Preferencias visuales persistidas (`sidebarCollapsed`, `expandedGroup`) —
+    nunca permisos (`canAccessMenu` sigue gobernando).
+  - Drawer móvil: `Escape` cierra + scroll del fondo bloqueado.
+
+---
+
+## [0.28.4] — 2026-07-10
+
+### Fixed
+- **Importación de Comisión de Ventas fallaba** ("error de importación
+  Supabase"): las fechas del Excel llegan como `30/06/2026 19:19` (DD/MM/YYYY)
+  y Postgres (DateStyle ISO,MDY) las rechaza → fallaba el lote completo y la
+  importación quedaba huérfana **bloqueando el reintento** por `file_hash`.
+  - `commitCommissionImport` normaliza `sale_date` con `parseDateISO` (día
+    primero) → ISO.
+  - Compensación en fallo: quita solo las ventas del import fallido y lo marca
+    `anulado` (ya no bloquea reintentos).
+  - Import atascado del 2026-07-10 15:22 (779 declaradas / 0 insertadas)
+    marcado `anulado` en db-cls (UPDATE, sin borrar datos).
+
+---
+
+## [0.28.3] — 2026-07-10
+
+### Fixed
+- La sección **"Comisión de Ventas" no aparecía en el menú lateral**: el
+  sidebar tiene su propia lista de secciones (no se arma desde `MENU_OPTIONS`);
+  se registró la sección con los 11 submenús e íconos.
+
+---
+
 ## [0.28.2] — 2026-07-10
 
 ### Fixed
