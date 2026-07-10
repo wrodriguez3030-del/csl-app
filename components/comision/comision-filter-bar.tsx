@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { SlidersHorizontal, RefreshCcw, Eraser, ChevronDown, ChevronUp } from "lucide-react"
+import { SlidersHorizontal, Eraser, ChevronDown, ChevronUp } from "lucide-react"
 import { QUICK_OPTIONS, quickRange, monthBounds, type QuickPeriod } from "@/lib/commission/period"
 
 export const FILTER_MONTHS = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -78,16 +78,28 @@ export function CommissionFilterBar({
   const [draft, setDraft] = useState<CommissionFilters>(applied)
   const [openMobile, setOpenMobile] = useState(false)
 
+  // AUTO-APLICAR: seleccionar un valor procesa al instante (sin botón Buscar).
+  const apply = (f: CommissionFilters) => setCommissionFilters({ ...f })
+  const update = (patch: Partial<CommissionFilters>) => {
+    const f = { ...draft, ...patch }
+    setDraft(f)
+    apply(f)
+  }
   const setQuick = (q: string) => {
-    if (q === "personalizado") { setDraft((d) => ({ ...d, quick: q })); return }
+    if (q === "personalizado") { setDraft((d) => ({ ...d, quick: q })); return } // espera Desde/Hasta válidos
     const r = quickRange(q as QuickPeriod)
-    setDraft((d) => ({ ...d, quick: q, year: r.year, month: r.month, from: r.from, to: r.to }))
+    update({ quick: q, year: r.year, month: r.month, from: r.from, to: r.to })
   }
   const setMonthYear = (year: number, month: number) => {
     const r = monthBounds(year, month)
-    setDraft((d) => ({ ...d, quick: "mes", year, month, from: r.from, to: r.to }))
+    update({ quick: "mes", year, month, from: r.from, to: r.to })
   }
-  const apply = (f: CommissionFilters) => setCommissionFilters({ ...f })
+  // Desde/Hasta (Personalizado): aplica solo cuando ambos son válidos y coherentes.
+  const setRange = (patch: { from?: string; to?: string }) => {
+    const f = { ...draft, ...patch, quick: "personalizado" }
+    setDraft(f)
+    if (f.from && f.to && f.from <= f.to) apply(f)
+  }
   const clear = () => { const f = defaultCommissionFilters(); setDraft(f); apply(f) }
 
   const activeCount = (applied.branch ? 1 : 0) + (applied.provider ? 1 : 0) + 1
@@ -141,19 +153,16 @@ export function CommissionFilterBar({
           </div>
           <div>
             <Label className="text-[11px]">Desde</Label>
-            <Input type="date" className="mt-0.5 h-9" value={draft.from} disabled={draft.quick !== "personalizado"} onChange={(e) => setDraft((d) => ({ ...d, from: e.target.value }))} />
+            <Input type="date" className="mt-0.5 h-9" value={draft.from} disabled={draft.quick !== "personalizado"} onChange={(e) => setRange({ from: e.target.value })} />
           </div>
           <div>
             <Label className="text-[11px]">Hasta</Label>
-            <Input type="date" className="mt-0.5 h-9" value={draft.to} disabled={draft.quick !== "personalizado"} onChange={(e) => setDraft((d) => ({ ...d, to: e.target.value }))} />
-          </div>
-          <div className="flex items-end gap-1.5">
-            <Button className="h-9 flex-1" onClick={() => apply(draft)}><RefreshCcw className="mr-1.5 h-4 w-4" />Actualizar</Button>
+            <Input type="date" className="mt-0.5 h-9" value={draft.to} disabled={draft.quick !== "personalizado"} onChange={(e) => setRange({ to: e.target.value })} />
           </div>
           {branches.length ? (
             <div>
               <Label className="text-[11px]">Sucursal</Label>
-              <Select value={draft.branch || "todas"} onValueChange={(v) => setDraft((d) => ({ ...d, branch: v === "todas" ? "" : v }))}>
+              <Select value={draft.branch || "todas"} onValueChange={(v) => update({ branch: v === "todas" ? "" : v })}>
                 <SelectTrigger className="mt-0.5 h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todas">Todas</SelectItem>
@@ -165,7 +174,7 @@ export function CommissionFilterBar({
           {providers.length ? (
             <div>
               <Label className="text-[11px]">Prestador</Label>
-              <Select value={draft.provider || "todos"} onValueChange={(v) => setDraft((d) => ({ ...d, provider: v === "todos" ? "" : v }))}>
+              <Select value={draft.provider || "todos"} onValueChange={(v) => update({ provider: v === "todos" ? "" : v })}>
                 <SelectTrigger className="mt-0.5 h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos</SelectItem>
