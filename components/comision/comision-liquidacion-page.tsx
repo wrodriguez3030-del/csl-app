@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { ReceiptText, RefreshCcw, MoreHorizontal, Pencil, Check, DollarSign, Loader2 } from "lucide-react"
+import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
 
 interface Calc {
   id: string; provider: string; branch: string; productsCount: number; productIncentive: number
@@ -34,6 +35,8 @@ export function ComisionLiquidacionPage() {
   const canPay = canPerm(user, "sales_commission.pay")
   const canEditAny = canPerm(user, "sales_commission.adjust") || canPerm(user, "sales_commission.bonus.manage") || canPerm(user, "sales_commission.cleaning.manage")
 
+  const { params } = useCommissionFilters()
+  const [statusFilter, setStatusFilter] = useState("")
   const [items, setItems] = useState<Calc[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -43,12 +46,13 @@ export function ComisionLiquidacionPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionCalculations" })
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionCalculations", ...params, ...(statusFilter ? { status: statusFilter } : {}) })
       if (res?.ok) setItems((res.records as Calc[]) || [])
       else showToast((res as { error?: string })?.error || "Error", "error")
     } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
-  }, [apiUrl, showToast])
+  }, [apiUrl, showToast, params, statusFilter])
   useEffect(() => { void load() }, [load])
+  const providerOptions = [...new Set(items.map((c) => c.provider).filter(Boolean))].sort()
 
   const openEdit = (c: Calc) => { setEditT(c); setForm({ bonusExtra: String(c.bonusExtra || 0), cleaningContribution: String(c.cleaningContribution || 0), manualAdjustment: String(c.manualAdjustment || 0) }) }
 
@@ -83,6 +87,15 @@ export function ComisionLiquidacionPage() {
 
   return (
     <div className="space-y-5">
+      <CommissionFilterBar branches={["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]} providers={providerOptions}>
+        <div>
+          <label className="text-[11px] font-medium">Estado</label>
+          <select className="mt-0.5 h-9 w-full rounded-md border border-input bg-white px-2 text-sm" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">Todos</option>
+            {Object.entries(STATUS_LABEL).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        </div>
+      </CommissionFilterBar>
       <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-center gap-2 p-3 text-sm font-semibold sm:p-4">
         <ReceiptText className="h-4 w-4 text-[color:var(--brand-primary)]" /> Liquidación de incentivos
         <Badge variant="secondary">{items.length}</Badge>

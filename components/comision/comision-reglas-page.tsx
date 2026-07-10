@@ -21,6 +21,8 @@ interface Rule {
   fixedAmount: number | null
   priority: number
   active: boolean
+  effectiveFrom?: string | null
+  effectiveTo?: string | null
 }
 
 const RULE_GROUP: Record<string, { label: string; kind: "pct" | "fixed" | "laser" }> = {
@@ -44,6 +46,10 @@ export function ComisionReglasPage() {
   const [loading, setLoading] = useState(true)
   const [edit, setEdit] = useState<Record<string, { pct: string; fixed: string; threshold: string }>>({})
   const [savingId, setSavingId] = useState<string | null>(null)
+  // Filtros de vigencia (effective_from/effective_to) — consulta, no operación.
+  const [vigenteEn, setVigenteEn] = useState("")
+  const [tipoFiltro, setTipoFiltro] = useState("")
+  const [estadoFiltro, setEstadoFiltro] = useState("")
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -106,7 +112,20 @@ export function ComisionReglasPage() {
     }
   }
 
-  const grouped = GROUP_ORDER.map((g) => ({ type: g, rules: rules.filter((r) => r.ruleType === g) })).filter((g) => g.rules.length)
+  // Vigencia: regla vigente en la fecha X si effective_from ≤ X ≤ effective_to.
+  const visibles = rules.filter((r) => {
+    if (tipoFiltro && r.ruleType !== tipoFiltro) return false
+    if (estadoFiltro === "activa" && !r.active) return false
+    if (estadoFiltro === "inactiva" && r.active) return false
+    if (vigenteEn) {
+      const from = String(r.effectiveFrom || "").slice(0, 10)
+      const to = String(r.effectiveTo || "").slice(0, 10)
+      if (from && from > vigenteEn) return false
+      if (to && to < vigenteEn) return false
+    }
+    return true
+  })
+  const grouped = GROUP_ORDER.map((g) => ({ type: g, rules: visibles.filter((r) => r.ruleType === g) })).filter((g) => g.rules.length)
 
   return (
     <div className="space-y-5">
@@ -119,6 +138,32 @@ export function ComisionReglasPage() {
           <div className="flex items-center gap-2">
             {!canManage ? <span className="text-xs text-muted-foreground">Solo lectura (sin permiso de gestión)</span> : null}
             <Button variant="outline" size="sm" className="h-9" onClick={load}><RefreshCcw className="h-4 w-4" /></Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Filtros de vigencia: "Reglas vigentes al ..." (effective_from/to) */}
+      <Card className="border-[color:var(--brand-border)]">
+        <CardContent className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-4">
+          <div>
+            <label className="text-[11px] font-medium">Vigente en fecha</label>
+            <Input type="date" className="mt-0.5 h-9" value={vigenteEn} onChange={(e) => setVigenteEn(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-[11px] font-medium">Tipo de regla</label>
+            <select className="mt-0.5 h-9 w-full rounded-md border border-input bg-white px-2 text-sm" value={tipoFiltro} onChange={(e) => setTipoFiltro(e.target.value)}>
+              <option value="">Todos</option>
+              {GROUP_ORDER.map((g) => <option key={g} value={g}>{RULE_GROUP[g]?.label || g}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] font-medium">Estado</label>
+            <select className="mt-0.5 h-9 w-full rounded-md border border-input bg-white px-2 text-sm" value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)}>
+              <option value="">Todas</option><option value="activa">Activas</option><option value="inactiva">Inactivas</option>
+            </select>
+          </div>
+          <div className="flex items-end">
+            <Button variant="outline" className="h-9 w-full" onClick={() => { setVigenteEn(""); setTipoFiltro(""); setEstadoFiltro("") }}>Limpiar filtros</Button>
           </div>
         </CardContent>
       </Card>

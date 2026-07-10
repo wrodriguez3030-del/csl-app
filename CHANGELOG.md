@@ -18,6 +18,38 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.31.0] — 2026-07-10
+
+### Added
+- **Comisión de Ventas: filtros de fecha consistentes en TODO el módulo.**
+  - **`CommissionFilterBar`** reusable (`components/comision/comision-filter-bar.tsx`)
+    + hook `useCommissionFilters`: Período rápido (Hoy/Esta semana/Mes actual/
+    Mes anterior/Últimos 30 días/Trimestre/Año/Personalizado), Año, Mes,
+    Desde/Hasta (habilitados en Personalizado), Sucursal, Prestador, chips de
+    filtros activos, Limpiar/Limpiar todo y Actualizar. Colapsable en móvil
+    ("Filtros (n)").
+  - **Período GLOBAL persistente** (zustand, persist): al navegar entre
+    pantallas del módulo se mantiene (Mayo 2026 en Dashboard → sigue en
+    Liquidación/Reportes); default = mes actual.
+  - **Helpers puros** `lib/commission/period.ts`: TZ del negocio
+    (America/Santo_Domingo — una venta del 31 a las 8pm no cae al mes
+    siguiente), rango INCLUSIVO (`< to + 1 día`), `monthsCovered` para
+    cálculos almacenados por mes. **14 tests nuevos** (65/65 en verde).
+  - **Backend**: `from/to/branch/provider` aplicados en query (ventas por
+    `sale_date`; reservas por `appointment_date` vía patient_counts);
+    cálculos/liquidación por meses cubiertos + sucursal/prestador/estado;
+    Ventas por sucursal acepta filtro de forma de pago; Historial filtra por
+    fecha de carga/estado/tipo. Siempre combinado con `business_id`.
+  - **Pantallas actualizadas**: Dashboard, Ventas por sucursal (+forma de
+    pago), Comisiones por prestador, Incentivos de productos, Comisión láser,
+    Clientes atendidos (usa Fecha de realización; muestra fuente), Liquidación
+    (+estado), Historial mensual (+tipo/estado), **Reportes** (usa el período
+    global — Excel/PDF/Imprimir respetan exactamente los filtros activos) y
+    **Reglas** (Vigente en fecha / tipo / estado por `effective_from/to`).
+  - El filtro solo consulta/visualiza: NUNCA dispara recálculos.
+
+---
+
 ## [0.30.1] — 2026-07-10
 
 ### Added

@@ -9,8 +9,10 @@ import {
   LayoutDashboard, Building2, Package, Zap, Users,
   CalendarClock, RefreshCcw,
 } from "lucide-react"
+import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
 
 const fmtRD = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const BRANCHES = ["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]
 
 function Shell({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
   return (
@@ -25,20 +27,22 @@ function Shell({ icon, title, children }: { icon: ReactNode; title: string; chil
   )
 }
 
-// ── Dashboard (lee datos vivos) ──────────────────────────────────────────────
+// ── Dashboard (lee datos vivos; período/sucursal/prestador compartidos) ─────
 export function ComisionDashboardPage() {
   const { apiUrl, showToast } = useAppStore()
-  const [data, setData] = useState<{ activeRules: number; imports: number; employees: number; kpis: Record<string, number> } | null>(null)
+  const { params } = useCommissionFilters()
+  const [data, setData] = useState<{ activeRules: number; imports: number; employees: number; kpis: Record<string, number>; calculations?: { provider: string }[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionDashboard" })
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionDashboard", ...params })
       if (res?.ok) setData(res as never)
       else showToast((res as { error?: string })?.error || "Error", "error")
     } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
-  }, [apiUrl, showToast])
+  }, [apiUrl, showToast, params])
   useEffect(() => { void load() }, [load])
+  const providers = [...new Set((data?.calculations || []).map((c) => c.provider).filter(Boolean))].sort()
 
   const k = data?.kpis || {}
   const tiles: [string, number][] = [
@@ -53,6 +57,7 @@ export function ComisionDashboardPage() {
 
   return (
     <Shell icon={<LayoutDashboard className="h-4 w-4" />} title="Comisión de Ventas · Dashboard">
+      <CommissionFilterBar branches={BRANCHES} providers={providers} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Reglas activas</div><div className="text-2xl font-black">{data?.activeRules ?? "—"}</div></CardContent></Card>
         <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Importaciones</div><div className="text-2xl font-black">{data?.imports ?? "—"}</div></CardContent></Card>
@@ -74,23 +79,45 @@ export function ComisionDashboardPage() {
   )
 }
 
-// ── Historial mensual (lee importaciones vivas) ─────────────────────────────
+// ── Historial mensual (importaciones; filtro por fecha de carga/estado/tipo) ─
 export function ComisionHistorialPage() {
   const { apiUrl, showToast } = useAppStore()
-  const [items, setItems] = useState<{ id: string; periodMonth: number; periodYear: number; filename: string; rowsCount: number; grossTotal: number; status: string }[]>([])
+  const { params } = useCommissionFilters()
+  const [status, setStatus] = useState("")
+  const [tipo, setTipo] = useState("")
+  const [items, setItems] = useState<{ id: string; periodMonth: number; periodYear: number; filename: string; rowsCount: number; grossTotal: number; status: string; importType?: string }[]>([])
   const [loading, setLoading] = useState(true)
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionImports" })
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), {
+        action: "getCommissionImports", ...params, dateField: "created",
+        ...(status ? { status } : {}), ...(tipo ? { importType: tipo } : {}),
+      })
       if (res?.ok) setItems((res.records as never) || [])
       else showToast((res as { error?: string })?.error || "Error", "error")
     } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
-  }, [apiUrl, showToast])
+  }, [apiUrl, showToast, params, status, tipo])
   useEffect(() => { void load() }, [load])
 
   return (
     <Shell icon={<CalendarClock className="h-4 w-4" />} title="Comisión de Ventas · Historial mensual">
+      <CommissionFilterBar>
+        <div>
+          <label className="text-[11px] font-medium">Tipo</label>
+          <select className="mt-0.5 h-9 w-full rounded-md border border-input bg-white px-2 text-sm" value={tipo} onChange={(e) => setTipo(e.target.value)}>
+            <option value="">Todos</option><option value="SALES">Ventas</option><option value="RESERVATIONS">Reservas</option>
+          </select>
+        </div>
+        <div>
+          <label className="text-[11px] font-medium">Estado</label>
+          <select className="mt-0.5 h-9 w-full rounded-md border border-input bg-white px-2 text-sm" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="">Todos</option>
+            {["borrador", "importado", "calculado", "en_revision", "aprobado", "pagado", "cerrado", "anulado"].map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+      </CommissionFilterBar>
+      <p className="-mt-3 text-[11px] text-muted-foreground">El período filtra por FECHA DE CARGA de la importación.</p>
       <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
         {loading ? <div className="py-10 text-center text-sm text-muted-foreground">Cargando...</div>
           : items.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">No hay importaciones registradas todavía.</div>
@@ -116,21 +143,32 @@ export function ComisionHistorialPage() {
 }
 
 // ── Scaffolds dedicados (próxima fase) ──────────────────────────────────────
-// Ventas por sucursal (agrega ventas persistidas)
+// Ventas por sucursal (agrega ventas persistidas; filtros backend)
 export function ComisionSucursalesPage() {
   const { apiUrl, showToast } = useAppStore()
+  const { params } = useCommissionFilters()
+  const [payment, setPayment] = useState("")
   const [data, setData] = useState<{ cardPct: number; branches: { branch: string; gross: number; tarjeta: number; efectivo: number; transferencia: number; otros: number; cardResult: number; producto: number; servicio: number; laser: number }[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const load = useCallback(async () => {
     setLoading(true)
-    try { const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionByBranch" }); if (res?.ok) setData(res as never); else showToast((res as { error?: string })?.error || "Error", "error") }
+    try { const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionByBranch", ...params, ...(payment ? { payment } : {}) }); if (res?.ok) setData(res as never); else showToast((res as { error?: string })?.error || "Error", "error") }
     catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
-  }, [apiUrl, showToast])
+  }, [apiUrl, showToast, params, payment])
   useEffect(() => { void load() }, [load])
   const br = data?.branches || []
   const T = (f: (b: (typeof br)[number]) => number) => br.reduce((s, b) => s + f(b), 0)
   return (
     <Shell icon={<Building2 className="h-4 w-4" />} title="Comisión de Ventas · Ventas por sucursal">
+      <CommissionFilterBar branches={BRANCHES}>
+        <div>
+          <label className="text-[11px] font-medium">Forma de pago</label>
+          <select className="mt-0.5 h-9 w-full rounded-md border border-input bg-white px-2 text-sm" value={payment} onChange={(e) => setPayment(e.target.value)}>
+            <option value="">Todas</option>
+            {["EFECTIVO", "TARJETA", "TRANSFERENCIA", "CHEQUE", "ONLINE", "OTROS"].map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </div>
+      </CommissionFilterBar>
       <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
         {loading ? <div className="py-10 text-center text-sm text-muted-foreground">Cargando...</div>
           : br.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin datos. Importa un archivo de ventas primero.</div>
@@ -160,24 +198,27 @@ export function ComisionSucursalesPage() {
   )
 }
 
-// Incentivos de productos (lee cálculos vivos)
+// Incentivos de productos (lee cálculos vivos; período compartido)
 export function ComisionProductosPage() {
   const { apiUrl, showToast } = useAppStore()
+  const { params } = useCommissionFilters()
   const [items, setItems] = useState<{ id: string; provider: string; branch: string; productsCount: number; productIncentive: number }[]>([])
   const [loading, setLoading] = useState(true)
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionCalculations" })
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionCalculations", ...params })
       if (res?.ok) setItems(((res.records as never[]) || []).filter((c: { productsCount: number }) => c.productsCount > 0))
       else showToast((res as { error?: string })?.error || "Error", "error")
     } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
-  }, [apiUrl, showToast])
+  }, [apiUrl, showToast, params])
   useEffect(() => { void load() }, [load])
   const totalU = items.reduce((s, c) => s + c.productsCount, 0)
   const totalI = items.reduce((s, c) => s + c.productIncentive, 0)
+  const providers = [...new Set(items.map((c) => c.provider).filter(Boolean))].sort()
   return (
     <Shell icon={<Package className="h-4 w-4" />} title="Comisión de Ventas · Incentivos de productos">
+      <CommissionFilterBar branches={BRANCHES} providers={providers} />
       <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
         {loading ? <div className="py-10 text-center text-sm text-muted-foreground">Cargando...</div>
           : items.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin datos. Importa un archivo de ventas primero.</div>
@@ -196,16 +237,19 @@ export function ComisionProductosPage() {
 // Comisión depilación láser: fondo por escala + reparto por pacientes
 export function ComisionLaserPage() {
   const { apiUrl, showToast } = useAppStore()
+  const { params } = useCommissionFilters()
   const [d, setD] = useState<{ laserTotal: number; tramoPct: number; threshold: number; fund: number; patientsTotal: number; distribution: { provider: string; patients: number; participation: number; amount: number }[]; byBranch: Record<string, number> } | null>(null)
   const [loading, setLoading] = useState(true)
   const load = useCallback(async () => {
     setLoading(true)
-    try { const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionLaser" }); if (res?.ok) setD(res as never); else showToast((res as { error?: string })?.error || "Error", "error") }
+    try { const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionLaser", ...params }); if (res?.ok) setD(res as never); else showToast((res as { error?: string })?.error || "Error", "error") }
     catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
-  }, [apiUrl, showToast])
+  }, [apiUrl, showToast, params])
   useEffect(() => { void load() }, [load])
+  const providers = (d?.distribution || []).map((r) => r.provider).sort()
   return (
     <Shell icon={<Zap className="h-4 w-4" />} title="Comisión de Ventas · Comisión depilación láser">
+      <CommissionFilterBar branches={BRANCHES} providers={providers} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Venta láser</div><div className="text-xl font-black tabular-nums">{fmtRD(d?.laserTotal || 0)}</div></CardContent></Card>
         <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Tramo alcanzado</div><div className="text-xl font-black tabular-nums">{((d?.tramoPct || 0) * 100).toFixed(0)}%</div><div className="text-[10px] text-muted-foreground">umbral {fmtRD(d?.threshold || 0)}</div></CardContent></Card>
@@ -226,19 +270,23 @@ export function ComisionLaserPage() {
   )
 }
 
-// Clientes atendidos por prestador
+// Clientes atendidos por prestador (fecha = Fecha de realización de la reserva)
 export function ComisionClientesPage() {
   const { apiUrl, showToast } = useAppStore()
-  const [d, setD] = useState<{ total: number; roundingDiff: number; rows: { provider: string; branch: string; patients: number; participation: number }[] } | null>(null)
+  const { params } = useCommissionFilters()
+  const [d, setD] = useState<{ total: number; roundingDiff: number; sourceUsed?: string; rows: { provider: string; branch: string; patients: number; uniquePatients?: number; participation: number }[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const load = useCallback(async () => {
     setLoading(true)
-    try { const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionPatients" }); if (res?.ok) setD(res as never); else showToast((res as { error?: string })?.error || "Error", "error") }
+    try { const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionPatients", ...params }); if (res?.ok) setD(res as never); else showToast((res as { error?: string })?.error || "Error", "error") }
     catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
-  }, [apiUrl, showToast])
+  }, [apiUrl, showToast, params])
   useEffect(() => { void load() }, [load])
+  const providers = (d?.rows || []).map((r) => r.provider).sort()
   return (
     <Shell icon={<Users className="h-4 w-4" />} title="Comisión de Ventas · Clientes atendidos">
+      <CommissionFilterBar branches={BRANCHES} providers={providers} />
+      {d?.sourceUsed ? <p className="-mt-3 text-[11px] text-muted-foreground">Fuente: {d.sourceUsed === "reservas" ? "Reservas (atenciones por Fecha de realización)" : "Ventas (clientes distintos — importa Reservas para atenciones reales)"}</p> : null}
       <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
         {loading ? <div className="py-10 text-center text-sm text-muted-foreground">Cargando...</div>
           : !d || d.rows.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin datos. Importa un archivo de ventas primero.</div>

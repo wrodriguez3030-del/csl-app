@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { UserCog, RefreshCcw, ArrowUpDown } from "lucide-react"
+import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
 
 interface Calc {
   id: string; provider: string; branch: string; periodMonth: number; periodYear: number
@@ -30,6 +31,7 @@ const COLS: Col[] = [
 
 export function ComisionPrestadoresPage() {
   const { apiUrl, showToast } = useAppStore()
+  const { params } = useCommissionFilters()
   const [items, setItems] = useState<Calc[]>([])
   const [loading, setLoading] = useState(true)
   const [sort, setSort] = useState<{ key: keyof Calc; dir: 1 | -1 }>({ key: "netTotal", dir: -1 })
@@ -37,12 +39,13 @@ export function ComisionPrestadoresPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionCalculations" })
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionCalculations", ...params })
       if (res?.ok) setItems((res.records as Calc[]) || [])
       else showToast((res as { error?: string })?.error || "Error", "error")
     } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
-  }, [apiUrl, showToast])
+  }, [apiUrl, showToast, params])
   useEffect(() => { void load() }, [load])
+  const providerOptions = [...new Set(items.map((c) => c.provider).filter(Boolean))].sort()
 
   const sorted = useMemo(() => {
     const arr = [...items]
@@ -60,6 +63,7 @@ export function ComisionPrestadoresPage() {
 
   return (
     <div className="space-y-5">
+      <CommissionFilterBar branches={["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]} providers={providerOptions} />
       <Card className="border-[color:var(--brand-border)]"><CardContent className="flex items-center gap-2 p-3 text-sm font-semibold sm:p-4">
         <UserCog className="h-4 w-4 text-[color:var(--brand-primary)]" /> Comisiones por prestador
         <Badge variant="secondary">{items.length}</Badge>

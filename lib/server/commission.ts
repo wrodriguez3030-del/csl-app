@@ -13,6 +13,24 @@ import { textValue, numberValue } from "./csl-helpers"
 import type { ActionParams, ActionUser, Row } from "./csl-types"
 import { defaultCommissionRules } from "@/lib/commission/rules"
 import { parseDateISO } from "@/lib/commission/normalize"
+import { exclusiveEnd, monthBounds, monthsCovered } from "@/lib/commission/period"
+
+/**
+ * Filtro de período desde params: prioriza from/to (rango INCLUSIVO — el fin
+ * se consulta con `< to + 1 día` para no perder el día 31); si no, mes/año.
+ */
+function periodFilter(params: ActionParams): { from: string; toEx: string; months: Set<string> } | null {
+  const from = textValue(params, "from")
+  const to = textValue(params, "to")
+  if (from && to) return { from, toEx: exclusiveEnd(to), months: monthsCovered(from, to) }
+  const month = numberValue(params, "month")
+  const year = numberValue(params, "year")
+  if (month && year) {
+    const b = monthBounds(year, month)
+    return { from: b.from, toEx: exclusiveEnd(b.to), months: monthsCovered(b.from, b.to) }
+  }
+  return null
+}
 
 // ── Tenant ───────────────────────────────────────────────────────────────────
 function bizId(): string | null {
@@ -177,11 +195,14 @@ export async function setCommissionRuleActive(params: ActionParams, user: Action
 export async function getCommissionImports(params: ActionParams) {
   const business_id = requireBizId()
   let q = getSupabaseAdmin().from("sales_commission_imports").select("*").eq("business_id", business_id)
-  const year = numberValue(params, "year")
-  const month = numberValue(params, "month")
-  if (year) q = q.eq("period_year", year)
-  if (month) q = q.eq("period_month", month)
-  const { data, error } = await q.order("period_year", { ascending: false }).order("period_month", { ascending: false }).order("created_at", { ascending: false })
+  const importType = textValue(params, "importType")
+  if (importType) q = q.eq("import_type", importType)
+  const status = textValue(params, "status")
+  if (status) q = q.eq("status", status)
+  // Rango sobre la FECHA DE CARGA (imported_at/created_at), inclusivo.
+  const p = periodFilter(params)
+  if (p && textValue(params, "dateField") === "created") q = q.gte("created_at", p.from).lt("created_at", p.toEx)
+  const { data, error } = await q.order("created_at", { ascending: false })
   if (error) throw new Error(error.message)
   return { ok: true, records: (data || []).map(mapImport) }
 }
@@ -189,13 +210,19 @@ export async function getCommissionImports(params: ActionParams) {
 export async function getCommissionCalculations(params: ActionParams) {
   const business_id = requireBizId()
   let q = getSupabaseAdmin().from("sales_commission_calculations").select("*").eq("business_id", business_id)
-  const year = numberValue(params, "year")
-  const month = numberValue(params, "month")
-  if (year) q = q.eq("period_year", year)
-  if (month) q = q.eq("period_month", month)
+  const branch = textValue(params, "branch")
+  if (branch) q = q.eq("branch", branch)
+  const provider = textValue(params, "provider")
+  if (provider) q = q.eq("provider_name_snapshot", provider)
+  const status = textValue(params, "status")
+  if (status) q = q.eq("status", status)
   const { data, error } = await q.order("net_total", { ascending: false })
   if (error) throw new Error(error.message)
-  return { ok: true, records: (data || []).map(mapCalc) }
+  // Período: los cálculos viven por (period_year, period_month) — un rango
+  // from/to se traduce a los meses cubiertos (filas por negocio son pocas).
+  const p = periodFilter(params)
+  const rows = (data || []).filter((r) => !p || p.months.has(`${Number((r as Row).period_year)}-${Number((r as Row).period_month)}`))
+  return { ok: true, records: rows.map(mapCalc) }
 }
 
 // ── Importación (dedup por archivo + fila, persistencia por lotes) ──────────
@@ -599,19 +626,19 @@ export async function setCommissionCalcStatus(params: ActionParams, user: Action
 // ── Vistas agregadas desde las ventas persistidas ───────────────────────────
 import { classifyProvider } from "@/lib/commission/classification"
 
-/** Trae las ventas del negocio (opcionalmente filtradas por período vía sale_date). */
+/** Trae las ventas del negocio filtradas en DB por período (sale_date, rango
+ *  inclusivo), sucursal y prestador — los filtros se aplican en backend. */
 async function fetchSalesForPeriod(params: ActionParams) {
   const business_id = requireBizId()
-  const month = numberValue(params, "month")
-  const year = numberValue(params, "year")
   let q = getSupabaseAdmin().from("sales_commission_sales")
     .select("branch,category,gross_amount,payment_method,provider_normalized,provider_original,customer_name,quantity")
     .eq("business_id", business_id)
-  if (month && year) {
-    const from = `${year}-${String(month).padStart(2, "0")}-01`
-    const to = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, "0")}-01`
-    q = q.gte("sale_date", from).lt("sale_date", to)
-  }
+  const p = periodFilter(params)
+  if (p) q = q.gte("sale_date", p.from).lt("sale_date", p.toEx)
+  const branch = textValue(params, "branch")
+  if (branch) q = q.eq("branch", branch)
+  const provider = textValue(params, "provider")
+  if (provider) q = q.eq("provider_normalized", provider)
   const { data, error } = await q
   if (error) throw new Error(error.message)
   return (data || []) as Row[]
@@ -627,7 +654,9 @@ async function cardPercentage(): Promise<number> {
 
 /** Ventas por sucursal: bruto, medios de pago, % tarjeta, categorías. */
 export async function getCommissionByBranch(params: ActionParams) {
-  const rows = await fetchSalesForPeriod(params)
+  let rows = await fetchSalesForPeriod(params)
+  const payment = textValue(params, "payment")
+  if (payment) rows = rows.filter((r) => String(r.payment_method || "OTROS") === payment)
   const cardPct = await cardPercentage()
   type B = { branch: string; gross: number; tarjeta: number; efectivo: number; transferencia: number; otros: number; producto: number; servicio: number; laser: number; count: number }
   const map = new Map<string, B>()
@@ -656,13 +685,16 @@ export async function getCommissionByBranch(params: ActionParams) {
  *  ventas (clientes distintos) si el período no tiene reservas cargadas. */
 export async function getCommissionPatients(params: ActionParams) {
   const business_id = requireBizId()
-  const month = numberValue(params, "month")
-  const year = numberValue(params, "year")
   let pcQ = getSupabaseAdmin().from("sales_commission_patient_counts")
     .select("provider_name,branch,patient_count,unique_patients,period_month,period_year")
     .eq("business_id", business_id).eq("source", "reservas")
-  if (month && year) pcQ = pcQ.eq("period_month", month).eq("period_year", year)
-  const { data: pcRows } = await pcQ
+  const branch = textValue(params, "branch")
+  if (branch) pcQ = pcQ.eq("branch", branch)
+  const providerF = textValue(params, "provider")
+  if (providerF) pcQ = pcQ.eq("provider_name", providerF)
+  const { data: pcAll } = await pcQ
+  const p = periodFilter(params)
+  const pcRows = (pcAll || []).filter((r) => !p || p.months.has(`${Number((r as Row).period_year)}-${Number((r as Row).period_month)}`))
   if (pcRows && pcRows.length) {
     // Agregar (si no hay filtro de período, suma todos los meses cargados).
     const agg = new Map<string, { provider: string; branch: string; patients: number; uniquePatients: number }>()

@@ -15,6 +15,7 @@ const { extractResumenControls } = await import("../lib/commission/ventas-resume
 const { payBucketsFromV2, dominantPayment, addBuckets } = await import("../lib/commission/ventas-pago.ts")
 const { computeRowHash, fnvHex } = await import("../lib/commission/hash.ts")
 const { toSaleRecord } = await import("../lib/commission/aggregate.ts")
+const { monthBounds, exclusiveEnd, monthsCovered, quickRange, todayInTz, lastDayOfMonth } = await import("../lib/commission/period.ts")
 
 let pass = 0, fail = 0
 const t = (name, cond, extra = "") => {
@@ -68,6 +69,31 @@ t("Producto → PRODUCTO", toSaleRecord({ itemType: "Producto", itemName: "BARIE
 t("Servicio láser → DEPILACION_LASER", toSaleRecord({ itemType: "Servicio", itemName: "Depilación Láser  10 sesiones" }).category === "DEPILACION_LASER")
 t("Reserva Hollywood → HOLLYWOOD_AQUA_PEEL", toSaleRecord({ itemType: "Reserva", itemName: "HOLLYWOOD LASER PEEL" }).category === "HOLLYWOOD_AQUA_PEEL")
 t("'Sin Información' no comisiona", toSaleRecord({ itemType: "Servicio", itemName: "X", provider: "Sin Información" }).commissionable === false)
+
+console.log("── Filtros de período (rango inclusivo + TZ Santo Domingo)")
+t("monthBounds julio = 01..31", monthBounds(2026, 7).from === "2026-07-01" && monthBounds(2026, 7).to === "2026-07-31")
+t("monthBounds feb 2026 = 28", monthBounds(2026, 2).to === "2026-02-28")
+t("monthBounds feb 2028 (bisiesto) = 29", monthBounds(2028, 2).to === "2028-02-29")
+t("exclusiveEnd incluye el día 31", exclusiveEnd("2026-07-31") === "2026-08-01")
+t("exclusiveEnd cruza fin de año", exclusiveEnd("2026-12-31") === "2027-01-01")
+t("monthsCovered ene-jun = 6 meses", monthsCovered("2026-01-01", "2026-06-30").size === 6)
+t("monthsCovered contiene 2026-3", monthsCovered("2026-01-15", "2026-06-01").has("2026-3"))
+t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10").size === 1)
+{
+  // 2026-07-31 23:30 UTC = 19:30 en Santo Domingo (UTC-4) → sigue siendo día 31.
+  const utcNight = new Date("2026-07-31T23:30:00Z")
+  t("TZ: 31 jul 23:30 UTC sigue siendo 31 jul en RD", todayInTz(utcNight) === "2026-07-31")
+  // 2026-08-01 02:00 UTC = 31 jul 22:00 en RD → el "hoy" del negocio es 31 jul.
+  const utcNextDay = new Date("2026-08-01T02:00:00Z")
+  t("TZ: 1 ago 02:00 UTC aún es 31 jul en RD", todayInTz(utcNextDay) === "2026-07-31")
+  const mesAnterior = quickRange("mes_anterior", new Date("2026-07-15T12:00:00Z"))
+  t("quick mes_anterior desde julio = junio", mesAnterior.from === "2026-06-01" && mesAnterior.to === "2026-06-30")
+  const tri = quickRange("trimestre", new Date("2026-08-15T12:00:00Z"))
+  t("quick trimestre de agosto = jul-sep", tri.from === "2026-07-01" && tri.to === "2026-09-30")
+  const ano = quickRange("ano_actual", new Date("2026-07-15T12:00:00Z"))
+  t("quick año actual = 01/01..31/12", ano.from === "2026-01-01" && ano.to === "2026-12-31")
+  t("lastDayOfMonth abril = 30", lastDayOfMonth(2026, 4) === 30)
+}
 
 // ── Archivos reales (§33/§34) — solo si están disponibles ──
 const VENTAS = "C:/Users/ADMIN/Downloads/reporte_de_ventas_3552_2026-07-10T15_38_41+00_00.xlsx"

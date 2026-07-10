@@ -38,6 +38,16 @@ interface AppState {
   /** Acordeón del menú: único grupo abierto a la vez (persistido; solo preferencia visual). */
   expandedGroup: string | null
   setExpandedGroup: (group: string | null) => void
+  /**
+   * Filtros de período de Comisión de Ventas — COMPARTIDOS por todas las
+   * pantallas del módulo (el período se mantiene al navegar). Solo visual/
+   * consulta; nunca gobierna permisos ni dispara recálculos.
+   */
+  commissionFilters: {
+    quick: string; year: number; month: number; from: string; to: string
+    branch: string; provider: string
+  } | null
+  setCommissionFilters: (f: AppState["commissionFilters"]) => void
   pulsosSectionOpen: boolean
   setPulsosSectionOpen: (open: boolean) => void
   db: Database
@@ -112,6 +122,8 @@ export const useAppStore = create<AppState>()(
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
       expandedGroup: null,
       setExpandedGroup: (group) => set({ expandedGroup: group }),
+      commissionFilters: null,
+      setCommissionFilters: (f) => set({ commissionFilters: f }),
       pulsosSectionOpen: false,
       setPulsosSectionOpen: (open) => set({ pulsosSectionOpen: open }),
       db: { sucursales: [], equipos: [], reportes: [], piezas: [], tecnicos: [] },
@@ -170,6 +182,8 @@ export const useAppStore = create<AppState>()(
         // Preferencias visuales del menú (nunca permisos):
         sidebarCollapsed: state.sidebarCollapsed,
         expandedGroup: state.expandedGroup,
+        // Período activo de Comisión de Ventas (persistente entre pantallas):
+        commissionFilters: state.commissionFilters,
       }),
     }
   )

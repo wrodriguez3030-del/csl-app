@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { FileBarChart2, FileSpreadsheet, FileText, Printer, Loader2, RefreshCcw } from "lucide-react"
 import { exportCommissionExcel, printCommissionPdf, type CommissionReportData } from "@/lib/commission/commission-export"
+import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
 
 const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 const fmtRD = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -20,9 +21,11 @@ export function ComisionReportesPage() {
   const business = useCurrentBusiness()
   const user = useSessionUser()
   const canExport = canPerm(user, "sales_commission.export")
-  const now = new Date()
-  const [month, setMonth] = useState(now.getMonth() + 1)
-  const [year, setYear] = useState(now.getFullYear())
+  // Período GLOBAL del módulo — el reporte, el Excel y el PDF usan exactamente
+  // los mismos filtros activos de pantalla.
+  const { filters, params, label: periodDisplay } = useCommissionFilters()
+  const month = filters.month
+  const year = filters.year
   const [data, setData] = useState<CommissionReportData | null>(null)
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
@@ -30,7 +33,7 @@ export function ComisionReportesPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const q = { month: String(month), year: String(year) }
+      const q = params
       const [dash, branch, pat, laser, rules] = await Promise.all([
         apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionDashboard", ...q }),
         apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionByBranch", ...q }),
@@ -52,7 +55,7 @@ export function ComisionReportesPage() {
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Error al cargar", "error")
     } finally { setLoading(false) }
-  }, [apiUrl, month, year, user, showToast])
+  }, [apiUrl, params, month, year, user, showToast])
   useEffect(() => { void load() }, [load])
 
   const doExcel = async () => {
@@ -67,11 +70,11 @@ export function ComisionReportesPage() {
 
   return (
     <div className="space-y-5">
+      <CommissionFilterBar branches={["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]} />
       <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-col gap-3 p-4">
-        <div className="flex items-center gap-2 text-sm font-semibold"><FileBarChart2 className="h-4 w-4 text-[color:var(--brand-primary)]" /> Reportes de comisión</div>
-        <div className="grid grid-cols-2 gap-2 sm:max-w-md">
-          <div><Label className="text-xs">Mes</Label><Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}><SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger><SelectContent>{MONTHS.map((m, i) => <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>)}</SelectContent></Select></div>
-          <div><Label className="text-xs">Año</Label><Select value={String(year)} onValueChange={(v) => setYear(Number(v))}><SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger><SelectContent>{[year + 1, year, year - 1, year - 2].map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent></Select></div>
+        <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+          <FileBarChart2 className="h-4 w-4 text-[color:var(--brand-primary)]" /> Reportes de comisión
+          <span className="text-xs font-normal text-muted-foreground">Período: <b className="text-foreground">{periodDisplay}</b> (los exportes usan exactamente estos filtros)</span>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" className="h-9" onClick={load} disabled={loading}><RefreshCcw className="mr-1.5 h-4 w-4" />Actualizar</Button>
