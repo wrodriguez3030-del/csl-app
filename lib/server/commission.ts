@@ -12,6 +12,7 @@ import { getBusinessContext, requirePermission } from "./business-context"
 import { textValue, numberValue } from "./csl-helpers"
 import type { ActionParams, ActionUser, Row } from "./csl-types"
 import { defaultCommissionRules } from "@/lib/commission/rules"
+import { parseDateISO } from "@/lib/commission/normalize"
 
 // ── Tenant ───────────────────────────────────────────────────────────────────
 function bizId(): string | null {
@@ -263,19 +264,30 @@ export async function commitCommissionImport(params: ActionParams, user: ActionU
     for (const r of data || []) seen.add(String((r as Row).row_hash))
   }
   const fresh = sales.filter((s) => !s.rowHash || !seen.has(s.rowHash))
+  // sale_date llega del Excel como "30/06/2026 19:19" (DD/MM/YYYY) o ISO;
+  // Postgres (DateStyle ISO,MDY) rechaza DD/MM → normalizar SIEMPRE a ISO.
   const salesRows = fresh.map((s, i) => ({
     business_id, import_id: importId, original_row_number: i + 1, original_transaction_id: s.originalId || null,
-    sale_date: (s.date || "").slice(0, 10) || null, branch: s.branch || null, customer_name: s.customer || null,
+    sale_date: parseDateISO(s.date) || null, branch: s.branch || null, customer_name: s.customer || null,
     provider_original: s.providerOriginal || null, provider_normalized: s.provider || null,
     service_name: s.itemName || null, category: s.category || null,
     product_name: s.itemType === "Producto" ? s.itemName || null : null,
     quantity: Number(s.quantity) || 0, gross_amount: Number(s.amount) || 0, net_amount: Number(s.amount) || 0,
     payment_method: s.paymentMethod || null, row_hash: s.rowHash || null,
   }))
+  // Si algo falla a mitad, compensar: quitar SOLO las ventas recién insertadas
+  // de este import y anularlo, para que el file_hash no bloquee el reintento.
+  const voidThisImport = async () => {
+    try {
+      await sb.from("sales_commission_sales").delete().eq("import_id", importId).eq("business_id", business_id)
+      await sb.from("sales_commission_imports").update({ status: "anulado", updated_at: new Date().toISOString() }).eq("id", importId).eq("business_id", business_id)
+    } catch { /* best-effort */ }
+  }
+
   let inserted = 0
   for (const part of chunk(salesRows, 500)) {
     const { error } = await sb.from("sales_commission_sales").insert(part)
-    if (error) throw new Error(`Error insertando ventas: ${error.message}`)
+    if (error) { await voidThisImport(); throw new Error(`Error insertando ventas: ${error.message}`) }
     inserted += part.length
   }
 
@@ -295,7 +307,7 @@ export async function commitCommissionImport(params: ActionParams, user: ActionU
   })
   if (calcRows.length) {
     const { error } = await sb.from("sales_commission_calculations").insert(calcRows)
-    if (error) throw new Error(`Error insertando cálculos: ${error.message}`)
+    if (error) { await voidThisImport(); throw new Error(`Error insertando cálculos: ${error.message}`) }
   }
 
   await logAudit(user, "import", importId, "importacion_confirmada",
