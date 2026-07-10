@@ -305,6 +305,72 @@ export async function commitCommissionImport(params: ActionParams, user: ActionU
   return { ok: true, importId, salesInserted: inserted, salesDuplicated: sales.length - fresh.length, employees: calcRows.length }
 }
 
+// ── Liquidación: edición de montos + cambio de estado ───────────────────────
+const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100
+
+/** Edita bono/limpieza/ajuste/láser/fijo de un cálculo y recalcula bruto/neto. */
+export async function updateCommissionCalculation(params: ActionParams, user: ActionUser) {
+  const business_id = requireBizId()
+  const id = textValue(params, "id")
+  if (!id) throw new Error("Falta id del cálculo")
+  const sb = getSupabaseAdmin()
+  const { data: prev } = await sb.from("sales_commission_calculations").select("*").eq("id", id).eq("business_id", business_id).maybeSingle()
+  if (!prev) throw new Error("Cálculo no encontrado")
+  if (prev.status === "cerrado") throw new Error("Período cerrado: no se puede editar")
+
+  const patch: Row = {}
+  const setNum = (key: string, col: string, perm: string) => {
+    if (params[key] !== undefined && params[key] !== "") { requirePermission(perm); patch[col] = numberValue(params, key) }
+  }
+  setNum("bonusExtra", "bonus_extra", "sales_commission.bonus.manage")
+  setNum("cleaningContribution", "cleaning_contribution", "sales_commission.cleaning.manage")
+  setNum("manualAdjustment", "manual_adjustment", "sales_commission.adjust")
+  setNum("laserIncentive", "laser_incentive", "sales_commission.adjust")
+  setNum("fixedIncentive", "fixed_incentive", "sales_commission.adjust")
+  if (Object.keys(patch).length === 0) throw new Error("Nada que actualizar")
+
+  const merged = { ...prev, ...patch } as Row
+  const num = (k: string) => Number(merged[k]) || 0
+  const gross = round2(num("product_incentive") + num("service_commission") + num("laser_incentive") + num("fixed_incentive") + num("manual_adjustment") + num("bonus_extra"))
+  const net = round2(gross - num("cleaning_contribution"))
+  patch.gross_total = gross
+  patch.net_total = net
+  patch.updated_at = new Date().toISOString()
+
+  const { data, error } = await sb.from("sales_commission_calculations").update(patch).eq("id", id).eq("business_id", business_id).select("*").maybeSingle()
+  if (error) throw new Error(error.message)
+  await logAudit(user, "calculation", String(id), "ajuste_liquidacion", { bonus: prev.bonus_extra, cleaning: prev.cleaning_contribution, adj: prev.manual_adjustment }, patch, textValue(params, "reason") || null,
+    { month: Number(prev.period_month) || undefined, year: Number(prev.period_year) || undefined })
+  return { ok: true, record: data ? mapCalc(data) : null }
+}
+
+const STATUS_PERM: Record<string, string> = {
+  en_revision: "sales_commission.review", calculado: "sales_commission.review",
+  aprobado: "sales_commission.approve", pagado: "sales_commission.pay", cerrado: "sales_commission.close",
+}
+
+/** Cambia el estado de un cálculo (revisión/aprobado/pagado/cerrado). */
+export async function setCommissionCalcStatus(params: ActionParams, user: ActionUser) {
+  const business_id = requireBizId()
+  const id = textValue(params, "id")
+  const status = textValue(params, "status")
+  if (!id || !status || !STATUS_PERM[status]) throw new Error("Estado inválido")
+  requirePermission(STATUS_PERM[status])
+  const sb = getSupabaseAdmin()
+  const { data: prev } = await sb.from("sales_commission_calculations").select("*").eq("id", id).eq("business_id", business_id).maybeSingle()
+  if (!prev) throw new Error("Cálculo no encontrado")
+  if (prev.status === "cerrado" && status !== "cerrado") throw new Error("Período cerrado: no se puede cambiar")
+  const now = new Date().toISOString()
+  const patch: Row = { status, updated_at: now }
+  if (status === "aprobado") { patch.approved_by = user.email || user.id || null; patch.approved_at = now }
+  if (status === "pagado") { patch.paid_by = user.email || user.id || null; patch.paid_at = now }
+  const { data, error } = await sb.from("sales_commission_calculations").update(patch).eq("id", id).eq("business_id", business_id).select("*").maybeSingle()
+  if (error) throw new Error(error.message)
+  await logAudit(user, "calculation", String(id), `estado_${status}`, { status: prev.status }, { status }, textValue(params, "reference") || null,
+    { month: Number(prev.period_month) || undefined, year: Number(prev.period_year) || undefined })
+  return { ok: true, record: data ? mapCalc(data) : null }
+}
+
 export async function getCommissionDashboard(params: ActionParams) {
   const business_id = requireBizId()
   const [rulesRes, calcsRes, importsRes] = await Promise.all([

@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  LayoutDashboard, Building2, UserCog, Package, Zap, Users, ReceiptText,
+  LayoutDashboard, Building2, Package, Zap, Users,
   CalendarClock, FileBarChart2, RefreshCcw, Hammer,
 } from "lucide-react"
 
@@ -132,9 +132,40 @@ export function ComisionHistorialPage() {
 
 // ── Scaffolds dedicados (próxima fase) ──────────────────────────────────────
 export const ComisionSucursalesPage = () => <EnConstruccion icon={<Building2 className="h-4 w-4" />} title="Comisión de Ventas · Ventas por sucursal" desc="Ventas brutas, tarjeta/efectivo/transferencia, % tarjeta configurable (27%), venta de productos/servicios/láser y comisiones por sucursal (Los Jardines / Rafael Vidal / Villa Olga), con orden, filtros y exportación." />
-export const ComisionPrestadoresPage = () => <EnConstruccion icon={<UserCog className="h-4 w-4" />} title="Comisión de Ventas · Comisiones por prestador" desc="Tabla por prestador: productos, comisión por categoría (Faciales/Hollywood/Tatuajes/HIFU/Masajes), pacientes láser, participación, incentivos fijos, ajustes, bono y neto — con vinculación de alias." />
-export const ComisionProductosPage = () => <EnConstruccion icon={<Package className="h-4 w-4" />} title="Comisión de Ventas · Incentivos de productos" desc="Unidades vendidas por empleado × monto configurable (RD$100/unidad) con validación de cuadre (detecta discrepancias como 67 vs 86 sin ocultarlas)." />
+
+// Incentivos de productos (lee cálculos vivos)
+export function ComisionProductosPage() {
+  const { apiUrl, showToast } = useAppStore()
+  const [items, setItems] = useState<{ id: string; provider: string; branch: string; productsCount: number; productIncentive: number }[]>([])
+  const [loading, setLoading] = useState(true)
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionCalculations" })
+      if (res?.ok) setItems(((res.records as never[]) || []).filter((c: { productsCount: number }) => c.productsCount > 0))
+      else showToast((res as { error?: string })?.error || "Error", "error")
+    } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
+  }, [apiUrl, showToast])
+  useEffect(() => { void load() }, [load])
+  const totalU = items.reduce((s, c) => s + c.productsCount, 0)
+  const totalI = items.reduce((s, c) => s + c.productIncentive, 0)
+  return (
+    <Shell icon={<Package className="h-4 w-4" />} title="Comisión de Ventas · Incentivos de productos">
+      <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
+        {loading ? <div className="py-10 text-center text-sm text-muted-foreground">Cargando...</div>
+          : items.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin datos. Importa un archivo de ventas primero.</div>
+          : (<div className="overflow-x-auto"><table className="w-full text-sm">
+            <thead><tr className="border-b text-left text-[11px] uppercase text-muted-foreground"><th className="px-4 py-2">Empleado</th><th className="px-2 py-2">Sucursal</th><th className="px-2 py-2 text-right">Unidades</th><th className="px-4 py-2 text-right">Incentivo</th></tr></thead>
+            <tbody>{[...items].sort((a, b) => b.productsCount - a.productsCount).map((c) => (
+              <tr key={c.id} className="border-b last:border-0"><td className="px-4 py-2 font-medium">{c.provider}</td><td className="px-2 py-2 text-xs text-muted-foreground">{c.branch}</td><td className="px-2 py-2 text-right tabular-nums">{c.productsCount}</td><td className="px-4 py-2 text-right tabular-nums">{fmtRD(c.productIncentive)}</td></tr>
+            ))}</tbody>
+            <tfoot><tr className="bg-slate-50 font-bold"><td className="px-4 py-2" colSpan={2}>Totales</td><td className="px-2 py-2 text-right tabular-nums">{totalU}</td><td className="px-4 py-2 text-right tabular-nums">{fmtRD(totalI)}</td></tr></tfoot>
+          </table></div>)}
+      </CardContent></Card>
+    </Shell>
+  )
+}
+
 export const ComisionLaserPage = () => <EnConstruccion icon={<Zap className="h-4 w-4" />} title="Comisión de Ventas · Comisión depilación láser" desc="Venta láser del período, tramo de la escala alcanzado, fondo generado y su distribución por participación de pacientes. Escala editable por tramos." />
 export const ComisionClientesPage = () => <EnConstruccion icon={<Users className="h-4 w-4" />} title="Comisión de Ventas · Clientes atendidos" desc="Pacientes atendidos por prestador (desde el archivo, integración o carga manual autorizada) y su participación proporcional con manejo de redondeo." />
-export const ComisionLiquidacionPage = () => <EnConstruccion icon={<ReceiptText className="h-4 w-4" />} title="Comisión de Ventas · Liquidación de incentivos" desc="Liquidación por empleado: incentivo de productos + servicios + bono − aporte de limpieza = neto, con detalle de origen, aprobación, marcado de pago, impresión, Excel y PDF." />
 export const ComisionReportesPage = () => <EnConstruccion icon={<FileBarChart2 className="h-4 w-4" />} title="Comisión de Ventas · Reportes" desc="Exportación mensual profesional: Excel multi-hoja (Resumen, Sucursal, Prestador, Productos, Servicios, Láser, Clientes, Liquidación, Reglas, Conciliación) y PDF A4 con logo, totales y numeración." />

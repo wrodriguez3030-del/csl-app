@@ -18,6 +18,24 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.26.0] — 2026-07-10
+
+### Added
+- **Comisión de Ventas — Fase 2e: pantallas de resultado por empleado.**
+  - **Comisiones por prestador**: tabla ordenable (por cualquier columna) sobre
+    `sales_commission_calculations` — productos, incentivos, láser, ajuste, bono,
+    limpieza, neto; total neto en la cabecera.
+  - **Liquidación de incentivos**: tabla con inc. productos / inc. servicios
+    (comisión+láser+fijo+ajuste) / bono / bruto / limpieza / neto / estado +
+    acciones: **editar bono/limpieza/ajuste** (recalcula bruto/neto), **aprobar**,
+    **marcar pagado**; badges de estado y guarda de período cerrado.
+  - **Incentivos de productos**: unidades e incentivo por empleado con totales.
+  - Server: `updateCommissionCalculation` (recalcula, permisos por campo:
+    bono/limpieza/ajuste) y `setCommissionCalcStatus` (revisión/aprobado/pagado/
+    cerrado con permiso, `paid_at`/`approved_at`, auditoría, no toca cerrados).
+
+---
+
 ## [0.25.0] — 2026-07-10
 
 ### Added
