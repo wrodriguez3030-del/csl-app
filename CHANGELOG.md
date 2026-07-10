@@ -18,6 +18,26 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.27.0] — 2026-07-10
+
+### Added
+- **Comisión de Ventas — Fase 2f: vistas administrativas.**
+  - **Ventas por sucursal**: bruto, tarjeta/efectivo/transferencia/otros,
+    **% tarjeta (27% configurable)** y **resultado tarjeta**, productos/servicios/
+    láser por sucursal, con totales.
+  - **Comisión depilación láser**: venta láser, tramo/umbral alcanzado, **fondo
+    generado** y **reparto por participación de pacientes** por prestador.
+  - **Clientes atendidos**: pacientes distintos por prestador comisionable y
+    participación proporcional con diferencia de redondeo.
+  - Server: `getCommissionByBranch`, `getCommissionPatients`, `getCommissionLaser`
+    (agregan `sales_commission_sales`; comisionabilidad vía `classifyProvider`
+    sobre el prestador original; % tarjeta/escala desde reglas vivas).
+- El **importador ahora prefiere la hoja "Produccion v2"** y captura el **medio
+  de pago por fila** (efectivo/tarjeta/transferencia), habilitando el cálculo
+  real de % tarjeta por sucursal (con fallback a "Produccion").
+
+---
+
 ## [0.26.0] — 2026-07-10
 
 ### Added

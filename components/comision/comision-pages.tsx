@@ -131,7 +131,49 @@ export function ComisionHistorialPage() {
 }
 
 // ── Scaffolds dedicados (próxima fase) ──────────────────────────────────────
-export const ComisionSucursalesPage = () => <EnConstruccion icon={<Building2 className="h-4 w-4" />} title="Comisión de Ventas · Ventas por sucursal" desc="Ventas brutas, tarjeta/efectivo/transferencia, % tarjeta configurable (27%), venta de productos/servicios/láser y comisiones por sucursal (Los Jardines / Rafael Vidal / Villa Olga), con orden, filtros y exportación." />
+// Ventas por sucursal (agrega ventas persistidas)
+export function ComisionSucursalesPage() {
+  const { apiUrl, showToast } = useAppStore()
+  const [data, setData] = useState<{ cardPct: number; branches: { branch: string; gross: number; tarjeta: number; efectivo: number; transferencia: number; otros: number; cardResult: number; producto: number; servicio: number; laser: number }[] } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const load = useCallback(async () => {
+    setLoading(true)
+    try { const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionByBranch" }); if (res?.ok) setData(res as never); else showToast((res as { error?: string })?.error || "Error", "error") }
+    catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
+  }, [apiUrl, showToast])
+  useEffect(() => { void load() }, [load])
+  const br = data?.branches || []
+  const T = (f: (b: (typeof br)[number]) => number) => br.reduce((s, b) => s + f(b), 0)
+  return (
+    <Shell icon={<Building2 className="h-4 w-4" />} title="Comisión de Ventas · Ventas por sucursal">
+      <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
+        {loading ? <div className="py-10 text-center text-sm text-muted-foreground">Cargando...</div>
+          : br.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin datos. Importa un archivo de ventas primero.</div>
+          : (<div className="overflow-x-auto"><table className="w-full text-sm">
+            <thead><tr className="border-b text-left text-[11px] uppercase text-muted-foreground">
+              <th className="px-3 py-2">Sucursal</th><th className="px-2 py-2 text-right">Bruto</th><th className="px-2 py-2 text-right">Tarjeta</th><th className="px-2 py-2 text-right">Efectivo</th><th className="px-2 py-2 text-right">Transfer.</th><th className="px-2 py-2 text-right">Otros</th><th className="px-2 py-2 text-right">% Tarj.</th><th className="px-2 py-2 text-right">Result. tarjeta</th><th className="px-2 py-2 text-right">Productos</th><th className="px-2 py-2 text-right">Servicios</th><th className="px-3 py-2 text-right">Láser</th>
+            </tr></thead>
+            <tbody>{br.map((b) => (
+              <tr key={b.branch} className="border-b last:border-0">
+                <td className="px-3 py-2 font-medium">{b.branch}</td>
+                <td className="px-2 py-2 text-right font-semibold tabular-nums">{fmtRD(b.gross)}</td>
+                <td className="px-2 py-2 text-right tabular-nums">{fmtRD(b.tarjeta)}</td>
+                <td className="px-2 py-2 text-right tabular-nums">{fmtRD(b.efectivo)}</td>
+                <td className="px-2 py-2 text-right tabular-nums">{fmtRD(b.transferencia)}</td>
+                <td className="px-2 py-2 text-right tabular-nums">{fmtRD(b.otros)}</td>
+                <td className="px-2 py-2 text-right tabular-nums">{((data?.cardPct || 0) * 100).toFixed(0)}%</td>
+                <td className="px-2 py-2 text-right tabular-nums text-[color:var(--brand-primary)]">{fmtRD(b.cardResult)}</td>
+                <td className="px-2 py-2 text-right tabular-nums">{fmtRD(b.producto)}</td>
+                <td className="px-2 py-2 text-right tabular-nums">{fmtRD(b.servicio)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{fmtRD(b.laser)}</td>
+              </tr>
+            ))}</tbody>
+            <tfoot><tr className="bg-slate-50 font-bold"><td className="px-3 py-2">Totales</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.gross))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.tarjeta))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.efectivo))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.transferencia))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.otros))}</td><td className="px-2 py-2"></td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.cardResult))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.producto))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.servicio))}</td><td className="px-3 py-2 text-right tabular-nums">{fmtRD(T((b) => b.laser))}</td></tr></tfoot>
+          </table></div>)}
+      </CardContent></Card>
+    </Shell>
+  )
+}
 
 // Incentivos de productos (lee cálculos vivos)
 export function ComisionProductosPage() {
@@ -166,6 +208,62 @@ export function ComisionProductosPage() {
   )
 }
 
-export const ComisionLaserPage = () => <EnConstruccion icon={<Zap className="h-4 w-4" />} title="Comisión de Ventas · Comisión depilación láser" desc="Venta láser del período, tramo de la escala alcanzado, fondo generado y su distribución por participación de pacientes. Escala editable por tramos." />
-export const ComisionClientesPage = () => <EnConstruccion icon={<Users className="h-4 w-4" />} title="Comisión de Ventas · Clientes atendidos" desc="Pacientes atendidos por prestador (desde el archivo, integración o carga manual autorizada) y su participación proporcional con manejo de redondeo." />
+// Comisión depilación láser: fondo por escala + reparto por pacientes
+export function ComisionLaserPage() {
+  const { apiUrl, showToast } = useAppStore()
+  const [d, setD] = useState<{ laserTotal: number; tramoPct: number; threshold: number; fund: number; patientsTotal: number; distribution: { provider: string; patients: number; participation: number; amount: number }[]; byBranch: Record<string, number> } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const load = useCallback(async () => {
+    setLoading(true)
+    try { const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionLaser" }); if (res?.ok) setD(res as never); else showToast((res as { error?: string })?.error || "Error", "error") }
+    catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
+  }, [apiUrl, showToast])
+  useEffect(() => { void load() }, [load])
+  return (
+    <Shell icon={<Zap className="h-4 w-4" />} title="Comisión de Ventas · Comisión depilación láser">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Venta láser</div><div className="text-xl font-black tabular-nums">{fmtRD(d?.laserTotal || 0)}</div></CardContent></Card>
+        <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Tramo alcanzado</div><div className="text-xl font-black tabular-nums">{((d?.tramoPct || 0) * 100).toFixed(0)}%</div><div className="text-[10px] text-muted-foreground">umbral {fmtRD(d?.threshold || 0)}</div></CardContent></Card>
+        <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Fondo generado</div><div className="text-xl font-black tabular-nums text-[color:var(--brand-primary)]">{fmtRD(d?.fund || 0)}</div></CardContent></Card>
+        <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Pacientes</div><div className="text-xl font-black tabular-nums">{d?.patientsTotal || 0}</div></CardContent></Card>
+      </div>
+      <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
+        <div className="border-b px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-600">Reparto del fondo por participación de pacientes</div>
+        {loading ? <div className="py-8 text-center text-sm text-muted-foreground">Cargando...</div>
+          : !d || d.distribution.length === 0 ? <div className="py-8 text-center text-sm text-muted-foreground">Sin datos. Importa un archivo de ventas primero.</div>
+          : (<div className="overflow-x-auto"><table className="w-full text-sm">
+            <thead><tr className="border-b text-left text-[11px] uppercase text-muted-foreground"><th className="px-4 py-2">Prestador</th><th className="px-2 py-2 text-right">Pacientes</th><th className="px-2 py-2 text-right">Participación</th><th className="px-4 py-2 text-right">Incentivo láser</th></tr></thead>
+            <tbody>{d.distribution.map((r) => (<tr key={r.provider} className="border-b last:border-0"><td className="px-4 py-2 font-medium">{r.provider}</td><td className="px-2 py-2 text-right tabular-nums">{r.patients}</td><td className="px-2 py-2 text-right tabular-nums">{r.participation.toFixed(2)}%</td><td className="px-4 py-2 text-right tabular-nums">{fmtRD(r.amount)}</td></tr>))}</tbody>
+            <tfoot><tr className="bg-slate-50 font-bold"><td className="px-4 py-2">Total</td><td className="px-2 py-2 text-right tabular-nums">{d.patientsTotal}</td><td className="px-2 py-2 text-right tabular-nums">100%</td><td className="px-4 py-2 text-right tabular-nums">{fmtRD(d.fund)}</td></tr></tfoot>
+          </table></div>)}
+      </CardContent></Card>
+    </Shell>
+  )
+}
+
+// Clientes atendidos por prestador
+export function ComisionClientesPage() {
+  const { apiUrl, showToast } = useAppStore()
+  const [d, setD] = useState<{ total: number; roundingDiff: number; rows: { provider: string; branch: string; patients: number; participation: number }[] } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const load = useCallback(async () => {
+    setLoading(true)
+    try { const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionPatients" }); if (res?.ok) setD(res as never); else showToast((res as { error?: string })?.error || "Error", "error") }
+    catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
+  }, [apiUrl, showToast])
+  useEffect(() => { void load() }, [load])
+  return (
+    <Shell icon={<Users className="h-4 w-4" />} title="Comisión de Ventas · Clientes atendidos">
+      <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
+        {loading ? <div className="py-10 text-center text-sm text-muted-foreground">Cargando...</div>
+          : !d || d.rows.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin datos. Importa un archivo de ventas primero.</div>
+          : (<div className="overflow-x-auto"><table className="w-full text-sm">
+            <thead><tr className="border-b text-left text-[11px] uppercase text-muted-foreground"><th className="px-4 py-2">Prestador</th><th className="px-2 py-2">Sucursal</th><th className="px-2 py-2 text-right">Pacientes</th><th className="px-4 py-2 text-right">Participación</th></tr></thead>
+            <tbody>{d.rows.map((r) => (<tr key={r.provider} className="border-b last:border-0"><td className="px-4 py-2 font-medium">{r.provider}</td><td className="px-2 py-2 text-xs text-muted-foreground">{r.branch}</td><td className="px-2 py-2 text-right tabular-nums">{r.patients}</td><td className="px-4 py-2 text-right tabular-nums">{r.participation.toFixed(2)}%</td></tr>))}</tbody>
+            <tfoot><tr className="bg-slate-50 font-bold"><td className="px-4 py-2" colSpan={2}>Total ({d.rows.length})</td><td className="px-2 py-2 text-right tabular-nums">{d.total}</td><td className="px-4 py-2 text-right tabular-nums">100%{d.roundingDiff ? ` (±${d.roundingDiff})` : ""}</td></tr></tfoot>
+          </table></div>)}
+      </CardContent></Card>
+    </Shell>
+  )
+}
 export const ComisionReportesPage = () => <EnConstruccion icon={<FileBarChart2 className="h-4 w-4" />} title="Comisión de Ventas · Reportes" desc="Exportación mensual profesional: Excel multi-hoja (Resumen, Sucursal, Prestador, Productos, Servicios, Láser, Clientes, Liquidación, Reglas, Conciliación) y PDF A4 con logo, totales y numeración." />

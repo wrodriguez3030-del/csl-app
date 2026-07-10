@@ -371,6 +371,108 @@ export async function setCommissionCalcStatus(params: ActionParams, user: Action
   return { ok: true, record: data ? mapCalc(data) : null }
 }
 
+// ── Vistas agregadas desde las ventas persistidas ───────────────────────────
+import { classifyProvider } from "@/lib/commission/classification"
+
+/** Trae las ventas del negocio (opcionalmente filtradas por período vía sale_date). */
+async function fetchSalesForPeriod(params: ActionParams) {
+  const business_id = requireBizId()
+  const month = numberValue(params, "month")
+  const year = numberValue(params, "year")
+  let q = getSupabaseAdmin().from("sales_commission_sales")
+    .select("branch,category,gross_amount,payment_method,provider_normalized,provider_original,customer_name,quantity")
+    .eq("business_id", business_id)
+  if (month && year) {
+    const from = `${year}-${String(month).padStart(2, "0")}-01`
+    const to = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, "0")}-01`
+    q = q.gte("sale_date", from).lt("sale_date", to)
+  }
+  const { data, error } = await q
+  if (error) throw new Error(error.message)
+  return (data || []) as Row[]
+}
+
+async function cardPercentage(): Promise<number> {
+  const business_id = requireBizId()
+  const { data } = await getSupabaseAdmin().from("sales_commission_rules")
+    .select("percentage").eq("business_id", business_id).eq("rule_type", "card_percentage").eq("active", true)
+    .order("effective_from", { ascending: false }).limit(1).maybeSingle()
+  return data?.percentage != null ? Number(data.percentage) : 0.27
+}
+
+/** Ventas por sucursal: bruto, medios de pago, % tarjeta, categorías. */
+export async function getCommissionByBranch(params: ActionParams) {
+  const rows = await fetchSalesForPeriod(params)
+  const cardPct = await cardPercentage()
+  type B = { branch: string; gross: number; tarjeta: number; efectivo: number; transferencia: number; otros: number; producto: number; servicio: number; laser: number; count: number }
+  const map = new Map<string, B>()
+  for (const r of rows) {
+    const branch = String(r.branch || "(sin sucursal)")
+    let b = map.get(branch)
+    if (!b) { b = { branch, gross: 0, tarjeta: 0, efectivo: 0, transferencia: 0, otros: 0, producto: 0, servicio: 0, laser: 0, count: 0 }; map.set(branch, b) }
+    const amt = Number(r.gross_amount) || 0
+    b.gross = round2(b.gross + amt); b.count++
+    const pm = String(r.payment_method || "OTROS")
+    if (pm === "TARJETA") b.tarjeta = round2(b.tarjeta + amt)
+    else if (pm === "EFECTIVO") b.efectivo = round2(b.efectivo + amt)
+    else if (pm === "TRANSFERENCIA") b.transferencia = round2(b.transferencia + amt)
+    else b.otros = round2(b.otros + amt)
+    const cat = String(r.category || "")
+    if (cat === "PRODUCTO") b.producto = round2(b.producto + amt)
+    else if (cat === "DEPILACION_LASER") b.laser = round2(b.laser + amt)
+    else b.servicio = round2(b.servicio + amt)
+  }
+  const branches = [...map.values()].map((b) => ({ ...b, cardPct, cardResult: round2(b.tarjeta * cardPct) })).sort((a, b) => b.gross - a.gross)
+  return { ok: true, cardPct, branches }
+}
+
+/** Clientes atendidos por prestador comisionable (clientes distintos + participación). */
+export async function getCommissionPatients(params: ActionParams) {
+  const rows = await fetchSalesForPeriod(params)
+  const byProv = new Map<string, { provider: string; branch: string; patients: Set<string> }>()
+  for (const r of rows) {
+    const info = classifyProvider(r.provider_original)
+    if (!info.commissionable) continue
+    const prov = String(r.provider_normalized || info.name)
+    let e = byProv.get(prov)
+    if (!e) { e = { provider: prov, branch: String(r.branch || ""), patients: new Set() }; byProv.set(prov, e) }
+    if (r.customer_name) e.patients.add(String(r.customer_name))
+  }
+  const list = [...byProv.values()].map((e) => ({ provider: e.provider, branch: e.branch, patients: e.patients.size }))
+  const total = list.reduce((s, e) => s + e.patients, 0)
+  const rowsOut = list.map((e) => ({ ...e, participation: total ? Math.round((e.patients / total) * 10000) / 100 : 0 }))
+    .sort((a, b) => b.patients - a.patients)
+  const sumPct = round2(rowsOut.reduce((s, r) => s + r.participation, 0))
+  return { ok: true, total, roundingDiff: round2(sumPct - 100), rows: rowsOut }
+}
+
+/** Comisión láser: fondo por escala + reparto por participación de pacientes. */
+export async function getCommissionLaser(params: ActionParams) {
+  const business_id = requireBizId()
+  const rows = await fetchSalesForPeriod(params)
+  // Venta láser total y por sucursal.
+  let laserTotal = 0
+  const byBranch: Record<string, number> = {}
+  for (const r of rows) if (String(r.category) === "DEPILACION_LASER") {
+    const amt = Number(r.gross_amount) || 0
+    laserTotal = round2(laserTotal + amt)
+    const b = String(r.branch || "(sin sucursal)")
+    byBranch[b] = round2((byBranch[b] || 0) + amt)
+  }
+  // Escala desde reglas.
+  const { data: scaleRows } = await getSupabaseAdmin().from("sales_commission_rules")
+    .select("min_amount,percentage").eq("business_id", business_id).eq("rule_type", "laser_scale").eq("active", true)
+  const scale = (scaleRows || []).map((s) => ({ threshold: Number((s as Row).min_amount), percentage: Number((s as Row).percentage) }))
+    .filter((s) => Number.isFinite(s.threshold)).sort((a, b) => a.threshold - b.threshold)
+  const reached = scale.filter((t) => laserTotal >= t.threshold).sort((a, b) => b.threshold - a.threshold)[0] || null
+  const tramoPct = reached?.percentage || 0
+  const fund = round2(laserTotal * tramoPct)
+  // Reparto por participación de pacientes.
+  const pat = await getCommissionPatients(params)
+  const distribution = pat.rows.map((p) => ({ provider: p.provider, patients: p.patients, participation: p.participation, amount: round2(fund * (p.participation / 100)) }))
+  return { ok: true, laserTotal, byBranch, tramoPct, fund, threshold: reached?.threshold || 0, distribution, patientsTotal: pat.total }
+}
+
 export async function getCommissionDashboard(params: ActionParams) {
   const business_id = requireBizId()
   const [rulesRes, calcsRes, importsRes] = await Promise.all([

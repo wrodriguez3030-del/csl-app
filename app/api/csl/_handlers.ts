@@ -3450,6 +3450,12 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await commission.updateCommissionCalculation(params, user)
     case "setCommissionCalcStatus":
       return await commission.setCommissionCalcStatus(params, user)
+    case "getCommissionByBranch":
+      return await commission.getCommissionByBranch(params)
+    case "getCommissionPatients":
+      return await commission.getCommissionPatients(params)
+    case "getCommissionLaser":
+      return await commission.getCommissionLaser(params)
 
     case "saveReporte": {
       const row = { report_id: textValue(params, "reportId"), fecha: dateValue(params.fecha), equipo_id: textValue(params, "equipoId"), sucursal: textValue(params, "sucursal"), empresa: textValue(params, "empresa"), cliente: textValue(params, "cliente"), domicilio: textValue(params, "domicilio"), ciudad: textValue(params, "ciudad", "Santiago"), modelo: textValue(params, "modelo"), serie: textValue(params, "serie"), numero: textValue(params, "numero"), tipo: textValue(params, "tipo", "Preventivo"), estado_equipo: textValue(params, "estadoEquipo", "Operativo"), prioridad: textValue(params, "prioridad", "Baja"), problema: textValue(params, "problema"), correccion: textValue(params, "correccion"), observaciones: textValue(params, "observaciones"), checklist: textValue(params, "checklist"), p_cabeza: numberValue(params, "pcabeza"), p_totales: numberValue(params, "ptotales"), atendio: textValue(params, "atendio"), power_source_number: textValue(params, "powerSourceNumber"), power_source_serial: textValue(params, "powerSourceSerial"), fiber_serial: textValue(params, "fiberSerial"), hv_value: textValue(params, "hv"), joules_value: textValue(params, "joules"), bs_value: textValue(params, "bs"), bc_value: textValue(params, "bc"), hv_ref_value: textValue(params, "hvRef"), vdc_value: textValue(params, "vdc"), voltage_value: textValue(params, "voltage"), tx_value: textValue(params, "tx"), software_version: textValue(params, "software"), piezas_json: textValue(params, "piezasJson", "[]"), partes_texto: textValue(params, "partesTexto"), firma_cliente: textValue(params, "firmaCliente"), firma_tecnico: textValue(params, "firmaTecnico"), fotos: textValue(params, "fotos", "[]") }

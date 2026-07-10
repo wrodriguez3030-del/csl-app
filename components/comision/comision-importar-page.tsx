@@ -17,8 +17,25 @@ import type { SaleCategory } from "@/lib/commission/classification"
 const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 const fmtRD = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-// Columnas conocidas de la hoja "Produccion" del export de Cibao (1-indexed).
+// Columnas conocidas del export de Cibao (1-indexed).
+// "Produccion" (encabezado fila 1) y "Produccion v2" (encabezado fila 2, con medios de pago).
 const COL = { fecha: 2, local: 3, cliente: 4, tipo: 9, nombre: 10, prestador: 11, cantidad: 13, precio: 16 }
+const COLV2 = { fecha: 2, local: 3, cliente: 4, tipo: 8, nombre: 9, prestador: 10, cantidad: 13, precio: 16 }
+
+/** Deriva el medio de pago de una fila de "Produccion v2" según la columna con monto. */
+function paymentFromV2(row: { getCell: (c: number) => { value: unknown } }): string {
+  const g = (c: number) => Number(flat(row.getCell(c).value)) || 0
+  const tarjeta = g(19) + g(20) + g(25) + g(28)
+  const efectivo = g(18)
+  const transf = g(26) + g(27)
+  const otros = g(21) + g(22) + g(23) + g(24)
+  const max = Math.max(tarjeta, efectivo, transf, otros)
+  if (max <= 0) return "OTROS"
+  if (max === tarjeta) return "Tarjeta"
+  if (max === efectivo) return "Efectivo"
+  if (max === transf) return "Transferencia"
+  return "Otro"
+}
 
 const flat = (v: unknown): unknown => {
   if (v && typeof v === "object") {
@@ -91,24 +108,30 @@ export function ComisionImportarPage() {
       const ExcelJS = (await import("exceljs")).default
       const wb = new ExcelJS.Workbook()
       await wb.xlsx.load(buf)
-      const ws = wb.getWorksheet("Produccion") || wb.worksheets[0]
+      // Preferimos "Produccion v2" (trae el medio de pago por fila).
+      const wsV2 = wb.getWorksheet("Produccion v2")
+      const ws = wsV2 || wb.getWorksheet("Produccion") || wb.worksheets[0]
       if (!ws) throw new Error("El archivo no tiene datos.")
-      const h1 = String(flat(ws.getRow(1).getCell(COL.nombre).value) ?? "")
-      if (!/servicio|producto/i.test(h1)) throw new Error('No reconozco la estructura: se espera la hoja "Produccion" del reporte de ventas.')
+      const isV2 = Boolean(wsV2) && ws === wsV2
+      const C = isV2 ? COLV2 : COL
+      const headerRow = isV2 ? 2 : 1
+      const hName = String(flat(ws.getRow(headerRow).getCell(C.nombre).value) ?? "")
+      if (!/servicio|producto/i.test(hName)) throw new Error('No reconozco la estructura: se espera la hoja "Produccion" del reporte de ventas.')
 
       const sales: ParsedSale[] = []
       const monthCount: Record<string, number> = {}
-      for (let r = 2; r <= ws.rowCount; r++) {
+      for (let r = headerRow + 1; r <= ws.rowCount; r++) {
         const row = ws.getRow(r)
-        const rawProvider = String(flat(row.getCell(COL.prestador).value) ?? "")
-        const itemName = String(flat(row.getCell(COL.nombre).value) ?? "")
-        const itemType = String(flat(row.getCell(COL.tipo).value) ?? "")
+        const rawProvider = String(flat(row.getCell(C.prestador).value) ?? "")
+        const itemName = String(flat(row.getCell(C.nombre).value) ?? "")
+        const itemType = String(flat(row.getCell(C.tipo).value) ?? "")
         if (!itemName && !itemType) continue
-        const date = String(flat(row.getCell(COL.fecha).value) ?? "")
+        const date = String(flat(row.getCell(C.fecha).value) ?? "")
         const rec = toSaleRecord({
-          date, branch: flat(row.getCell(COL.local).value), customer: flat(row.getCell(COL.cliente).value),
+          date, branch: flat(row.getCell(C.local).value), customer: flat(row.getCell(C.cliente).value),
           provider: rawProvider, itemType, itemName,
-          quantity: flat(row.getCell(COL.cantidad).value), amount: flat(row.getCell(COL.precio).value),
+          quantity: flat(row.getCell(C.cantidad).value), amount: flat(row.getCell(C.precio).value),
+          paymentMethod: isV2 ? paymentFromV2(row) : undefined,
         })
         const rowHash = computeRowHash("", { date: rec.date, branch: rec.branch, provider: rec.provider, customer: rec.customer, itemName: rec.itemName, category: rec.category, quantity: rec.quantity, amount: rec.amount })
         sales.push({ rec, rawProvider, rowHash })
