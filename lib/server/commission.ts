@@ -187,6 +187,124 @@ export async function getCommissionCalculations(params: ActionParams) {
   return { ok: true, records: (data || []).map(mapCalc) }
 }
 
+// ── Importación (dedup por archivo + fila, persistencia por lotes) ──────────
+interface ImportSaleIn {
+  date?: string; branch?: string; customer?: string; provider?: string; providerOriginal?: string
+  itemType?: string; itemName?: string; category?: string; quantity?: number; amount?: number
+  paymentMethod?: string; rowHash?: string; originalId?: string
+}
+interface ImportCalcIn {
+  provider?: string; branch?: string; productUnits?: number; productIncentive?: number
+  serviceCommissionTotal?: number; laserSales?: number; patients?: number
+}
+interface ImportPayload {
+  import?: { periodMonth?: number; periodYear?: number; filename?: string; fileHash?: string; rowsCount?: number; grossTotal?: number }
+  sales?: ImportSaleIn[]
+  calculations?: ImportCalcIn[]
+  ruleSnapshot?: unknown
+}
+
+async function findActiveImport(fileHash: string) {
+  const business_id = requireBizId()
+  if (!fileHash) return null
+  const { data } = await getSupabaseAdmin()
+    .from("sales_commission_imports").select("*")
+    .eq("business_id", business_id).eq("file_hash", fileHash).neq("status", "anulado")
+    .maybeSingle()
+  return data ?? null
+}
+
+/** Preview de dedup: ¿ya existe una importación activa con este file_hash? */
+export async function checkCommissionImport(params: ActionParams) {
+  requireBizId()
+  const dup = await findActiveImport(textValue(params, "fileHash") || "")
+  return { ok: true, exists: Boolean(dup), existing: dup ? mapImport(dup) : null }
+}
+
+const chunk = <T>(arr: T[], n: number): T[][] => {
+  const out: T[][] = []
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n))
+  return out
+}
+
+export async function commitCommissionImport(params: ActionParams, user: ActionUser) {
+  requirePermission("sales_commission.import")
+  const business_id = requireBizId()
+  const sb = getSupabaseAdmin()
+  let payload: ImportPayload
+  try { payload = JSON.parse(textValue(params, "importJson") || "{}") } catch { throw new Error("Payload de importación inválido") }
+  const imp = payload.import || {}
+  const sales = payload.sales || []
+  const calcs = payload.calculations || []
+  const month = Number(imp.periodMonth) || 0
+  const year = Number(imp.periodYear) || 0
+  if (!month || !year) throw new Error("Selecciona mes y año del período")
+  if (!imp.fileHash) throw new Error("Falta el hash del archivo")
+
+  // Dedup a nivel de archivo.
+  const dup = await findActiveImport(imp.fileHash)
+  if (dup) return { ok: false, duplicate: true, existing: mapImport(dup) }
+
+  // Crear la importación.
+  const { data: impRow, error: impErr } = await sb.from("sales_commission_imports").insert({
+    business_id, period_month: month, period_year: year, filename: imp.filename || null,
+    file_hash: imp.fileHash, rows_count: Number(imp.rowsCount) || sales.length,
+    gross_total: Number(imp.grossTotal) || 0, status: "calculado",
+    imported_by: user.email || user.id || null, imported_at: new Date().toISOString(), committed_at: new Date().toISOString(),
+  }).select("*").maybeSingle()
+  if (impErr || !impRow) throw new Error(impErr?.message || "No se pudo crear la importación")
+  const importId = String(impRow.id)
+
+  // Dedup a nivel de fila: descartar row_hash ya existentes en el negocio.
+  const hashes = sales.map((s) => s.rowHash).filter(Boolean) as string[]
+  const seen = new Set<string>()
+  for (const part of chunk(hashes, 300)) {
+    const { data } = await sb.from("sales_commission_sales").select("row_hash").eq("business_id", business_id).in("row_hash", part)
+    for (const r of data || []) seen.add(String((r as Row).row_hash))
+  }
+  const fresh = sales.filter((s) => !s.rowHash || !seen.has(s.rowHash))
+  const salesRows = fresh.map((s, i) => ({
+    business_id, import_id: importId, original_row_number: i + 1, original_transaction_id: s.originalId || null,
+    sale_date: (s.date || "").slice(0, 10) || null, branch: s.branch || null, customer_name: s.customer || null,
+    provider_original: s.providerOriginal || null, provider_normalized: s.provider || null,
+    service_name: s.itemName || null, category: s.category || null,
+    product_name: s.itemType === "Producto" ? s.itemName || null : null,
+    quantity: Number(s.quantity) || 0, gross_amount: Number(s.amount) || 0, net_amount: Number(s.amount) || 0,
+    payment_method: s.paymentMethod || null, row_hash: s.rowHash || null,
+  }))
+  let inserted = 0
+  for (const part of chunk(salesRows, 500)) {
+    const { error } = await sb.from("sales_commission_sales").insert(part)
+    if (error) throw new Error(`Error insertando ventas: ${error.message}`)
+    inserted += part.length
+  }
+
+  // Cálculos por empleado (bono/limpieza/ajuste se editan en Liquidación).
+  const calcRows = calcs.map((c) => {
+    const prod = Number(c.productIncentive) || 0
+    const svc = Number(c.serviceCommissionTotal) || 0
+    return {
+      business_id, import_id: importId, period_month: month, period_year: year,
+      provider_name_snapshot: c.provider || null, branch: c.branch || null,
+      products_count: Number(c.productUnits) || 0, product_incentive: prod, service_commission: svc,
+      laser_incentive: 0, fixed_incentive: 0, manual_adjustment: 0, bonus_extra: 0,
+      gross_total: Math.round((prod + svc) * 100) / 100, cleaning_contribution: 0,
+      net_total: Math.round((prod + svc) * 100) / 100, status: "calculado",
+      rule_snapshot: payload.ruleSnapshot ?? null, calculated_by: user.email || user.id || null,
+    }
+  })
+  if (calcRows.length) {
+    const { error } = await sb.from("sales_commission_calculations").insert(calcRows)
+    if (error) throw new Error(`Error insertando cálculos: ${error.message}`)
+  }
+
+  await logAudit(user, "import", importId, "importacion_confirmada",
+    null, { rows: inserted, duplicated: sales.length - fresh.length, employees: calcRows.length, fileHash: imp.fileHash },
+    null, { month, year })
+
+  return { ok: true, importId, salesInserted: inserted, salesDuplicated: sales.length - fresh.length, employees: calcRows.length }
+}
+
 export async function getCommissionDashboard(params: ActionParams) {
   const business_id = requireBizId()
   const [rulesRes, calcsRes, importsRes] = await Promise.all([

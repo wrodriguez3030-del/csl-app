@@ -31,8 +31,9 @@ import { ComprasPagosPage } from "@/components/compras-pagos-page"
 import { ComprasGastosMenoresPage } from "@/components/compras-gastos-menores-page"
 import { ComprasRecurrentesPage } from "@/components/compras-recurrentes-page"
 import { ComisionReglasPage } from "@/components/comision/comision-reglas-page"
+import { ComisionImportarPage } from "@/components/comision/comision-importar-page"
 import {
-  ComisionDashboardPage, ComisionHistorialPage, ComisionImportarPage, ComisionSucursalesPage,
+  ComisionDashboardPage, ComisionHistorialPage, ComisionSucursalesPage,
   ComisionPrestadoresPage, ComisionProductosPage, ComisionLaserPage, ComisionClientesPage,
   ComisionLiquidacionPage, ComisionReportesPage,
 } from "@/components/comision/comision-pages"

@@ -18,6 +18,25 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.25.0] — 2026-07-10
+
+### Added
+- **Comisión de Ventas — Fase 2d: pantalla "Importar ventas" (flujo real).**
+  - Drag & drop de `.xlsx` → SHA-256 del archivo (dedup) → parseo de la hoja
+    "Produccion" con ExcelJS en el navegador → `toSaleRecord` + `aggregateSales`
+    (motor ya probado) con la config derivada de las **reglas vivas** → **preview
+    + diagnóstico/conciliación** (por categoría, por sucursal, fondo láser,
+    filas sin sucursal/sin clasificar/sin prestador) → **Confirmar importación**.
+  - Deduplicación **dos niveles**: archivo (`file_hash` único activo → "Este
+    archivo ya fue importado…") y fila (`row_hash` FNV `lib/commission/hash.ts`,
+    descarta transacciones ya existentes).
+  - Persistencia por lotes en `sales_commission_imports/_sales/_calculations`
+    (server `commitCommissionImport`/`checkCommissionImport`, tenant + permiso
+    `sales_commission.import` + auditoría). **Verificado** el path de inserción
+    contra db-cls (transacción con ROLLBACK, columnas correctas, sin residuo).
+
+---
+
 ## [0.24.0] — 2026-07-09
 
 ### Added

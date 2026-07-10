@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  LayoutDashboard, Upload, Building2, UserCog, Package, Zap, Users, ReceiptText,
+  LayoutDashboard, Building2, UserCog, Package, Zap, Users, ReceiptText,
   CalendarClock, FileBarChart2, RefreshCcw, Hammer,
 } from "lucide-react"
 
@@ -131,7 +131,6 @@ export function ComisionHistorialPage() {
 }
 
 // ── Scaffolds dedicados (próxima fase) ──────────────────────────────────────
-export const ComisionImportarPage = () => <EnConstruccion icon={<Upload className="h-4 w-4" />} title="Comisión de Ventas · Importar ventas" desc="Subida drag & drop de .xlsx/.csv con preview, detección de estructura, mapeo editable de columnas, deduplicación por hash de archivo y de fila, y diagnóstico antes de confirmar. El parser/agregación ya está probado contra el archivo real de Cibao." />
 export const ComisionSucursalesPage = () => <EnConstruccion icon={<Building2 className="h-4 w-4" />} title="Comisión de Ventas · Ventas por sucursal" desc="Ventas brutas, tarjeta/efectivo/transferencia, % tarjeta configurable (27%), venta de productos/servicios/láser y comisiones por sucursal (Los Jardines / Rafael Vidal / Villa Olga), con orden, filtros y exportación." />
 export const ComisionPrestadoresPage = () => <EnConstruccion icon={<UserCog className="h-4 w-4" />} title="Comisión de Ventas · Comisiones por prestador" desc="Tabla por prestador: productos, comisión por categoría (Faciales/Hollywood/Tatuajes/HIFU/Masajes), pacientes láser, participación, incentivos fijos, ajustes, bono y neto — con vinculación de alias." />
 export const ComisionProductosPage = () => <EnConstruccion icon={<Package className="h-4 w-4" />} title="Comisión de Ventas · Incentivos de productos" desc="Unidades vendidas por empleado × monto configurable (RD$100/unidad) con validación de cuadre (detecta discrepancias como 67 vs 86 sin ocultarlas)." />
