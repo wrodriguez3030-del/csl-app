@@ -18,6 +18,36 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.22.0] — 2026-07-09
+
+### Added
+- **Comisión de Ventas — Fase 1: motor de cálculo + cimientos** (módulo nuevo,
+  aún sin UI). Todo configurable, sin valores hardcodeados en la lógica.
+  - `lib/commission/` — motor PURO y verificado:
+    - `money.ts` (aritmética en centavos, sin errores de float),
+    - `types.ts` (reglas, liquidación, orígenes de incentivo),
+    - `rules.ts` (semilla de reglas + resolución por fecha efectiva + escala láser),
+    - `engine.ts` (incentivo productos, % tarjeta administrativo, comisión por
+      categoría, tramo láser por mayor umbral, participación de pacientes con
+      redondeo, liquidación por empleado, totales, conciliación),
+    - `normalize.ts` (nombres, sucursales Cibao LOS JARDINES/RAFAEL VIDAL/VILLA
+      OLGA, formas de pago, montos multi-formato, fechas, alias de prestadores),
+    - `column-mapping.ts` (equivalencias ES/EN de encabezados + detección),
+    - `reference-model.ts` (modelo de referencia + auto-reconciliación).
+  - **Verificado** (ruta de self-check temporal): el modelo reproduce
+    **RD$25,815.11** neto exacto y todos los netos por empleado; detecta la
+    discrepancia **67 vs 86** productos (diff 19, semáforo advertencia);
+    participación de pacientes 21.81/17.02/18.26/21.63/21.28%; tramo láser
+    650k→3%→19,500; normalización y mapeo de columnas OK.
+  - **13 permisos** `sales_commission.*` en el catálogo (`lib/permissions.ts`).
+  - **Migración** `202607090001_sales_commission_module.sql` — 8 tablas
+    (`sales_commission_*`) multi-tenant con RLS por tenant, grants a
+    service_role, índices, único activo por `(business_id, file_hash)` y por
+    `(business_id, row_hash)`. Aditiva/idempotente. **Pendiente de aplicar a
+    db-cls** (Fase 2).
+
+---
+
 ## [0.21.0] — 2026-07-09
 
 ### Changed

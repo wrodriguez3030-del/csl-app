@@ -30,6 +30,20 @@ export const PERMISSION_OPTIONS: PermissionOption[] = [
   { id: "materials.inventory.print", label: "Imprimir inventarios", section: "Requisición de materiales" },
   { id: "materials.inventory.export_excel", label: "Exportar inventarios a Excel", section: "Requisición de materiales" },
   { id: "materials.inventory.export_pdf", label: "Generar PDF de inventarios", section: "Requisición de materiales" },
+  // Comisión de Ventas (sección 32)
+  { id: "sales_commission.view", label: "Ver comisión de ventas", section: "Comisión de Ventas" },
+  { id: "sales_commission.import", label: "Importar ventas", section: "Comisión de Ventas" },
+  { id: "sales_commission.calculate", label: "Calcular comisiones", section: "Comisión de Ventas" },
+  { id: "sales_commission.rules.manage", label: "Gestionar reglas de comisión", section: "Comisión de Ventas" },
+  { id: "sales_commission.adjust", label: "Ajustes manuales", section: "Comisión de Ventas" },
+  { id: "sales_commission.bonus.manage", label: "Gestionar bono extra", section: "Comisión de Ventas" },
+  { id: "sales_commission.cleaning.manage", label: "Gestionar aporte de limpieza", section: "Comisión de Ventas" },
+  { id: "sales_commission.review", label: "Revisar liquidaciones", section: "Comisión de Ventas" },
+  { id: "sales_commission.approve", label: "Aprobar liquidaciones", section: "Comisión de Ventas" },
+  { id: "sales_commission.pay", label: "Marcar pagos", section: "Comisión de Ventas" },
+  { id: "sales_commission.close", label: "Cerrar período", section: "Comisión de Ventas" },
+  { id: "sales_commission.export", label: "Exportar Excel/PDF", section: "Comisión de Ventas" },
+  { id: "sales_commission.audit.view", label: "Ver auditoría de comisiones", section: "Comisión de Ventas" },
 ]
 
 export const ALL_PERMISSION_IDS: string[] = PERMISSION_OPTIONS.map((p) => p.id)
