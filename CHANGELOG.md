@@ -18,6 +18,19 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.30.1] — 2026-07-10
+
+### Added
+- **Tests permanentes del Importador** (`pnpm test:commission`, runner `tsx`):
+  51 verificaciones — normalización de pago/sucursal/estado/prestador, fechas
+  multi-mes, dedup `row_hash`, clasificación de Items, y los controles de los
+  archivos reales de Ventas (RD$19,486,006 + resumen exacto) y Reservas
+  (23,706/14,432/7,130/2,114/18/8/4). Todos en verde.
+- **Historial: botón "Diagnóstico"** por importación (tipo, filas, período
+  detectado, bruto y el resumen crudo `raw_summary` del archivo).
+
+---
+
 ## [0.30.0] — 2026-07-10
 
 ### Added
