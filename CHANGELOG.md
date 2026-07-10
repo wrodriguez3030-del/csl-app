@@ -18,6 +18,15 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.31.1] — 2026-07-10
+
+### Changed
+- **Filtros de Comisión de Ventas auto-aplican**: seleccionar período/año/mes/
+  sucursal/prestador procesa al instante, sin botón "Actualizar" (retirado).
+  Desde/Hasta (Personalizado) aplica en cuanto ambos son válidos y coherentes.
+
+---
+
 ## [0.31.0] — 2026-07-10
 
 ### Added
