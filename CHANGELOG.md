@@ -18,6 +18,16 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.28.1] — 2026-07-10
+
+### Fixed
+- **Excel de comisión**: se elimina un `mergeCells` 1×1 inválido en las hojas
+  de resumen que abortaba la generación del `.xlsx`. Refactor
+  `buildCommissionWorkbook` (builder testeable) + `exportCommissionExcel`.
+  Verificado por lectura de vuelta: 11 hojas, autofiltro `A6:J6`, freeze panes.
+
+---
+
 ## [0.28.0] — 2026-07-10
 
 ### Added

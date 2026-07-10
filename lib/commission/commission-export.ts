@@ -55,12 +55,11 @@ async function fetchLogo(business: Business, origin: string): Promise<{ base64: 
 
 interface Col { header: string; key: string; money?: boolean; pct?: boolean; width?: number; align?: "left" | "right" | "center" }
 
-export async function exportCommissionExcel(data: CommissionReportData, business: Business): Promise<void> {
-  const origin = typeof window !== "undefined" ? window.location.origin : ""
-  const mod = await import("exceljs")
-  const ExcelJS = ((mod as { default?: ExcelJSModule }).default ?? mod) as ExcelJSModule
+export async function buildCommissionWorkbook(
+  data: CommissionReportData, business: Business, ExcelJS: ExcelJSModule,
+  logo: { base64: string; extension: "png" | "jpeg" | "gif" } | null,
+) {
   const brand = argb(business.primaryColor || "#0891b2")
-  const logo = await fetchLogo(business, origin)
   const wb = new ExcelJS.Workbook()
   wb.creator = business.name || "CSL"
   const periodLabel = `${MONTHS[data.period.month] || ""} ${data.period.year}`
@@ -107,7 +106,7 @@ export async function exportCommissionExcel(data: CommissionReportData, business
     const ws = wb.addWorksheet(name)
     ws.columns = [{ width: 40 }, { width: 24 }]
     if (logo && name === "Resumen General") { try { const id = wb.addImage({ base64: logo.base64, extension: logo.extension }); ws.addImage(id, { tl: { col: 0, row: 0 }, ext: { width: 130, height: 46 } }) } catch { /* */ } }
-    ws.mergeCells("B1:B1"); ws.getCell(1, 2).value = (business.name || "").toUpperCase(); ws.getCell(1, 2).font = { bold: true, size: 14, color: { argb: brand } }; ws.getRow(1).height = 38
+    ws.getCell(1, 2).value = (business.name || "").toUpperCase(); ws.getCell(1, 2).font = { bold: true, size: 14, color: { argb: brand } }; ws.getRow(1).height = 38
     ws.getCell(2, 1).value = `COMISIÓN DE VENTAS · ${title}`; ws.getCell(2, 1).font = { bold: true, size: 12, color: { argb: brand } }
     ws.getCell(3, 1).value = `Período: ${periodLabel}`; ws.getCell(3, 1).font = { size: 10, color: { argb: "FF475569" } }
     let r = 5
@@ -176,6 +175,15 @@ export async function exportCommissionExcel(data: CommissionReportData, business
     ["Fondo láser", data.laser.fund, true],
   ])
 
+  return wb
+}
+
+export async function exportCommissionExcel(data: CommissionReportData, business: Business): Promise<void> {
+  const origin = typeof window !== "undefined" ? window.location.origin : ""
+  const mod = await import("exceljs")
+  const ExcelJS = ((mod as { default?: ExcelJSModule }).default ?? mod) as ExcelJSModule
+  const logo = await fetchLogo(business, origin)
+  const wb = await buildCommissionWorkbook(data, business, ExcelJS, logo)
   const bufOut = await wb.xlsx.writeBuffer()
   const blob = new Blob([bufOut as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
   const url = URL.createObjectURL(blob)
