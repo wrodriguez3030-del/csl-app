@@ -48,7 +48,7 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "compras-recurrentes", label: "Pagos recurrentes", section: "Compras" },
   // Comisión de Ventas (importación mensual → cálculo → liquidación)
   { id: "comision-dashboard", label: "Dashboard", section: "Comisión de Ventas" },
-  { id: "comision-importar", label: "Importar ventas", section: "Comisión de Ventas" },
+  { id: "comision-importar", label: "Importador", section: "Comisión de Ventas" },
   { id: "comision-sucursales", label: "Ventas por sucursal", section: "Comisión de Ventas" },
   { id: "comision-prestadores", label: "Comisiones por prestador", section: "Comisión de Ventas" },
   { id: "comision-productos", label: "Incentivos de productos", section: "Comisión de Ventas" },

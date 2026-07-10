@@ -117,7 +117,7 @@ const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
     label: "Comisión de Ventas",
     items: [
       { id: "comision-dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
-      { id: "comision-importar", label: "Importar ventas", icon: <FileText className="h-4 w-4" /> },
+      { id: "comision-importar", label: "Importador", icon: <FileText className="h-4 w-4" /> },
       { id: "comision-sucursales", label: "Ventas por sucursal", icon: <Building2 className="h-4 w-4" /> },
       { id: "comision-prestadores", label: "Comisiones por prestador", icon: <Users className="h-4 w-4" /> },
       { id: "comision-productos", label: "Incentivos de productos", icon: <Package className="h-4 w-4" /> },

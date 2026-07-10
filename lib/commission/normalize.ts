@@ -31,15 +31,17 @@ export function normalizeBranch(v: unknown, synonyms: Record<string, string[]> =
   return n
 }
 
-export type PaymentMethod = "TARJETA" | "EFECTIVO" | "TRANSFERENCIA" | "OTROS"
+export type PaymentMethod = "TARJETA" | "EFECTIVO" | "TRANSFERENCIA" | "CHEQUE" | "ONLINE" | "OTROS"
 
-/** Normaliza la forma de pago a una de las 4 canónicas. */
+/** Normaliza la forma de pago al catálogo canónico (agrupa variantes/espacios). */
 export function normalizePayment(v: unknown): PaymentMethod {
   const n = normalizeName(v)
   if (!n) return "OTROS"
-  if (/TARJETA|CARD|CREDITO|DEBITO|VISA|MASTER/.test(n)) return "TARJETA"
+  if (/TARJETA|CARD|CREDITO|DEBITO|VISA|MASTER|POS\b/.test(n)) return "TARJETA"
   if (/EFECTIVO|CASH/.test(n)) return "EFECTIVO"
   if (/TRANSFER/.test(n)) return "TRANSFERENCIA"
+  if (/CHEQUE/.test(n)) return "CHEQUE"
+  if (/ONLINE|STRIPE/.test(n)) return "ONLINE"
   return "OTROS"
 }
 

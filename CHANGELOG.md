@@ -18,6 +18,45 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.30.0] — 2026-07-10
+
+### Added
+- **Comisión de Ventas — IMPORTADOR dual (Ventas + Reservas).** El submenú
+  "Importar ventas" pasa a llamarse **"Importador"** (mismo id/permiso) y la
+  pantalla ahora tiene tres tabs: **Ventas**, **Reservas** e **Historial**, más
+  cards de estado del período (ventas/reservas cargadas, incompletos claros).
+  - **Ventas** (hoja Produccion/Produccion v2): detecta TODOS los períodos del
+    archivo (uno puede cubrir varios meses — cada venta va a su mes REAL y los
+    cálculos por empleado se generan POR MES), **concilia contra la hoja
+    Resumen** (total/servicios/productos/efectivo/tarjeta/transferencia con
+    semáforo CUADRADO/ADVERTENCIA/CRÍTICO) y asigna el medio de pago por el
+    **dominante del recibo** (el archivo lo registra por recibo, no por línea).
+  - **Reservas** (hoja Reservas, 29 columnas): parser dedicado
+    (`lib/commission/reservations-parser.ts`) con estados normalizados (solo
+    **Asiste** cuenta como atención; No Asiste/Cancelado/Confirmado/Reservado/
+    En Espera no), período por **Fecha de realización**, prestadores
+    normalizados sin inventar empleados ("PROVEEDOR NO DISPONIBLE" → pendiente
+    de vinculación), y confirmación **en lotes con progreso** (23k+ filas:
+    start → append×N → finalize). Alimenta `sales_commission_patient_counts`
+    (atenciones = métrica principal + clientes únicos) → Clientes atendidos y
+    el reparto del fondo láser usan RESERVAS con fallback a ventas.
+  - **Historial** unificado con filtro Todos/Ventas/Reservas y **anulación
+    lógica** (sin borrado físico).
+  - Dedup: archivo por `(business, tipo, hash)` y fila por `row_hash` (incl.
+    hash de reservas por campos estables + ocurrencias).
+  - Migración `202607100001`: `import_type`/`detected_period_*`/`raw_summary`
+    en imports, tabla `sales_commission_reservations` (RLS + índices) y
+    `provider_name`/`unique_patients` en patient_counts. Aplicada a db-cls.
+  - Permisos nuevos: `sales_commission.import.sales` y
+    `sales_commission.import.reservations` (el general sigue válido).
+  - **Validado con los archivos reales**: Ventas 6 hojas, Ene–Jun 2026, total
+    RD$19,486,006 exacto (servicios 16,924,532 / productos 2,561,474 / efectivo
+    3,732,180 / transferencia 4,617,091 / tarjeta 11,136,735), 6 meses;
+    Reservas 23,706 filas (Asiste 14,432 · Cancelado 7,130 · No Asiste 2,114 ·
+    Confirmado 18 · Reservado 8 · En Espera 4), atenciones agregadas 14,432.
+
+---
+
 ## [0.29.1] — 2026-07-10
 
 ### Fixed

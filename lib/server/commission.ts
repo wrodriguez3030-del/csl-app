@@ -8,7 +8,7 @@
  * Server-only. NUNCA importar desde código cliente.
  */
 import { getSupabaseAdmin } from "./supabase"
-import { getBusinessContext, requirePermission } from "./business-context"
+import { getBusinessContext, requirePermission, hasPermission } from "./business-context"
 import { textValue, numberValue } from "./csl-helpers"
 import type { ActionParams, ActionUser, Row } from "./csl-types"
 import { defaultCommissionRules } from "@/lib/commission/rules"
@@ -61,9 +61,18 @@ function mapImport(r: Row) {
     id: r.id, periodMonth: Number(r.period_month) || 0, periodYear: Number(r.period_year) || 0,
     filename: r.filename, fileHash: r.file_hash, rowsCount: Number(r.rows_count) || 0,
     grossTotal: Number(r.gross_total) || 0, status: r.status,
+    importType: r.import_type || "SALES",
+    detectedPeriodStart: r.detected_period_start ?? null,
+    detectedPeriodEnd: r.detected_period_end ?? null,
     importedBy: r.imported_by ?? null, importedAt: r.imported_at ?? null,
     committedAt: r.committed_at ?? null, createdAt: r.created_at,
   }
+}
+
+/** Permiso de importación: acepta el granular por tipo o el general. */
+function requireImportPerm(kind: "sales" | "reservations") {
+  if (hasPermission(`sales_commission.import.${kind}`)) return
+  requirePermission("sales_commission.import")
 }
 
 function mapCalc(r: Row) {
@@ -197,28 +206,36 @@ interface ImportSaleIn {
 interface ImportCalcIn {
   provider?: string; branch?: string; productUnits?: number; productIncentive?: number
   serviceCommissionTotal?: number; laserSales?: number; patients?: number
+  periodMonth?: number; periodYear?: number
 }
 interface ImportPayload {
-  import?: { periodMonth?: number; periodYear?: number; filename?: string; fileHash?: string; rowsCount?: number; grossTotal?: number }
+  import?: {
+    periodMonth?: number; periodYear?: number; filename?: string; fileHash?: string
+    rowsCount?: number; grossTotal?: number
+    detectedPeriodStart?: string; detectedPeriodEnd?: string
+  }
   sales?: ImportSaleIn[]
   calculations?: ImportCalcIn[]
   ruleSnapshot?: unknown
+  rawSummary?: unknown
 }
 
-async function findActiveImport(fileHash: string) {
+async function findActiveImport(fileHash: string, importType = "SALES") {
   const business_id = requireBizId()
   if (!fileHash) return null
   const { data } = await getSupabaseAdmin()
     .from("sales_commission_imports").select("*")
-    .eq("business_id", business_id).eq("file_hash", fileHash).neq("status", "anulado")
+    .eq("business_id", business_id).eq("file_hash", fileHash).eq("import_type", importType)
+    .neq("status", "anulado")
     .maybeSingle()
   return data ?? null
 }
 
-/** Preview de dedup: ¿ya existe una importación activa con este file_hash? */
+/** Preview de dedup: ¿ya existe una importación activa con este file_hash+tipo? */
 export async function checkCommissionImport(params: ActionParams) {
   requireBizId()
-  const dup = await findActiveImport(textValue(params, "fileHash") || "")
+  const importType = (textValue(params, "importType") || "SALES").toUpperCase()
+  const dup = await findActiveImport(textValue(params, "fileHash") || "", importType)
   return { ok: true, exists: Boolean(dup), existing: dup ? mapImport(dup) : null }
 }
 
@@ -229,7 +246,7 @@ const chunk = <T>(arr: T[], n: number): T[][] => {
 }
 
 export async function commitCommissionImport(params: ActionParams, user: ActionUser) {
-  requirePermission("sales_commission.import")
+  requireImportPerm("sales")
   const business_id = requireBizId()
   const sb = getSupabaseAdmin()
   let payload: ImportPayload
@@ -242,19 +259,27 @@ export async function commitCommissionImport(params: ActionParams, user: ActionU
   if (!month || !year) throw new Error("Selecciona mes y año del período")
   if (!imp.fileHash) throw new Error("Falta el hash del archivo")
 
-  // Dedup a nivel de archivo.
-  const dup = await findActiveImport(imp.fileHash)
-  if (dup) return { ok: false, duplicate: true, existing: mapImport(dup) }
+  // Dedup a nivel de archivo (por tipo).
+  const dup = await findActiveImport(imp.fileHash, "SALES")
+  if (dup) {
+    await logAudit(user, "import", String(dup.id), "duplicate_file_blocked", null, { fileHash: imp.fileHash, type: "SALES" })
+    return { ok: false, duplicate: true, existing: mapImport(dup) }
+  }
 
-  // Crear la importación.
+  // Crear la importación (períodos REALES detectados en el archivo).
   const { data: impRow, error: impErr } = await sb.from("sales_commission_imports").insert({
     business_id, period_month: month, period_year: year, filename: imp.filename || null,
     file_hash: imp.fileHash, rows_count: Number(imp.rowsCount) || sales.length,
     gross_total: Number(imp.grossTotal) || 0, status: "calculado",
+    import_type: "SALES",
+    detected_period_start: imp.detectedPeriodStart || null,
+    detected_period_end: imp.detectedPeriodEnd || null,
+    raw_summary: payload.rawSummary ?? null,
     imported_by: user.email || user.id || null, imported_at: new Date().toISOString(), committed_at: new Date().toISOString(),
   }).select("*").maybeSingle()
   if (impErr || !impRow) throw new Error(impErr?.message || "No se pudo crear la importación")
   const importId = String(impRow.id)
+  await logAudit(user, "import", importId, "sales_import_started", null, { rows: sales.length, fileHash: imp.fileHash }, null, { month, year })
 
   // Dedup a nivel de fila: descartar row_hash ya existentes en el negocio.
   // Consultas en PARALELO (archivos de miles de filas → 300 hashes por query).
@@ -306,12 +331,14 @@ export async function commitCommissionImport(params: ActionParams, user: ActionU
   if (failed?.error) { await voidThisImport(); throw new Error(`Error insertando ventas: ${failed.error.message}`) }
   inserted = results.reduce((s, r) => s + r.count, 0)
 
-  // Cálculos por empleado (bono/limpieza/ajuste se editan en Liquidación).
+  // Cálculos por empleado y POR PERÍODO (un archivo puede cubrir varios meses;
+  // cada fila trae su propio periodMonth/periodYear — fallback al del import).
   const calcRows = calcs.map((c) => {
     const prod = Number(c.productIncentive) || 0
     const svc = Number(c.serviceCommissionTotal) || 0
     return {
-      business_id, import_id: importId, period_month: month, period_year: year,
+      business_id, import_id: importId,
+      period_month: Number(c.periodMonth) || month, period_year: Number(c.periodYear) || year,
       provider_name_snapshot: c.provider || null, branch: c.branch || null,
       products_count: Number(c.productUnits) || 0, product_incentive: prod, service_commission: svc,
       laser_incentive: 0, fixed_incentive: 0, manual_adjustment: 0, bonus_extra: 0,
@@ -325,11 +352,181 @@ export async function commitCommissionImport(params: ActionParams, user: ActionU
     if (error) { await voidThisImport(); throw new Error(`Error insertando cálculos: ${error.message}`) }
   }
 
-  await logAudit(user, "import", importId, "importacion_confirmada",
+  await logAudit(user, "import", importId, "sales_import_committed",
     null, { rows: inserted, duplicated: sales.length - fresh.length, employees: calcRows.length, fileHash: imp.fileHash },
     null, { month, year })
 
   return { ok: true, importId, salesInserted: inserted, salesDuplicated: sales.length - fresh.length, employees: calcRows.length }
+}
+
+// ── Importador de RESERVAS (chunked: start → append×N → finalize) ────────────
+interface ReservationRowIn {
+  appointmentDate?: string; appointmentTime?: string; createdAt?: string
+  branchOriginal?: string; branch?: string; externalClientId?: string
+  firstName?: string; lastName?: string; email?: string; phone?: string; document?: string
+  serviceName?: string; listPrice?: number; realPrice?: number
+  sessionNumber?: string; totalSessions?: string
+  providerOriginal?: string; provider?: string; attendanceStatus?: string
+  paymentStatus?: string; paymentDate?: string; externalPaymentId?: string
+  source?: string; assignedTo?: string; billingType?: string; rowHash?: string
+}
+
+/** Paso 1: valida dedup de archivo y crea la importación en borrador. */
+export async function startReservationsImport(params: ActionParams, user: ActionUser) {
+  requireImportPerm("reservations")
+  const business_id = requireBizId()
+  const fileHash = textValue(params, "fileHash")
+  if (!fileHash) throw new Error("Falta el hash del archivo")
+  const dup = await findActiveImport(fileHash, "RESERVATIONS")
+  if (dup) {
+    await logAudit(user, "import", String(dup.id), "duplicate_file_blocked", null, { fileHash, type: "RESERVATIONS" })
+    return { ok: false, duplicate: true, existing: mapImport(dup) }
+  }
+  const month = numberValue(params, "month") || 0
+  const year = numberValue(params, "year") || 0
+  const { data, error } = await getSupabaseAdmin().from("sales_commission_imports").insert({
+    business_id, period_month: month || 1, period_year: year || new Date().getFullYear(),
+    filename: textValue(params, "filename") || null, file_hash: fileHash,
+    rows_count: numberValue(params, "rowsCount") || 0, gross_total: 0,
+    status: "borrador", import_type: "RESERVATIONS",
+    detected_period_start: textValue(params, "periodStart") || null,
+    detected_period_end: textValue(params, "periodEnd") || null,
+    raw_summary: (() => { try { return JSON.parse(textValue(params, "summaryJson") || "null") } catch { return null } })(),
+    imported_by: user.email || user.id || null, imported_at: new Date().toISOString(),
+  }).select("*").maybeSingle()
+  if (error || !data) throw new Error(error?.message || "No se pudo iniciar la importación")
+  await logAudit(user, "import", String(data.id), "reservations_import_started", null, { fileHash, rows: numberValue(params, "rowsCount") || 0 })
+  return { ok: true, importId: String(data.id) }
+}
+
+/** Paso 2 (×N): inserta un lote de reservas con dedup por row_hash. */
+export async function appendReservationsRows(params: ActionParams, user: ActionUser) {
+  requireImportPerm("reservations")
+  const business_id = requireBizId()
+  const sb = getSupabaseAdmin()
+  const importId = textValue(params, "importId")
+  if (!importId) throw new Error("Falta importId")
+  const { data: imp } = await sb.from("sales_commission_imports").select("id,status,import_type").eq("id", importId).eq("business_id", business_id).maybeSingle()
+  if (!imp || imp.import_type !== "RESERVATIONS") throw new Error("Importación no encontrada")
+  if (imp.status !== "borrador") throw new Error("La importación ya fue finalizada")
+
+  let rows: ReservationRowIn[]
+  try { rows = JSON.parse(textValue(params, "rowsJson") || "[]") } catch { throw new Error("Lote inválido") }
+  if (!rows.length) return { ok: true, inserted: 0, duplicated: 0 }
+
+  // Dedup vs DB en paralelo (300 hashes por query).
+  const hashes = rows.map((r) => r.rowHash).filter(Boolean) as string[]
+  const seen = new Set<string>()
+  await Promise.all(chunk(hashes, 300).map(async (part) => {
+    const { data } = await sb.from("sales_commission_reservations").select("row_hash").eq("business_id", business_id).in("row_hash", part)
+    for (const r of data || []) seen.add(String((r as Row).row_hash))
+  }))
+  const seenInBatch = new Set<string>()
+  const fresh = rows.filter((r) => {
+    if (!r.rowHash) return true
+    if (seen.has(r.rowHash) || seenInBatch.has(r.rowHash)) return false
+    seenInBatch.add(r.rowHash)
+    return true
+  })
+  const dbRows = fresh.map((r) => ({
+    business_id, import_id: importId,
+    appointment_date: r.appointmentDate || null, appointment_time: r.appointmentTime || null,
+    reservation_created_at: r.createdAt || null,
+    branch_original: r.branchOriginal || null, branch_normalized: r.branch || null,
+    external_client_id: r.externalClientId || null,
+    first_name: r.firstName || null, last_name: r.lastName || null,
+    email: r.email || null, phone: r.phone || null, document: r.document || null,
+    service_name: r.serviceName || null,
+    list_price: Number(r.listPrice) || 0, real_price: Number(r.realPrice) || 0,
+    session_number: r.sessionNumber || null, total_sessions: r.totalSessions || null,
+    provider_original: r.providerOriginal || null, provider_normalized: r.provider || null,
+    attendance_status: r.attendanceStatus || null,
+    payment_status: r.paymentStatus || null, payment_date: r.paymentDate || null,
+    external_payment_id: r.externalPaymentId || null,
+    source: r.source || null, assigned_to: r.assignedTo || null, billing_type: r.billingType || null,
+    row_hash: r.rowHash || null,
+  }))
+  let inserted = 0
+  const results = await Promise.all(chunk(dbRows, 500).map(async (part) => {
+    const { error } = await sb.from("sales_commission_reservations").insert(part)
+    return { error, count: part.length }
+  }))
+  const failed = results.find((r) => r.error)
+  if (failed?.error) throw new Error(`Error insertando reservas: ${failed.error.message}`)
+  inserted = results.reduce((s, r) => s + r.count, 0)
+  void user
+  return { ok: true, inserted, duplicated: rows.length - fresh.length }
+}
+
+/** Paso 3: cierra la importación y alimenta patient_counts (atenciones + únicos). */
+export async function finalizeReservationsImport(params: ActionParams, user: ActionUser) {
+  requireImportPerm("reservations")
+  const business_id = requireBizId()
+  const sb = getSupabaseAdmin()
+  const importId = textValue(params, "importId")
+  if (!importId) throw new Error("Falta importId")
+  const { data: imp } = await sb.from("sales_commission_imports").select("id,status,import_type").eq("id", importId).eq("business_id", business_id).maybeSingle()
+  if (!imp || imp.import_type !== "RESERVATIONS") throw new Error("Importación no encontrada")
+
+  interface CountIn { periodMonth: number; periodYear: number; provider: string; branch: string; attended: number; uniquePatients: number }
+  let counts: CountIn[]
+  try { counts = JSON.parse(textValue(params, "countsJson") || "[]") } catch { throw new Error("Resumen inválido") }
+
+  // Totales y participación por mes; upsert manual (update-else-insert) para
+  // no duplicar al reimportar reservas del mismo período.
+  const byPeriod = new Map<string, CountIn[]>()
+  for (const c of counts) {
+    const k = `${c.periodYear}-${c.periodMonth}`
+    byPeriod.set(k, [...(byPeriod.get(k) || []), c])
+  }
+  for (const [, list] of byPeriod) {
+    const total = list.reduce((s, c) => s + (Number(c.attended) || 0), 0)
+    const { data: existing } = await sb.from("sales_commission_patient_counts")
+      .select("id,provider_name,branch")
+      .eq("business_id", business_id).eq("source", "reservas")
+      .eq("period_year", list[0].periodYear).eq("period_month", list[0].periodMonth)
+    const existingMap = new Map((existing || []).map((e) => [`${(e as Row).provider_name}|${(e as Row).branch || ""}`, String((e as Row).id)]))
+    await Promise.all(list.map(async (c) => {
+      const attended = Number(c.attended) || 0
+      const fields = {
+        patient_count: attended, unique_patients: Number(c.uniquePatients) || 0,
+        total_period_patients: total,
+        participation_percentage: total ? Math.round((attended / total) * 10000) / 100 : 0,
+        branch: c.branch || null, updated_at: new Date().toISOString(),
+      }
+      const key = `${c.provider}|${c.branch || ""}`
+      const id = existingMap.get(key)
+      if (id) await sb.from("sales_commission_patient_counts").update(fields).eq("id", id).eq("business_id", business_id)
+      else await sb.from("sales_commission_patient_counts").insert({
+        business_id, period_year: c.periodYear, period_month: c.periodMonth,
+        provider_name: c.provider, source: "reservas", ...fields,
+      })
+    }))
+  }
+
+  const rowsInserted = numberValue(params, "rowsInserted") || 0
+  await sb.from("sales_commission_imports").update({
+    status: "importado", rows_count: rowsInserted || undefined,
+    committed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+  }).eq("id", importId).eq("business_id", business_id)
+  await logAudit(user, "import", importId, "reservations_import_committed", null, { rows: rowsInserted, providers: counts.length })
+  return { ok: true }
+}
+
+/** Anulación LÓGICA de una importación (sin borrado físico). */
+export async function voidCommissionImport(params: ActionParams, user: ActionUser) {
+  requirePermission("sales_commission.import")
+  const business_id = requireBizId()
+  const id = textValue(params, "id")
+  if (!id) throw new Error("Falta id")
+  const sb = getSupabaseAdmin()
+  const { data: prev } = await sb.from("sales_commission_imports").select("*").eq("id", id).eq("business_id", business_id).maybeSingle()
+  if (!prev) throw new Error("Importación no encontrada")
+  if (prev.status === "anulado") return { ok: true }
+  const { error } = await sb.from("sales_commission_imports").update({ status: "anulado", updated_at: new Date().toISOString() }).eq("id", id).eq("business_id", business_id)
+  if (error) throw new Error(error.message)
+  await logAudit(user, "import", String(id), "import_voided", { status: prev.status }, { status: "anulado" }, textValue(params, "reason") || null)
+  return { ok: true }
 }
 
 // ── Liquidación: edición de montos + cambio de estado ───────────────────────
@@ -453,8 +650,40 @@ export async function getCommissionByBranch(params: ActionParams) {
   return { ok: true, cardPct, branches }
 }
 
-/** Clientes atendidos por prestador comisionable (clientes distintos + participación). */
+/** Clientes atendidos por prestador. Fuente preferida: RESERVAS (atenciones
+ *  ASISTE persistidas en patient_counts al importar); fallback: derivado de
+ *  ventas (clientes distintos) si el período no tiene reservas cargadas. */
 export async function getCommissionPatients(params: ActionParams) {
+  const business_id = requireBizId()
+  const month = numberValue(params, "month")
+  const year = numberValue(params, "year")
+  let pcQ = getSupabaseAdmin().from("sales_commission_patient_counts")
+    .select("provider_name,branch,patient_count,unique_patients,period_month,period_year")
+    .eq("business_id", business_id).eq("source", "reservas")
+  if (month && year) pcQ = pcQ.eq("period_month", month).eq("period_year", year)
+  const { data: pcRows } = await pcQ
+  if (pcRows && pcRows.length) {
+    // Agregar (si no hay filtro de período, suma todos los meses cargados).
+    const agg = new Map<string, { provider: string; branch: string; patients: number; uniquePatients: number }>()
+    for (const r of pcRows as Row[]) {
+      const key = String(r.provider_name || "")
+      let e = agg.get(key)
+      if (!e) { e = { provider: key, branch: String(r.branch || ""), patients: 0, uniquePatients: 0 }; agg.set(key, e) }
+      e.patients += Number(r.patient_count) || 0
+      e.uniquePatients += Number(r.unique_patients) || 0
+    }
+    const list = [...agg.values()]
+    const total = list.reduce((s, e) => s + e.patients, 0)
+    const rowsOut = list.map((e) => ({ ...e, participation: total ? Math.round((e.patients / total) * 10000) / 100 : 0 }))
+      .sort((a, b) => b.patients - a.patients)
+    const sumPct = round2(rowsOut.reduce((s, r) => s + r.participation, 0))
+    return { ok: true, total, roundingDiff: round2(sumPct - 100), rows: rowsOut, sourceUsed: "reservas" }
+  }
+  return getCommissionPatientsFromSales(params)
+}
+
+/** Fallback histórico: clientes distintos derivados de las ventas. */
+async function getCommissionPatientsFromSales(params: ActionParams) {
   const rows = await fetchSalesForPeriod(params)
   const byProv = new Map<string, { provider: string; branch: string; patients: Set<string> }>()
   for (const r of rows) {
@@ -470,7 +699,7 @@ export async function getCommissionPatients(params: ActionParams) {
   const rowsOut = list.map((e) => ({ ...e, participation: total ? Math.round((e.patients / total) * 10000) / 100 : 0 }))
     .sort((a, b) => b.patients - a.patients)
   const sumPct = round2(rowsOut.reduce((s, r) => s + r.participation, 0))
-  return { ok: true, total, roundingDiff: round2(sumPct - 100), rows: rowsOut }
+  return { ok: true, total, roundingDiff: round2(sumPct - 100), rows: rowsOut, sourceUsed: "ventas" }
 }
 
 /** Comisión láser: fondo por escala + reparto por participación de pacientes. */

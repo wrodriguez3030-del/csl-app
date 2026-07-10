@@ -32,7 +32,9 @@ export const PERMISSION_OPTIONS: PermissionOption[] = [
   { id: "materials.inventory.export_pdf", label: "Generar PDF de inventarios", section: "Requisición de materiales" },
   // Comisión de Ventas (sección 32)
   { id: "sales_commission.view", label: "Ver comisión de ventas", section: "Comisión de Ventas" },
-  { id: "sales_commission.import", label: "Importar ventas", section: "Comisión de Ventas" },
+  { id: "sales_commission.import", label: "Importar (general)", section: "Comisión de Ventas" },
+  { id: "sales_commission.import.sales", label: "Importar archivo de ventas", section: "Comisión de Ventas" },
+  { id: "sales_commission.import.reservations", label: "Importar archivo de reservas", section: "Comisión de Ventas" },
   { id: "sales_commission.calculate", label: "Calcular comisiones", section: "Comisión de Ventas" },
   { id: "sales_commission.rules.manage", label: "Gestionar reglas de comisión", section: "Comisión de Ventas" },
   { id: "sales_commission.adjust", label: "Ajustes manuales", section: "Comisión de Ventas" },
