@@ -2661,6 +2661,45 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     }
     case "getClientesCosmiatria":
       return { ok: true, records: await getRows("cosmiatria_clientes") }
+
+    // Paginado server-side (la tabla creció a ~16k filas por el sync de
+    // AgendaPro; traer todo con `select *` excedía el timeout → 0 clientes).
+    case "getClientesCosmiatriaPaged": {
+      const ctx = getBusinessContext()
+      const sb = getSupabaseAdmin()
+      const applyTenant = Boolean(ctx && !ctx.bypassTenantFilter && ctx.businessId)
+      const page = Math.max(1, numberValue(params, "page") || 1)
+      const pageSize = Math.min(200, Math.max(1, numberValue(params, "pageSize") || 50))
+      const offset = (page - 1) * pageSize
+      const sucursal = textValue(params, "sucursal")
+      const sortReq = textValue(params, "sort")
+      const sortCol = ["nombre", "apellido", "telefono", "sucursal", "estado", "email", "documento_identidad", "numero_cliente", "cliente_desde"].includes(sortReq) ? sortReq : "nombre"
+      const ascending = textValue(params, "dir") !== "desc"
+      const search = textValue(params, "search").replace(/[%,()*]/g, " ").trim().replace(/\s+/g, "%")
+      const LEAN = "cliente_id,numero_cliente,documento_identidad,email,nombre,apellido,telefono,telefono2,direccion,localidad,ciudad,region,fecha_nacimiento,edad,genero,sucursal,puede_agendar,cliente_desde,estado,notas,agendapro_client_id,origen"
+      let q = sb.from("csl_cosmiatria_clientes").select(LEAN, { count: "exact" })
+      if (applyTenant) q = q.eq("business_id", ctx!.businessId)
+      if (sucursal && sucursal !== "todas") q = q.eq("sucursal", sucursal)
+      if (search) q = q.or(`nombre.ilike.%${search}%,apellido.ilike.%${search}%,telefono.ilike.%${search}%,documento_identidad.ilike.%${search}%,numero_cliente.ilike.%${search}%,email.ilike.%${search}%`)
+      q = q.order(sortCol, { ascending })
+      const { data, error, count } = await q.range(offset, offset + pageSize - 1)
+      if (error) throw error
+      return { ok: true, records: (data || []).map((r) => fromDb("cosmiatria_clientes", r as Row)), total: count ?? 0, page, pageSize }
+    }
+
+    case "getClientesCosmiatriaKpis": {
+      const ctx = getBusinessContext()
+      const sb = getSupabaseAdmin()
+      const applyTenant = Boolean(ctx && !ctx.bypassTenantFilter && ctx.businessId)
+      const mk = () => {
+        let q = sb.from("csl_cosmiatria_clientes").select("cliente_id", { count: "exact", head: true })
+        if (applyTenant) q = q.eq("business_id", ctx!.businessId)
+        return q
+      }
+      const [totalR, activosR] = await Promise.all([mk(), mk().neq("estado", "Inactivo")])
+      if (totalR.error) throw totalR.error
+      return { ok: true, clientes: totalR.count ?? 0, activos: activosR.count ?? 0 }
+    }
     case "getFichasDermatologia":
       // Listado liviano — sin firma_digital + payload_json (cuerpo clínico
       // + foto cédula). El detalle completo se carga al abrir.

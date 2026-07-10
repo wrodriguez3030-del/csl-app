@@ -18,6 +18,29 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.28.2] — 2026-07-10
+
+### Fixed
+- **Clientes Cosmiatría mostraba 0 clientes + "verifica la conexión con
+  Supabase".** Causa raíz: la tabla `csl_cosmiatria_clientes` creció a ~16,197
+  filas (sync AgendaPro de Mayo 2026) y `getClientesCosmiatria` traía TODO con
+  `select *` en páginas secuenciales de 1000 (~115s), excediendo el timeout de
+  25s → el frontend lo ocultaba como lista vacía. Los datos SIEMPRE estuvieron
+  presentes (16,197 csl / 1 depicenter); no era tabla vacía.
+  - **Paginación server-side**: nuevos handlers `getClientesCosmiatriaPaged`
+    (columnas lean + `.range()` + búsqueda `ilike` + orden + `count=exact`,
+    scopeado por `business_id`) y `getClientesCosmiatriaKpis` (conteos globales).
+    Verificado contra db-cls: página 50 = **0.47s** (antes 115s), KPIs ~0.2s.
+  - Componente reescrito a paginación/búsqueda/orden **server-side** + KPIs por
+    conteo; "Con fichas"/"Fichas" desde las fichas (pocas, enlazan por
+    `cliente_id`).
+  - **Manejo de errores**: si la consulta falla se muestra "Error al cargar
+    clientes" con detalle seguro (recurso + fecha), ya NO se convierte el error
+    en lista vacía silenciosa.
+  - Infra confirmada correcta: `db-cls.cibao-cloude.com` (self-hosted), NO Cloud.
+
+---
+
 ## [0.28.1] — 2026-07-10
 
 ### Fixed

@@ -165,62 +165,75 @@ export function CosmiatriaClientesPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<25 | 50 | 100 | 200>(50)
+  const [total, setTotal] = useState(0)
+  const [kpiClientes, setKpiClientes] = useState<number | null>(null)
+  const [kpiActivos, setKpiActivos] = useState<number | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string>("")
+  const [debouncedQuery, setDebouncedQuery] = useState("")
+
+  // Debounce de la búsqueda (la búsqueda es server-side ahora).
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query.trim()), 300)
+    return () => clearTimeout(t)
+  }, [query])
 
   const sucursales = useMemo(() => {
     const fromDb = db.sucursales.map((item) => item.Nombre).filter(Boolean)
     return Array.from(new Set([...fromDb, "Rafael Vidal", "Los Jardines", "Villa Olga", "La Vega"]))
   }, [db.sucursales])
 
-  const loadData = async () => {
+  // Carga de la PÁGINA actual (server-side). La tabla creció a ~16k filas por el
+  // sync de AgendaPro; traer todo con `select *` excedía el timeout de 25s y la
+  // pantalla mostraba 0. Ahora se pagina, busca y ordena en el servidor.
+  const loadPage = useCallback(async (silent = false) => {
     const normalized = normalizeApiUrl(apiUrl)
+    if (!silent) { setIsLoading(true); setLoadingMessage("Cargando clientes de cosmiatría...") }
     try {
-      setIsLoading(true)
-      setLoadingMessage("Cargando clientes de cosmiatría...")
-      const [clientesResult, fichasResult] = await Promise.all([
-        apiJsonp(normalized, { action: "getClientesCosmiatria" }),
-        apiJsonp(normalized, { action: "getFichasDermatologia" }),
-      ])
-      const clientesRows = Array.isArray((clientesResult as { records?: unknown[] }).records)
-        ? ((clientesResult as { records?: Record<string, unknown>[] }).records || [])
+      const sortCol = ({ Nombre: "nombre", Apellido: "apellido", Telefono: "telefono", Sucursal: "sucursal", Estado: "estado", Email: "email", DocumentoIdentidad: "documento_identidad", NumeroCliente: "numero_cliente" } as Record<string, string>)[String(sortKey)] || "nombre"
+      const res = await apiJsonp(normalized, { action: "getClientesCosmiatriaPaged", page, pageSize, search: debouncedQuery, sucursal: filterSucursal, sort: sortCol, dir: sortDir })
+      const rows = Array.isArray((res as { records?: unknown[] }).records)
+        ? ((res as { records?: Record<string, unknown>[] }).records || [])
         : []
-      const fichasRows = Array.isArray((fichasResult as { records?: unknown[] }).records)
-        ? ((fichasResult as { records?: FichaDermoCosmiatrica[] }).records || [])
-        : []
-      setClientes(clientesRows.map(normalizeCliente))
-      setFichas(fichasRows)
+      setClientes(rows.map(normalizeCliente))
+      setTotal(Number((res as { total?: number }).total) || 0)
+      setErrorMsg("")
     } catch (error) {
-      showToast(error instanceof Error ? error.message : "Error cargando clientes", "error")
+      // NO ocultar el error como lista vacía: se muestra el detalle real.
+      const msg = error instanceof Error ? error.message : "No se pudo consultar la tabla de clientes"
+      setErrorMsg(msg)
+      if (!silent) showToast(msg, "error")
     } finally {
-      setIsLoading(false)
+      if (!silent) setIsLoading(false)
     }
-  }
+  }, [apiUrl, page, pageSize, debouncedQuery, filterSucursal, sortKey, sortDir, showToast])
 
-  useEffect(() => {
-    void loadData()
-  }, [apiUrl])
-
-  // Auto-refresh silencioso (sin overlay global) cada 60s.
-  // Se salta cuando algún dialog del módulo está abierto para no resetear
-  // el formulario que esté capturando el usuario.
-  const refreshSilent = useCallback(async () => {
+  // Fichas (pocas, para el conteo por fila) + KPIs globales por conteo.
+  const loadAux = useCallback(async () => {
     const normalized = normalizeApiUrl(apiUrl)
     try {
-      const [clientesResult, fichasResult] = await Promise.all([
-        apiJsonp(normalized, { action: "getClientesCosmiatria" }),
+      const [fichasResult, kpisResult] = await Promise.all([
         apiJsonp(normalized, { action: "getFichasDermatologia" }),
+        apiJsonp(normalized, { action: "getClientesCosmiatriaKpis" }),
       ])
-      const clientesRows = Array.isArray((clientesResult as { records?: unknown[] }).records)
-        ? ((clientesResult as { records?: Record<string, unknown>[] }).records || [])
-        : []
       const fichasRows = Array.isArray((fichasResult as { records?: unknown[] }).records)
         ? ((fichasResult as { records?: FichaDermoCosmiatrica[] }).records || [])
         : []
-      setClientes(clientesRows.map(normalizeCliente))
       setFichas(fichasRows)
-    } catch {
-      // No mostrar toast en modo silencioso.
-    }
+      if ((kpisResult as { ok?: boolean }).ok) {
+        setKpiClientes(Number((kpisResult as { clientes?: number }).clientes) || 0)
+        setKpiActivos(Number((kpisResult as { activos?: number }).activos) || 0)
+      }
+    } catch { /* KPIs/fichas no bloquean la tabla */ }
   }, [apiUrl])
+
+  // Recarga completa (tras crear/editar/eliminar/sincronizar).
+  const loadData = useCallback(async () => { await Promise.all([loadPage(), loadAux()]) }, [loadPage, loadAux])
+
+  useEffect(() => { void loadPage() }, [loadPage])
+  useEffect(() => { void loadAux() }, [loadAux])
+
+  // Auto-refresh silencioso cada 60s (se salta con diálogos abiertos).
+  const refreshSilent = useCallback(async () => { await Promise.all([loadPage(true), loadAux()]) }, [loadPage, loadAux])
   useAutoRefresh(refreshSilent, {
     intervalMs: 60_000,
     skipWhen: () => open || !!viewing || !!historialCliente,
@@ -246,35 +259,21 @@ export function CosmiatriaClientesPage() {
     })
   }, [clientes, fichas])
 
-  const filtered = useMemo(() => {
-    // Búsqueda en vivo — usa el helper único `clientMatchesSearch`
-    // (lib/cliente-search). Match tolera acentos, mayúsculas, formato de
-    // teléfono y cédula. El filtro de sucursal se combina aparte.
-    const search = query.trim()
-    return enriched
-      .filter((cliente) => {
-        const matchesQuery = !search || clientMatchesSearch(cliente, search)
-        const matchesSucursal = filterSucursal === "todas" || cliente.Sucursal === filterSucursal
-        return matchesQuery && matchesSucursal
-      })
-      .sort((a, b) => {
-        const va = a[sortKey]
-        const vb = b[sortKey]
-        return String(va ?? "").localeCompare(String(vb ?? ""), "es", { numeric: true }) * (sortDir === "asc" ? 1 : -1)
-      })
-  }, [enriched, query, filterSucursal, sortKey, sortDir])
-
-  // Paginación: rebanada del array filtrado. Renderizar 2700+ filas en DOM
-  // hace muy lento el repaint; con páginas de 50 el render queda en <30 nodos.
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  // El servidor ya filtró (búsqueda/sucursal) y ordenó; `filtered` es la página
+  // actual enriquecida con el conteo de fichas. `total` viene del servidor.
+  const filtered = enriched
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
   const safePage = Math.min(page, totalPages)
-  const paginated = useMemo(() => {
-    const start = (safePage - 1) * pageSize
-    return filtered.slice(start, start + pageSize)
-  }, [filtered, safePage, pageSize])
+  const paginated = filtered
+  // "Con fichas" = clientes distintos con al menos una ficha (las fichas son
+  // pocas y se cargan completas; enlazan por cliente_id).
+  const conFichas = useMemo(
+    () => new Set(fichas.map((f) => { const r = f as unknown as Record<string, unknown>; return String(r.cliente_id ?? r.clienteId ?? r.ClienteID ?? "") }).filter(Boolean)).size,
+    [fichas],
+  )
 
-  // Si el filtro/búsqueda reduce el conjunto, reset a página 1.
-  useEffect(() => { setPage(1) }, [query, filterSucursal, sortKey, sortDir, pageSize])
+  // Reset a página 1 cuando cambian búsqueda/filtros/orden.
+  useEffect(() => { setPage(1) }, [debouncedQuery, filterSucursal, sortKey, sortDir, pageSize])
 
   const setSort = (key: keyof ClienteCosmiatria) => {
     if (sortKey === key) setSortDir((current) => current === "asc" ? "desc" : "asc")
@@ -572,10 +571,23 @@ export function CosmiatriaClientesPage() {
         onMerged={() => { void loadData() }}
       />
 
+      {errorMsg ? (
+        <Card className="border-red-200 bg-red-50/50">
+          <CardContent className="flex items-start gap-3 pt-5 text-sm">
+            <span className="mt-0.5 text-red-600">⚠</span>
+            <div>
+              <div className="font-semibold text-red-700">Error al cargar clientes</div>
+              <div className="mt-1 text-red-600">{errorMsg}</div>
+              <div className="mt-1 text-[11px] text-red-500">Recurso: clientes cosmiatría · {new Date().toLocaleString("es-DO")}</div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="grid gap-3 md:grid-cols-4">
-        <Card><CardContent className="pt-5"><div className="text-sm text-muted-foreground">Clientes</div><div className="text-3xl font-bold">{clientes.length}</div></CardContent></Card>
-        <Card><CardContent className="pt-5"><div className="text-sm text-muted-foreground">Activos</div><div className="text-3xl font-bold text-green-500">{clientes.filter((c) => c.Estado === "Activo").length}</div></CardContent></Card>
-        <Card><CardContent className="pt-5"><div className="text-sm text-muted-foreground">Con fichas</div><div className="text-3xl font-bold text-primary">{enriched.filter((c) => Number(c.FichasCount) > 0).length}</div></CardContent></Card>
+        <Card><CardContent className="pt-5"><div className="text-sm text-muted-foreground">Clientes</div><div className="text-3xl font-bold">{kpiClientes ?? "—"}</div></CardContent></Card>
+        <Card><CardContent className="pt-5"><div className="text-sm text-muted-foreground">Activos</div><div className="text-3xl font-bold text-green-500">{kpiActivos ?? "—"}</div></CardContent></Card>
+        <Card><CardContent className="pt-5"><div className="text-sm text-muted-foreground">Con fichas</div><div className="text-3xl font-bold text-primary">{conFichas}</div></CardContent></Card>
         <Card><CardContent className="pt-5"><div className="text-sm text-muted-foreground">Fichas</div><div className="text-3xl font-bold">{fichas.length}</div></CardContent></Card>
       </div>
 
@@ -665,10 +677,10 @@ export function CosmiatriaClientesPage() {
               ))}
             </tbody>
           </table>
-          {filtered.length > 0 ? (
+          {total > 0 ? (
             <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
               <div className="text-muted-foreground">
-                Mostrando <b>{(safePage - 1) * pageSize + 1}</b>–<b>{Math.min(safePage * pageSize, filtered.length)}</b> de <b>{filtered.length}</b>
+                Mostrando <b>{(safePage - 1) * pageSize + 1}</b>–<b>{Math.min(safePage * pageSize, total)}</b> de <b>{total}</b>
               </div>
               <div className="flex items-center gap-2">
                 <label className="text-xs text-muted-foreground">Por página</label>
