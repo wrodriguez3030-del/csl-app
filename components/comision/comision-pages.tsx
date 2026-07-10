@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   LayoutDashboard, Building2, Package, Zap, Users,
-  CalendarClock, FileBarChart2, RefreshCcw, Hammer,
+  CalendarClock, RefreshCcw,
 } from "lucide-react"
 
 const fmtRD = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -22,21 +22,6 @@ function Shell({ icon, title, children }: { icon: ReactNode; title: string; chil
       </Card>
       {children}
     </div>
-  )
-}
-
-function EnConstruccion({ icon, title, desc }: { icon: ReactNode; title: string; desc: string }) {
-  return (
-    <Shell icon={icon} title={title}>
-      <Card className="border-[color:var(--brand-border)]">
-        <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Hammer className="h-6 w-6" /></div>
-          <div className="text-sm font-semibold">Pantalla en construcción</div>
-          <p className="max-w-md text-sm text-muted-foreground">{desc}</p>
-          <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">Motor de cálculo e importador ya verificados</Badge>
-        </CardContent>
-      </Card>
-    </Shell>
   )
 }
 
@@ -266,4 +251,3 @@ export function ComisionClientesPage() {
     </Shell>
   )
 }
-export const ComisionReportesPage = () => <EnConstruccion icon={<FileBarChart2 className="h-4 w-4" />} title="Comisión de Ventas · Reportes" desc="Exportación mensual profesional: Excel multi-hoja (Resumen, Sucursal, Prestador, Productos, Servicios, Láser, Clientes, Liquidación, Reglas, Conciliación) y PDF A4 con logo, totales y numeración." />

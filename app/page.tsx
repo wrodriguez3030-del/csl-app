@@ -34,10 +34,10 @@ import { ComisionReglasPage } from "@/components/comision/comision-reglas-page"
 import { ComisionImportarPage } from "@/components/comision/comision-importar-page"
 import { ComisionPrestadoresPage } from "@/components/comision/comision-prestadores-page"
 import { ComisionLiquidacionPage } from "@/components/comision/comision-liquidacion-page"
+import { ComisionReportesPage } from "@/components/comision/comision-reportes-page"
 import {
   ComisionDashboardPage, ComisionHistorialPage, ComisionSucursalesPage,
   ComisionProductosPage, ComisionLaserPage, ComisionClientesPage,
-  ComisionReportesPage,
 } from "@/components/comision/comision-pages"
 import { CredencialesPage } from "@/components/credenciales-page"
 import { RecursosHumanosPage } from "@/components/recursos-humanos-page"

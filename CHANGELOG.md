@@ -18,6 +18,29 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.28.0] — 2026-07-10
+
+### Added
+- **Comisión de Ventas — Fase 2g: Reportes (Excel + PDF + impresión) — 11/11
+  pantallas completas.**
+  - **Excel profesional multi-hoja** (`lib/commission/commission-export.ts`,
+    ExcelJS): 10 hojas — Resumen General, Ventas por Sucursal, Ventas por
+    Prestador, Incentivos Productos, Incentivos Servicios, Depilación Láser,
+    Láser·Reparto, Clientes Atendidos, Liquidación Final, Reglas Aplicadas,
+    Conciliación — con logo, encabezado corporativo, colores de marca, bordes,
+    freeze panes, autofiltro, formato moneda RD$ y totales. Nombre
+    `COMISION_VENTAS_<MES>_<AÑO>.xlsx`.
+  - **PDF/impresión** A4 horizontal branded (`window.print`): KPIs + Ventas por
+    sucursal + Liquidación final con totales.
+  - Pantalla **Reportes** con selector de mes/año, preview de KPIs y botones
+    Excel / PDF / Imprimir (gateados por `sales_commission.export`).
+
+### Changed
+- Se eliminó el placeholder genérico de pantallas: las 11 vistas de Comisión de
+  Ventas son dedicadas y funcionales.
+
+---
+
 ## [0.27.0] — 2026-07-10
 
 ### Added
