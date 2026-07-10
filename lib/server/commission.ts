@@ -64,6 +64,7 @@ function mapImport(r: Row) {
     importType: r.import_type || "SALES",
     detectedPeriodStart: r.detected_period_start ?? null,
     detectedPeriodEnd: r.detected_period_end ?? null,
+    rawSummary: r.raw_summary ?? null,
     importedBy: r.imported_by ?? null, importedAt: r.imported_at ?? null,
     committedAt: r.committed_at ?? null, createdAt: r.created_at,
   }

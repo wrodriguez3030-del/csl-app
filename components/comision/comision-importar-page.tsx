@@ -13,7 +13,8 @@ import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Upload, ShoppingCart, CalendarCheck, History, RefreshCcw, Ban } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Upload, ShoppingCart, CalendarCheck, History, RefreshCcw, Ban, Stethoscope } from "lucide-react"
 import { ImportarVentasTab } from "./comision-importar-ventas"
 import { ImportarReservasTab } from "./comision-importar-reservas"
 
@@ -24,6 +25,7 @@ interface ImportRow {
   status: string; importedBy: string | null; createdAt: string
   detectedPeriodStart: string | null; detectedPeriodEnd: string | null
   periodMonth: number; periodYear: number
+  rawSummary: Record<string, unknown> | null
 }
 
 const STATUS_CLASS: Record<string, string> = {
@@ -43,6 +45,7 @@ export function ComisionImportarPage() {
   const [imports, setImports] = useState<ImportRow[]>([])
   const [filter, setFilter] = useState<"todos" | "SALES" | "RESERVATIONS">("todos")
   const [busy, setBusy] = useState(false)
+  const [diag, setDiag] = useState<ImportRow | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -168,9 +171,12 @@ export function ComisionImportarPage() {
                   <td className="px-2 py-2"><Badge variant="outline" className={STATUS_CLASS[r.status] || ""}>{r.status}</Badge></td>
                   <td className="max-w-[140px] truncate px-2 py-2 text-xs" title={r.importedBy || ""}>{r.importedBy || "—"}</td>
                   <td className="px-4 py-2 text-right">
-                    {canVoid && r.status !== "anulado" ? (
-                      <Button variant="ghost" size="sm" className="h-7 text-red-600 hover:text-red-700" disabled={busy} onClick={() => doVoid(r)}><Ban className="mr-1 h-3.5 w-3.5" />Anular</Button>
-                    ) : null}
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="sm" className="h-7" onClick={() => setDiag(r)}><Stethoscope className="mr-1 h-3.5 w-3.5" />Diagnóstico</Button>
+                      {canVoid && r.status !== "anulado" ? (
+                        <Button variant="ghost" size="sm" className="h-7 text-red-600 hover:text-red-700" disabled={busy} onClick={() => doVoid(r)}><Ban className="mr-1 h-3.5 w-3.5" />Anular</Button>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}</tbody>
@@ -178,6 +184,32 @@ export function ComisionImportarPage() {
           )}
         </CardContent></Card>
       ) : null}
+
+      {/* Diagnóstico de una importación (períodos, filas, resumen crudo) */}
+      <Dialog open={!!diag} onOpenChange={(o) => !o && setDiag(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Diagnóstico de importación</DialogTitle></DialogHeader>
+          {diag ? (
+            <div className="space-y-2 text-sm">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-md border p-3 text-xs">
+                <div>Tipo: <b>{diag.importType === "SALES" ? "Ventas" : "Reservas"}</b></div>
+                <div>Estado: <b>{diag.status}</b></div>
+                <div className="col-span-2 break-all">Archivo: <b>{diag.filename}</b></div>
+                <div>Filas: <b className="tabular-nums">{diag.rowsCount.toLocaleString("en-US")}</b></div>
+                {diag.grossTotal ? <div>Bruto: <b className="tabular-nums">{fmtRD(diag.grossTotal)}</b></div> : <div />}
+                <div className="col-span-2">Período detectado: <b>{periodLabel(diag)}</b></div>
+                <div className="col-span-2">Importado por: <b>{diag.importedBy || "—"}</b> · {String(diag.createdAt || "").replace("T", " ").slice(0, 16)}</div>
+              </div>
+              {diag.rawSummary ? (
+                <div>
+                  <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">Resumen del archivo</div>
+                  <pre className="max-h-60 overflow-auto rounded-md bg-slate-50 p-2 text-[11px] leading-relaxed">{JSON.stringify(diag.rawSummary, null, 2)}</pre>
+                </div>
+              ) : <p className="text-xs text-muted-foreground">Esta importación no guardó resumen del archivo.</p>}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
