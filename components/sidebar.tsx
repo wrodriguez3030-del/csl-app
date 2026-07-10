@@ -113,6 +113,22 @@ const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
     ],
   },
   {
+    label: "Comisión de Ventas",
+    items: [
+      { id: "comision-dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
+      { id: "comision-importar", label: "Importar ventas", icon: <FileText className="h-4 w-4" /> },
+      { id: "comision-sucursales", label: "Ventas por sucursal", icon: <Building2 className="h-4 w-4" /> },
+      { id: "comision-prestadores", label: "Comisiones por prestador", icon: <Users className="h-4 w-4" /> },
+      { id: "comision-productos", label: "Incentivos de productos", icon: <Package className="h-4 w-4" /> },
+      { id: "comision-laser", label: "Comisión depilación láser", icon: <Zap className="h-4 w-4" /> },
+      { id: "comision-clientes", label: "Clientes atendidos", icon: <Users className="h-4 w-4" /> },
+      { id: "comision-liquidacion", label: "Liquidación de incentivos", icon: <Coins className="h-4 w-4" /> },
+      { id: "comision-reglas", label: "Reglas de comisión", icon: <Cog className="h-4 w-4" /> },
+      { id: "comision-historial", label: "Historial mensual", icon: <History className="h-4 w-4" /> },
+      { id: "comision-reportes", label: "Reportes", icon: <BarChart3 className="h-4 w-4" /> },
+    ],
+  },
+  {
     label: "RR.HH. · Personal",
     items: [
       { id: "rrhh-dashboard", label: "Dashboard RR.HH.", icon: <LayoutDashboard className="h-4 w-4" /> },
