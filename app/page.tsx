@@ -30,6 +30,12 @@ import { ComprasFacturasPage } from "@/components/compras-facturas-page"
 import { ComprasPagosPage } from "@/components/compras-pagos-page"
 import { ComprasGastosMenoresPage } from "@/components/compras-gastos-menores-page"
 import { ComprasRecurrentesPage } from "@/components/compras-recurrentes-page"
+import { ComisionReglasPage } from "@/components/comision/comision-reglas-page"
+import {
+  ComisionDashboardPage, ComisionHistorialPage, ComisionImportarPage, ComisionSucursalesPage,
+  ComisionPrestadoresPage, ComisionProductosPage, ComisionLaserPage, ComisionClientesPage,
+  ComisionLiquidacionPage, ComisionReportesPage,
+} from "@/components/comision/comision-pages"
 import { CredencialesPage } from "@/components/credenciales-page"
 import { RecursosHumanosPage } from "@/components/recursos-humanos-page"
 import { EmpleadosPage } from "@/components/empleados-page"
@@ -345,6 +351,28 @@ export default function HomePage() {
         return <ComprasGastosMenoresPage />
       case "compras-recurrentes":
         return <ComprasRecurrentesPage />
+      case "comision-dashboard":
+        return <ComisionDashboardPage />
+      case "comision-importar":
+        return <ComisionImportarPage />
+      case "comision-sucursales":
+        return <ComisionSucursalesPage />
+      case "comision-prestadores":
+        return <ComisionPrestadoresPage />
+      case "comision-productos":
+        return <ComisionProductosPage />
+      case "comision-laser":
+        return <ComisionLaserPage />
+      case "comision-clientes":
+        return <ComisionClientesPage />
+      case "comision-liquidacion":
+        return <ComisionLiquidacionPage />
+      case "comision-reglas":
+        return <ComisionReglasPage />
+      case "comision-historial":
+        return <ComisionHistorialPage />
+      case "comision-reportes":
+        return <ComisionReportesPage />
       case "credenciales":
         return <CredencialesPage />
       case "pulse-dashboard":

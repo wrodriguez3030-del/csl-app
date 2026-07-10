@@ -46,6 +46,7 @@ import { runWithBusinessContext, applyActiveBusiness, getBusinessContext, isKnow
 import { runWithMaintenanceWriteScope, recordMaintenanceAudit, type MaintenanceChangeSource } from "@/lib/server/maintenance-guard"
 import * as materials from "@/lib/server/materials"
 import * as purchases from "@/lib/server/purchases"
+import * as commission from "@/lib/server/commission"
 
 /**
  * Acciones MANUALES del módulo de Mantenimiento. Solo estas pueden escribir en
@@ -3427,6 +3428,20 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await purchases.registerRecurringPayment(params, user)
     case "getRecurringHistory":
       return await purchases.getRecurringHistory(params)
+
+    // ── Comisión de Ventas ──
+    case "getCommissionRules":
+      return await commission.getCommissionRules(params)
+    case "saveCommissionRule":
+      return await commission.saveCommissionRule(params, user)
+    case "setCommissionRuleActive":
+      return await commission.setCommissionRuleActive(params, user)
+    case "getCommissionImports":
+      return await commission.getCommissionImports(params)
+    case "getCommissionCalculations":
+      return await commission.getCommissionCalculations(params)
+    case "getCommissionDashboard":
+      return await commission.getCommissionDashboard(params)
 
     case "saveReporte": {
       const row = { report_id: textValue(params, "reportId"), fecha: dateValue(params.fecha), equipo_id: textValue(params, "equipoId"), sucursal: textValue(params, "sucursal"), empresa: textValue(params, "empresa"), cliente: textValue(params, "cliente"), domicilio: textValue(params, "domicilio"), ciudad: textValue(params, "ciudad", "Santiago"), modelo: textValue(params, "modelo"), serie: textValue(params, "serie"), numero: textValue(params, "numero"), tipo: textValue(params, "tipo", "Preventivo"), estado_equipo: textValue(params, "estadoEquipo", "Operativo"), prioridad: textValue(params, "prioridad", "Baja"), problema: textValue(params, "problema"), correccion: textValue(params, "correccion"), observaciones: textValue(params, "observaciones"), checklist: textValue(params, "checklist"), p_cabeza: numberValue(params, "pcabeza"), p_totales: numberValue(params, "ptotales"), atendio: textValue(params, "atendio"), power_source_number: textValue(params, "powerSourceNumber"), power_source_serial: textValue(params, "powerSourceSerial"), fiber_serial: textValue(params, "fiberSerial"), hv_value: textValue(params, "hv"), joules_value: textValue(params, "joules"), bs_value: textValue(params, "bs"), bc_value: textValue(params, "bc"), hv_ref_value: textValue(params, "hvRef"), vdc_value: textValue(params, "vdc"), voltage_value: textValue(params, "voltage"), tx_value: textValue(params, "tx"), software_version: textValue(params, "software"), piezas_json: textValue(params, "piezasJson", "[]"), partes_texto: textValue(params, "partesTexto"), firma_cliente: textValue(params, "firmaCliente"), firma_tecnico: textValue(params, "firmaTecnico"), fotos: textValue(params, "fotos", "[]") }

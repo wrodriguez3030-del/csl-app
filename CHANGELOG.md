@@ -18,6 +18,31 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.24.0] — 2026-07-09
+
+### Added
+- **Comisión de Ventas — Fase 2c: menú + capa de datos + pantalla de Reglas.**
+  - **Sección de menú "Comisión de Ventas"** con los 11 submenús (Dashboard,
+    Importar ventas, Ventas por sucursal, Comisiones por prestador, Incentivos
+    de productos, Comisión depilación láser, Clientes atendidos, Liquidación de
+    incentivos, Reglas de comisión, Historial mensual, Reportes). 11 `TabId` +
+    entradas en `lib/menus.ts` + `case` en `app/page.tsx` (admin/superadmin ven
+    todo; resto por `user.menus`).
+  - **Capa de datos** `lib/server/commission.ts` (tenant-safe por `business_id`,
+    permisos `sales_commission.*`, auditoría) + acciones en el dispatcher
+    `/api/csl`: `getCommissionRules`, `saveCommissionRule`,
+    `setCommissionRuleActive`, `getCommissionImports`, `getCommissionCalculations`,
+    `getCommissionDashboard`. Siembra reglas por defecto si el negocio no tiene.
+  - **Pantalla Reglas de comisión** funcional (lee las reglas vivas de db-cls,
+    edita % / monto fijo / umbral / activa; gateada por permiso).
+  - **Dashboard** e **Historial** leen datos vivos; las 8 pantallas restantes
+    son scaffolds DEDICADOS (no reutilizan pantallas ajenas) claramente
+    etiquetados con lo que harán en la próxima fase.
+  - Verificado: `lint`/`build` OK; las 12 reglas se leen de db-cls con el mismo
+    query del servidor. (La UI autenticada la valida el usuario en prod.)
+
+---
+
 ## [0.23.0] — 2026-07-09
 
 ### Added

@@ -1,0 +1,188 @@
+"use client"
+
+import { useCallback, useEffect, useState } from "react"
+import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
+import { useSessionUser } from "@/hooks/use-session-user"
+import { canPerm } from "@/lib/permissions"
+import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import { SlidersHorizontal, RefreshCcw, Save, Loader2 } from "lucide-react"
+
+interface Rule {
+  id: string
+  name: string
+  ruleType: string
+  category: string | null
+  branch: string | null
+  minAmount: number | null
+  percentage: number | null
+  fixedAmount: number | null
+  priority: number
+  active: boolean
+}
+
+const RULE_GROUP: Record<string, { label: string; kind: "pct" | "fixed" | "laser" }> = {
+  card_percentage: { label: "Ventas con tarjeta (%)", kind: "pct" },
+  category_commission: { label: "Comisión por categoría (%)", kind: "pct" },
+  laser_scale: { label: "Escala depilación láser (umbral → %)", kind: "laser" },
+  product_unit_incentive: { label: "Incentivo por producto (RD$/unidad)", kind: "fixed" },
+  cleaning_contribution: { label: "Aporte de limpieza (RD$)", kind: "fixed" },
+  fixed_incentive: { label: "Incentivo fijo (RD$)", kind: "fixed" },
+}
+const GROUP_ORDER = ["card_percentage", "category_commission", "laser_scale", "product_unit_incentive", "cleaning_contribution", "fixed_incentive"]
+
+const fmtRD = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+export function ComisionReglasPage() {
+  const { apiUrl, showToast } = useAppStore()
+  const user = useSessionUser()
+  const canManage = canPerm(user, "sales_commission.rules.manage")
+
+  const [rules, setRules] = useState<Rule[]>([])
+  const [loading, setLoading] = useState(true)
+  const [edit, setEdit] = useState<Record<string, { pct: string; fixed: string; threshold: string }>>({})
+  const [savingId, setSavingId] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionRules" })
+      if (res?.ok) {
+        const list = (res.records as Rule[]) || []
+        setRules(list)
+        const e: typeof edit = {}
+        list.forEach((r) => {
+          e[r.id] = {
+            pct: r.percentage == null ? "" : String(Math.round(r.percentage * 10000) / 100),
+            fixed: r.fixedAmount == null ? "" : String(r.fixedAmount),
+            threshold: r.minAmount == null ? "" : String(r.minAmount),
+          }
+        })
+        setEdit(e)
+      } else showToast((res as { error?: string })?.error || "No se pudieron cargar las reglas", "error")
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Error al cargar", "error")
+    } finally {
+      setLoading(false)
+    }
+  }, [apiUrl, showToast])
+  useEffect(() => { void load() }, [load])
+
+  const setE = (id: string, patch: Partial<{ pct: string; fixed: string; threshold: string }>) =>
+    setEdit((p) => ({ ...p, [id]: { ...(p[id] || { pct: "", fixed: "", threshold: "" }), ...patch } }))
+
+  const save = async (r: Rule) => {
+    if (!canManage) return
+    setSavingId(r.id)
+    try {
+      const e = edit[r.id] || { pct: "", fixed: "", threshold: "" }
+      const payload: Record<string, string> = { action: "saveCommissionRule", id: r.id, name: r.name, ruleType: r.ruleType }
+      if (r.category) payload.category = r.category
+      const kind = RULE_GROUP[r.ruleType]?.kind
+      if (kind === "pct") payload.percentage = String((Number(e.pct) || 0) / 100)
+      if (kind === "laser") { payload.percentage = String((Number(e.pct) || 0) / 100); payload.minAmount = String(Number(e.threshold) || 0) }
+      if (kind === "fixed") payload.fixedAmount = String(Number(e.fixed) || 0)
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), payload)
+      if (!res?.ok) throw new Error((res as { error?: string })?.error || "No se pudo guardar")
+      showToast("Regla actualizada", "success")
+      await load()
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Error al guardar", "error")
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  const toggleActive = async (r: Rule) => {
+    if (!canManage) return
+    try {
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "setCommissionRuleActive", id: r.id, active: r.active ? "false" : "true" })
+      if (!res?.ok) throw new Error((res as { error?: string })?.error || "No se pudo cambiar")
+      await load()
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Error", "error")
+    }
+  }
+
+  const grouped = GROUP_ORDER.map((g) => ({ type: g, rules: rules.filter((r) => r.ruleType === g) })).filter((g) => g.rules.length)
+
+  return (
+    <div className="space-y-5">
+      <Card className="border-[color:var(--brand-border)]">
+        <CardContent className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <SlidersHorizontal className="h-4 w-4 text-[color:var(--brand-primary)]" /> Reglas de comisión
+            <Badge variant="secondary">{rules.length}</Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            {!canManage ? <span className="text-xs text-muted-foreground">Solo lectura (sin permiso de gestión)</span> : null}
+            <Button variant="outline" size="sm" className="h-9" onClick={load}><RefreshCcw className="h-4 w-4" /></Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {loading ? (
+        <Card className="border-[color:var(--brand-border)]"><CardContent className="py-10 text-center text-sm text-muted-foreground">Cargando reglas...</CardContent></Card>
+      ) : (
+        grouped.map((g) => {
+          const meta = RULE_GROUP[g.type]
+          return (
+            <Card key={g.type} className="border-[color:var(--brand-border)]">
+              <CardContent className="p-0">
+                <div className="border-b px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-600">{meta?.label || g.type}</div>
+                <div className="divide-y">
+                  {g.rules.map((r) => {
+                    const e = edit[r.id] || { pct: "", fixed: "", threshold: "" }
+                    return (
+                      <div key={r.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium">{r.name}</div>
+                          <div className="mt-0.5 text-[11px] text-muted-foreground">
+                            {r.category ? `Categoría: ${r.category}` : ""}{r.branch ? ` · Sucursal: ${r.branch}` : ""}
+                            {meta?.kind === "laser" && r.minAmount != null ? `Umbral: ${fmtRD(r.minAmount)}` : ""}
+                          </div>
+                        </div>
+                        {meta?.kind === "laser" ? (
+                          <div className="flex items-center gap-1">
+                            <span className="text-[11px] text-muted-foreground">Umbral</span>
+                            <Input className="h-8 w-28" type="number" value={e.threshold} disabled={!canManage} onChange={(ev) => setE(r.id, { threshold: ev.target.value })} />
+                          </div>
+                        ) : null}
+                        {(meta?.kind === "pct" || meta?.kind === "laser") ? (
+                          <div className="flex items-center gap-1">
+                            <Input className="h-8 w-20 text-right" type="number" step="0.01" value={e.pct} disabled={!canManage} onChange={(ev) => setE(r.id, { pct: ev.target.value })} />
+                            <span className="text-sm text-muted-foreground">%</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <span className="text-sm text-muted-foreground">RD$</span>
+                            <Input className="h-8 w-24 text-right" type="number" step="0.01" value={e.fixed} disabled={!canManage} onChange={(ev) => setE(r.id, { fixed: ev.target.value })} />
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => toggleActive(r)}
+                          disabled={!canManage}
+                          className={`rounded-full border px-2 py-0.5 text-[11px] ${r.active ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"} ${canManage ? "cursor-pointer" : "cursor-default"}`}
+                        >
+                          {r.active ? "Activa" : "Inactiva"}
+                        </button>
+                        {canManage ? (
+                          <Button size="sm" className="h-8" disabled={savingId === r.id} onClick={() => save(r)}>
+                            {savingId === r.id ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1 h-3.5 w-3.5" />}Guardar
+                          </Button>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })
+      )}
+    </div>
+  )
+}

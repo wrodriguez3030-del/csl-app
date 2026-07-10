@@ -436,6 +436,18 @@ export type TabId =
   | "compras-pagos"
   | "compras-gastos-menores"
   | "compras-recurrentes"
+  // Módulo Comisión de Ventas
+  | "comision-dashboard"
+  | "comision-importar"
+  | "comision-sucursales"
+  | "comision-prestadores"
+  | "comision-productos"
+  | "comision-laser"
+  | "comision-clientes"
+  | "comision-liquidacion"
+  | "comision-reglas"
+  | "comision-historial"
+  | "comision-reportes"
   // Módulo Pulsos
   | "pulse-dashboard"
   | "pulse-equipos"
