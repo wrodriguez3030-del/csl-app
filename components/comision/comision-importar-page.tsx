@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label"
 import { Upload, FileSpreadsheet, Loader2, CheckCircle2, AlertTriangle, ShieldAlert } from "lucide-react"
 import { toSaleRecord, aggregateSales, type SaleRecord, type AggregateResult, type AggregateConfig } from "@/lib/commission/aggregate"
-import { computeRowHash } from "@/lib/commission/hash"
+import { computeRowHash, fnvHex } from "@/lib/commission/hash"
 import type { SaleCategory } from "@/lib/commission/classification"
 
 const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -19,8 +19,8 @@ const fmtRD = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { 
 
 // Columnas conocidas del export de Cibao (1-indexed).
 // "Produccion" (encabezado fila 1) y "Produccion v2" (encabezado fila 2, con medios de pago).
-const COL = { fecha: 2, local: 3, cliente: 4, tipo: 9, nombre: 10, prestador: 11, cantidad: 13, precio: 16 }
-const COLV2 = { fecha: 2, local: 3, cliente: 4, tipo: 8, nombre: 9, prestador: 10, cantidad: 13, precio: 16 }
+const COL = { id: 1, fecha: 2, local: 3, cliente: 4, tipo: 9, nombre: 10, prestador: 11, cantidad: 13, precio: 16 }
+const COLV2 = { id: 1, fecha: 2, local: 3, cliente: 4, tipo: 8, nombre: 9, prestador: 10, cantidad: 13, precio: 16 }
 
 /** Deriva el medio de pago de una fila de "Produccion v2" según la columna con monto. */
 function paymentFromV2(row: { getCell: (c: number) => { value: unknown } }): string {
@@ -53,7 +53,7 @@ async function sha256Hex(buf: ArrayBuffer): Promise<string> {
   return Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, "0")).join("")
 }
 
-interface ParsedSale { rec: SaleRecord; rawProvider: string; rowHash: string }
+interface ParsedSale { rec: SaleRecord; rawProvider: string; rowHash: string; originalId: string }
 interface Parsed {
   filename: string; fileHash: string; sales: ParsedSale[]; agg: AggregateResult
   periodMonth: number; periodYear: number
@@ -120,6 +120,10 @@ export function ComisionImportarPage() {
 
       const sales: ParsedSale[] = []
       const monthCount: Record<string, number> = {}
+      // Dos líneas idénticas legítimas (mismo recibo, mismo ítem repetido)
+      // generarían el MISMO row_hash y chocarían con el índice único →
+      // desambiguar con un contador de ocurrencias dentro del archivo.
+      const hashSeen = new Map<string, number>()
       for (let r = headerRow + 1; r <= ws.rowCount; r++) {
         const row = ws.getRow(r)
         const rawProvider = String(flat(row.getCell(C.prestador).value) ?? "")
@@ -127,14 +131,18 @@ export function ComisionImportarPage() {
         const itemType = String(flat(row.getCell(C.tipo).value) ?? "")
         if (!itemName && !itemType) continue
         const date = String(flat(row.getCell(C.fecha).value) ?? "")
+        const originalId = String(flat(row.getCell(C.id).value) ?? "").trim()
         const rec = toSaleRecord({
           date, branch: flat(row.getCell(C.local).value), customer: flat(row.getCell(C.cliente).value),
           provider: rawProvider, itemType, itemName,
           quantity: flat(row.getCell(C.cantidad).value), amount: flat(row.getCell(C.precio).value),
           paymentMethod: isV2 ? paymentFromV2(row) : undefined,
         })
-        const rowHash = computeRowHash("", { date: rec.date, branch: rec.branch, provider: rec.provider, customer: rec.customer, itemName: rec.itemName, category: rec.category, quantity: rec.quantity, amount: rec.amount })
-        sales.push({ rec, rawProvider, rowHash })
+        const baseHash = computeRowHash("", { date: rec.date, branch: rec.branch, provider: rec.provider, customer: rec.customer, itemName: rec.itemName, category: rec.category, quantity: rec.quantity, amount: rec.amount, originalId })
+        const occurrence = (hashSeen.get(baseHash) || 0) + 1
+        hashSeen.set(baseHash, occurrence)
+        const rowHash = occurrence === 1 ? baseHash : fnvHex(`${baseHash}#${occurrence}`)
+        sales.push({ rec, rawProvider, rowHash, originalId })
         // detectar período por la mayoría de fechas (DD/MM/YYYY o ISO)
         const mm = date.match(/(\d{4})-(\d{2})/) || date.match(/\d{1,2}\/(\d{2})\/(\d{4})/)
         if (mm) { const key = date.includes("-") ? `${mm[2]}-${mm[1]}` : `${mm[1]}-${mm[2]}`; monthCount[key] = (monthCount[key] || 0) + 1 }
@@ -171,7 +179,8 @@ export function ComisionImportarPage() {
         sales: parsed.sales.map((s) => ({
           date: s.rec.date, branch: s.rec.branch, customer: s.rec.customer, provider: s.rec.provider,
           providerOriginal: s.rawProvider, itemType: s.rec.itemType, itemName: s.rec.itemName,
-          category: s.rec.category, quantity: s.rec.quantity, amount: s.rec.amount, paymentMethod: s.rec.paymentMethod, rowHash: s.rowHash,
+          category: s.rec.category, quantity: s.rec.quantity, amount: s.rec.amount, paymentMethod: s.rec.paymentMethod,
+          rowHash: s.rowHash, originalId: s.originalId,
         })),
         calculations: parsed.agg.perEmployee.map((e) => ({ provider: e.provider, branch: e.branch, productUnits: e.productUnits, productIncentive: e.productIncentive, serviceCommissionTotal: e.serviceCommissionTotal, laserSales: e.laserSales, patients: e.patients })),
         ruleSnapshot: cfg,

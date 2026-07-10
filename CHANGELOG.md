@@ -18,6 +18,24 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.29.1] — 2026-07-10
+
+### Fixed
+- **Importación de Comisión de Ventas: "duplicate key" al confirmar.** Dos
+  líneas de venta idénticas dentro del mismo archivo (mismo recibo, ítem
+  repetido) generaban el MISMO `row_hash` y chocaban con el índice único al
+  insertar (el archivo real trae 5,231 filas).
+  - El cliente ahora incluye el **Identificador del recibo** en el hash y
+    **desambigua ocurrencias repetidas** (`hash#2`, `hash#3`…): las líneas
+    idénticas legítimas se conservan todas.
+  - El servidor deduplica defensivamente dentro del lote (jamás revienta el
+    índice) y **paraleliza** las consultas de dedup y los inserts de 500 en
+    500 para que archivos grandes no rocen el timeout.
+  - Los 5 intentos fallidos quedaron auto-anulados por la compensación de
+    v0.28.4 (0 ventas huérfanas) — el reintento quedó libre.
+
+---
+
 ## [0.29.0] — 2026-07-10
 
 ### Fixed

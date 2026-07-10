@@ -257,13 +257,24 @@ export async function commitCommissionImport(params: ActionParams, user: ActionU
   const importId = String(impRow.id)
 
   // Dedup a nivel de fila: descartar row_hash ya existentes en el negocio.
+  // Consultas en PARALELO (archivos de miles de filas → 300 hashes por query).
   const hashes = sales.map((s) => s.rowHash).filter(Boolean) as string[]
   const seen = new Set<string>()
-  for (const part of chunk(hashes, 300)) {
+  await Promise.all(chunk(hashes, 300).map(async (part) => {
     const { data } = await sb.from("sales_commission_sales").select("row_hash").eq("business_id", business_id).in("row_hash", part)
     for (const r of data || []) seen.add(String((r as Row).row_hash))
-  }
-  const fresh = sales.filter((s) => !s.rowHash || !seen.has(s.rowHash))
+  }))
+  // Defensa adicional: si el payload trae el MISMO row_hash dos veces (no
+  // debería — el cliente desambigua ocurrencias — pero un archivo viejo o un
+  // reintento concurrente podría), conservar solo la primera para que el
+  // índice único jamás reviente el lote con "duplicate key".
+  const seenInBatch = new Set<string>()
+  const fresh = sales.filter((s) => {
+    if (!s.rowHash) return true
+    if (seen.has(s.rowHash) || seenInBatch.has(s.rowHash)) return false
+    seenInBatch.add(s.rowHash)
+    return true
+  })
   // sale_date llega del Excel como "30/06/2026 19:19" (DD/MM/YYYY) o ISO;
   // Postgres (DateStyle ISO,MDY) rechaza DD/MM → normalizar SIEMPRE a ISO.
   const salesRows = fresh.map((s, i) => ({
@@ -284,12 +295,16 @@ export async function commitCommissionImport(params: ActionParams, user: ActionU
     } catch { /* best-effort */ }
   }
 
+  // Insertar en lotes de 500 en PARALELO (independientes entre sí); si
+  // cualquiera falla se compensa el import completo.
   let inserted = 0
-  for (const part of chunk(salesRows, 500)) {
+  const results = await Promise.all(chunk(salesRows, 500).map(async (part) => {
     const { error } = await sb.from("sales_commission_sales").insert(part)
-    if (error) { await voidThisImport(); throw new Error(`Error insertando ventas: ${error.message}`) }
-    inserted += part.length
-  }
+    return { error, count: part.length }
+  }))
+  const failed = results.find((r) => r.error)
+  if (failed?.error) { await voidThisImport(); throw new Error(`Error insertando ventas: ${failed.error.message}`) }
+  inserted = results.reduce((s, r) => s + r.count, 0)
 
   // Cálculos por empleado (bono/limpieza/ajuste se editan en Liquidación).
   const calcRows = calcs.map((c) => {
