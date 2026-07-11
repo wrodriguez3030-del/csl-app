@@ -436,7 +436,7 @@ export type TabId =
   | "compras-pagos"
   | "compras-gastos-menores"
   | "compras-recurrentes"
-  // Módulo Comisión de Ventas
+  // Módulo Incentivos de Ventas
   | "comision-dashboard"
   | "comision-importar"
   | "comision-sucursales"

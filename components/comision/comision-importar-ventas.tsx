@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Tab VENTAS del Importador de Comisión de Ventas.
+ * Tab VENTAS del Importador de Incentivos de Ventas.
  * Parsea la hoja "Produccion"/"Produccion v2", detecta TODOS los períodos del
  * archivo (puede cubrir varios meses), concilia contra la hoja "Resumen"
  * (total/servicios/productos/medios de pago) y confirma la importación con

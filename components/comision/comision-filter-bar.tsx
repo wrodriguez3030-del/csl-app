@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Barra de filtros COMPARTIDA de Comisión de Ventas.
+ * Barra de filtros COMPARTIDA de Incentivos de Ventas.
  * Un solo período global (zustand, persistido) para TODO el módulo: al navegar
  * entre pantallas se mantiene (p.ej. Mayo 2026 en Dashboard → sigue en
  * Liquidación/Reportes). Solo consulta/visualiza — nunca recalcula períodos.

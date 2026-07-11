@@ -1,5 +1,5 @@
 /**
- * Helpers PUROS de período para Comisión de Ventas (testeables).
+ * Helpers PUROS de período para Incentivos de Ventas (testeables).
  * Zona horaria del negocio: America/Santo_Domingo — "hoy" se calcula en esa TZ
  * para que una venta del día 31 a las 8pm no caiga en el mes siguiente por UTC.
  * Rangos SIEMPRE inclusivos: [from, to] con `to` incluido (el backend consulta

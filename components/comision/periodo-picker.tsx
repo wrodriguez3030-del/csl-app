@@ -2,7 +2,7 @@
 
 /**
  * Selector de PERÍODO (mes/año) [+ sucursal] compartido por las pantallas
- * mensuales de Comisión de Ventas (Comisión láser, Clientes atendidos, Cálculo
+ * mensuales de Incentivos de Ventas (Comisión láser, Clientes atendidos, Cálculo
  * mensual). El último período elegido se comparte entre pantallas mientras dura
  * la sesión (estado a nivel de módulo): cambiar de pantalla NO resetea el mes.
  */

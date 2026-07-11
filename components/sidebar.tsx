@@ -115,7 +115,7 @@ const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
     ],
   },
   {
-    label: "Comisión de Ventas",
+    label: "Incentivos de Ventas",
     items: [
       { id: "comision-dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
       { id: "comision-importar", label: "Importador", icon: <FileText className="h-4 w-4" /> },

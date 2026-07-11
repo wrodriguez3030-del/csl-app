@@ -117,7 +117,7 @@ export function ComisionCalculoPage() {
       <Card className="border-[color:var(--brand-border)]">
         <CardContent className="flex items-center gap-2 p-3 text-sm font-semibold sm:p-4">
           <span className="text-[color:var(--brand-primary)]"><Calculator className="h-4 w-4" /></span>
-          Comisión de Ventas · Cálculo mensual de incentivos
+          Incentivos de Ventas · Cálculo mensual de incentivos
         </CardContent>
       </Card>
 

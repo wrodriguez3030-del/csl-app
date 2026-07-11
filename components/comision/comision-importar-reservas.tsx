@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Tab RESERVAS del Importador de Comisión de Ventas.
+ * Tab RESERVAS del Importador de Incentivos de Ventas.
  * Parsea la hoja "Reservas" (export real de 29 columnas), muestra preview con
  * resumen por estado/prestador/sucursal y confirma en LOTES (archivos de 20 mil+
  * filas) con progreso visible: start → append×N → finalize (alimenta Clientes

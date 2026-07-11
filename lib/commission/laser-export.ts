@@ -45,7 +45,7 @@ export async function exportLaserExcel(detail: LaserDetail): Promise<void> {
   const mod = await import("exceljs")
   const ExcelJS = ((mod as { default?: ExcelJSModule }).default ?? mod) as ExcelJSModule
   const wb = new ExcelJS.Workbook()
-  wb.creator = "csl-app · Comisión de Ventas"
+  wb.creator = "csl-app · Incentivos de Ventas"
   const period = `${MONTHS[detail.month] || ""} ${detail.year}`
   const BRAND = "FF0F766E"
   const money = '"RD$"#,##0.00'

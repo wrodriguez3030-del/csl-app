@@ -58,7 +58,7 @@ export function ComisionHistorialPage() {
   useEffect(() => { void load() }, [load])
 
   return (
-    <Shell icon={<CalendarClock className="h-4 w-4" />} title="Comisión de Ventas · Historial mensual">
+    <Shell icon={<CalendarClock className="h-4 w-4" />} title="Incentivos de Ventas · Historial mensual">
       <CommissionFilterBar>
         <div>
           <label className="text-[11px] font-medium">Tipo</label>
@@ -116,7 +116,7 @@ export function ComisionSucursalesPage() {
   const br = data?.branches || []
   const T = (f: (b: (typeof br)[number]) => number) => br.reduce((s, b) => s + f(b), 0)
   return (
-    <Shell icon={<Building2 className="h-4 w-4" />} title="Comisión de Ventas · Ventas por sucursal">
+    <Shell icon={<Building2 className="h-4 w-4" />} title="Incentivos de Ventas · Ventas por sucursal">
       <CommissionFilterBar branches={BRANCHES}>
         <div>
           <label className="text-[11px] font-medium">Forma de pago</label>
@@ -174,7 +174,7 @@ export function ComisionProductosPage() {
   const totalI = items.reduce((s, c) => s + c.productIncentive, 0)
   const providers = [...new Set(items.map((c) => c.provider).filter(Boolean))].sort()
   return (
-    <Shell icon={<Package className="h-4 w-4" />} title="Comisión de Ventas · Incentivos de productos">
+    <Shell icon={<Package className="h-4 w-4" />} title="Incentivos de Ventas · Incentivos de productos">
       <CommissionFilterBar branches={BRANCHES} providers={providers} />
       <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
         {loading ? <div className="py-10 text-center text-sm text-muted-foreground">Cargando...</div>
@@ -245,7 +245,7 @@ export function ComisionLaserPage() {
   const weightsOk = !detail || detail.mode !== "pesos" || Math.abs(detail.weights.personas + detail.weights.pacientes - 100) < 0.01
 
   return (
-    <Shell icon={<Zap className="h-4 w-4" />} title="Comisión de Ventas · Comisión depilación láser">
+    <Shell icon={<Zap className="h-4 w-4" />} title="Incentivos de Ventas · Comisión depilación láser">
       {/* Selectores período + acciones */}
       <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-end gap-3 p-4">
         <PeriodoSucursalPicker month={month} year={year} onMonth={setMonth} onYear={setYear} />
@@ -443,7 +443,7 @@ export function ComisionClientesPage() {
     setEdit((prev) => ({ ...prev, [p]: { ...(prev[p] || { patients: "", service: "", observation: "" }), ...patch } }))
 
   return (
-    <Shell icon={<Users className="h-4 w-4" />} title="Comisión de Ventas · Clientes atendidos (captura de pacientes)">
+    <Shell icon={<Users className="h-4 w-4" />} title="Incentivos de Ventas · Clientes atendidos (captura de pacientes)">
       <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-end gap-3 p-4">
         <PeriodoSucursalPicker showBranch month={month} year={year} branch={branch} onMonth={setMonth} onYear={setYear} onBranch={setBranch} />
         <Button size="sm" variant="outline" className="h-9" disabled={loading} onClick={() => void load()}>{loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}Recargar</Button>

@@ -1,5 +1,5 @@
 /**
- * Motor de cálculo (PURO, sin efectos de I/O) de Comisión de Ventas.
+ * Motor de cálculo (PURO, sin efectos de I/O) de Incentivos de Ventas.
  * Todas las funciones reciben los valores desde reglas/inputs — nada hardcodeado.
  * Es el "gate" del módulo: reproduce el modelo de referencia (RD$25,815.11).
  */

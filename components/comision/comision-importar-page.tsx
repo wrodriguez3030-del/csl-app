@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * IMPORTADOR de Comisión de Ventas — pantalla contenedora con dos importadores
+ * IMPORTADOR de Incentivos de Ventas — pantalla contenedora con dos importadores
  * claramente separados (Ventas y Reservas), cards de estado del período e
  * historial unificado de importaciones con anulación lógica.
  */
@@ -83,7 +83,7 @@ export function ComisionImportarPage() {
       <Card className="border-[color:var(--brand-border)]">
         <CardContent className="p-4">
           <div className="flex items-center gap-2 text-sm font-semibold">
-            <Upload className="h-4 w-4 text-[color:var(--brand-primary)]" /> Importador de Comisión de Ventas
+            <Upload className="h-4 w-4 text-[color:var(--brand-primary)]" /> Importador de Incentivos de Ventas
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             Carga los archivos de Ventas y Reservas del período. El sistema valida, detecta duplicados, vincula prestadores y calcula las bases necesarias para las comisiones e incentivos.

@@ -39,7 +39,7 @@ interface AppState {
   expandedGroup: string | null
   setExpandedGroup: (group: string | null) => void
   /**
-   * Filtros de período de Comisión de Ventas — COMPARTIDOS por todas las
+   * Filtros de período de Incentivos de Ventas — COMPARTIDOS por todas las
    * pantallas del módulo (el período se mantiene al navegar). Solo visual/
    * consulta; nunca gobierna permisos ni dispara recálculos.
    */
@@ -182,7 +182,7 @@ export const useAppStore = create<AppState>()(
         // Preferencias visuales del menú (nunca permisos):
         sidebarCollapsed: state.sidebarCollapsed,
         expandedGroup: state.expandedGroup,
-        // Período activo de Comisión de Ventas (persistente entre pantallas):
+        // Período activo de Incentivos de Ventas (persistente entre pantallas):
         commissionFilters: state.commissionFilters,
       }),
     }

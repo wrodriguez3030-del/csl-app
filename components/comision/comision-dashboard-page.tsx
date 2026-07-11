@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * COMISIÓN DE VENTAS · Dashboard EJECUTIVO.
+ * INCENTIVOS DE VENTAS · Dashboard EJECUTIVO.
  * Panel de resultados, incentivos y liquidación mensual: 2 filas de KPIs con
  * comparativas vs mes anterior, 3 gráficos (sucursales / composición donut /
  * tendencia 6 meses), top prestadores, resumen de liquidación e insights.
@@ -438,7 +438,7 @@ export function ComisionDashboardPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-black text-[color:var(--brand-primary-dark)]">Comisión de Ventas</h1>
+        <h1 className="text-xl font-black text-[color:var(--brand-primary-dark)]">Incentivos de Ventas</h1>
         <p className="text-sm text-muted-foreground">Panel ejecutivo de resultados, incentivos y liquidación mensual</p>
       </div>
 

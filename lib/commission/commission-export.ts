@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Exportación profesional de Comisión de Ventas:
+ * Exportación profesional de Incentivos de Ventas:
  * - `exportCommissionExcel`: .xlsx nativo con ExcelJS, 10 hojas (Resumen,
  *   Sucursal, Prestador, Productos, Servicios, Láser, Clientes, Liquidación,
  *   Reglas, Conciliación) con encabezado corporativo, colores de marca, bordes,
@@ -29,7 +29,7 @@ const argb = (color: string) => { const c = (color || "#0891b2").replace("#", ""
 const esc = (v: unknown) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 const fmtRD = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 export const commissionFileBase = (business: Business, month: number, year: number) =>
-  `COMISION_VENTAS_${(MONTHS[month] || "").toUpperCase()}_${year}`
+  `INCENTIVOS_VENTAS_${(MONTHS[month] || "").toUpperCase()}_${year}`
 
 function pickExt(ct: string | null, url: string): "png" | "jpeg" | "gif" | null {
   const s = (ct || "").toLowerCase()
@@ -70,7 +70,7 @@ export async function buildCommissionWorkbook(
     ws.columns = columns.map((c) => ({ width: c.width || 18 }))
     if (withLogo && logo) { try { const id = wb.addImage({ base64: logo.base64, extension: logo.extension }); ws.addImage(id, { tl: { col: 0, row: 0 }, ext: { width: 130, height: 46 } }) } catch { /* */ } }
     ws.mergeCells(1, 2, 1, columns.length); const nm = ws.getCell(1, 2); nm.value = (business.name || "").toUpperCase(); nm.font = { bold: true, size: 14, color: { argb: brand } }; ws.getRow(1).height = 38
-    ws.mergeCells(2, 1, 2, columns.length); const tl = ws.getCell(2, 1); tl.value = `COMISIÓN DE VENTAS · ${title}`; tl.font = { bold: true, size: 12, color: { argb: brand } }
+    ws.mergeCells(2, 1, 2, columns.length); const tl = ws.getCell(2, 1); tl.value = `INCENTIVOS DE VENTAS · ${title}`; tl.font = { bold: true, size: 12, color: { argb: brand } }
     ws.mergeCells(3, 1, 3, columns.length); ws.getCell(3, 1).value = `Período: ${periodLabel}`; ws.getCell(3, 1).font = { size: 10, color: { argb: "FF475569" } }
     ws.mergeCells(4, 1, 4, columns.length); ws.getCell(4, 1).value = `Generado por: ${data.generadoPor || "—"}`; ws.getCell(4, 1).font = { size: 10, color: { argb: "FF475569" } }
     const hr = ws.getRow(6)
@@ -107,7 +107,7 @@ export async function buildCommissionWorkbook(
     ws.columns = [{ width: 40 }, { width: 24 }]
     if (logo && name === "Resumen General") { try { const id = wb.addImage({ base64: logo.base64, extension: logo.extension }); ws.addImage(id, { tl: { col: 0, row: 0 }, ext: { width: 130, height: 46 } }) } catch { /* */ } }
     ws.getCell(1, 2).value = (business.name || "").toUpperCase(); ws.getCell(1, 2).font = { bold: true, size: 14, color: { argb: brand } }; ws.getRow(1).height = 38
-    ws.getCell(2, 1).value = `COMISIÓN DE VENTAS · ${title}`; ws.getCell(2, 1).font = { bold: true, size: 12, color: { argb: brand } }
+    ws.getCell(2, 1).value = `INCENTIVOS DE VENTAS · ${title}`; ws.getCell(2, 1).font = { bold: true, size: 12, color: { argb: brand } }
     ws.getCell(3, 1).value = `Período: ${periodLabel}`; ws.getCell(3, 1).font = { size: 10, color: { argb: "FF475569" } }
     let r = 5
     for (const [label, value, money] of pairs) {
@@ -222,7 +222,7 @@ export function printCommissionPdf(data: CommissionReportData, business: Busines
   .kpis{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}.kpi{border:1px solid #e2e8f0;border-radius:6px;padding:5px 10px;font-size:11px}.kpi b{display:block;font-size:13px}
   .footer{margin-top:12px;font-size:9px;color:#64748b;display:flex;justify-content:space-between}</style></head><body>
   <div class="header"><div class="brand">${logoSrc ? `<img class="logo-img" src="${esc(logoSrc)}" onerror="this.style.display='none'"/>` : `<div class="logo-circle">${esc(business.shortName || "CSL")}</div>`}<div><div class="brand-name">${esc((business.name || "").toUpperCase())}</div><div class="meta">Sistema Integral de Mantenimientos</div></div></div>
-  <div style="text-align:right"><h1>COMISIÓN DE VENTAS</h1><div class="meta">Período: <b>${esc(periodLabel)}</b></div></div></div>
+  <div style="text-align:right"><h1>INCENTIVOS DE VENTAS</h1><div class="meta">Período: <b>${esc(periodLabel)}</b></div></div></div>
   <div class="kpis">
     <div class="kpi">Inc. productos<b>${fmtRD(t.productIncentive)}</b></div><div class="kpi">Com. servicios<b>${fmtRD(t.serviceCommission)}</b></div>
     <div class="kpi">Inc. láser<b>${fmtRD(t.laserIncentive)}</b></div><div class="kpi">Bono<b>${fmtRD(t.bonusExtra)}</b></div>

@@ -18,6 +18,18 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.38.1] — 2026-07-11
+
+### Changed
+- **Renombrado en toda la UI: "Comisión de Ventas" → "Incentivos de Ventas"**
+  (sección del menú/sidebar, títulos de las 12 pantallas, dashboard, sección de
+  permisos en admin, encabezados de Excel/PDF y nombre de archivo de export:
+  `INCENTIVOS_VENTAS_<MES>_<AÑO>.xlsx`). Solo etiquetas visibles: los IDs
+  internos (`comision-*`), permisos (`sales_commission.*`), tablas y API no
+  cambian (cero riesgo de romper menús asignados o permisos existentes).
+
+---
+
 ## [0.38.0] — 2026-07-11
 
 ### Changed

@@ -3468,7 +3468,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     case "getRecurringHistory":
       return await purchases.getRecurringHistory(params)
 
-    // ── Comisión de Ventas ──
+    // ── Incentivos de Ventas ──
     case "getCommissionRules":
       return await commission.getCommissionRules(params)
     case "saveCommissionRule":

@@ -1,5 +1,5 @@
 /**
- * Módulo COMISIÓN DE VENTAS — lógica de servidor (reglas, importaciones,
+ * Módulo INCENTIVOS DE VENTAS — lógica de servidor (reglas, importaciones,
  * cálculos, dashboard). Multi-tenant: toda lectura/escritura se scopea por
  * business_id del BusinessContext (service_role bypassa RLS; el aislamiento real
  * lo dan estos filtros). RBAC con permisos `sales_commission.*` (admin/superadmin
@@ -912,7 +912,7 @@ async function fetchMonthlyAggregates(
 }
 
 /**
- * Dashboard EJECUTIVO de Comisión de Ventas — una sola llamada con todo lo que
+ * Dashboard EJECUTIVO de Incentivos de Ventas — una sola llamada con todo lo que
  * pinta la pantalla: KPIs del período con comparativas vs mes anterior, ventas
  * por sucursal, composición de incentivos, tendencia de 6 meses, top
  * prestadores, resumen de liquidación e insights. Las comparativas solo se

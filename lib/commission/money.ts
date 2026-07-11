@@ -1,5 +1,5 @@
 /**
- * Utilidades de dinero para el módulo de Comisión de Ventas.
+ * Utilidades de dinero para el módulo de Incentivos de Ventas.
  * Se opera en CENTAVOS internamente para evitar errores de punto flotante al
  * sumar montos con decimales (p. ej. RD$1,810.01 repetido muchas veces).
  */

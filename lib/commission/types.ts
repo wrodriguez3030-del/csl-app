@@ -1,5 +1,5 @@
 /**
- * Tipos del dominio de Comisión de Ventas. Sin dependencias de runtime:
+ * Tipos del dominio de Incentivos de Ventas. Sin dependencias de runtime:
  * importable por cliente y servidor. Los VALORES (porcentajes, montos, escalas,
  * empleados) NUNCA se hardcodean en la lógica: viven en reglas configurables
  * (`CommissionRule`) versionadas por fecha efectiva.
