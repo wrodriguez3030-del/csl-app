@@ -97,6 +97,51 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
   t("quick 'todo' = sin fechas (todos los meses)", todo.from === "" && todo.to === "")
 }
 
+// ── Aplicación del fondo láser a la liquidación (laser-apply) ──
+{
+  const { assignLaserToCalcs } = await import("../lib/commission/laser-apply.ts")
+  console.log("── Fondo láser → liquidación (asignación pura)")
+  const calc = (id, provider, extra = {}) => ({ id, provider, branch: "RAFAEL VIDAL", status: "calculado", laserIncentive: 0, grossTotal: 1000, ...extra })
+
+  // Caso base: cada prestador recibe su monto; total aplicado cuadra.
+  let plan = assignLaserToCalcs(
+    [{ provider: "SAHOMY", amount: 500.25 }, { provider: "EMELI", amount: 249.75 }],
+    [calc("a", "SAHOMY"), calc("b", "EMELI")],
+  )
+  t("asigna a cada prestador", plan.assignments.length === 2 && plan.assignments.find((x) => x.id === "a")?.laserIncentive === 500.25)
+  t("total aplicado = 750.00", plan.appliedTotal === 750)
+  t("sin no-vinculados ni bloqueados", plan.unmatched.length === 0 && plan.locked.length === 0)
+
+  // Multi-sucursal: el monto COMPLETO va a UNA fila (mayor bruto); la otra a 0.
+  plan = assignLaserToCalcs(
+    [{ provider: "SAHOMY", amount: 300 }],
+    [calc("a1", "SAHOMY", { grossTotal: 900, laserIncentive: 150 }), calc("a2", "SAHOMY", { branch: "VILLA OLGA", grossTotal: 2000, laserIncentive: 150 })],
+  )
+  t("multi-sucursal: 300 a la de mayor bruto", plan.assignments.find((x) => x.id === "a2")?.laserIncentive === 300)
+  t("multi-sucursal: la otra queda en 0", plan.assignments.find((x) => x.id === "a1")?.laserIncentive === 0)
+
+  // Idempotencia: re-aplicar el mismo reparto no produce cambios.
+  plan = assignLaserToCalcs([{ provider: "SAHOMY", amount: 300 }], [calc("a", "SAHOMY", { laserIncentive: 300 })])
+  t("idempotente: sin cambios al re-aplicar", plan.assignments.length === 0 && plan.appliedTotal === 300)
+
+  // Quien sale del reparto vuelve a 0.
+  plan = assignLaserToCalcs([], [calc("a", "SAHOMY", { laserIncentive: 120 })])
+  t("fuera del reparto → láser a 0", plan.assignments.length === 1 && plan.assignments[0].laserIncentive === 0)
+
+  // Prestador con fondo pero sin fila de cálculo → no vinculado.
+  plan = assignLaserToCalcs([{ provider: "ASHLEY", amount: 90 }], [calc("a", "SAHOMY")])
+  t("sin cálculo → unmatched", plan.unmatched.length === 1 && plan.unmatched[0].provider === "ASHLEY")
+
+  // Pagadas/cerradas no se tocan y se reportan.
+  plan = assignLaserToCalcs([{ provider: "SAHOMY", amount: 400 }], [calc("a", "SAHOMY", { status: "pagado" })])
+  t("pagado: no se toca y se reporta", plan.assignments.length === 0 && plan.locked.length === 1 && plan.locked[0].target === 400)
+  t("pagado: no cuenta en total aplicado", plan.appliedTotal === 0)
+
+  // Normalización de nombre (espacios/minúsculas) al cruzar reparto vs cálculo.
+  plan = assignLaserToCalcs([{ provider: " sahomy " , amount: 100 }], [calc("a", "SAHOMY")])
+  t("cruce insensible a mayúsculas/espacios", plan.assignments.length === 1 && plan.assignments[0].laserIncentive === 100)
+}
+
 // ── Archivos reales (§33/§34) — solo si están disponibles ──
 const VENTAS = "C:/Users/ADMIN/Downloads/reporte_de_ventas_3552_2026-07-10T15_38_41+00_00.xlsx"
 const RESERVAS = "C:/Users/ADMIN/Downloads/reservas_3552_1783698071.xlsx"
