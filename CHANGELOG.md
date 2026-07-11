@@ -18,6 +18,50 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.32.0] — 2026-07-11
+
+### Added
+- **Comisión de Ventas · Dashboard EJECUTIVO** (rediseño completo): título +
+  subtítulo, barra de filtros propia (`DashboardFilterBar`: período por mes /
+  rango personalizado / todo, sucursal, prestador, botones Más filtros /
+  Exportar / Actualizar datos), 6 KPIs principales (ventas totales, comisiones,
+  incentivos productos, láser, bono, neto) y 6 KPIs operativos (empleados,
+  importaciones del mes, clientes atendidos, productos vendidos, % tarjeta,
+  ticket promedio) **con tendencia vs mes anterior**, gráficos Ventas por
+  sucursal (barras), Composición de incentivos (donut con total al centro) y
+  Tendencia mensual de 6 meses (área), tabla Top prestadores, Resumen de
+  liquidación (bruto − limpieza − descuentos = NETO A PAGAR) e Insights del
+  período. Componentes: `ExecutiveKpiCard`, `OperationalKpiCard`,
+  `SalesByBranchChart`, `IncentiveCompositionChart`, `MonthlyTrendChart`,
+  `TopProvidersTable`, `SettlementSummaryCard`, `PeriodInsightsCard`
+  (`components/comision/comision-dashboard-page.tsx`). Paleta de gráficos
+  validada por accesibilidad (teal `#0D9488`, ámbar, violeta, rosa).
+- Endpoint único `getCommissionExecutiveDashboard` (`lib/server/commission.ts`):
+  KPIs del período + comparativas vs mes anterior (solo con mes completo),
+  ventas/medios de pago, top prestadores (liquidación + ventas atribuibles),
+  composición, tendencia e insights en UNA llamada. Smoke test de solo lectura
+  `scripts/_smoke-exec-dashboard.mjs` (16/16 contra datos reales de db-cls).
+- Función SQL `sc_sales_monthly` (migración `202607110001`, **aplicada a
+  db-cls**): agregación mensual de ventas (año, mes, sucursal, pago) en la DB —
+  la tendencia de 6 meses ya no transfiere miles de filas crudas por request;
+  con fallback paginado si la función no existe.
+- **Fondo láser → liquidación**: acción `applyCommissionLaser` + botón
+  "Aplicar a liquidación" en Comisión depilación láser (permiso
+  `sales_commission.calculate`). Escribe el `laser_incentive` de cada empleado
+  según su participación de pacientes y recalcula bruto/neto, mes por mes.
+  Idempotente (re-aplicar sincroniza, pone en 0 a quien salió del reparto);
+  filas pagadas/cerradas no se tocan y se reportan; prestadores sin cálculo se
+  reportan como no vinculados. Lógica pura testeable en
+  `lib/commission/laser-apply.ts` (12 checks nuevos, 77/77 en verde).
+
+### Changed
+- `fetchSalesForPeriod` ahora lee **paginado** (páginas de 1,000, orden estable
+  por id): inmune a caps de filas de PostgREST en meses con >5,000 ventas.
+- El Dashboard anterior (KPIs planos, sin comparativas ni gráficos) queda
+  reemplazado por el panel ejecutivo; el resto de pantallas del módulo no cambia.
+
+---
+
 ## [0.31.2] — 2026-07-10
 
 ### Added

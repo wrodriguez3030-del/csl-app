@@ -1,15 +1,20 @@
 "use client"
 
 import { useCallback, useEffect, useState, type ReactNode } from "react"
-import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
+import { useAppStore, apiJsonp, normalizeApiUrl, invalidateReadCache } from "@/lib/store"
+import { useSessionUser } from "@/hooks/use-session-user"
+import { canPerm } from "@/lib/permissions"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
-  LayoutDashboard, Building2, Package, Zap, Users,
-  CalendarClock, RefreshCcw,
+  Building2, Package, Zap, Users, CalendarClock,
+  Loader2, CheckCircle2, AlertTriangle, Wand2,
 } from "lucide-react"
 import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
+
+export { ComisionDashboardPage } from "./comision-dashboard-page"
 
 const fmtRD = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const BRANCHES = ["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]
@@ -24,58 +29,6 @@ function Shell({ icon, title, children }: { icon: ReactNode; title: string; chil
       </Card>
       {children}
     </div>
-  )
-}
-
-// ── Dashboard (lee datos vivos; período/sucursal/prestador compartidos) ─────
-export function ComisionDashboardPage() {
-  const { apiUrl, showToast } = useAppStore()
-  const { params } = useCommissionFilters()
-  const [data, setData] = useState<{ activeRules: number; imports: number; employees: number; kpis: Record<string, number>; calculations?: { provider: string }[] } | null>(null)
-  const [loading, setLoading] = useState(true)
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionDashboard", ...params })
-      if (res?.ok) setData(res as never)
-      else showToast((res as { error?: string })?.error || "Error", "error")
-    } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
-  }, [apiUrl, showToast, params])
-  useEffect(() => { void load() }, [load])
-  const providers = [...new Set((data?.calculations || []).map((c) => c.provider).filter(Boolean))].sort()
-
-  const k = data?.kpis || {}
-  const tiles: [string, number][] = [
-    ["Incentivo productos", k.productIncentive || 0],
-    ["Comisiones servicios", k.serviceCommission || 0],
-    ["Incentivo láser", k.laserIncentive || 0],
-    ["Bono extra", k.bonusExtra || 0],
-    ["Total bruto", k.grossTotal || 0],
-    ["Aporte limpieza", k.cleaningContribution || 0],
-    ["Total neto", k.netTotal || 0],
-  ]
-
-  return (
-    <Shell icon={<LayoutDashboard className="h-4 w-4" />} title="Comisión de Ventas · Dashboard">
-      <CommissionFilterBar branches={BRANCHES} providers={providers} />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Reglas activas</div><div className="text-2xl font-black">{data?.activeRules ?? "—"}</div></CardContent></Card>
-        <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Importaciones</div><div className="text-2xl font-black">{data?.imports ?? "—"}</div></CardContent></Card>
-        <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Empleados calculados</div><div className="text-2xl font-black">{data?.employees ?? "—"}</div></CardContent></Card>
-      </div>
-      {loading ? null : (data?.employees ?? 0) === 0 ? (
-        <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-col items-center gap-2 py-10 text-center text-sm text-muted-foreground">
-          Aún no hay cálculos para mostrar. Importa un archivo de ventas y ejecuta el cálculo del período.
-          <Button variant="outline" size="sm" className="mt-1 h-9" onClick={load}><RefreshCcw className="mr-1.5 h-4 w-4" />Actualizar</Button>
-        </CardContent></Card>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {tiles.map(([label, val]) => (
-            <Card key={label} className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">{label}</div><div className="text-lg font-bold tabular-nums">{fmtRD(val)}</div></CardContent></Card>
-          ))}
-        </div>
-      )}
-    </Shell>
   )
 }
 
@@ -235,11 +188,25 @@ export function ComisionProductosPage() {
 }
 
 // Comisión depilación láser: fondo por escala + reparto por pacientes
+interface LaserApplyResult {
+  results: {
+    month: number; year: number; fund: number; tramoPct: number; updated: number; appliedTotal: number
+    unmatched: { provider: string; amount: number }[]
+    locked: { provider: string; status: string }[]
+  }[]
+  totalApplied: number
+}
+
 export function ComisionLaserPage() {
   const { apiUrl, showToast } = useAppStore()
-  const { params } = useCommissionFilters()
+  const user = useSessionUser()
+  const canApply = canPerm(user, "sales_commission.calculate")
+  const { params, filters, label } = useCommissionFilters()
   const [d, setD] = useState<{ laserTotal: number; tramoPct: number; threshold: number; fund: number; patientsTotal: number; distribution: { provider: string; patients: number; participation: number; amount: number }[]; byBranch: Record<string, number> } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [applying, setApplying] = useState(false)
+  const [applied, setApplied] = useState<LaserApplyResult | null>(null)
   const load = useCallback(async () => {
     setLoading(true)
     try { const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionLaser", ...params }); if (res?.ok) setD(res as never); else showToast((res as { error?: string })?.error || "Error", "error") }
@@ -247,6 +214,23 @@ export function ComisionLaserPage() {
   }, [apiUrl, showToast, params])
   useEffect(() => { void load() }, [load])
   const providers = (d?.distribution || []).map((r) => r.provider).sort()
+  const hasPeriod = filters.quick !== "todo"
+
+  const applyToSettlement = async () => {
+    setApplying(true)
+    try {
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "applyCommissionLaser", ...params })
+      if (!res?.ok) throw new Error((res as { error?: string })?.error || "No se pudo aplicar")
+      const r = res as unknown as LaserApplyResult
+      setApplied(r)
+      invalidateReadCache("getCommissionCalculations")
+      invalidateReadCache("getCommissionDashboard")
+      invalidateReadCache("getCommissionExecutiveDashboard")
+      showToast(`Fondo láser aplicado: RD$${(r.totalApplied || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} a la liquidación`, "success")
+      setConfirmOpen(false)
+    } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setApplying(false) }
+  }
+
   return (
     <Shell icon={<Zap className="h-4 w-4" />} title="Comisión de Ventas · Comisión depilación láser">
       <CommissionFilterBar branches={BRANCHES} providers={providers} />
@@ -257,7 +241,17 @@ export function ComisionLaserPage() {
         <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Pacientes</div><div className="text-xl font-black tabular-nums">{d?.patientsTotal || 0}</div></CardContent></Card>
       </div>
       <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
-        <div className="border-b px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-600">Reparto del fondo por participación de pacientes</div>
+        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Reparto del fondo por participación de pacientes</span>
+          {canApply ? (
+            <Button size="sm" variant="outline" className="ml-auto h-8"
+              disabled={loading || applying || !hasPeriod || !d || d.fund <= 0}
+              title={!hasPeriod ? "Selecciona un período (mes o rango) para aplicar" : undefined}
+              onClick={() => setConfirmOpen(true)}>
+              <Wand2 className="mr-1.5 h-3.5 w-3.5" />Aplicar a liquidación
+            </Button>
+          ) : null}
+        </div>
         {loading ? <div className="py-8 text-center text-sm text-muted-foreground">Cargando...</div>
           : !d || d.distribution.length === 0 ? <div className="py-8 text-center text-sm text-muted-foreground">Sin datos. Importa un archivo de ventas primero.</div>
           : (<div className="overflow-x-auto"><table className="w-full text-sm">
@@ -266,6 +260,38 @@ export function ComisionLaserPage() {
             <tfoot><tr className="bg-slate-50 font-bold"><td className="px-4 py-2">Total</td><td className="px-2 py-2 text-right tabular-nums">{d.patientsTotal}</td><td className="px-2 py-2 text-right tabular-nums">100%</td><td className="px-4 py-2 text-right tabular-nums">{fmtRD(d.fund)}</td></tr></tfoot>
           </table></div>)}
       </CardContent></Card>
+
+      {applied ? (
+        <Card className="border-emerald-200 bg-emerald-50/40"><CardContent className="space-y-2 p-4 text-sm">
+          <div className="flex items-center gap-2 font-semibold text-emerald-700"><CheckCircle2 className="h-4 w-4" />Fondo aplicado a la liquidación · {fmtRD(applied.totalApplied)}</div>
+          {applied.results.map((r) => (
+            <div key={`${r.year}-${r.month}`} className="text-xs text-slate-600">
+              <b>{String(r.month).padStart(2, "0")}/{r.year}</b>: fondo {fmtRD(r.fund)} ({(r.tramoPct * 100).toFixed(0)}%) · {r.updated} liquidación{r.updated === 1 ? "" : "es"} actualizada{r.updated === 1 ? "" : "s"} · asignado {fmtRD(r.appliedTotal)}
+              {r.unmatched.length ? <span className="ml-1 inline-flex items-center gap-1 text-amber-700"><AlertTriangle className="h-3 w-3" />{r.unmatched.length} prestador{r.unmatched.length === 1 ? "" : "es"} sin cálculo: {r.unmatched.map((u) => u.provider).join(", ")}</span> : null}
+              {r.locked.length ? <span className="ml-1 text-amber-700">· {r.locked.length} fila{r.locked.length === 1 ? "" : "s"} pagada/cerrada sin tocar</span> : null}
+            </div>
+          ))}
+          <p className="text-[11px] text-muted-foreground">El incentivo láser ya está sumado al neto de cada empleado en <b>Liquidación de incentivos</b>.</p>
+        </CardContent></Card>
+      ) : null}
+
+      <Dialog open={confirmOpen} onOpenChange={(o) => !o && setConfirmOpen(false)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Aplicar fondo láser a la liquidación</DialogTitle></DialogHeader>
+          <div className="space-y-2 text-sm text-slate-600">
+            <p>Se escribirá el <b>incentivo láser</b> de <b>{label}</b> en la liquidación de cada empleado según su participación de pacientes, y se recalculará el bruto y el neto.</p>
+            <ul className="list-disc space-y-1 pl-5 text-xs">
+              <li>Se procesa <b>mes por mes</b> con el fondo de TODO el negocio (ignora los filtros de sucursal/prestador).</li>
+              <li>Re-aplicar es seguro: sincroniza con el reparto vigente.</li>
+              <li>Las liquidaciones <b>pagadas o cerradas</b> no se modifican.</li>
+            </ul>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={applying}>Cancelar</Button>
+            <Button onClick={applyToSettlement} disabled={applying}>{applying ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Wand2 className="mr-1.5 h-4 w-4" />}Aplicar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Shell>
   )
 }

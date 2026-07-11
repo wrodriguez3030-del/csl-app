@@ -3481,6 +3481,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await commission.getCommissionCalculations(params)
     case "getCommissionDashboard":
       return await commission.getCommissionDashboard(params)
+    case "getCommissionExecutiveDashboard":
+      return await commission.getCommissionExecutiveDashboard(params)
     case "checkCommissionImport":
       return await commission.checkCommissionImport(params)
     case "commitCommissionImport":
@@ -3495,6 +3497,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await commission.getCommissionPatients(params)
     case "getCommissionLaser":
       return await commission.getCommissionLaser(params)
+    case "applyCommissionLaser":
+      return await commission.applyCommissionLaser(params, user)
     case "startReservationsImport":
       return await commission.startReservationsImport(params, user)
     case "appendReservationsRows":

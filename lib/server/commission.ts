@@ -13,7 +13,8 @@ import { textValue, numberValue } from "./csl-helpers"
 import type { ActionParams, ActionUser, Row } from "./csl-types"
 import { defaultCommissionRules } from "@/lib/commission/rules"
 import { parseDateISO } from "@/lib/commission/normalize"
-import { exclusiveEnd, monthBounds, monthsCovered } from "@/lib/commission/period"
+import { exclusiveEnd, monthBounds, monthsCovered, todayInTz } from "@/lib/commission/period"
+import { assignLaserToCalcs } from "@/lib/commission/laser-apply"
 
 /**
  * Filtro de período desde params: prioriza from/to (rango INCLUSIVO — el fin
@@ -627,21 +628,31 @@ export async function setCommissionCalcStatus(params: ActionParams, user: Action
 import { classifyProvider } from "@/lib/commission/classification"
 
 /** Trae las ventas del negocio filtradas en DB por período (sale_date, rango
- *  inclusivo), sucursal y prestador — los filtros se aplican en backend. */
+ *  inclusivo), sucursal y prestador — los filtros se aplican en backend.
+ *  PAGINADO: PostgREST puede capar filas por request y un mes supera las 5,000
+ *  ventas → se lee en páginas hasta agotar (orden estable por id). */
 async function fetchSalesForPeriod(params: ActionParams) {
   const business_id = requireBizId()
-  let q = getSupabaseAdmin().from("sales_commission_sales")
-    .select("branch,category,gross_amount,payment_method,provider_normalized,provider_original,customer_name,quantity")
-    .eq("business_id", business_id)
   const p = periodFilter(params)
-  if (p) q = q.gte("sale_date", p.from).lt("sale_date", p.toEx)
   const branch = textValue(params, "branch")
-  if (branch) q = q.eq("branch", branch)
   const provider = textValue(params, "provider")
-  if (provider) q = q.eq("provider_normalized", provider)
-  const { data, error } = await q
-  if (error) throw new Error(error.message)
-  return (data || []) as Row[]
+  const PAGE = 1000
+  const out: Row[] = []
+  for (let offset = 0; ; offset += PAGE) {
+    let q = getSupabaseAdmin().from("sales_commission_sales")
+      .select("branch,category,gross_amount,payment_method,provider_normalized,provider_original,customer_name,quantity")
+      .eq("business_id", business_id)
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE - 1)
+    if (p) q = q.gte("sale_date", p.from).lt("sale_date", p.toEx)
+    if (branch) q = q.eq("branch", branch)
+    if (provider) q = q.eq("provider_normalized", provider)
+    const { data, error } = await q
+    if (error) throw new Error(error.message)
+    out.push(...((data || []) as Row[]))
+    if (!data || data.length < PAGE) break
+  }
+  return out
 }
 
 async function cardPercentage(): Promise<number> {
@@ -760,6 +771,303 @@ export async function getCommissionLaser(params: ActionParams) {
   const pat = await getCommissionPatients(params)
   const distribution = pat.rows.map((p) => ({ provider: p.provider, patients: p.patients, participation: p.participation, amount: round2(fund * (p.participation / 100)) }))
   return { ok: true, laserTotal, byBranch, tramoPct, fund, threshold: reached?.threshold || 0, distribution, patientsTotal: pat.total }
+}
+
+/**
+ * Aplica el fondo láser del período a la LIQUIDACIÓN de cada empleado:
+ * escribe `laser_incentive` (reparto por participación de pacientes) en los
+ * cálculos del mes y recalcula bruto/neto. Se procesa MES POR MES (el fondo y
+ * la escala son mensuales) sobre TODO el negocio — ignora filtros de
+ * sucursal/prestador. Idempotente: re-aplicar sincroniza con el reparto vigente
+ * (incluye poner en 0 a quien salió del reparto). Filas pagadas/cerradas no se
+ * tocan y se reportan.
+ */
+export async function applyCommissionLaser(params: ActionParams, user: ActionUser) {
+  requirePermission("sales_commission.calculate")
+  const business_id = requireBizId()
+  const sb = getSupabaseAdmin()
+  const p = periodFilter(params)
+  if (!p) throw new Error("Selecciona un período (mes o rango) para aplicar el fondo láser")
+  const months = [...p.months].map((k) => {
+    const [year, month] = k.split("-").map(Number)
+    return { year, month }
+  }).sort((a, b) => a.year - b.year || a.month - b.month)
+
+  const results = []
+  for (const { year, month } of months) {
+    const laser = await getCommissionLaser({ month, year })
+    const { data: calcRows, error } = await sb.from("sales_commission_calculations").select("*")
+      .eq("business_id", business_id).eq("period_year", year).eq("period_month", month)
+    if (error) throw new Error(error.message)
+    const rows = (calcRows || []) as Row[]
+    const plan = assignLaserToCalcs(
+      laser.distribution.map((d) => ({ provider: d.provider, amount: d.amount })),
+      rows.map((r) => ({
+        id: String(r.id), provider: String(r.provider_name_snapshot || ""), branch: String(r.branch || ""),
+        status: String(r.status || ""), laserIncentive: Number(r.laser_incentive) || 0, grossTotal: Number(r.gross_total) || 0,
+      })),
+    )
+    const byId = new Map(rows.map((r) => [String(r.id), r]))
+    const updates = await Promise.all(plan.assignments.map(async (a) => {
+      const merged = { ...byId.get(a.id), laser_incentive: a.laserIncentive } as Row
+      const num = (k: string) => Number(merged[k]) || 0
+      const gross = round2(num("product_incentive") + num("service_commission") + num("laser_incentive") + num("fixed_incentive") + num("manual_adjustment") + num("bonus_extra"))
+      const net = round2(gross - num("cleaning_contribution"))
+      const { error: upErr } = await sb.from("sales_commission_calculations")
+        .update({ laser_incentive: a.laserIncentive, gross_total: gross, net_total: net, updated_at: new Date().toISOString() })
+        .eq("id", a.id).eq("business_id", business_id)
+      return upErr
+    }))
+    const failed = updates.find(Boolean)
+    if (failed) throw new Error(`Error aplicando láser ${month}/${year}: ${failed.message}`)
+    await logAudit(user, "calculation", null, "laser_fund_aplicado", null, {
+      laserTotal: laser.laserTotal, tramoPct: laser.tramoPct, fund: laser.fund,
+      updated: plan.assignments.length, appliedTotal: plan.appliedTotal,
+      unmatched: plan.unmatched, locked: plan.locked,
+    }, textValue(params, "reason") || null, { month, year })
+    results.push({
+      month, year, laserTotal: laser.laserTotal, tramoPct: laser.tramoPct, fund: laser.fund,
+      updated: plan.assignments.length, appliedTotal: plan.appliedTotal,
+      unmatched: plan.unmatched, locked: plan.locked,
+    })
+  }
+  return { ok: true, results, totalApplied: round2(results.reduce((s, r) => s + r.appliedTotal, 0)) }
+}
+
+// ── Dashboard ejecutivo ──────────────────────────────────────────────────────
+const MONTHS_ES_SHORT = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+const monthLabel = (y: number, m: number) => `${MONTHS_ES_SHORT[m - 1] || ""} ${y}`
+/** Variación % con 1 decimal; null si no hay base de comparación. */
+const pctChange = (cur: number, prev: number): number | null =>
+  prev ? Math.round(((cur - prev) / prev) * 1000) / 10 : null
+const fmtRDS = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+interface MonthlyAgg { y: number; m: number; branch: string; payment: string; gross: number; n: number }
+
+/** Agregación mensual de ventas (año, mes, sucursal, pago) vía la función SQL
+ *  `sc_sales_monthly`; si no existe en la DB, cae a agregar las ventas crudas
+ *  por páginas (lento pero correcto). */
+async function fetchMonthlyAggregates(
+  business_id: string, fromISO: string, toEx: string,
+  branch: string | null, provider: string | null,
+): Promise<MonthlyAgg[]> {
+  const sb = getSupabaseAdmin()
+  const { data, error } = await sb.rpc("sc_sales_monthly", {
+    p_business: business_id, p_from: fromISO, p_to_ex: toEx, p_branch: branch, p_provider: provider,
+  })
+  if (!error) {
+    return ((data || []) as Row[]).map((r) => ({
+      y: Number(r.y) || 0, m: Number(r.m) || 0, branch: String(r.branch || "(sin sucursal)"),
+      payment: String(r.payment || "OTROS"), gross: Number(r.gross) || 0, n: Number(r.n) || 0,
+    }))
+  }
+  const agg = new Map<string, MonthlyAgg>()
+  const PAGE = 1000
+  for (let offset = 0; ; offset += PAGE) {
+    let q = sb.from("sales_commission_sales").select("sale_date,branch,payment_method,gross_amount")
+      .eq("business_id", business_id).gte("sale_date", fromISO).lt("sale_date", toEx)
+      .order("id", { ascending: true }).range(offset, offset + PAGE - 1)
+    if (branch) q = q.eq("branch", branch)
+    if (provider) q = q.eq("provider_normalized", provider)
+    const { data: page, error: pErr } = await q
+    if (pErr) throw new Error(pErr.message)
+    for (const r of (page || []) as Row[]) {
+      const d = String(r.sale_date || "")
+      const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7))
+      if (!y || !m) continue
+      const b = String(r.branch || "(sin sucursal)"), pm = String(r.payment_method || "OTROS")
+      const k = `${y}-${m}|${b}|${pm}`
+      const e = agg.get(k) || { y, m, branch: b, payment: pm, gross: 0, n: 0 }
+      e.gross = round2(e.gross + (Number(r.gross_amount) || 0)); e.n++
+      agg.set(k, e)
+    }
+    if (!page || page.length < PAGE) break
+  }
+  return [...agg.values()]
+}
+
+/**
+ * Dashboard EJECUTIVO de Comisión de Ventas — una sola llamada con todo lo que
+ * pinta la pantalla: KPIs del período con comparativas vs mes anterior, ventas
+ * por sucursal, composición de incentivos, tendencia de 6 meses, top
+ * prestadores, resumen de liquidación e insights. Las comparativas solo se
+ * calculan cuando el período seleccionado es UN MES COMPLETO.
+ */
+export async function getCommissionExecutiveDashboard(params: ActionParams) {
+  const business_id = requireBizId()
+  const branchF = textValue(params, "branch") || null
+  const providerF = textValue(params, "provider") || null
+  const passThrough: ActionParams = {
+    ...(branchF ? { branch: branchF } : {}), ...(providerF ? { provider: providerF } : {}),
+  }
+
+  // Mes ancla = el seleccionado (o el mes actual en la TZ del negocio).
+  const today = todayInTz()
+  const [ty, tm] = today.split("-").map(Number)
+  const anchorYear = numberValue(params, "year") || ty
+  const anchorMonth = numberValue(params, "month") || tm
+  const anchorB = monthBounds(anchorYear, anchorMonth)
+  const hasPeriod = Boolean(periodFilter(params))
+  const isFullMonth = hasPeriod && textValue(params, "from") === anchorB.from && textValue(params, "to") === anchorB.to
+  const prevYear = anchorMonth === 1 ? anchorYear - 1 : anchorYear
+  const prevMonth = anchorMonth === 1 ? 12 : anchorMonth - 1
+
+  // Tendencia: 6 meses hasta el ancla (incluye el mes anterior para comparar).
+  const trendMonths: { year: number; month: number }[] = []
+  {
+    let y = anchorYear, m = anchorMonth
+    for (let i = 0; i < 6; i++) { trendMonths.unshift({ year: y, month: m }); m--; if (m < 1) { m = 12; y-- } }
+  }
+  const trendFrom = monthBounds(trendMonths[0].year, trendMonths[0].month).from
+  const trendToEx = exclusiveEnd(anchorB.to)
+
+  const [rows, calcsRes, patientsRes, importsMonthRes, pendingRes, monthlyAgg, prevCalcsRes, prevPatientsRes] = await Promise.all([
+    fetchSalesForPeriod(params),
+    getCommissionCalculations(params),
+    getCommissionPatients(params),
+    getCommissionImports({ from: anchorB.from, to: anchorB.to, dateField: "created" }),
+    getCommissionImports({ status: "borrador" }),
+    fetchMonthlyAggregates(business_id, trendFrom, trendToEx, branchF, providerF),
+    isFullMonth ? getCommissionCalculations({ month: prevMonth, year: prevYear, ...passThrough }) : Promise.resolve(null),
+    isFullMonth ? getCommissionPatients({ month: prevMonth, year: prevYear, ...passThrough }) : Promise.resolve(null),
+  ])
+
+  // — Ventas del período (filas ya filtradas por período/sucursal/prestador).
+  let salesTotal = 0, cardTotal = 0
+  const byBranchMap = new Map<string, number>()
+  const provSales = new Map<string, number>()
+  for (const r of rows) {
+    const amt = Number(r.gross_amount) || 0
+    salesTotal = round2(salesTotal + amt)
+    if (String(r.payment_method || "") === "TARJETA") cardTotal = round2(cardTotal + amt)
+    const b = String(r.branch || "(sin sucursal)")
+    byBranchMap.set(b, round2((byBranchMap.get(b) || 0) + amt))
+    const info = classifyProvider(r.provider_original)
+    if (info.commissionable) {
+      const prov = String(r.provider_normalized || info.name)
+      provSales.set(prov, round2((provSales.get(prov) || 0) + amt))
+    }
+  }
+  const salesCount = rows.length
+  const ticketAvg = salesCount ? round2(salesTotal / salesCount) : 0
+  const cardSharePct = salesTotal ? Math.round((cardTotal / salesTotal) * 1000) / 10 : 0
+
+  // — Incentivos del período (cálculos vivos).
+  const calcs = calcsRes.records
+  const sumC = (f: (c: (typeof calcs)[number]) => number) => round2(calcs.reduce((s, c) => s + f(c), 0))
+  const serviceCommission = sumC((c) => c.serviceCommission)
+  const productIncentive = sumC((c) => c.productIncentive)
+  const laserIncentive = sumC((c) => c.laserIncentive)
+  const bonusExtra = sumC((c) => c.bonusExtra)
+  const grossTotal = sumC((c) => c.grossTotal)
+  const cleaning = sumC((c) => c.cleaningContribution)
+  const netTotal = sumC((c) => c.netTotal)
+  const productUnits = calcs.reduce((s, c) => s + c.productsCount, 0)
+  // "Descuentos" en el resumen = ajustes manuales NEGATIVOS (ya dentro del
+  // bruto) mostrados como línea propia: bruto_mostrado − descuentos − limpieza = neto.
+  const discounts = round2(Math.abs(calcs.reduce((s, c) => s + Math.min(0, c.manualAdjustment), 0)))
+
+  // — Tendencia + mes anterior desde la agregación mensual.
+  const monthAgg = (y: number, m: number) => monthlyAgg.filter((r) => r.y === y && r.m === m)
+  const trend = trendMonths.map(({ year, month }) => ({
+    year, month, label: monthLabel(year, month),
+    sales: round2(monthAgg(year, month).reduce((s, r) => s + r.gross, 0)),
+  }))
+  const prevAgg = monthAgg(prevYear, prevMonth)
+  const prevSales = round2(prevAgg.reduce((s, r) => s + r.gross, 0))
+  const prevCard = round2(prevAgg.filter((r) => r.payment === "TARJETA").reduce((s, r) => s + r.gross, 0))
+  const prevCount = prevAgg.reduce((s, r) => s + r.n, 0)
+  const prevTicket = prevCount ? round2(prevSales / prevCount) : 0
+  const prevCardShare = prevSales ? Math.round((prevCard / prevSales) * 1000) / 10 : 0
+  const prevByBranch = new Map<string, number>()
+  for (const r of prevAgg) prevByBranch.set(r.branch, round2((prevByBranch.get(r.branch) || 0) + r.gross))
+
+  const prevCalcs = prevCalcsRes?.records || []
+  const sumP = (f: (c: (typeof prevCalcs)[number]) => number) => round2(prevCalcs.reduce((s, c) => s + f(c), 0))
+  const deltas = isFullMonth ? {
+    salesTotal: pctChange(salesTotal, prevSales),
+    serviceCommission: pctChange(serviceCommission, sumP((c) => c.serviceCommission)),
+    productIncentive: pctChange(productIncentive, sumP((c) => c.productIncentive)),
+    laserIncentive: pctChange(laserIncentive, sumP((c) => c.laserIncentive)),
+    bonusExtra: pctChange(bonusExtra, sumP((c) => c.bonusExtra)),
+    netTotal: pctChange(netTotal, sumP((c) => c.netTotal)),
+    patients: pctChange(patientsRes.total, prevPatientsRes?.total ?? 0),
+    productUnits: pctChange(productUnits, prevCalcs.reduce((s, c) => s + c.productsCount, 0)),
+    cardSharePp: prevSales ? Math.round((cardSharePct - prevCardShare) * 10) / 10 : null,
+    ticketAvg: pctChange(ticketAvg, prevTicket),
+  } : null
+
+  // — Top prestadores: liquidación (neto) + ventas atribuibles.
+  const provMap = new Map<string, { provider: string; sales: number; commission: number; incentives: number; net: number }>()
+  for (const c of calcs) {
+    const k = String(c.provider || "").trim().toUpperCase()
+    if (!k) continue
+    const e = provMap.get(k) || { provider: String(c.provider), sales: 0, commission: 0, incentives: 0, net: 0 }
+    e.commission = round2(e.commission + c.serviceCommission)
+    e.incentives = round2(e.incentives + c.productIncentive + c.laserIncentive + c.fixedIncentive + c.bonusExtra)
+    e.net = round2(e.net + c.netTotal)
+    provMap.set(k, e)
+  }
+  for (const [prov, amount] of provSales) {
+    const k = prov.trim().toUpperCase()
+    const e = provMap.get(k)
+    if (e) e.sales = round2(e.sales + amount)
+  }
+  const topProviders = [...provMap.values()].sort((a, b) => b.net - a.net).slice(0, 5)
+
+  const byBranch = [...byBranchMap.entries()].map(([branch, gross]) => ({ branch, gross }))
+    .sort((a, b) => b.gross - a.gross).slice(0, 5)
+  const composition = [
+    { name: "Comisiones servicios", value: serviceCommission },
+    { name: "Incentivos productos", value: productIncentive },
+    { name: "Incentivo láser", value: laserIncentive },
+    { name: "Bono extra", value: bonusExtra },
+  ]
+
+  // — Insights del período.
+  const insights: { tone: "success" | "info" | "warning"; title: string; detail: string }[] = []
+  const topComm = [...calcs].sort((a, b) => b.serviceCommission - a.serviceCommission)[0]
+  if (topComm && topComm.serviceCommission > 0) {
+    insights.push({ tone: "success", title: `${topComm.provider} lidera comisiones del período`, detail: `Con ${fmtRDS(topComm.serviceCommission)} en comisiones generadas.` })
+  } else {
+    insights.push({ tone: "info", title: "Sin comisiones calculadas en el período", detail: "Importa el archivo de ventas para generar los cálculos." })
+  }
+  let growth: { branch: string; g: number } | null = null
+  if (isFullMonth) {
+    for (const [b, cur] of byBranchMap) {
+      const prev = prevByBranch.get(b) || 0
+      if (prev > 0) {
+        const g = Math.round(((cur - prev) / prev) * 1000) / 10
+        if (!growth || g > growth.g) growth = { branch: b, g }
+      }
+    }
+  }
+  if (growth) {
+    insights.push({ tone: "info", title: `${growth.branch} tuvo el mayor crecimiento`, detail: `Crecimiento del ${growth.g.toFixed(1)}% en ventas vs. mes anterior.` })
+  } else if (byBranch[0]) {
+    insights.push({ tone: "info", title: `${byBranch[0].branch} lidera las ventas del período`, detail: `Con ${fmtRDS(byBranch[0].gross)} en ventas.` })
+  }
+  const pending = pendingRes.records.length
+  insights.push(pending > 0
+    ? { tone: "warning", title: "Importación de reservas pendiente", detail: `Tienes ${pending} importación${pending === 1 ? "" : "es"} por confirmar.` }
+    : { tone: "success", title: "Sin importaciones pendientes", detail: "Todas las importaciones están confirmadas." })
+
+  const providerOptions = [...new Set([...calcs.map((c) => String(c.provider || "")), ...provSales.keys()])]
+    .filter(Boolean).sort()
+
+  return {
+    ok: true,
+    period: { month: anchorMonth, year: anchorYear, label: monthLabel(anchorYear, anchorMonth), isFullMonth, hasPeriod },
+    prevLabel: monthLabel(prevYear, prevMonth),
+    kpis: {
+      salesTotal, serviceCommission, productIncentive, laserIncentive, bonusExtra, netTotal,
+      employees: calcs.length, importsMonth: importsMonthRes.records.length,
+      patients: patientsRes.total, productUnits, cardSharePct, ticketAvg,
+    },
+    deltas, byBranch, composition, trend, topProviders,
+    settlement: { gross: round2(grossTotal + discounts), cleaning, discounts, net: netTotal },
+    insights, providers: providerOptions,
+  }
 }
 
 export async function getCommissionDashboard(params: ActionParams) {
