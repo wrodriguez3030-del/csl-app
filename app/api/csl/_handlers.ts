@@ -3521,6 +3521,12 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await commission.setCommissionCollaboratorActive(params, user)
     case "deleteCommissionCollaborator":
       return await commission.deleteCommissionCollaborator(params, user)
+    case "getCommissionPatientCapture":
+      return await commission.getCommissionPatientCapture(params)
+    case "saveCommissionPatientCount":
+      return await commission.saveCommissionPatientCount(params, user)
+    case "deleteCommissionPatientCount":
+      return await commission.deleteCommissionPatientCount(params, user)
     case "startReservationsImport":
       return await commission.startReservationsImport(params, user)
     case "appendReservationsRows":

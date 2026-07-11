@@ -18,6 +18,31 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.36.0] — 2026-07-11
+
+### Added
+- **Comisión de Ventas · captura MANUAL de pacientes atendidos.** La pantalla
+  **Clientes atendidos** ahora permite capturar/ajustar los pacientes por
+  colaborador (mes + sucursal), sobre la base de **Reservas** (atenciones ASISTE).
+  - **Merge por colaborador** (`readPatientsForRun`): la captura **manual gana**
+    solo sobre ese colaborador; los demás mantienen su valor de reservas (antes
+    era todo-o-nada por sucursal). Fuente etiquetada `manual` / `mixto` /
+    `reservas`. Alimenta el reparto láser y el Cálculo mensual sin cambios más.
+  - **Server** (`lib/server/commission.ts`): `getCommissionPatientCapture`
+    (roster + reservas base + manual, con valor efectivo y participación),
+    `saveCommissionPatientCount` (upsert `source="manual"` + servicio/observación),
+    `deleteCommissionPatientCount` (revierte a reservas). Auditado. Requiere
+    `sales_commission.calculate`.
+  - **API** (`app/api/csl/_handlers.ts`): 3 acciones nuevas.
+  - **UI** (`ComisionClientesPage`): selectores mes/año/sucursal; tabla editable
+    (Prestador, Reservas base, Pacientes editable, Fuente, % participación,
+    Observación, Guardar/Revertir) con totales; invalida cachés de láser/run.
+- **`scripts/_smoke-patient-capture.js`**: smoke del merge contra db-cls
+  (inserta prestador de prueba → valida manual gana / reservas intactas → limpia).
+  **7/7**, sin residuo. `test:commission` 117/117 · `tsc` 0 · `build` OK.
+
+---
+
 ## [0.35.0] — 2026-07-11
 
 ### Fixed / Changed

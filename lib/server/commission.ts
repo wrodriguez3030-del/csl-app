@@ -1205,7 +1205,8 @@ async function readRunRules(): Promise<RunRules> {
   }
 }
 
-/** Conteos de pacientes por colaborador para un run (prefiere manual > reservas). */
+/** Conteos de pacientes por colaborador para un run. Merge POR COLABORADOR: la
+ *  captura MANUAL gana sobre reservas (los demás mantienen su valor de reservas). */
 async function readPatientsForRun(branch: string, month: number, year: number) {
   const business_id = requireBizId()
   const { data } = await getSupabaseAdmin().from("sales_commission_patient_counts")
@@ -1213,12 +1214,19 @@ async function readPatientsForRun(branch: string, month: number, year: number) {
     .eq("business_id", business_id).eq("branch", branch)
     .eq("period_month", month).eq("period_year", year)
   const rows = (data || []) as Row[]
-  const hasManual = rows.some((r) => r.source === "manual")
-  const use = hasManual ? rows.filter((r) => r.source === "manual") : rows
-  const patients = use
-    .map((r) => ({ collaborator: String(r.provider_name || ""), patients: Number(r.patient_count) || 0 }))
-    .filter((p) => p.collaborator)
-  const source = hasManual ? "manual" : rows.length ? "reservas" : "ninguna"
+  const byName = new Map<string, { patients: number; source: string }>()
+  for (const r of rows) {
+    const name = canonicalCollaborator(r.provider_name)
+    if (!name) continue
+    const prev = byName.get(name)
+    if (!prev || (r.source === "manual" && prev.source !== "manual")) {
+      byName.set(name, { patients: Number(r.patient_count) || 0, source: String(r.source || "reservas") })
+    }
+  }
+  const patients = [...byName.entries()].map(([collaborator, v]) => ({ collaborator, patients: v.patients }))
+  const anyManual = [...byName.values()].some((v) => v.source === "manual")
+  const anyReservas = [...byName.values()].some((v) => v.source !== "manual")
+  const source = anyManual ? (anyReservas ? "mixto" : "manual") : rows.length ? "reservas" : "ninguna"
   return { patients, source }
 }
 
@@ -1598,4 +1606,96 @@ export async function getCommissionLaserDetail(params: ActionParams) {
     cardDiscountBeforeScale: true,
     globalAlerts, branches: out,
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// CAPTURA DE PACIENTES ATENDIDOS (manual, sobre-escribe reservas por colaborador)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Filas de captura de pacientes de un mes/sucursal: por colaborador del roster
+ * (activo) + cualquier prestador con datos, muestra la base de RESERVAS y el
+ * valor MANUAL (si existe) con su valor efectivo (manual gana). Alimenta la
+ * edición de "Clientes atendidos" y el reparto láser.
+ */
+export async function getCommissionPatientCapture(params: ActionParams) {
+  const business_id = requireBizId()
+  const branch = textValue(params, "branch")
+  const month = numberValue(params, "month")
+  const year = numberValue(params, "year")
+  if (!branch || !month || !year) throw new Error("Selecciona sucursal, mes y año")
+  const sb = getSupabaseAdmin()
+  const { data: pcRows } = await sb.from("sales_commission_patient_counts")
+    .select("id,provider_name,patient_count,source,service,observation")
+    .eq("business_id", business_id).eq("branch", branch).eq("period_month", month).eq("period_year", year)
+  const roster = await readRoster(branch, false)
+
+  type Cap = { provider: string; branch: string; inRoster: boolean; reservas: number | null; manual: number | null; manualId: string | null; service: string | null; observation: string | null }
+  const map = new Map<string, Cap>()
+  const ensure = (name: string): Cap => {
+    let c = map.get(name)
+    if (!c) { c = { provider: name, branch, inRoster: false, reservas: null, manual: null, manualId: null, service: null, observation: null }; map.set(name, c) }
+    return c
+  }
+  for (const c of roster) ensure(canonicalCollaborator(c.name)).inRoster = true
+  for (const r of (pcRows || []) as Row[]) {
+    const name = canonicalCollaborator(r.provider_name)
+    if (!name) continue
+    const c = ensure(name)
+    if (r.source === "manual") { c.manual = Number(r.patient_count) || 0; c.manualId = String(r.id); c.service = r.service == null ? null : String(r.service); c.observation = r.observation == null ? null : String(r.observation) }
+    else c.reservas = Number(r.patient_count) || 0
+  }
+  const rows = [...map.values()].map((c) => ({ ...c, effective: c.manual != null ? c.manual : (c.reservas || 0), source: c.manual != null ? "manual" : (c.reservas != null ? "reservas" : "—") }))
+    .sort((a, b) => b.effective - a.effective || a.provider.localeCompare(b.provider))
+  const total = rows.reduce((s, r) => s + r.effective, 0)
+  return { ok: true, branch, month, year, total, rows }
+}
+
+/** Alta/edición de pacientes MANUAL de un colaborador (sobre-escribe reservas). */
+export async function saveCommissionPatientCount(params: ActionParams, user: ActionUser) {
+  requirePermission("sales_commission.calculate")
+  const business_id = requireBizId()
+  const branch = textValue(params, "branch")
+  const month = numberValue(params, "month")
+  const year = numberValue(params, "year")
+  const provider = canonicalCollaborator(textValue(params, "provider"))
+  const patients = Math.max(0, Math.round(numberValue(params, "patients", 0)))
+  if (!branch || !month || !year || !provider) throw new Error("Faltan sucursal, mes, año o prestador")
+  const sb = getSupabaseAdmin()
+  const { data: existing } = await sb.from("sales_commission_patient_counts").select("id")
+    .eq("business_id", business_id).eq("branch", branch).eq("period_month", month).eq("period_year", year)
+    .eq("provider_name", provider).eq("source", "manual").maybeSingle()
+  const fields = {
+    business_id, branch, period_month: month, period_year: year, provider_name: provider,
+    patient_count: patients, unique_patients: patients, source: "manual",
+    service: textValue(params, "service") || null, observation: textValue(params, "observation") || null,
+    updated_at: new Date().toISOString(),
+  }
+  if (existing) {
+    const { error } = await sb.from("sales_commission_patient_counts").update(fields).eq("id", (existing as Row).id as string)
+    if (error) throw new Error(error.message)
+  } else {
+    const { error } = await sb.from("sales_commission_patient_counts").insert(fields)
+    if (error) throw new Error(error.message)
+  }
+  await logAudit(user, "patient_count", null, existing ? "manual_update" : "manual_create", null,
+    { branch, provider, patients }, null, { month, year })
+  return { ok: true }
+}
+
+/** Elimina la captura MANUAL de un colaborador (revierte a reservas). */
+export async function deleteCommissionPatientCount(params: ActionParams, user: ActionUser) {
+  requirePermission("sales_commission.calculate")
+  const business_id = requireBizId()
+  const branch = textValue(params, "branch")
+  const month = numberValue(params, "month")
+  const year = numberValue(params, "year")
+  const provider = canonicalCollaborator(textValue(params, "provider"))
+  if (!branch || !month || !year || !provider) throw new Error("Faltan datos para revertir")
+  const { error } = await getSupabaseAdmin().from("sales_commission_patient_counts")
+    .delete().eq("business_id", business_id).eq("branch", branch).eq("period_month", month)
+    .eq("period_year", year).eq("provider_name", provider).eq("source", "manual")
+  if (error) throw new Error(error.message)
+  await logAudit(user, "patient_count", null, "manual_revert", null, { branch, provider }, "revertir a reservas", { month, year })
+  return { ok: true }
 }

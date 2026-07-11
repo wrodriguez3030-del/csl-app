@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   Building2, Package, Zap, Users, CalendarClock,
-  Loader2, CheckCircle2, AlertTriangle, Wand2, Download, Printer, RefreshCw, ChevronDown,
+  Loader2, CheckCircle2, AlertTriangle, Wand2, Download, Printer, RefreshCw, ChevronDown, Save, RotateCcw,
 } from "lucide-react"
 import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
 import { exportLaserExcel, printLaserPdf, type LaserDetail } from "@/lib/commission/laser-export"
@@ -381,29 +381,122 @@ export function ComisionLaserPage() {
 
 
 // Clientes atendidos por prestador (fecha = Fecha de realización de la reserva)
+// Clientes atendidos + CAPTURA MANUAL de pacientes (manual sobre-escribe reservas
+// por colaborador; alimenta el reparto láser y el cálculo mensual).
+interface CapRow {
+  provider: string; branch: string; inRoster: boolean
+  reservas: number | null; manual: number | null; manualId: string | null
+  effective: number; source: string; service: string | null; observation: string | null
+}
 export function ComisionClientesPage() {
   const { apiUrl, showToast } = useAppStore()
-  const { params } = useCommissionFilters()
-  const [d, setD] = useState<{ total: number; roundingDiff: number; sourceUsed?: string; rows: { provider: string; branch: string; patients: number; uniquePatients?: number; participation: number }[] } | null>(null)
+  const user = useSessionUser()
+  const canEdit = canPerm(user, "sales_commission.calculate")
+  const now = new Date()
+  const [branch, setBranch] = useState(BRANCHES[0])
+  const [month, setMonth] = useState(now.getMonth() + 1)
+  const [year, setYear] = useState(now.getFullYear())
+  const years = [now.getFullYear() + 1, now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2]
+  const [rows, setRows] = useState<CapRow[]>([])
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [edit, setEdit] = useState<Record<string, { patients: string; service: string; observation: string }>>({})
+  const [busyId, setBusyId] = useState<string | null>(null)
+
   const load = useCallback(async () => {
     setLoading(true)
-    try { const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionPatients", ...params }); if (res?.ok) setD(res as never); else showToast((res as { error?: string })?.error || "Error", "error") }
-    catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
-  }, [apiUrl, showToast, params])
+    try {
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionPatientCapture", branch, month, year })
+      if (res?.ok) {
+        const list = ((res as { rows: CapRow[] }).rows) || []
+        setRows(list); setTotal((res as { total: number }).total || 0)
+        const e: typeof edit = {}
+        list.forEach((r) => { e[r.provider] = { patients: String(r.effective), service: r.service || "", observation: r.observation || "" } })
+        setEdit(e)
+      } else { setRows([]); showToast((res as { error?: string })?.error || "Error", "error") }
+    } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
+  }, [apiUrl, showToast, branch, month, year])
   useEffect(() => { void load() }, [load])
-  const providers = (d?.rows || []).map((r) => r.provider).sort()
+
+  const save = async (r: CapRow) => {
+    if (!canEdit) return
+    setBusyId(r.provider)
+    try {
+      const e = edit[r.provider] || { patients: "0", service: "", observation: "" }
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "saveCommissionPatientCount", branch, month, year, provider: r.provider, patients: e.patients || "0", service: e.service, observation: e.observation })
+      if (!res?.ok) throw new Error((res as { error?: string })?.error || "No se pudo guardar")
+      invalidateReadCache("getCommissionLaserDetail"); invalidateReadCache("getCommissionRunPreview")
+      showToast(`Pacientes de ${r.provider} guardados (manual)`, "success")
+      await load()
+    } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setBusyId(null) }
+  }
+
+  const revert = async (r: CapRow) => {
+    if (!canEdit) return
+    setBusyId(r.provider)
+    try {
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "deleteCommissionPatientCount", branch, month, year, provider: r.provider })
+      if (!res?.ok) throw new Error((res as { error?: string })?.error || "No se pudo revertir")
+      invalidateReadCache("getCommissionLaserDetail"); invalidateReadCache("getCommissionRunPreview")
+      showToast(`${r.provider} revertido a reservas`, "success")
+      await load()
+    } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setBusyId(null) }
+  }
+
+  const setE = (p: string, patch: Partial<{ patients: string; service: string; observation: string }>) =>
+    setEdit((prev) => ({ ...prev, [p]: { ...(prev[p] || { patients: "", service: "", observation: "" }), ...patch } }))
+
   return (
-    <Shell icon={<Users className="h-4 w-4" />} title="Comisión de Ventas · Clientes atendidos">
-      <CommissionFilterBar branches={BRANCHES} providers={providers} />
-      {d?.sourceUsed ? <p className="-mt-3 text-[11px] text-muted-foreground">Fuente: {d.sourceUsed === "reservas" ? "Reservas (atenciones por Fecha de realización)" : "Ventas (clientes distintos — importa Reservas para atenciones reales)"}</p> : null}
+    <Shell icon={<Users className="h-4 w-4" />} title="Comisión de Ventas · Clientes atendidos (captura de pacientes)">
+      <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-end gap-3 p-4">
+        <div><label className="text-[11px] font-medium">Sucursal</label>
+          <select className="mt-0.5 h-9 w-48 rounded-md border border-input bg-white px-2 text-sm" value={branch} onChange={(e) => setBranch(e.target.value)}>{BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}</select></div>
+        <div><label className="text-[11px] font-medium">Mes</label>
+          <select className="mt-0.5 h-9 w-36 rounded-md border border-input bg-white px-2 text-sm" value={month} onChange={(e) => setMonth(Number(e.target.value))}>{MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select></div>
+        <div><label className="text-[11px] font-medium">Año</label>
+          <select className="mt-0.5 h-9 w-24 rounded-md border border-input bg-white px-2 text-sm" value={year} onChange={(e) => setYear(Number(e.target.value))}>{years.map((y) => <option key={y} value={y}>{y}</option>)}</select></div>
+        <Button size="sm" variant="outline" className="h-9" disabled={loading} onClick={() => void load()}>{loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}Recargar</Button>
+        <div className="ml-auto text-xs text-muted-foreground">Base: <b>Reservas</b> (atenciones ASISTE). Editar guarda un valor <b>manual</b> que sobre-escribe solo a ese colaborador.</div>
+      </CardContent></Card>
+
       <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
-        {loading ? <div className="py-10 text-center text-sm text-muted-foreground">Cargando...</div>
-          : !d || d.rows.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin datos. Importa un archivo de ventas primero.</div>
+        {loading ? <div className="py-10 text-center text-sm text-muted-foreground"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
+          : rows.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin colaboradores ni reservas para {branch} en el período.</div>
           : (<div className="overflow-x-auto"><table className="w-full text-sm">
-            <thead><tr className="border-b text-left text-[11px] uppercase text-muted-foreground"><th className="px-4 py-2">Prestador</th><th className="px-2 py-2">Sucursal</th><th className="px-2 py-2 text-right">Pacientes</th><th className="px-4 py-2 text-right">Participación</th></tr></thead>
-            <tbody>{d.rows.map((r) => (<tr key={r.provider} className="border-b last:border-0"><td className="px-4 py-2 font-medium">{r.provider}</td><td className="px-2 py-2 text-xs text-muted-foreground">{r.branch}</td><td className="px-2 py-2 text-right tabular-nums">{r.patients}</td><td className="px-4 py-2 text-right tabular-nums">{r.participation.toFixed(2)}%</td></tr>))}</tbody>
-            <tfoot><tr className="bg-slate-50 font-bold"><td className="px-4 py-2" colSpan={2}>Total ({d.rows.length})</td><td className="px-2 py-2 text-right tabular-nums">{d.total}</td><td className="px-4 py-2 text-right tabular-nums">100%{d.roundingDiff ? ` (±${d.roundingDiff})` : ""}</td></tr></tfoot>
+            <thead><tr className="border-b text-left text-[11px] uppercase text-muted-foreground">
+              <th className="px-3 py-2">Prestador</th><th className="px-2 py-2 text-right">Reservas</th>
+              <th className="px-2 py-2 text-right">Pacientes</th><th className="px-2 py-2 text-center">Fuente</th>
+              <th className="px-2 py-2 text-right">% Particip.</th><th className="px-2 py-2">Observación</th>
+              <th className="px-3 py-2 text-right">Acciones</th>
+            </tr></thead>
+            <tbody>{rows.map((r) => {
+              const e = edit[r.provider] || { patients: String(r.effective), service: "", observation: "" }
+              const part = total > 0 ? (r.effective / total) * 100 : 0
+              return (
+                <tr key={r.provider} className="border-b last:border-0">
+                  <td className="px-3 py-2 font-medium">{r.provider}{!r.inRoster ? <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] text-amber-700">fuera de roster</span> : null}</td>
+                  <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">{r.reservas ?? "—"}</td>
+                  <td className="px-2 py-2 text-right">
+                    <input type="number" min={0} className="ml-auto h-8 w-20 rounded-md border border-input bg-white px-2 text-right text-sm" value={e.patients} disabled={!canEdit}
+                      onChange={(ev) => setE(r.provider, { patients: ev.target.value })} />
+                  </td>
+                  <td className="px-2 py-2 text-center">
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] ${r.source === "manual" ? "border-[color:var(--brand-primary)] bg-[color:var(--brand-primary)]/10 text-[color:var(--brand-primary)]" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{r.source}</span>
+                  </td>
+                  <td className="px-2 py-2 text-right tabular-nums">{part.toFixed(2)}%</td>
+                  <td className="px-2 py-2"><input className="h-8 w-40 rounded-md border border-input bg-white px-2 text-sm" placeholder="—" value={e.observation} disabled={!canEdit} onChange={(ev) => setE(r.provider, { observation: ev.target.value })} /></td>
+                  <td className="px-3 py-2 text-right">
+                    {canEdit ? (
+                      <div className="flex items-center justify-end gap-1">
+                        <Button size="sm" className="h-7" disabled={busyId === r.provider} onClick={() => save(r)}>{busyId === r.provider ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}</Button>
+                        {r.source === "manual" ? <Button size="sm" variant="ghost" className="h-7 text-amber-700 hover:bg-amber-50" disabled={busyId === r.provider} title="Revertir a reservas" onClick={() => revert(r)}><RotateCcw className="h-3.5 w-3.5" /></Button> : null}
+                      </div>
+                    ) : null}
+                  </td>
+                </tr>
+              )
+            })}</tbody>
+            <tfoot><tr className="bg-slate-50 font-bold"><td className="px-3 py-2">Total ({rows.length})</td><td className="px-2 py-2"></td><td className="px-2 py-2 text-right tabular-nums">{total}</td><td className="px-2 py-2"></td><td className="px-2 py-2 text-right tabular-nums">100%</td><td className="px-2 py-2" colSpan={2}></td></tr></tfoot>
           </table></div>)}
       </CardContent></Card>
     </Shell>
