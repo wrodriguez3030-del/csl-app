@@ -18,6 +18,14 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.31.2] — 2026-07-10
+
+### Added
+- Filtros de Comisión de Ventas: opción **"Todo (todos los meses)"** — consulta
+  el historial completo sin restricción de fechas (chip "Todo el historial").
+
+---
+
 ## [0.31.1] — 2026-07-10
 
 ### Changed
