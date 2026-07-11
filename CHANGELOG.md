@@ -18,6 +18,53 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.33.0] — 2026-07-11
+
+### Added
+- **Comisión de Ventas · Cálculo Mensual de Incentivos (fundación del motor).**
+  Base tarifada y probada para formalizar la liquidación mensual por sucursal
+  como *runs* persistidos (borrador → finalizado → anulado). En este incremento
+  se entrega la fundación; la UI se cablea en el siguiente.
+  - **Motor puro `lib/commission/run-engine.ts`** (`computeRun`, sin I/O): a
+    partir de las ventas persistidas, el roster de colaboradores, los pacientes
+    y las reglas produce el run completo. Reglas de negocio: TARJETA descuenta
+    un % configurable (default 27%) **antes** de calcular incentivo; **base
+    láser POR SUCURSAL** = efectivo + transferencia + tarjeta neteada; fondo =
+    base × % del mayor tramo de la escala; el fondo se reparte en parte por
+    **pacientes** (fracción `laser_split` configurable) y parte **lineal** (el
+    resto, en partes iguales entre colaboradores lineales); incentivo por
+    servicio = base neta atribuible × % de categoría (masajes/faciales 20 %,
+    hollywood/tatuajes/HIFU 10 %, editable); productos = unidades × monto fijo;
+    la **evaluación cualitativa** ajusta solo el incentivo de servicios;
+    `neto = bruto − aporte de limpieza`. **Nunca calcula en silencio:** sin
+    pacientes o sin lineales emite alertas explícitas.
+  - **Migración `202607110002_commission_incentives_module.sql`** (aplicada a
+    db-cls, no destructiva): tablas `sales_commission_collaborators` (roster
+    editable por sucursal/servicio, soft delete), `sales_commission_runs` y
+    `sales_commission_run_items` (con RLS por `business_id` y grants a
+    `service_role`); columnas `service`/`observation` en
+    `sales_commission_patient_counts` para captura manual; regla `laser_split`
+    sembrada; seed de 25 colaboradores para Cibao (csl).
+- **Categorías de venta `ANESTESIA` y `BOTOX_PLASMA`** + `CATEGORY_LABELS` para
+  UI/reportes en `lib/commission/classification.ts`.
+- **`scripts/test-commission-import.mjs`**: 33 aserciones nuevas del motor de
+  runs (tarjeta 27 %, base láser por sucursal, escala, split pacientes/lineal,
+  servicios con tarjeta neteada, productos, evaluación, alertas). **110/110.**
+- **`scripts/_check-incentives-migration.js`**: diagnóstico de solo lectura del
+  estado de la migración en db-cls.
+
+### Fixed
+- **Filtro por sucursal devolvía vacío**: las ventas/cálculos/pacientes
+  guardaban el nombre COMPLETO del Excel (`CIBAO SPA LASER AV. RAFAEL VIDAL`)
+  mientras la UI filtra por el canónico (`RAFAEL VIDAL`). `normalizeBranch`
+  ahora hace match en dos pasos (alias exacto, luego por **contención** con los
+  alias más largos primero) y la migración canoniza los datos existentes.
+- **Colaboradores duplicados por errores de tipeo**: `canonicalCollaborator`
+  aplica equivalencias (AHSLEY→ASHLEY, YANIBLE→YANIBEL, KATHERINE→KATHERIN,
+  ROQUELMI→RIQUELMI, EMELY→EMELI, JOHELY→JOELY, MADELIN→MADELINE).
+
+---
+
 ## [0.32.0] — 2026-07-11
 
 ### Added

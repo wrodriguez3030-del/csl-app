@@ -10,7 +10,22 @@ import { normalizeName } from "./normalize"
 
 export type SaleCategory =
   | "FACIALES" | "HOLLYWOOD_AQUA_PEEL" | "TATUAJES" | "HIFU" | "MASAJES"
+  | "ANESTESIA" | "BOTOX_PLASMA"
   | "DEPILACION_LASER" | "PRODUCTO" | "OTROS"
+
+/** Etiquetas de categoría para UI/reportes. */
+export const CATEGORY_LABELS: Record<string, string> = {
+  DEPILACION_LASER: "Depilación láser",
+  MASAJES: "Masajes",
+  PRODUCTO: "Productos",
+  FACIALES: "Faciales",
+  HOLLYWOOD_AQUA_PEEL: "Hollywood / Aqua Peel",
+  TATUAJES: "Tatuajes y cejas",
+  HIFU: "HIFU",
+  ANESTESIA: "Aplicación anestesia",
+  BOTOX_PLASMA: "Botox / plasma",
+  OTROS: "Otros",
+}
 
 export interface ClassificationRule {
   category: SaleCategory
@@ -27,6 +42,8 @@ export const DEFAULT_CLASSIFICATION: ClassificationRule[] = [
   { category: "TATUAJES", keywords: ["TATUAJE", "CEJA", "T-1"] },
   { category: "MASAJES", keywords: ["MASAJE", "M-1"] },
   { category: "HIFU", keywords: ["HIFU"] },
+  { category: "ANESTESIA", keywords: ["ANESTESIA"] },
+  { category: "BOTOX_PLASMA", keywords: ["BOTOX", "PLASMA"] },
   { category: "FACIALES", keywords: ["FACIAL", "LIMPIEZA", "PELLING", "PEELING", "DESCAMANTE", "MICRODERMO", "C-1"] },
 ]
 

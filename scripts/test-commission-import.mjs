@@ -142,6 +142,122 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
   t("cruce insensible a mayúsculas/espacios", plan.assignments.length === 1 && plan.assignments[0].laserIncentive === 100)
 }
 
+// ── Motor de RUNS mensuales (tarjeta 27%, láser por sucursal, split) ──
+{
+  const { computeRun, netAmount } = await import("../lib/commission/run-engine.ts")
+  const { normalizeBranch, canonicalCollaborator } = await import("../lib/commission/normalize.ts")
+  console.log("── Fix sucursales (contención) + alias de colaboradores")
+  t("nombre COMPLETO del Excel → RAFAEL VIDAL", normalizeBranch("CIBAO SPA LASER AV. RAFAEL VIDAL") === "RAFAEL VIDAL")
+  t("nombre completo Jardines → LOS JARDINES", normalizeBranch("Cibao Spa Laser Los Jardines") === "LOS JARDINES")
+  t("nombre completo Villa Olga → VILLA OLGA", normalizeBranch("CIBAO SPA LASER VILLA OLGA") === "VILLA OLGA")
+  t("alias exacto sigue funcionando", normalizeBranch("R VIDAL") === "RAFAEL VIDAL")
+  t("JOHELY → JOELY", canonicalCollaborator("Johely") === "JOELY")
+  t("KATHERINE → KATHERIN", canonicalCollaborator("KATHERINE") === "KATHERIN")
+  t("AHSLEY → ASHLEY", canonicalCollaborator("AHSLEY") === "ASHLEY")
+  t("EMELY → EMELI", canonicalCollaborator("emely") === "EMELI")
+
+  console.log("── Run mensual: tarjeta 27% (ejemplo del documento)")
+  t("netAmount tarjeta 488,200 → 356,386", netAmount(488200, "TARJETA", 0.27) === 356386)
+  t("descuento = 131,814", 488200 - netAmount(488200, "TARJETA", 0.27) === 131814)
+  t("efectivo NO descuenta", netAmount(1000, "EFECTIVO", 0.27) === 1000)
+  t("transferencia NO descuenta", netAmount(1000, "TRANSFERENCIA", 0.27) === 1000)
+
+  const RULES = {
+    cardPct: 0.27, productUnitAmount: 100,
+    categoryPct: { MASAJES: 0.2, FACIALES: 0.2, HOLLYWOOD_AQUA_PEEL: 0.1, TATUAJES: 0.1, HIFU: 0.1 },
+    laserScale: [
+      { threshold: 260000, percentage: 0.02 }, { threshold: 600000, percentage: 0.03 },
+      { threshold: 800000, percentage: 0.04 }, { threshold: 2000000, percentage: 0.05 },
+    ],
+    laserSplitPatientsFraction: 1,
+  }
+  const collab = (name, over = {}) => ({
+    id: name.toLowerCase(), name, branch: "RAFAEL VIDAL", services: ["DEPILACION_LASER"],
+    linearParticipation: true, patientParticipation: true, fixedPercentage: null,
+    active: true, cleaningContribution: 400, bonusExtra: 0, evaluationPct: 100, ...over,
+  })
+  const sale = (over = {}) => ({
+    branch: "RAFAEL VIDAL", category: "DEPILACION_LASER", payment: "EFECTIVO",
+    amount: 0, quantity: 1, providerOriginal: "Sin Información", provider: null, ...over,
+  })
+
+  console.log("── Run mensual: base láser por sucursal + escala + reparto por pacientes")
+  // Láser: 200,000 efectivo + 111,800 transferencia + 488,200 tarjeta (neta 356,386)
+  // base = 200,000 + 111,800 + 356,386 = 668,186 → tramo 600,000 = 3% → fondo 20,045.58
+  const r1 = computeRun({
+    branch: "RAFAEL VIDAL",
+    sales: [
+      sale({ amount: 200000 }),
+      sale({ amount: 111800, payment: "TRANSFERENCIA" }),
+      sale({ amount: 488200, payment: "TARJETA" }),
+    ],
+    collaborators: [collab("ROSA"), collab("DIANA")],
+    patients: [{ collaborator: "ROSA", patients: 75 }, { collaborator: "DIANA", patients: 25 }],
+    patientsSource: "manual",
+    rules: RULES,
+  })
+  t("base láser = 668,186 (tarjeta neteada)", r1.laser.base === 668186, `(${r1.laser.base})`)
+  t("tarjeta descuento base = 131,814", r1.baseByCategory.DEPILACION_LASER.tarjetaDescuento === 131814)
+  t("tramo 3% (600k)", r1.laser.pct === 0.03 && r1.laser.threshold === 600000)
+  t("fondo = 20,045.58", r1.laser.fund === 20045.58, `(${r1.laser.fund})`)
+  const rosa1 = r1.items.find((i) => i.name === "ROSA")
+  const diana1 = r1.items.find((i) => i.name === "DIANA")
+  t("ROSA 75% del fondo", rosa1?.laserPatients === Math.round(20045.58 * 0.75 * 100) / 100, `(${rosa1?.laserPatients})`)
+  t("DIANA 25% del fondo", diana1?.laserPatients === Math.round(20045.58 * 0.25 * 100) / 100)
+  t("neto = bruto − limpieza 400", rosa1?.netTotal === Math.round((rosa1.grossTotal - 400) * 100) / 100)
+
+  console.log("── Run mensual: split lineal/pacientes + servicios + productos + evaluación")
+  const r2 = computeRun({
+    branch: "RAFAEL VIDAL",
+    sales: [
+      sale({ amount: 1000000 }), // láser efectivo → tramo 4% → fondo 40,000
+      sale({ category: "MASAJES", amount: 10000, payment: "TARJETA", providerOriginal: "ROSA (prestador)", provider: "ROSA" }),
+      sale({ category: "PRODUCTO", amount: 5000, quantity: 3, providerOriginal: "DIANA (prestador)", provider: "DIANA" }),
+      sale({ category: "MASAJES", amount: 4000, providerOriginal: "PC Recepcion  LAP TOP R VIDAL", provider: null }), // NO comisionable
+    ],
+    collaborators: [collab("ROSA", { evaluationPct: 50 }), collab("DIANA"), collab("MADELINE", { linearParticipation: true, patientParticipation: false })],
+    patients: [{ collaborator: "ROSA", patients: 60 }, { collaborator: "DIANA", patients: 40 }],
+    patientsSource: "manual",
+    rules: { ...RULES, laserSplitPatientsFraction: 0.5 },
+  })
+  t("fondo 40,000; 20,000 pacientes + 20,000 lineal", r2.laser.fund === 40000 && r2.laser.fundPatients === 20000 && r2.laser.fundLinear === 20000)
+  const rosa2 = r2.items.find((i) => i.name === "ROSA")
+  const madeline2 = r2.items.find((i) => i.name === "MADELINE")
+  t("lineal se divide entre 3 lineales (6,666.67)", rosa2?.laserLinear === 6666.67 && madeline2?.laserLinear === 6666.67)
+  t("MADELINE sin parte de pacientes (flag off)", madeline2?.laserPatients === 0)
+  t("ROSA pacientes 60% de 20,000 = 12,000", rosa2?.laserPatients === 12000)
+  t("masaje tarjeta netea: 10,000×0.73×20% = 1,460", rosa2?.serviceBreakdown.MASAJES?.amount === 1460)
+  t("evaluación 50% ajusta servicios: 730", rosa2?.serviceIncentiveAdjusted === 730)
+  const diana2 = r2.items.find((i) => i.name === "DIANA")
+  t("productos: 3 × RD$100 = 300", diana2?.productIncentive === 300 && diana2?.productUnits === 3)
+  t("venta de recepción NO comisiona", !r2.items.some((i) => i.name.includes("RECEPCION")))
+  t("bruto ROSA = 730 + 18,666.67", rosa2?.grossTotal === Math.round((730 + 6666.67 + 12000) * 100) / 100)
+
+  console.log("── Run mensual: alertas (nunca calcular en silencio)")
+  const r3 = computeRun({
+    branch: "RAFAEL VIDAL",
+    sales: [sale({ amount: 700000 })],
+    collaborators: [collab("ROSA")],
+    patients: [], patientsSource: "ninguna",
+    rules: RULES,
+  })
+  t("sin pacientes → pasa a lineal con alerta", r3.alerts.some((a) => a.includes("LINEAL")) && r3.items[0].laserLinear === r3.laser.fund)
+  const r4 = computeRun({
+    branch: "RAFAEL VIDAL",
+    sales: [sale({ amount: 700000 }), sale({ category: "MASAJES", amount: 1000, providerOriginal: "ISAURY (prestador)", provider: "ISAURY" })],
+    collaborators: [], patients: [], patientsSource: "ninguna",
+    rules: RULES,
+  })
+  t("sin lineales → fondo sin repartir con alerta", r4.alerts.some((a) => a.includes("SIN repartir")))
+  t("prestador fuera del roster → alerta", r4.alerts.some((a) => a.includes("ISAURY")))
+  const isaury = r4.items.find((i) => i.name === "ISAURY")
+  t("...pero su incentivo se calcula visible (200)", isaury?.serviceIncentive === 200 && isaury?.inRoster === false)
+  t("base 250k no alcanza tramo → fondo 0 con alerta", computeRun({
+    branch: "RAFAEL VIDAL", sales: [sale({ amount: 250000 })],
+    collaborators: [collab("ROSA")], patients: [], patientsSource: "ninguna", rules: RULES,
+  }).laser.fund === 0)
+}
+
 // ── Archivos reales (§33/§34) — solo si están disponibles ──
 const VENTAS = "C:/Users/ADMIN/Downloads/reporte_de_ventas_3552_2026-07-10T15_38_41+00_00.xlsx"
 const RESERVAS = "C:/Users/ADMIN/Downloads/reservas_3552_1783698071.xlsx"

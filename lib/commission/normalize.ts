@@ -22,13 +22,47 @@ export const CIBAO_BRANCH_SYNONYMS: Record<string, string[]> = {
   "VILLA OLGA": ["VILLA OLGA"],
 }
 
-/** Normaliza una sucursal a su nombre canónico según el mapa de sinónimos. */
+/**
+ * Normaliza una sucursal a su nombre canónico según el mapa de sinónimos.
+ * Match en dos pasos: alias EXACTO primero; si no, por CONTENCIÓN con los
+ * alias más largos primero ("CIBAO SPA LASER AV. RAFAEL VIDAL" ⊃ "RAFAEL
+ * VIDAL" → RAFAEL VIDAL). Sin esto, el nombre completo del Excel real se
+ * guardaba tal cual y ningún filtro por sucursal de la UI coincidía.
+ */
 export function normalizeBranch(v: unknown, synonyms: Record<string, string[]> = CIBAO_BRANCH_SYNONYMS): string {
   const n = normalizeName(v)
+  if (!n) return n
   for (const [canon, aliases] of Object.entries(synonyms)) {
     if (aliases.some((a) => normalizeName(a) === n)) return canon
   }
+  const byLength = Object.entries(synonyms)
+    .flatMap(([canon, aliases]) => aliases.map((a) => ({ canon, alias: normalizeName(a) })))
+    .sort((a, b) => b.alias.length - a.alias.length)
+  for (const { canon, alias } of byLength) {
+    if (alias.length >= 8 && n.includes(alias)) return canon
+  }
   return n
+}
+
+/**
+ * Equivalencias de nombres de colaboradores (variantes de escritura → nombre
+ * canónico que se muestra al usuario). Evita duplicar colaboradores por typos
+ * del archivo de origen.
+ */
+export const COLLABORATOR_ALIASES: Record<string, string> = {
+  AHSLEY: "ASHLEY",
+  YANIBLE: "YANIBEL",
+  KATHERINE: "KATHERIN",
+  ROQUELMI: "RIQUELMI",
+  EMELY: "EMELI",
+  JOHELY: "JOELY",
+  MADELIN: "MADELINE",
+}
+
+/** Nombre canónico de un colaborador (aplica equivalencias sobre el normalizado). */
+export function canonicalCollaborator(v: unknown, aliases: Record<string, string> = COLLABORATOR_ALIASES): string {
+  const n = normalizeName(v)
+  return aliases[n] || n
 }
 
 export type PaymentMethod = "TARJETA" | "EFECTIVO" | "TRANSFERENCIA" | "CHEQUE" | "ONLINE" | "OTROS"
