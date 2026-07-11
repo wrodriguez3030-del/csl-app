@@ -43,6 +43,12 @@ export function defaultCommissionRules(businessId: string, effectiveFrom = "2000
     mk({ name: "Láser tramo 4%", ruleType: "laser_scale", minAmount: 800000, percentage: 0.04, priority: 3 }),
     mk({ name: "Láser tramo 5%", ruleType: "laser_scale", minAmount: 2000000, percentage: 0.05, priority: 4 }),
     mk({ name: "Aporte de limpieza", ruleType: "cleaning_contribution", fixedAmount: 400 }),
+    // Reparto del fondo láser: por cantidad de personas + por pacientes (suman 100%).
+    mk({ name: "Reparto láser: % por cantidad de personas", ruleType: "laser_weight_personas", percentage: 0.5 }),
+    mk({ name: "Reparto láser: % por pacientes atendidos", ruleType: "laser_weight_pacientes", percentage: 0.5 }),
+    // Banderas (fixedAmount 1 = Sí, 0 = No).
+    mk({ name: "Láser: empleado con 0 pacientes recibe parte fija", ruleType: "laser_zero_patients_fixed", fixedAmount: 1 }),
+    mk({ name: "Láser: descontar tarjeta antes de la escala", ruleType: "laser_card_discount_before_scale", fixedAmount: 1 }),
   ]
 }
 

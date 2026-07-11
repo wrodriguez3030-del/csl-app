@@ -18,6 +18,47 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.35.0] — 2026-07-11
+
+### Fixed / Changed
+- **Comisión de Ventas · INCENTIVO LÁSER — lógica corregida y completa.** El
+  incentivo de depilación láser ahora se calcula **por sucursal**, **descontando
+  la tarjeta antes de la escala** y repartiendo el fondo en **parte por personas
+  + parte por pacientes** con pesos configurables y **cuadre exacto al centavo**.
+  - **Motor** (`lib/commission/run-engine.ts`): reparto láser solo entre el
+    **personal ELEGIBLE del roster** (los pacientes de quien no aplica ya NO
+    diluyen ni reciben fondo — antes se filtraba); nueva regla
+    `zeroPatientsGetsFixed` (empleado con 0 pacientes recibe o no la parte fija);
+    **`allocateExact`** (método del mayor resto) garantiza Σ repartido = fondo
+    exacto (elimina el residuo de RD$0.30–0.43 por redondeo).
+  - **Reglas** (`lib/commission/rules.ts` + migración `202607110003`, aplicada a
+    db-cls): `laser_weight_personas` / `laser_weight_pacientes` (default **50/50**,
+    editables, deben sumar 100%), `laser_zero_patients_fixed` (Sí),
+    `laser_card_discount_before_scale` (Sí). Pantalla de Reglas: editor con
+    toggle Sí/No para banderas + validación de que los pesos sumen 100%.
+  - **Personal que aplica** (roster CRUD, `sales_commission_collaborators`):
+    server `saveCommissionCollaborator` / `setCommissionCollaboratorActive` /
+    `deleteCommissionCollaborator` (soft delete) + componente
+    `LaserPersonnelEditor` (alta/edición/baja por sucursal, sin hardcodear
+    nombres) embebido en **Reglas** y en la pantalla de láser.
+  - **Pantalla "Comisión depilación láser" rediseñada** (`comision-pages.tsx`):
+    selectores mes/año; por sucursal → resumen (venta bruta, venta tarjeta,
+    % tarjeta, descuento, base neta, tramo, %, fondo, personas/pacientes,
+    pacientes, distribuido, **cuadre**) + tabla del personal (incentivo por
+    personas / por pacientes / total) + alertas; **Excel** (.xlsx) y **PDF**
+    (impresión) vía `lib/commission/laser-export.ts`; botón **Aplicar a
+    liquidación**.
+  - **Liquidación**: `applyCommissionLaser` usa el reparto CORREGIDO por sucursal
+    (antes: fondo de todo el negocio, sin netear tarjeta, solo por pacientes).
+- **Server**: `getCommissionLaserDetail` (resumen + personal por sucursal, con
+  validaciones §11); `readRunRules` deriva la fracción del reparto de los pesos.
+- **QA**: `test:commission` **117/117** (reparto exacto + regla 0 pacientes +
+  cuadre); smoke `_smoke-calculo-mensual.mjs` contra db-cls (Jun 2026): cuadre
+  **0.00 exacto** en las 3 sucursales (fondos RV 21,347.24 / LJ 9,219.52 /
+  VO 6,982.00).
+
+---
+
 ## [0.34.0] — 2026-07-11
 
 ### Added

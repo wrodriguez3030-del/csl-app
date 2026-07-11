@@ -10,14 +10,17 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   Building2, Package, Zap, Users, CalendarClock,
-  Loader2, CheckCircle2, AlertTriangle, Wand2,
+  Loader2, CheckCircle2, AlertTriangle, Wand2, Download, Printer, RefreshCw, ChevronDown,
 } from "lucide-react"
 import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
+import { exportLaserExcel, printLaserPdf, type LaserDetail } from "@/lib/commission/laser-export"
+import { LaserPersonnelEditor } from "./laser-personnel-editor"
 
 export { ComisionDashboardPage } from "./comision-dashboard-page"
 
 const fmtRD = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const BRANCHES = ["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]
+const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 
 function Shell({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
   return (
@@ -187,10 +190,12 @@ export function ComisionProductosPage() {
   )
 }
 
-// Comisión depilación láser: fondo por escala + reparto por pacientes
+// Comisión depilación láser: fondo POR SUCURSAL (tarjeta neteada → escala) +
+// reparto personas/pacientes con cuadre exacto. Personal elegible desde el roster.
 interface LaserApplyResult {
   results: {
-    month: number; year: number; fund: number; tramoPct: number; updated: number; appliedTotal: number
+    month: number; year: number; fund: number; updated: number; appliedTotal: number
+    byBranch: { branch: string; base: number; pct: number; fund: number }[]
     unmatched: { provider: string; amount: number }[]
     locked: { provider: string; status: string }[]
   }[]
@@ -201,87 +206,165 @@ export function ComisionLaserPage() {
   const { apiUrl, showToast } = useAppStore()
   const user = useSessionUser()
   const canApply = canPerm(user, "sales_commission.calculate")
-  const { params, filters, label } = useCommissionFilters()
-  const [d, setD] = useState<{ laserTotal: number; tramoPct: number; threshold: number; fund: number; patientsTotal: number; distribution: { provider: string; patients: number; participation: number; amount: number }[]; byBranch: Record<string, number> } | null>(null)
+  const now = new Date()
+  const [month, setMonth] = useState(now.getMonth() + 1)
+  const [year, setYear] = useState(now.getFullYear())
+  const years = [now.getFullYear() + 1, now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2]
+  const [detail, setDetail] = useState<LaserDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [applying, setApplying] = useState(false)
   const [applied, setApplied] = useState<LaserApplyResult | null>(null)
+  const [showRoster, setShowRoster] = useState(false)
+
   const load = useCallback(async () => {
     setLoading(true)
-    try { const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionLaser", ...params }); if (res?.ok) setD(res as never); else showToast((res as { error?: string })?.error || "Error", "error") }
-    catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
-  }, [apiUrl, showToast, params])
+    try {
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionLaserDetail", month, year })
+      if (res?.ok) setDetail(res as unknown as LaserDetail)
+      else { setDetail(null); showToast((res as { error?: string })?.error || "Error", "error") }
+    } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
+  }, [apiUrl, showToast, month, year])
   useEffect(() => { void load() }, [load])
-  const providers = (d?.distribution || []).map((r) => r.provider).sort()
-  const hasPeriod = filters.quick !== "todo"
 
   const applyToSettlement = async () => {
     setApplying(true)
     try {
-      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "applyCommissionLaser", ...params })
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "applyCommissionLaser", month, year })
       if (!res?.ok) throw new Error((res as { error?: string })?.error || "No se pudo aplicar")
       const r = res as unknown as LaserApplyResult
       setApplied(r)
       invalidateReadCache("getCommissionCalculations")
       invalidateReadCache("getCommissionDashboard")
       invalidateReadCache("getCommissionExecutiveDashboard")
-      showToast(`Fondo láser aplicado: RD$${(r.totalApplied || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} a la liquidación`, "success")
+      showToast(`Fondo láser aplicado: ${fmtRD(r.totalApplied || 0)} a la liquidación`, "success")
       setConfirmOpen(false)
     } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setApplying(false) }
   }
 
+  const totalFondo = (detail?.branches || []).reduce((s, b) => s + b.fondo, 0)
+  const weightsOk = detail ? Math.abs(detail.weights.personas + detail.weights.pacientes - 100) < 0.01 : true
+
   return (
     <Shell icon={<Zap className="h-4 w-4" />} title="Comisión de Ventas · Comisión depilación láser">
-      <CommissionFilterBar branches={BRANCHES} providers={providers} />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Venta láser</div><div className="text-xl font-black tabular-nums">{fmtRD(d?.laserTotal || 0)}</div></CardContent></Card>
-        <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Tramo alcanzado</div><div className="text-xl font-black tabular-nums">{((d?.tramoPct || 0) * 100).toFixed(0)}%</div><div className="text-[10px] text-muted-foreground">umbral {fmtRD(d?.threshold || 0)}</div></CardContent></Card>
-        <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Fondo generado</div><div className="text-xl font-black tabular-nums text-[color:var(--brand-primary)]">{fmtRD(d?.fund || 0)}</div></CardContent></Card>
-        <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Pacientes</div><div className="text-xl font-black tabular-nums">{d?.patientsTotal || 0}</div></CardContent></Card>
-      </div>
-      <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
-        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
-          <span className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Reparto del fondo por participación de pacientes</span>
+      {/* Selectores período + acciones */}
+      <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-end gap-3 p-4">
+        <div><label className="text-[11px] font-medium">Mes</label>
+          <select className="mt-0.5 h-9 w-36 rounded-md border border-input bg-white px-2 text-sm" value={month} onChange={(e) => setMonth(Number(e.target.value))}>{MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select>
+        </div>
+        <div><label className="text-[11px] font-medium">Año</label>
+          <select className="mt-0.5 h-9 w-24 rounded-md border border-input bg-white px-2 text-sm" value={year} onChange={(e) => setYear(Number(e.target.value))}>{years.map((y) => <option key={y} value={y}>{y}</option>)}</select>
+        </div>
+        <Button size="sm" variant="outline" className="h-9" disabled={loading} onClick={() => void load()}>{loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}Recalcular</Button>
+        <Button size="sm" variant="outline" className="h-9" disabled={!detail} onClick={() => detail && void exportLaserExcel(detail)}><Download className="mr-1.5 h-3.5 w-3.5" />Excel</Button>
+        <Button size="sm" variant="outline" className="h-9" disabled={!detail} onClick={() => detail && printLaserPdf(detail)}><Printer className="mr-1.5 h-3.5 w-3.5" />PDF</Button>
+        <div className="ml-auto flex items-center gap-2">
+          {detail ? <Badge variant="secondary">Reparto {detail.weights.personas}% personas / {detail.weights.pacientes}% pacientes</Badge> : null}
           {canApply ? (
-            <Button size="sm" variant="outline" className="ml-auto h-8"
-              disabled={loading || applying || !hasPeriod || !d || d.fund <= 0}
-              title={!hasPeriod ? "Selecciona un período (mes o rango) para aplicar" : undefined}
-              onClick={() => setConfirmOpen(true)}>
+            <Button size="sm" className="h-9" disabled={loading || applying || !detail || totalFondo <= 0} onClick={() => setConfirmOpen(true)}>
               <Wand2 className="mr-1.5 h-3.5 w-3.5" />Aplicar a liquidación
             </Button>
           ) : null}
         </div>
-        {loading ? <div className="py-8 text-center text-sm text-muted-foreground">Cargando...</div>
-          : !d || d.distribution.length === 0 ? <div className="py-8 text-center text-sm text-muted-foreground">Sin datos. Importa un archivo de ventas primero.</div>
-          : (<div className="overflow-x-auto"><table className="w-full text-sm">
-            <thead><tr className="border-b text-left text-[11px] uppercase text-muted-foreground"><th className="px-4 py-2">Prestador</th><th className="px-2 py-2 text-right">Pacientes</th><th className="px-2 py-2 text-right">Participación</th><th className="px-4 py-2 text-right">Incentivo láser</th></tr></thead>
-            <tbody>{d.distribution.map((r) => (<tr key={r.provider} className="border-b last:border-0"><td className="px-4 py-2 font-medium">{r.provider}</td><td className="px-2 py-2 text-right tabular-nums">{r.patients}</td><td className="px-2 py-2 text-right tabular-nums">{r.participation.toFixed(2)}%</td><td className="px-4 py-2 text-right tabular-nums">{fmtRD(r.amount)}</td></tr>))}</tbody>
-            <tfoot><tr className="bg-slate-50 font-bold"><td className="px-4 py-2">Total</td><td className="px-2 py-2 text-right tabular-nums">{d.patientsTotal}</td><td className="px-2 py-2 text-right tabular-nums">100%</td><td className="px-4 py-2 text-right tabular-nums">{fmtRD(d.fund)}</td></tr></tfoot>
-          </table></div>)}
       </CardContent></Card>
+
+      {!weightsOk ? (
+        <div className="flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"><AlertTriangle className="h-3.5 w-3.5" />Los pesos de reparto no suman 100% (personas {detail?.weights.personas}% + pacientes {detail?.weights.pacientes}%). Corrige en Reglas de comisión.</div>
+      ) : null}
+      {(detail?.globalAlerts || []).map((a, i) => (
+        <div key={i} className="flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"><AlertTriangle className="h-3.5 w-3.5" />{a}</div>
+      ))}
+
+      {loading ? (
+        <Card className="border-[color:var(--brand-border)]"><CardContent className="py-10 text-center text-sm text-muted-foreground"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Calculando…</CardContent></Card>
+      ) : !detail ? (
+        <Card className="border-[color:var(--brand-border)]"><CardContent className="py-10 text-center text-sm text-muted-foreground">Sin datos. Importa ventas del período primero.</CardContent></Card>
+      ) : detail.branches.map((b) => (
+        <Card key={b.branch} className="border-[color:var(--brand-border)]"><CardContent className="p-0">
+          <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
+            <Building2 className="h-4 w-4 text-[color:var(--brand-primary)]" />
+            <span className="text-sm font-semibold">{b.branch}</span>
+            <span className="text-[11px] text-muted-foreground">{MONTHS[month - 1]} {year}</span>
+            {Math.abs(b.cuadre) < 0.005
+              ? <Badge variant="outline" className="ml-auto border-emerald-200 bg-emerald-50 text-emerald-700">Cuadre exacto ✓</Badge>
+              : <Badge variant="outline" className="ml-auto border-amber-200 bg-amber-50 text-amber-700">Diferencia {fmtRD(b.cuadre)}</Badge>}
+          </div>
+          {/* Resumen del mes */}
+          <div className="grid grid-cols-2 gap-px bg-slate-100 sm:grid-cols-4 lg:grid-cols-7">
+            {[
+              ["Venta bruta", fmtRD(b.ventaLaserBruta)],
+              ["Venta tarjeta", fmtRD(b.ventaLaserTarjeta)],
+              [`Desc. tarjeta ${(b.cardPct * 100).toFixed(0)}%`, "−" + fmtRD(b.descuentoTarjeta)],
+              ["Base neta", fmtRD(b.baseLaserNeta)],
+              ["Tramo", `${(b.pct * 100).toFixed(0)}%`],
+              ["Fondo", fmtRD(b.fondo)],
+              ["Pacientes", `${b.totalPacientes}`],
+            ].map(([k, v], i) => (
+              <div key={i} className="bg-white p-3"><div className="text-[10px] uppercase text-muted-foreground">{k}</div><div className="text-sm font-black tabular-nums">{v}</div></div>
+            ))}
+          </div>
+          {b.alerts.length ? (
+            <div className="space-y-0.5 border-t bg-amber-50/50 px-4 py-2">
+              {b.alerts.map((a, i) => <div key={i} className="text-[11px] text-amber-800">⚠ {a}</div>)}
+            </div>
+          ) : null}
+          {/* Tabla del personal */}
+          <div className="overflow-x-auto border-t"><table className="w-full text-sm">
+            <thead><tr className="border-b text-left text-[11px] uppercase text-muted-foreground">
+              <th className="px-3 py-2">Empleado</th><th className="px-2 py-2 text-center">Aplica</th>
+              <th className="px-2 py-2 text-right">Pacientes</th><th className="px-2 py-2 text-right">% Pac.</th>
+              <th className="px-2 py-2 text-right">Inc. personas</th><th className="px-2 py-2 text-right">Inc. pacientes</th>
+              <th className="px-3 py-2 text-right">Total láser</th>
+            </tr></thead>
+            <tbody>{b.personnel.map((p) => (
+              <tr key={p.name} className="border-b last:border-0">
+                <td className="px-3 py-2 font-medium">{p.name}{!p.applies ? <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] text-amber-700">no aplica</span> : null}</td>
+                <td className="px-2 py-2 text-center">{p.applies ? "Sí" : "No"}</td>
+                <td className="px-2 py-2 text-right tabular-nums">{p.patients}</td>
+                <td className="px-2 py-2 text-right tabular-nums">{(p.patientsPct * 100).toFixed(2)}%</td>
+                <td className="px-2 py-2 text-right tabular-nums">{fmtRD(p.laserLinear)}</td>
+                <td className="px-2 py-2 text-right tabular-nums">{fmtRD(p.laserPatients)}</td>
+                <td className="px-3 py-2 text-right font-bold tabular-nums text-[color:var(--brand-primary)]">{fmtRD(p.laserTotal)}</td>
+              </tr>
+            ))}</tbody>
+            <tfoot><tr className="bg-slate-50 font-bold">
+              <td className="px-3 py-2">Total ({b.personasAplican} aplican)</td><td className="px-2 py-2"></td>
+              <td className="px-2 py-2 text-right tabular-nums">{b.totalPacientes}</td><td className="px-2 py-2"></td>
+              <td className="px-2 py-2 text-right tabular-nums">{fmtRD(b.fondoPersonas)}</td>
+              <td className="px-2 py-2 text-right tabular-nums">{fmtRD(b.fondoPacientes)}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{fmtRD(b.totalDistribuido)}</td>
+            </tr></tfoot>
+          </table></div>
+        </CardContent></Card>
+      ))}
 
       {applied ? (
         <Card className="border-emerald-200 bg-emerald-50/40"><CardContent className="space-y-2 p-4 text-sm">
           <div className="flex items-center gap-2 font-semibold text-emerald-700"><CheckCircle2 className="h-4 w-4" />Fondo aplicado a la liquidación · {fmtRD(applied.totalApplied)}</div>
           {applied.results.map((r) => (
             <div key={`${r.year}-${r.month}`} className="text-xs text-slate-600">
-              <b>{String(r.month).padStart(2, "0")}/{r.year}</b>: fondo {fmtRD(r.fund)} ({(r.tramoPct * 100).toFixed(0)}%) · {r.updated} liquidación{r.updated === 1 ? "" : "es"} actualizada{r.updated === 1 ? "" : "s"} · asignado {fmtRD(r.appliedTotal)}
-              {r.unmatched.length ? <span className="ml-1 inline-flex items-center gap-1 text-amber-700"><AlertTriangle className="h-3 w-3" />{r.unmatched.length} prestador{r.unmatched.length === 1 ? "" : "es"} sin cálculo: {r.unmatched.map((u) => u.provider).join(", ")}</span> : null}
-              {r.locked.length ? <span className="ml-1 text-amber-700">· {r.locked.length} fila{r.locked.length === 1 ? "" : "s"} pagada/cerrada sin tocar</span> : null}
+              <b>{String(r.month).padStart(2, "0")}/{r.year}</b>: fondo {fmtRD(r.fund)} · {r.updated} liquidación{r.updated === 1 ? "" : "es"} actualizada{r.updated === 1 ? "" : "s"} · asignado {fmtRD(r.appliedTotal)}
+              {r.unmatched.length ? <span className="ml-1 inline-flex items-center gap-1 text-amber-700"><AlertTriangle className="h-3 w-3" />{r.unmatched.length} sin cálculo: {r.unmatched.map((u) => u.provider).join(", ")}</span> : null}
+              {r.locked.length ? <span className="ml-1 text-amber-700">· {r.locked.length} fila(s) pagada/cerrada sin tocar</span> : null}
             </div>
           ))}
           <p className="text-[11px] text-muted-foreground">El incentivo láser ya está sumado al neto de cada empleado en <b>Liquidación de incentivos</b>.</p>
         </CardContent></Card>
       ) : null}
 
+      {/* Personal que aplica (roster editable) */}
+      <button type="button" onClick={() => setShowRoster((v) => !v)} className="flex items-center gap-1 text-xs font-medium text-[color:var(--brand-primary)]">
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showRoster ? "rotate-180" : ""}`} />{showRoster ? "Ocultar" : "Ver / editar"} personal que aplica
+      </button>
+      {showRoster ? <LaserPersonnelEditor /> : null}
+
       <Dialog open={confirmOpen} onOpenChange={(o) => !o && setConfirmOpen(false)}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Aplicar fondo láser a la liquidación</DialogTitle></DialogHeader>
           <div className="space-y-2 text-sm text-slate-600">
-            <p>Se escribirá el <b>incentivo láser</b> de <b>{label}</b> en la liquidación de cada empleado según su participación de pacientes, y se recalculará el bruto y el neto.</p>
+            <p>Se escribirá el <b>incentivo láser</b> de <b>{MONTHS[month - 1]} {year}</b> en la liquidación de cada empleado (reparto por sucursal: personas + pacientes) y se recalculará el bruto y el neto.</p>
             <ul className="list-disc space-y-1 pl-5 text-xs">
-              <li>Se procesa <b>mes por mes</b> con el fondo de TODO el negocio (ignora los filtros de sucursal/prestador).</li>
+              <li>Se procesa <b>por sucursal</b> con tarjeta neteada antes de la escala.</li>
               <li>Re-aplicar es seguro: sincroniza con el reparto vigente.</li>
               <li>Las liquidaciones <b>pagadas o cerradas</b> no se modifican.</li>
             </ul>
@@ -295,6 +378,7 @@ export function ComisionLaserPage() {
     </Shell>
   )
 }
+
 
 // Clientes atendidos por prestador (fecha = Fecha de realización de la reserva)
 export function ComisionClientesPage() {

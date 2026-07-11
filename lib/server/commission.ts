@@ -12,7 +12,7 @@ import { getBusinessContext, requirePermission, hasPermission } from "./business
 import { textValue, numberValue } from "./csl-helpers"
 import type { ActionParams, ActionUser, Row } from "./csl-types"
 import { defaultCommissionRules } from "@/lib/commission/rules"
-import { parseDateISO } from "@/lib/commission/normalize"
+import { parseDateISO, canonicalCollaborator } from "@/lib/commission/normalize"
 import { exclusiveEnd, monthBounds, monthsCovered, todayInTz } from "@/lib/commission/period"
 import { assignLaserToCalcs } from "@/lib/commission/laser-apply"
 import { computeRun, type RunResult, type RunRules, type RunSaleRow } from "@/lib/commission/run-engine"
@@ -774,14 +774,38 @@ export async function getCommissionLaser(params: ActionParams) {
   return { ok: true, laserTotal, byBranch, tramoPct, fund, threshold: reached?.threshold || 0, distribution, patientsTotal: pat.total }
 }
 
+/** Sucursales de Cibao para el cálculo láser POR SUCURSAL. */
+const LASER_BRANCHES = ["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]
+
+/**
+ * Reparto láser CORREGIDO de un mes: corre el motor POR SUCURSAL (tarjeta
+ * neteada → escala → fondo → reparto personas/pacientes) y agrega el láser total
+ * de cada prestador entre sucursales. Devuelve la distribución por prestador +
+ * el fondo total y el detalle por sucursal.
+ */
+async function laserDistributionForMonth(month: number, year: number) {
+  const perProvider = new Map<string, number>()
+  let fundTotal = 0
+  const byBranch: { branch: string; base: number; pct: number; fund: number }[] = []
+  for (const branch of LASER_BRANCHES) {
+    const r = await computeRunForPeriod(branch, month, year)
+    fundTotal = round2(fundTotal + r.laser.fund)
+    byBranch.push({ branch, base: r.laser.base, pct: r.laser.pct, fund: r.laser.fund })
+    for (const it of r.items) {
+      if (it.laserTotal > 0) perProvider.set(it.name, round2((perProvider.get(it.name) || 0) + it.laserTotal))
+    }
+  }
+  const distribution = [...perProvider.entries()].map(([provider, amount]) => ({ provider, amount }))
+  return { distribution, fund: fundTotal, byBranch }
+}
+
 /**
  * Aplica el fondo láser del período a la LIQUIDACIÓN de cada empleado:
- * escribe `laser_incentive` (reparto por participación de pacientes) en los
- * cálculos del mes y recalcula bruto/neto. Se procesa MES POR MES (el fondo y
- * la escala son mensuales) sobre TODO el negocio — ignora filtros de
- * sucursal/prestador. Idempotente: re-aplicar sincroniza con el reparto vigente
- * (incluye poner en 0 a quien salió del reparto). Filas pagadas/cerradas no se
- * tocan y se reportan.
+ * escribe `laser_incentive` (reparto CORREGIDO por sucursal: tarjeta neteada →
+ * escala → personas + pacientes) en los cálculos del mes y recalcula bruto/neto.
+ * Se procesa MES POR MES (fondo y escala son mensuales). Idempotente: re-aplicar
+ * sincroniza con el reparto vigente (incluye poner en 0 a quien salió del
+ * reparto). Filas pagadas/cerradas no se tocan y se reportan.
  */
 export async function applyCommissionLaser(params: ActionParams, user: ActionUser) {
   requirePermission("sales_commission.calculate")
@@ -796,7 +820,7 @@ export async function applyCommissionLaser(params: ActionParams, user: ActionUse
 
   const results = []
   for (const { year, month } of months) {
-    const laser = await getCommissionLaser({ month, year })
+    const laser = await laserDistributionForMonth(month, year)
     const { data: calcRows, error } = await sb.from("sales_commission_calculations").select("*")
       .eq("business_id", business_id).eq("period_year", year).eq("period_month", month)
     if (error) throw new Error(error.message)
@@ -822,12 +846,12 @@ export async function applyCommissionLaser(params: ActionParams, user: ActionUse
     const failed = updates.find(Boolean)
     if (failed) throw new Error(`Error aplicando láser ${month}/${year}: ${failed.message}`)
     await logAudit(user, "calculation", null, "laser_fund_aplicado", null, {
-      laserTotal: laser.laserTotal, tramoPct: laser.tramoPct, fund: laser.fund,
+      fund: laser.fund, byBranch: laser.byBranch,
       updated: plan.assignments.length, appliedTotal: plan.appliedTotal,
       unmatched: plan.unmatched, locked: plan.locked,
     }, textValue(params, "reason") || null, { month, year })
     results.push({
-      month, year, laserTotal: laser.laserTotal, tramoPct: laser.tramoPct, fund: laser.fund,
+      month, year, fund: laser.fund, byBranch: laser.byBranch,
       updated: plan.assignments.length, appliedTotal: plan.appliedTotal,
       unmatched: plan.unmatched, locked: plan.locked,
     })
@@ -1150,7 +1174,6 @@ async function readRunRules(): Promise<RunRules> {
     .sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)))[0]
   const card = latest("card_percentage")
   const prod = latest("product_unit_incentive")
-  const split = latest("laser_split")
   const categoryPct: Record<string, number> = {}
   for (const r of rows.filter((r) => r.rule_type === "category_commission")) {
     if (r.category != null && r.percentage != null) categoryPct[String(r.category)] = Number(r.percentage)
@@ -1159,12 +1182,26 @@ async function readRunRules(): Promise<RunRules> {
     .filter((r) => r.rule_type === "laser_scale" && r.min_amount != null && r.percentage != null)
     .map((r) => ({ threshold: Number(r.min_amount), percentage: Number(r.percentage) }))
     .sort((a, b) => a.threshold - b.threshold)
+  // Reparto láser: pesos configurables por personas/pacientes (suman 100%).
+  // Fallback a la regla legacy `laser_split` (fracción por pacientes); si no, 50/50.
+  const wPersonas = latest("laser_weight_personas")?.percentage
+  const wPacientes = latest("laser_weight_pacientes")?.percentage
+  let laserSplitPatientsFraction: number
+  if (wPersonas != null || wPacientes != null) {
+    const p = Number(wPersonas ?? 0), q = Number(wPacientes ?? 0)
+    laserSplitPatientsFraction = p + q > 0 ? q / (p + q) : 0.5
+  } else {
+    const split = latest("laser_split")?.percentage
+    laserSplitPatientsFraction = split != null ? Number(split) : 0.5
+  }
+  const zeroFlag = latest("laser_zero_patients_fixed")?.fixed_amount
   return {
     cardPct: card?.percentage != null ? Number(card.percentage) : 0.27,
     productUnitAmount: prod?.fixed_amount != null ? Number(prod.fixed_amount) : 100,
     categoryPct,
     laserScale,
-    laserSplitPatientsFraction: split?.percentage != null ? Number(split.percentage) : 1,
+    laserSplitPatientsFraction,
+    zeroPatientsGetsFixed: zeroFlag == null ? true : Number(zeroFlag) !== 0,
   }
 }
 
@@ -1401,4 +1438,164 @@ export async function voidCommissionRun(params: ActionParams, user: ActionUser) 
   await logAudit(user, "commission_run", id, "void", { status: (runRow as Row).status }, { status: "anulado" }, reason,
     { month: Number((runRow as Row).period_month), year: Number((runRow as Row).period_year) })
   return { ok: true }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PERSONAL QUE APLICA INCENTIVO LÁSER (roster CRUD) + DETALLE LÁSER POR SUCURSAL
+// ════════════════════════════════════════════════════════════════════════════
+
+const boolParam = (params: ActionParams, key: string, def: boolean): boolean => {
+  const v = params[key]
+  if (v === undefined || v === "") return def
+  return v === true || v === "1" || v === "true"
+}
+const numParam = (params: ActionParams, key: string, def: number): number => {
+  const v = params[key]
+  if (v === undefined || v === "") return def
+  const n = Number(v)
+  return Number.isFinite(n) ? n : def
+}
+
+/** Alta/edición de un colaborador del roster (personal que aplica láser). */
+export async function saveCommissionCollaborator(params: ActionParams, user: ActionUser) {
+  requirePermission("sales_commission.rules.manage")
+  const business_id = requireBizId()
+  const id = textValue(params, "id")
+  const name = canonicalCollaborator(textValue(params, "name"))
+  const branch = textValue(params, "branch").trim()
+  if (!name) throw new Error("El nombre del empleado es obligatorio")
+  if (!branch) throw new Error("La sucursal es obligatoria")
+  const appliesLaser = boolParam(params, "appliesLaser", true)
+  const fields: Record<string, unknown> = {
+    business_id, name, branch,
+    services: appliesLaser ? ["DEPILACION_LASER"] : [],
+    active: boolParam(params, "active", true),
+    linear_participation: boolParam(params, "linearParticipation", true),
+    patient_participation: boolParam(params, "patientParticipation", true),
+    cleaning_contribution: numParam(params, "cleaningContribution", 400),
+    bonus_extra: numParam(params, "bonusExtra", 0),
+    evaluation_pct: numParam(params, "evaluationPct", 100),
+    start_date: textValue(params, "startDate") || null,
+    end_date: textValue(params, "endDate") || null,
+    notes: textValue(params, "notes") || null,
+    updated_by: user.id || null, updated_at: new Date().toISOString(),
+  }
+  const sb = getSupabaseAdmin()
+  let cid = id
+  if (id) {
+    const { error } = await sb.from("sales_commission_collaborators").update(fields).eq("id", id).eq("business_id", business_id)
+    if (error) throw new Error(error.message)
+  } else {
+    // Reactivar/actualizar si ya existe uno VIVO con ese nombre+sucursal (evita choque con el único parcial).
+    const { data: existing } = await sb.from("sales_commission_collaborators").select("id")
+      .eq("business_id", business_id).eq("branch", branch).eq("name", name).is("deleted_at", null).maybeSingle()
+    if (existing) {
+      const { error } = await sb.from("sales_commission_collaborators").update(fields).eq("id", (existing as Row).id as string)
+      if (error) throw new Error(error.message)
+      cid = String((existing as Row).id)
+    } else {
+      const { data, error } = await sb.from("sales_commission_collaborators")
+        .insert({ ...fields, created_by: user.id || null }).select("id").single()
+      if (error) throw new Error(error.message)
+      cid = String((data as Row).id)
+    }
+  }
+  await logAudit(user, "commission_collaborator", cid || null, id ? "update" : "create", null,
+    { name, branch, active: fields.active, appliesLaser }, null)
+  return { ok: true, id: cid }
+}
+
+/** Activa/desactiva un colaborador (participa o no en el reparto del mes). */
+export async function setCommissionCollaboratorActive(params: ActionParams, user: ActionUser) {
+  requirePermission("sales_commission.rules.manage")
+  const business_id = requireBizId()
+  const id = textValue(params, "id")
+  if (!id) throw new Error("Falta el id del colaborador")
+  const active = boolParam(params, "active", true)
+  const { error } = await getSupabaseAdmin().from("sales_commission_collaborators")
+    .update({ active, updated_by: user.id || null, updated_at: new Date().toISOString() })
+    .eq("id", id).eq("business_id", business_id)
+  if (error) throw new Error(error.message)
+  await logAudit(user, "commission_collaborator", id, active ? "activate" : "deactivate", null, { active }, null)
+  return { ok: true }
+}
+
+/** Baja (soft delete) de un colaborador. NO borra la fila: marca deleted_at. */
+export async function deleteCommissionCollaborator(params: ActionParams, user: ActionUser) {
+  requirePermission("sales_commission.rules.manage")
+  const business_id = requireBizId()
+  const id = textValue(params, "id")
+  if (!id) throw new Error("Falta el id del colaborador")
+  const { error } = await getSupabaseAdmin().from("sales_commission_collaborators")
+    .update({ deleted_at: new Date().toISOString(), deleted_by: user.id || null, active: false })
+    .eq("id", id).eq("business_id", business_id)
+  if (error) throw new Error(error.message)
+  await logAudit(user, "commission_collaborator", id, "delete", null, null, textValue(params, "reason") || null)
+  return { ok: true }
+}
+
+/**
+ * DETALLE del incentivo láser POR SUCURSAL para un mes: resumen (venta bruta,
+ * venta tarjeta, % tarjeta, descuento, base neta, tramo, %, fondo, personas,
+ * pacientes, distribuido, cuadre) + personal elegible con su reparto. Reusa el
+ * motor `computeRun` (una corrida por sucursal). Incluye validaciones/alertas.
+ */
+export async function getCommissionLaserDetail(params: ActionParams) {
+  requireBizId()
+  const month = numberValue(params, "month")
+  const year = numberValue(params, "year")
+  if (!month || !year) throw new Error("Selecciona mes y año para el cálculo láser")
+  const branchFilter = textValue(params, "branch")
+  const branches = branchFilter ? [branchFilter] : LASER_BRANCHES
+  const rules = await readRunRules()
+  // Validaciones globales (spec §11).
+  const globalAlerts: string[] = []
+  if (!rules.laserScale.length) globalAlerts.push("No hay escala láser configurada en Reglas: el fondo será 0.")
+  if (rules.cardPct == null) globalAlerts.push("No hay % de tarjeta configurado.")
+
+  const out = []
+  for (const branch of branches) {
+    const r = await computeRunForPeriod(branch, month, year)
+    const roster = await readRoster(branch, false)
+    const laserRoster = roster.filter((c) => c.services.includes("DEPILACION_LASER"))
+    const itemByName = new Map(r.items.map((it) => [it.name, it]))
+    const personnel = laserRoster.map((c) => {
+      const it = itemByName.get(canonicalCollaborator(c.name))
+      return {
+        name: c.name, branch, applies: true,
+        patients: it?.patients || 0, patientsPct: it?.patientsPct || 0,
+        laserLinear: it?.laserLinear || 0, laserPatients: it?.laserPatients || 0, laserTotal: it?.laserTotal || 0,
+      }
+    })
+    // Defensivo: alguien con láser asignado que no esté en el roster láser (no debería pasar).
+    for (const it of r.items) {
+      if (it.laserTotal > 0 && !laserRoster.some((c) => canonicalCollaborator(c.name) === it.name)) {
+        personnel.push({ name: it.name, branch, applies: false, patients: it.patients, patientsPct: it.patientsPct, laserLinear: it.laserLinear, laserPatients: it.laserPatients, laserTotal: it.laserTotal })
+      }
+    }
+    personnel.sort((a, b) => b.laserTotal - a.laserTotal)
+    const laserBase = r.baseByCategory["DEPILACION_LASER"]
+    const totalDistribuido = round2(personnel.reduce((s, p) => s + p.laserTotal, 0))
+    out.push({
+      branch,
+      ventaLaserBruta: laserBase?.totalBruto || 0,
+      ventaLaserTarjeta: laserBase?.tarjetaBruta || 0,
+      cardPct: r.cardPct,
+      descuentoTarjeta: laserBase?.tarjetaDescuento || 0,
+      baseLaserNeta: r.laser.base,
+      tramo: r.laser.threshold, pct: r.laser.pct,
+      fondo: r.laser.fund, fondoPersonas: r.laser.fundLinear, fondoPacientes: r.laser.fundPatients,
+      personasAplican: personnel.filter((p) => p.applies).length,
+      totalPacientes: r.laser.patientsTotal, patientsSource: r.laser.patientsSource,
+      totalDistribuido, cuadre: round2(r.laser.fund - totalDistribuido),
+      personnel, alerts: r.alerts,
+    })
+  }
+  return {
+    ok: true, month, year,
+    weights: { personas: round2((1 - rules.laserSplitPatientsFraction) * 100), pacientes: round2(rules.laserSplitPatientsFraction * 100) },
+    zeroPatientsGetsFixed: rules.zeroPatientsGetsFixed !== false,
+    cardDiscountBeforeScale: true,
+    globalAlerts, branches: out,
+  }
 }

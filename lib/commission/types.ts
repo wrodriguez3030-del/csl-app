@@ -12,6 +12,11 @@ export type RuleType =
   | "laser_scale"            // tramo de la escala de depilación láser
   | "cleaning_contribution"  // aporte de limpieza (se descuenta)
   | "fixed_incentive"        // incentivo fijo por empleado
+  | "laser_split"            // (legacy) fracción del fondo láser por pacientes
+  | "laser_weight_personas"  // % del fondo láser repartido por cantidad de personas
+  | "laser_weight_pacientes" // % del fondo láser repartido por pacientes atendidos
+  | "laser_zero_patients_fixed"        // flag (fixed 1/0): 0 pacientes recibe parte fija
+  | "laser_card_discount_before_scale" // flag (fixed 1/0): descontar tarjeta antes de la escala
 
 /** Origen de cada peso de incentivo de servicios (trazabilidad, sección 16). */
 export type ServiceIncentiveSource =

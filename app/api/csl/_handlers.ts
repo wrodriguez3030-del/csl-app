@@ -3513,6 +3513,14 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await commission.finalizeCommissionRun(params, user)
     case "voidCommissionRun":
       return await commission.voidCommissionRun(params, user)
+    case "getCommissionLaserDetail":
+      return await commission.getCommissionLaserDetail(params)
+    case "saveCommissionCollaborator":
+      return await commission.saveCommissionCollaborator(params, user)
+    case "setCommissionCollaboratorActive":
+      return await commission.setCommissionCollaboratorActive(params, user)
+    case "deleteCommissionCollaborator":
+      return await commission.deleteCommissionCollaborator(params, user)
     case "startReservationsImport":
       return await commission.startReservationsImport(params, user)
     case "appendReservationsRows":

@@ -30,12 +30,17 @@ async function readRunRules(business_id) {
   for (const r of rows.filter((r) => r.rule_type === "category_commission")) if (r.category != null && r.percentage != null) categoryPct[r.category] = Number(r.percentage)
   const laserScale = rows.filter((r) => r.rule_type === "laser_scale" && r.min_amount != null && r.percentage != null)
     .map((r) => ({ threshold: Number(r.min_amount), percentage: Number(r.percentage) })).sort((a, b) => a.threshold - b.threshold)
-  const card = latest("card_percentage"), prod = latest("product_unit_incentive"), split = latest("laser_split")
+  const card = latest("card_percentage"), prod = latest("product_unit_incentive")
+  const wPer = latest("laser_weight_personas")?.percentage, wPac = latest("laser_weight_pacientes")?.percentage
+  let frac
+  if (wPer != null || wPac != null) { const p = Number(wPer ?? 0), q = Number(wPac ?? 0); frac = p + q > 0 ? q / (p + q) : 0.5 }
+  else { const s = latest("laser_split")?.percentage; frac = s != null ? Number(s) : 0.5 }
+  const zero = latest("laser_zero_patients_fixed")?.fixed_amount
   return {
     cardPct: card?.percentage != null ? Number(card.percentage) : 0.27,
     productUnitAmount: prod?.fixed_amount != null ? Number(prod.fixed_amount) : 100,
-    categoryPct, laserScale,
-    laserSplitPatientsFraction: split?.percentage != null ? Number(split.percentage) : 1,
+    categoryPct, laserScale, laserSplitPatientsFraction: frac,
+    zeroPatientsGetsFixed: zero == null ? true : Number(zero) !== 0,
   }
 }
 
@@ -105,8 +110,11 @@ async function readPatients(business_id, branch, month, year) {
     const r = computeRun({ branch, sales, collaborators, patients: pat.patients, patientsSource: pat.source, rules })
     console.log(`\n── ${branch} · ${String(MONTH).padStart(2, "0")}/${YEAR}: ${sales.length} ventas, ${collaborators.length} colaboradores, pacientes ${r.laser.patientsTotal} (${pat.source})`)
     console.log(`   base láser ${r.laser.base.toFixed(2)} → tramo ${(r.laser.pct * 100).toFixed(0)}% → fondo ${r.laser.fund.toFixed(2)} (pac ${r.laser.fundPatients.toFixed(2)} / lin ${r.laser.fundLinear.toFixed(2)})`)
-    console.log(`   ítems ${r.items.length} · neto total ${r.totals.netTotal.toFixed(2)} · alertas ${r.alerts.length}`)
-    if (r.alerts.length) r.alerts.forEach((a) => console.log(`     ⚠ ${a}`))
+    console.log(`   fondo personas ${r.laser.fundLinear.toFixed(2)} + pacientes ${r.laser.fundPatients.toFixed(2)} (pesos ${((1 - rules.laserSplitPatientsFraction) * 100).toFixed(0)}/${(rules.laserSplitPatientsFraction * 100).toFixed(0)})`)
+    const laserDist = r.items.reduce((s, i) => s + i.laserTotal, 0)
+    console.log(`   ítems ${r.items.length} · láser repartido ${laserDist.toFixed(2)} (cuadre vs fondo ${(r.laser.fund - laserDist).toFixed(2)}) · neto total ${r.totals.netTotal.toFixed(2)} · alertas ${r.alerts.length}`)
+    if (r.alerts.length) r.alerts.slice(0, 3).forEach((a) => console.log(`     ⚠ ${a}`))
+    t(`${branch}: láser repartido = fondo EXACTO (cuadre 0.00)`, Math.abs(r.laser.fund - laserDist) <= 0.01, `(${(r.laser.fund - laserDist).toFixed(2)})`)
     // Invariantes del motor:
     t(`${branch}: fondo ≤ base × 5%`, r.laser.fund <= r.laser.base * 0.05 + 0.01)
     t(`${branch}: fondo pac + lin = fondo (o 0 con alerta)`, Math.abs((r.laser.fundPatients + r.laser.fundLinear) - r.laser.fund) < 0.02 || r.laser.fund === 0 || r.alerts.length > 0)

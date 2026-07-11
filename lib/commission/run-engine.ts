@@ -62,8 +62,13 @@ export interface RunRules {
   productUnitAmount: number
   categoryPct: Record<string, number>
   laserScale: { threshold: number; percentage: number }[]
-  /** Fracción del fondo láser repartida por pacientes (0..1); el resto lineal. */
+  /** Fracción del fondo láser repartida por pacientes (0..1); el resto por
+   *  cantidad de personas (parte fija). Deriva de los pesos configurables
+   *  (peso_pacientes / (peso_personas + peso_pacientes)). */
   laserSplitPatientsFraction: number
+  /** Si false, el empleado con 0 pacientes NO recibe la parte fija por persona
+   *  (queda fuera del reparto lineal). Default true. */
+  zeroPatientsGetsFixed?: boolean
 }
 
 export interface PaymentBase {
@@ -157,6 +162,27 @@ function scaleTramo(base: number, scale: RunRules["laserScale"]): { threshold: n
   return scale.filter((t) => base >= t.threshold).sort((a, b) => b.threshold - a.threshold)[0] ?? null
 }
 
+/**
+ * Reparte `total` (RD$) entre los `weights` de forma que la suma sea EXACTA al
+ * centavo (método del mayor resto): los centavos sobrantes por redondeo se
+ * asignan a los mayores restos fraccionarios. Garantiza el CUADRE completo
+ * (Σ resultado = total) que exige la liquidación del incentivo láser.
+ */
+export function allocateExact(total: number, weights: number[]): number[] {
+  const n = weights.length
+  if (n === 0) return []
+  const totalCents = Math.round((Number(total) || 0) * 100)
+  const wsum = weights.reduce((s, w) => s + (Number(w) || 0), 0)
+  if (wsum <= 0) return weights.map(() => 0)
+  const raw = weights.map((w) => (totalCents * (Number(w) || 0)) / wsum)
+  const cents = raw.map((x) => Math.floor(x))
+  // rem = centavos sobrantes por el piso; siempre 0 ≤ rem < weights.length.
+  const rem = totalCents - cents.reduce((s, x) => s + x, 0)
+  const order = raw.map((x, i) => ({ i, frac: x - Math.floor(x) })).sort((a, b) => b.frac - a.frac)
+  for (let k = 0; k < rem; k++) cents[order[k].i]++
+  return cents.map((c) => c / 100)
+}
+
 export interface ComputeRunInput {
   branch: string
   sales: RunSaleRow[]
@@ -240,10 +266,21 @@ export function computeRun(input: ComputeRunInput): RunResult {
     }
   }
 
-  // ── Reparto del fondo láser ────────────────────────────────────────────────
-  const patCounts = input.patients
+  // ── Reparto del fondo láser (SOLO personal ELEGIBLE del roster) ────────────
+  // Elegible para la parte por pacientes = en el roster activo, con servicio
+  // DEPILACIÓN LÁSER y participación por pacientes. Los pacientes de quien NO
+  // aplica NO diluyen ni reciben el fondo (spec §15): solo generan alerta.
+  const allPat = input.patients
     .map((p) => ({ name: canonicalCollaborator(p.collaborator), patients: Number(p.patients) || 0 }))
     .filter((p) => p.name && p.patients > 0)
+  const eligiblePat = (name: string) => {
+    const c = rosterByName.get(name)
+    return c && c.services.includes("DEPILACION_LASER") && c.patientParticipation !== false ? c : null
+  }
+  const patCounts = allPat.filter((p) => eligiblePat(p.name))
+  for (const p of allPat) {
+    if (!eligiblePat(p.name)) alerts.push(`Pacientes cargados para "${p.name}" pero no aplica al incentivo láser en ${branch}: NO participa del reparto.`)
+  }
   const patientsTotal = patCounts.reduce((s, p) => s + p.patients, 0)
 
   let fracPatients = Math.min(1, Math.max(0, rules.laserSplitPatientsFraction))
@@ -264,18 +301,14 @@ export function computeRun(input: ComputeRunInput): RunResult {
   }
 
   if (fundPatients > 0 && patientsTotal > 0) {
-    for (const p of patCounts) {
+    for (const p of patCounts) itemFor(p.name).patients += p.patients
+    // Reparto EXACTO por pacientes (Σ = fundPatients al centavo).
+    const shares = allocateExact(fundPatients, patCounts.map((p) => p.patients))
+    patCounts.forEach((p, i) => {
       const it = itemFor(p.name)
-      it.patients += p.patients
-      if (!it.inRoster) alerts.push(`Pacientes cargados para "${p.name}" pero no está configurado como colaborador de ${branch}.`)
-    }
-    for (const it of items.values()) {
-      if (it.patients <= 0) continue
-      const c = rosterByName.get(it.name)
-      if (c && !c.patientParticipation) continue // configurado fuera del reparto por pacientes
       it.patientsPct = Math.round((it.patients / patientsTotal) * 10000) / 10000
-      it.laserPatients = round2(fundPatients * it.patientsPct)
-    }
+      it.laserPatients = shares[i]
+    })
   } else if (patientsTotal > 0) {
     // Solo informativo (participación) aunque el split sea 100% lineal.
     for (const p of patCounts) {
@@ -286,11 +319,21 @@ export function computeRun(input: ComputeRunInput): RunResult {
   }
 
   if (fundLinear > 0) {
-    if (linears.length === 0) {
-      alerts.push("Hay parte lineal del fondo láser pero ningún colaborador está configurado como lineal: quedó SIN repartir.")
+    // "Empleado con 0 pacientes recibe parte fija": si el flag está en false, el
+    // colaborador sin pacientes cargados queda fuera del reparto por personas.
+    const zeroGetsFixed = rules.zeroPatientsGetsFixed !== false
+    const patByName = new Map(patCounts.map((p) => [p.name, p.patients]))
+    const linearPool = zeroGetsFixed
+      ? linears
+      : linears.filter((c) => (patByName.get(canonicalCollaborator(c.name)) || 0) > 0)
+    if (linearPool.length === 0) {
+      alerts.push(zeroGetsFixed
+        ? "Hay parte lineal del fondo láser pero ningún colaborador está configurado como lineal: quedó SIN repartir."
+        : "Parte por personas SIN repartir: la regla de 0 pacientes excluye a los lineales sin pacientes y no quedó ninguno elegible.")
     } else {
-      const share = round2(fundLinear / linears.length)
-      for (const c of linears) itemFor(c.name).laserLinear = share
+      // Reparto EXACTO por personas (partes iguales, Σ = fundLinear al centavo).
+      const shares = allocateExact(fundLinear, linearPool.map(() => 1))
+      linearPool.forEach((c, i) => { itemFor(c.name).laserLinear = shares[i] })
     }
   }
 

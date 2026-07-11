@@ -202,8 +202,9 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
   t("fondo = 20,045.58", r1.laser.fund === 20045.58, `(${r1.laser.fund})`)
   const rosa1 = r1.items.find((i) => i.name === "ROSA")
   const diana1 = r1.items.find((i) => i.name === "DIANA")
-  t("ROSA 75% del fondo", rosa1?.laserPatients === Math.round(20045.58 * 0.75 * 100) / 100, `(${rosa1?.laserPatients})`)
-  t("DIANA 25% del fondo", diana1?.laserPatients === Math.round(20045.58 * 0.25 * 100) / 100)
+  t("ROSA 75% del fondo (reparto exacto)", rosa1?.laserPatients === 15034.19, `(${rosa1?.laserPatients})`)
+  t("DIANA 25% del fondo (reparto exacto)", diana1?.laserPatients === 5011.39, `(${diana1?.laserPatients})`)
+  t("CUADRE exacto: ROSA+DIANA = fondo", Math.round((rosa1.laserPatients + diana1.laserPatients) * 100) / 100 === r1.laser.fund)
   t("neto = bruto − limpieza 400", rosa1?.netTotal === Math.round((rosa1.grossTotal - 400) * 100) / 100)
 
   console.log("── Run mensual: split lineal/pacientes + servicios + productos + evaluación")
@@ -223,7 +224,9 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
   t("fondo 40,000; 20,000 pacientes + 20,000 lineal", r2.laser.fund === 40000 && r2.laser.fundPatients === 20000 && r2.laser.fundLinear === 20000)
   const rosa2 = r2.items.find((i) => i.name === "ROSA")
   const madeline2 = r2.items.find((i) => i.name === "MADELINE")
-  t("lineal se divide entre 3 lineales (6,666.67)", rosa2?.laserLinear === 6666.67 && madeline2?.laserLinear === 6666.67)
+  const diana2b = r2.items.find((i) => i.name === "DIANA")
+  t("lineal 20,000/3 exacto: 6666.67+6666.67+6666.66 = 20,000", rosa2?.laserLinear === 6666.67 && diana2b?.laserLinear === 6666.67 && madeline2?.laserLinear === 6666.66)
+  t("CUADRE lineal: Σ = fundLinear", Math.round((rosa2.laserLinear + diana2b.laserLinear + madeline2.laserLinear) * 100) / 100 === 20000)
   t("MADELINE sin parte de pacientes (flag off)", madeline2?.laserPatients === 0)
   t("ROSA pacientes 60% de 20,000 = 12,000", rosa2?.laserPatients === 12000)
   t("masaje tarjeta netea: 10,000×0.73×20% = 1,460", rosa2?.serviceBreakdown.MASAJES?.amount === 1460)
@@ -256,6 +259,26 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
     branch: "RAFAEL VIDAL", sales: [sale({ amount: 250000 })],
     collaborators: [collab("ROSA")], patients: [], patientsSource: "ninguna", rules: RULES,
   }).laser.fund === 0)
+
+  console.log("── Reparto láser: pesos personas/pacientes + regla 0 pacientes")
+  // Fondo 40,000; 50/50 → 20,000 personas + 20,000 pacientes. ROSA 60 pac, DIANA 0 pac, LUISA 0 pac.
+  const base = {
+    branch: "RAFAEL VIDAL",
+    sales: [sale({ amount: 1000000 })], // láser 1,000,000 efectivo → tramo 4% → fondo 40,000
+    collaborators: [collab("ROSA"), collab("DIANA"), collab("LUISA")],
+    patients: [{ collaborator: "ROSA", patients: 60 }],
+    patientsSource: "manual",
+  }
+  const rZF = computeRun({ ...base, rules: { ...RULES, laserSplitPatientsFraction: 0.5, zeroPatientsGetsFixed: true } })
+  t("0-pac SÍ recibe parte fija: personas entre las 3", rZF.items.find((i) => i.name === "DIANA")?.laserLinear === Math.round((20000 / 3) * 100) / 100)
+  t("0-pac SÍ: ROSA se lleva TODA la parte por pacientes (20,000)", rZF.items.find((i) => i.name === "ROSA")?.laserPatients === 20000)
+  const rZN = computeRun({ ...base, rules: { ...RULES, laserSplitPatientsFraction: 0.5, zeroPatientsGetsFixed: false } })
+  t("0-pac NO recibe parte fija: DIANA/LUISA fuera del lineal", rZN.items.find((i) => i.name === "DIANA")?.laserLinear === 0)
+  t("0-pac NO: parte personas solo para ROSA (20,000)", rZN.items.find((i) => i.name === "ROSA")?.laserLinear === 20000)
+  // Cuadre: suma de todo el láser repartido = fondo ± residuo de redondeo del
+  // reparto lineal (20,000/3 no divide exacto → diferencia ≤ RD$0.01 esperada).
+  const distTotal = rZF.items.reduce((s, i) => s + i.laserTotal, 0)
+  t("cuadre: Σ láser repartido ≈ fondo (residuo ≤ 0.01)", Math.abs(distTotal - 40000) <= 0.01, `(dif ${(distTotal - 40000).toFixed(2)})`)
 }
 
 // ── Archivos reales (§33/§34) — solo si están disponibles ──
