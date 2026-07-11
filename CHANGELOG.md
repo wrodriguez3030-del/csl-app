@@ -18,6 +18,36 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.38.0] — 2026-07-11
+
+### Changed
+- **Dashboards del sistema con el estilo EJECUTIVO** (el del dashboard de
+  Comisión de Ventas) — look profesional y consistente en todo el sistema.
+  - **`KpiCard` compartida rediseñada** (`components/kpi-card.tsx`): tarjeta
+    blanca `rounded-2xl` con sombra suave, **chip de ícono** a la izquierda
+    (tono semántico: marca/éxito/alerta/crítico), label en mayúsculas pequeñas,
+    valor grande **tabular** en tinta de marca y nota opcional. Al ser
+    compartida, actualiza de una vez: **panel de Mantenimiento** (reportes y
+    piezas + cuadres), **PulseControl** (dashboard + mantenimiento),
+    **RR.HH.** (dashboard + ponche) y **Materiales**.
+  - **Kit de dashboard** (`components/dashboard-kit.tsx`): `DashHeader`,
+    `DashPanel` (título + acción "Ver detalle →"), `EmptyChart`, `InsightItem`,
+    skeletons y **paleta categórica validada** (dataviz: teal `#0D9488` · ámbar
+    `#D97706` · violeta `#7C3AED` · rosa `#DB2777`, todas las pruebas PASS) +
+    colores de **estado** reservados.
+  - **Dashboard de Compras** rediseñado: encabezado, filtros en tarjeta
+    redondeada, 8 KPIs con chips semánticos y la alerta de gastos menores como
+    tarjeta de insight.
+  - **Dashboard de Materiales** rediseñado: KPIs + tarjetas "top" unificadas;
+    charts al estilo ejecutivo (ejes recesivos, barras con radio y etiquetas,
+    donut con total al centro y leyenda con %, tendencia como área con
+    degradado, tooltips redondeados); el **donut de estados usa colores
+    semánticos por estado** (aprobada=verde, pendiente=ámbar, parcial=naranja,
+    rechazada=rojo, comprada=teal) en vez de una paleta ciclada.
+- QA: `tsc` 0 · `build` OK · tests 129/129 (sin cambios de lógica).
+
+---
+
 ## [0.37.0] — 2026-07-11
 
 ### Changed / Fixed

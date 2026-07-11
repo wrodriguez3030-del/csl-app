@@ -1,5 +1,11 @@
 "use client"
 
+/**
+ * KPI card compartida — estilo EJECUTIVO (el del dashboard de Comisión de
+ * Ventas): tarjeta blanca redondeada con chip de ícono a la izquierda, label
+ * en mayúsculas pequeñas, valor grande tabular y nota opcional. La usan todos
+ * los dashboards (panel, materiales, compras, pulse, RR.HH., comisión).
+ */
 import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import type { LucideIcon } from "lucide-react"
@@ -20,37 +26,26 @@ export function KpiCard({
   variant = "primary",
   description,
 }: KpiCardProps) {
-  const variantStyles = {
-    primary: "from-cyan-50 via-white to-white border-cyan-100",
-    success: "from-emerald-50 via-white to-white border-emerald-100",
-    warning: "from-amber-50 via-white to-white border-amber-100",
-    destructive: "from-rose-50 via-white to-white border-rose-100",
-  }
-
-  const iconStyles = {
-    primary: "text-cyan-700 bg-cyan-50 ring-cyan-100",
-    success: "text-emerald-700 bg-emerald-50 ring-emerald-100",
-    warning: "text-amber-700 bg-amber-50 ring-amber-100",
-    destructive: "text-rose-700 bg-rose-50 ring-rose-100",
+  // El chip lleva el tono (estado); el texto SIEMPRE usa tinta neutra.
+  const chipStyles = {
+    primary: "bg-[color:var(--brand-primary-soft)] text-[color:var(--brand-primary)]",
+    success: "bg-emerald-50 text-emerald-600",
+    warning: "bg-amber-50 text-amber-600",
+    destructive: "bg-rose-50 text-rose-600",
   }
 
   return (
-    <Card className={cn("relative overflow-hidden border bg-gradient-to-br py-0", variantStyles[variant])}>
-      <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-cyan-100/70 blur-2xl" />
-      <CardContent className="relative p-5">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-muted-foreground">{title}</p>
-            <p className="font-heading text-4xl font-black tracking-[-0.06em] text-foreground">
-              {typeof value === "number" ? fmtN(value) : value}
-            </p>
-            {description && (
-              <p className="text-xs text-muted-foreground">{description}</p>
-            )}
+    <Card className="rounded-2xl border-[color:var(--brand-border)] py-0 shadow-sm">
+      <CardContent className="flex items-start gap-3 p-4">
+        <div className={cn("shrink-0 rounded-xl p-2.5", chipStyles[variant])}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</div>
+          <div className="truncate text-lg font-black tabular-nums text-[color:var(--brand-primary-dark)]">
+            {typeof value === "number" ? fmtN(value) : value}
           </div>
-          <div className={cn("rounded-2xl p-3 ring-1", iconStyles[variant])}>
-            <Icon className="h-5 w-5" />
-          </div>
+          {description ? <div className="mt-1 text-[11px] text-muted-foreground">{description}</div> : null}
         </div>
       </CardContent>
     </Card>
