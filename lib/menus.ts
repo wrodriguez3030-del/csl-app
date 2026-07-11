@@ -54,6 +54,7 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "comision-productos", label: "Incentivos de productos", section: "Comisión de Ventas" },
   { id: "comision-laser", label: "Comisión depilación láser", section: "Comisión de Ventas" },
   { id: "comision-clientes", label: "Clientes atendidos", section: "Comisión de Ventas" },
+  { id: "comision-calculo", label: "Cálculo mensual", section: "Comisión de Ventas" },
   { id: "comision-liquidacion", label: "Liquidación de incentivos", section: "Comisión de Ventas" },
   { id: "comision-reglas", label: "Reglas de comisión", section: "Comisión de Ventas" },
   { id: "comision-historial", label: "Historial mensual", section: "Comisión de Ventas" },

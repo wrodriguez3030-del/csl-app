@@ -15,6 +15,7 @@ import { defaultCommissionRules } from "@/lib/commission/rules"
 import { parseDateISO } from "@/lib/commission/normalize"
 import { exclusiveEnd, monthBounds, monthsCovered, todayInTz } from "@/lib/commission/period"
 import { assignLaserToCalcs } from "@/lib/commission/laser-apply"
+import { computeRun, type RunResult, type RunRules, type RunSaleRow } from "@/lib/commission/run-engine"
 
 /**
  * Filtro de período desde params: prioriza from/to (rango INCLUSIVO — el fin
@@ -1096,4 +1097,308 @@ export async function getCommissionDashboard(params: ActionParams) {
     },
     calculations: calcs,
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// CÁLCULO MENSUAL DE INCENTIVOS (runs por sucursal)
+// El motor puro vive en lib/commission/run-engine.ts (computeRun). Aquí solo se
+// arma su entrada desde datos persistidos, se corre y se persiste el resultado
+// como un run (borrador→finalizado→anulado) con detalle por colaborador.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Fila DB de colaborador → objeto para cliente y motor (RunCollaborator+extras). */
+function mapCollaborator(r: Row) {
+  return {
+    id: String(r.id),
+    name: String(r.name || ""),
+    branch: String(r.branch || ""),
+    services: Array.isArray(r.services) ? (r.services as string[]) : [],
+    participationType: r.participation_type ? String(r.participation_type) : "mixto",
+    linearParticipation: r.linear_participation !== false,
+    patientParticipation: r.patient_participation !== false,
+    fixedPercentage: r.fixed_percentage == null ? null : Number(r.fixed_percentage),
+    active: r.active !== false,
+    cleaningContribution: r.cleaning_contribution == null ? 400 : Number(r.cleaning_contribution),
+    bonusExtra: Number(r.bonus_extra) || 0,
+    evaluationPct: r.evaluation_pct == null ? 100 : Number(r.evaluation_pct),
+    notes: r.notes == null ? null : String(r.notes),
+  }
+}
+
+/** Roster de colaboradores vivos (soft delete excluido). */
+async function readRoster(branch?: string, includeInactive = false) {
+  const business_id = requireBizId()
+  let q = getSupabaseAdmin().from("sales_commission_collaborators")
+    .select("*").eq("business_id", business_id).is("deleted_at", null)
+    .order("branch", { ascending: true }).order("name", { ascending: true })
+  if (branch) q = q.eq("branch", branch)
+  if (!includeInactive) q = q.eq("active", true)
+  const { data, error } = await q
+  if (error) throw new Error(error.message)
+  return (data || []).map((r) => mapCollaborator(r as Row))
+}
+
+/** Configuración de reglas (RunRules) para el motor, desde las reglas activas. */
+async function readRunRules(): Promise<RunRules> {
+  const business_id = requireBizId()
+  const { data, error } = await getSupabaseAdmin().from("sales_commission_rules")
+    .select("rule_type,category,percentage,fixed_amount,min_amount,effective_from,active")
+    .eq("business_id", business_id).eq("active", true)
+  if (error) throw new Error(error.message)
+  const rows = (data || []) as Row[]
+  const latest = (type: string) => rows.filter((r) => r.rule_type === type)
+    .sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)))[0]
+  const card = latest("card_percentage")
+  const prod = latest("product_unit_incentive")
+  const split = latest("laser_split")
+  const categoryPct: Record<string, number> = {}
+  for (const r of rows.filter((r) => r.rule_type === "category_commission")) {
+    if (r.category != null && r.percentage != null) categoryPct[String(r.category)] = Number(r.percentage)
+  }
+  const laserScale = rows
+    .filter((r) => r.rule_type === "laser_scale" && r.min_amount != null && r.percentage != null)
+    .map((r) => ({ threshold: Number(r.min_amount), percentage: Number(r.percentage) }))
+    .sort((a, b) => a.threshold - b.threshold)
+  return {
+    cardPct: card?.percentage != null ? Number(card.percentage) : 0.27,
+    productUnitAmount: prod?.fixed_amount != null ? Number(prod.fixed_amount) : 100,
+    categoryPct,
+    laserScale,
+    laserSplitPatientsFraction: split?.percentage != null ? Number(split.percentage) : 1,
+  }
+}
+
+/** Conteos de pacientes por colaborador para un run (prefiere manual > reservas). */
+async function readPatientsForRun(branch: string, month: number, year: number) {
+  const business_id = requireBizId()
+  const { data } = await getSupabaseAdmin().from("sales_commission_patient_counts")
+    .select("provider_name,patient_count,source")
+    .eq("business_id", business_id).eq("branch", branch)
+    .eq("period_month", month).eq("period_year", year)
+  const rows = (data || []) as Row[]
+  const hasManual = rows.some((r) => r.source === "manual")
+  const use = hasManual ? rows.filter((r) => r.source === "manual") : rows
+  const patients = use
+    .map((r) => ({ collaborator: String(r.provider_name || ""), patients: Number(r.patient_count) || 0 }))
+    .filter((p) => p.collaborator)
+  const source = hasManual ? "manual" : rows.length ? "reservas" : "ninguna"
+  return { patients, source }
+}
+
+/** Ventas del período+sucursal mapeadas al shape del motor. */
+async function readRunSales(branch: string, month: number, year: number): Promise<RunSaleRow[]> {
+  const rows = await fetchSalesForPeriod({ month, year, branch })
+  return rows.map((r) => ({
+    branch: String(r.branch || ""),
+    category: String(r.category || "OTROS"),
+    payment: String(r.payment_method || "OTROS"),
+    amount: Number(r.gross_amount) || 0,
+    quantity: Number(r.quantity) || 0,
+    providerOriginal: r.provider_original == null ? null : String(r.provider_original),
+    provider: r.provider_normalized == null ? null : String(r.provider_normalized),
+  }))
+}
+
+/** Corre el motor para una sucursal/período a partir de los datos persistidos. */
+async function computeRunForPeriod(branch: string, month: number, year: number): Promise<RunResult> {
+  const [sales, collaborators, rules] = await Promise.all([
+    readRunSales(branch, month, year),
+    readRoster(branch, false),
+    readRunRules(),
+  ])
+  const { patients, source } = await readPatientsForRun(branch, month, year)
+  return computeRun({ branch, sales, collaborators, patients, patientsSource: source, rules })
+}
+
+function mapRun(r: Row) {
+  return {
+    id: String(r.id), branch: String(r.branch || ""),
+    periodMonth: Number(r.period_month) || 0, periodYear: Number(r.period_year) || 0,
+    status: String(r.status || "borrador"), cardPct: Number(r.card_pct) || 0,
+    totals: r.totals ?? null, alerts: Array.isArray(r.alerts) ? (r.alerts as string[]) : [],
+    baseSummary: r.base_summary ?? null, notes: r.notes == null ? null : String(r.notes),
+    finalizedAt: r.finalized_at ?? null, finalizedBy: r.finalized_by ?? null,
+    voidedAt: r.voided_at ?? null, voidReason: r.void_reason ?? null,
+    createdAt: r.created_at ?? null, updatedAt: r.updated_at ?? null,
+  }
+}
+
+function mapRunItem(r: Row) {
+  return {
+    id: String(r.id), collaboratorId: r.collaborator_id ?? null,
+    name: String(r.collaborator_name || ""), branch: String(r.branch || ""),
+    serviceBreakdown: r.service_breakdown ?? {}, patients: Number(r.patients) || 0,
+    patientsPct: Number(r.patients_pct) || 0, productUnits: Number(r.product_units) || 0,
+    productIncentive: Number(r.product_incentive) || 0, serviceIncentive: Number(r.service_incentive) || 0,
+    evaluationPct: Number(r.evaluation_pct) || 0, serviceIncentiveAdjusted: Number(r.service_incentive_adjusted) || 0,
+    laserLinear: Number(r.laser_linear) || 0, laserPatients: Number(r.laser_patients) || 0,
+    laserTotal: Number(r.laser_total) || 0, bonusExtra: Number(r.bonus_extra) || 0,
+    cleaningContribution: Number(r.cleaning_contribution) || 0,
+    grossTotal: Number(r.gross_total) || 0, netTotal: Number(r.net_total) || 0,
+  }
+}
+
+/** Colaboradores (roster) por sucursal. */
+export async function getCommissionCollaborators(params: ActionParams) {
+  requireBizId()
+  const branch = textValue(params, "branch")
+  const includeInactive = params.includeInactive === true || textValue(params, "includeInactive") === "1"
+  const records = await readRoster(branch || undefined, includeInactive)
+  return { ok: true, records }
+}
+
+/** Previsualiza el cálculo mensual (corre el motor, NO persiste). */
+export async function getCommissionRunPreview(params: ActionParams) {
+  const business_id = requireBizId()
+  const branch = textValue(params, "branch")
+  const month = numberValue(params, "month")
+  const year = numberValue(params, "year")
+  if (!branch || !month || !year) throw new Error("Selecciona sucursal, mes y año para el cálculo")
+  const result = await computeRunForPeriod(branch, month, year)
+  const { data } = await getSupabaseAdmin().from("sales_commission_runs").select("*")
+    .eq("business_id", business_id).eq("branch", branch)
+    .eq("period_month", month).eq("period_year", year).is("deleted_at", null)
+    .order("created_at", { ascending: false })
+  const saved = (data || []).find((r) => (r as Row).status !== "anulado") || null
+  return { ok: true, result, savedRun: saved ? mapRun(saved as Row) : null, patientsSource: result.laser.patientsSource }
+}
+
+/** Guarda (o recalcula) el run como BORRADOR + detalle por colaborador. */
+export async function saveCommissionRun(params: ActionParams, user: ActionUser) {
+  requirePermission("sales_commission.calculate")
+  const business_id = requireBizId()
+  const branch = textValue(params, "branch")
+  const month = numberValue(params, "month")
+  const year = numberValue(params, "year")
+  if (!branch || !month || !year) throw new Error("Selecciona sucursal, mes y año para el cálculo")
+  const sb = getSupabaseAdmin()
+
+  // Run vivo existente (no anulado) para el mismo período/sucursal.
+  const { data: existingRows } = await sb.from("sales_commission_runs").select("*")
+    .eq("business_id", business_id).eq("branch", branch)
+    .eq("period_month", month).eq("period_year", year).is("deleted_at", null)
+  const existing = (existingRows || []).find((r) => (r as Row).status !== "anulado") as Row | undefined
+  if (existing && existing.status === "finalizado") {
+    throw new Error("Ya existe un cálculo FINALIZADO para esta sucursal y período. Anúlalo antes de recalcular.")
+  }
+
+  const result = await computeRunForPeriod(branch, month, year)
+  const rules = await readRunRules()
+  const nowIso = new Date().toISOString()
+  const runFields = {
+    business_id, branch, period_month: month, period_year: year, status: "borrador",
+    card_pct: result.cardPct,
+    base_summary: { byCategory: result.baseByCategory, total: result.baseTotal, laser: result.laser },
+    rules_snapshot: rules as unknown as Record<string, unknown>,
+    totals: result.totals as unknown as Record<string, unknown>,
+    alerts: result.alerts, notes: textValue(params, "notes") || null,
+    updated_by: user.id || null, updated_at: nowIso,
+  }
+
+  let runId: string
+  if (existing) {
+    const { error } = await sb.from("sales_commission_runs").update(runFields).eq("id", existing.id as string)
+    if (error) throw new Error(error.message)
+    runId = String(existing.id)
+    await sb.from("sales_commission_run_items").delete().eq("run_id", runId)
+  } else {
+    const { data, error } = await sb.from("sales_commission_runs")
+      .insert({ ...runFields, created_by: user.id || null }).select("id").single()
+    if (error) throw new Error(error.message)
+    runId = String((data as Row).id)
+  }
+
+  const items = result.items.map((it) => ({
+    run_id: runId, business_id, collaborator_id: it.collaboratorId,
+    collaborator_name: it.name, branch,
+    service_breakdown: it.serviceBreakdown as unknown as Record<string, unknown>,
+    patients: it.patients, patients_pct: it.patientsPct,
+    product_units: it.productUnits, product_incentive: it.productIncentive,
+    service_incentive: it.serviceIncentive, evaluation_pct: it.evaluationPct,
+    service_incentive_adjusted: it.serviceIncentiveAdjusted,
+    laser_linear: it.laserLinear, laser_patients: it.laserPatients, laser_total: it.laserTotal,
+    bonus_extra: it.bonusExtra, cleaning_contribution: it.cleaningContribution,
+    gross_total: it.grossTotal, net_total: it.netTotal,
+  }))
+  if (items.length) {
+    const { error } = await sb.from("sales_commission_run_items").insert(items)
+    if (error) throw new Error(error.message)
+  }
+
+  await logAudit(user, "commission_run", runId, existing ? "recalculate" : "create",
+    existing ? { status: existing.status } : null, { branch, month, year, netTotal: result.totals.netTotal },
+    null, { month, year })
+  return { ok: true, runId, result }
+}
+
+/** Lista de runs del período (todas las sucursales). */
+export async function getCommissionRuns(params: ActionParams) {
+  const business_id = requireBizId()
+  let q = getSupabaseAdmin().from("sales_commission_runs").select("*")
+    .eq("business_id", business_id).is("deleted_at", null)
+    .order("period_year", { ascending: false }).order("period_month", { ascending: false })
+    .order("branch", { ascending: true })
+  const month = numberValue(params, "month")
+  const year = numberValue(params, "year")
+  if (month) q = q.eq("period_month", month)
+  if (year) q = q.eq("period_year", year)
+  const branch = textValue(params, "branch")
+  if (branch) q = q.eq("branch", branch)
+  const { data, error } = await q
+  if (error) throw new Error(error.message)
+  return { ok: true, records: (data || []).map((r) => mapRun(r as Row)) }
+}
+
+/** Detalle de un run (cabecera + ítems por colaborador). */
+export async function getCommissionRun(params: ActionParams) {
+  const business_id = requireBizId()
+  const id = textValue(params, "id")
+  if (!id) throw new Error("Falta el id del cálculo")
+  const { data: runRow, error } = await getSupabaseAdmin().from("sales_commission_runs")
+    .select("*").eq("business_id", business_id).eq("id", id).maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!runRow) throw new Error("Cálculo no encontrado")
+  const { data: itemRows } = await getSupabaseAdmin().from("sales_commission_run_items")
+    .select("*").eq("run_id", id).order("net_total", { ascending: false })
+  return { ok: true, run: mapRun(runRow as Row), items: (itemRows || []).map((r) => mapRunItem(r as Row)) }
+}
+
+/** Finaliza un run BORRADOR (queda inmutable hasta anular). */
+export async function finalizeCommissionRun(params: ActionParams, user: ActionUser) {
+  requirePermission("sales_commission.calculate")
+  const business_id = requireBizId()
+  const id = textValue(params, "id")
+  if (!id) throw new Error("Falta el id del cálculo")
+  const { data: runRow } = await getSupabaseAdmin().from("sales_commission_runs")
+    .select("id,status,branch,period_month,period_year").eq("business_id", business_id).eq("id", id).maybeSingle()
+  if (!runRow) throw new Error("Cálculo no encontrado")
+  if ((runRow as Row).status !== "borrador") throw new Error("Solo se puede finalizar un cálculo en borrador")
+  const { error } = await getSupabaseAdmin().from("sales_commission_runs")
+    .update({ status: "finalizado", finalized_by: user.id || null, finalized_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq("id", id)
+  if (error) throw new Error(error.message)
+  await logAudit(user, "commission_run", id, "finalize", { status: "borrador" }, { status: "finalizado" }, null,
+    { month: Number((runRow as Row).period_month), year: Number((runRow as Row).period_year) })
+  return { ok: true }
+}
+
+/** Anula un run (libera el período para recalcular). Requiere motivo. */
+export async function voidCommissionRun(params: ActionParams, user: ActionUser) {
+  requirePermission("sales_commission.calculate")
+  const business_id = requireBizId()
+  const id = textValue(params, "id")
+  const reason = textValue(params, "reason")
+  if (!id) throw new Error("Falta el id del cálculo")
+  if (!reason) throw new Error("Indica el motivo de la anulación")
+  const { data: runRow } = await getSupabaseAdmin().from("sales_commission_runs")
+    .select("id,status,period_month,period_year").eq("business_id", business_id).eq("id", id).maybeSingle()
+  if (!runRow) throw new Error("Cálculo no encontrado")
+  if ((runRow as Row).status === "anulado") throw new Error("El cálculo ya está anulado")
+  const { error } = await getSupabaseAdmin().from("sales_commission_runs")
+    .update({ status: "anulado", voided_by: user.id || null, voided_at: new Date().toISOString(), void_reason: reason, updated_at: new Date().toISOString() })
+    .eq("id", id)
+  if (error) throw new Error(error.message)
+  await logAudit(user, "commission_run", id, "void", { status: (runRow as Row).status }, { status: "anulado" }, reason,
+    { month: Number((runRow as Row).period_month), year: Number((runRow as Row).period_year) })
+  return { ok: true }
 }

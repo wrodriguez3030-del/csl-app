@@ -18,6 +18,41 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.34.0] — 2026-07-11
+
+### Added
+- **Comisión de Ventas · pantalla "Cálculo mensual" (cablea el motor de runs).**
+  Nuevo submenú que corre el motor `run-engine.ts` sobre datos persistidos y
+  formaliza la liquidación mensual por sucursal como un *run* (borrador →
+  finalizado → anulado).
+  - **UI** `components/comision/comision-calculo-page.tsx`: selectores de
+    sucursal / mes / año → **preview** (el servidor recalcula, no confía en el
+    cliente) con KPIs del fondo láser (base neta, tramo, fondo, reparto
+    pacientes/lineal, fuente de pacientes), desglose **por colaborador**
+    (servicios, evaluación, servicios ajustados, productos, láser
+    pacientes/lineal, bono, bruto, limpieza, neto) con totales, tabla de
+    **bases por categoría** (tarjeta neteada) y panel de **alertas**. Acciones
+    **Guardar borrador** / **Finalizar** / **Anular** (con motivo), gated por
+    `sales_commission.calculate`.
+  - **Server** (`lib/server/commission.ts`): `getCommissionRunPreview` (arma la
+    entrada del motor desde ventas/roster/pacientes/reglas y corre `computeRun`),
+    `saveCommissionRun` (recalcula en el servidor y persiste run + ítems como
+    borrador; bloquea si ya hay un run finalizado), `getCommissionRuns` /
+    `getCommissionRun`, `finalizeCommissionRun`, `voidCommissionRun` y
+    `getCommissionCollaborators`. Helpers `readRoster` / `readRunRules`
+    (reglas activas → `RunRules`) / `readPatientsForRun` (prefiere captura
+    **manual** sobre **reservas**) / `readRunSales` / `computeRunForPeriod`.
+    Todo con auditoría en `sales_commission_audit_logs`.
+  - **API** (`app/api/csl/_handlers.ts`): 7 acciones nuevas registradas.
+  - **Navegación**: submenú "Cálculo mensual" (ícono `Calculator`) en los 4
+    lugares (TabId, `MENU_OPTIONS`, `sidebar.tsx`, `app/page.tsx`).
+- **`scripts/_smoke-calculo-mensual.mjs`**: smoke de solo lectura que corre el
+  motor sobre datos reales de db-cls (Jun 2026, 3 sucursales) y verifica
+  invariantes. **14/14** (neto por sucursal: RV 22,702.24 · LJ 31,526.65 ·
+  VO 27,416.50; Σ neto ítems = neto total; base neta ≤ bruta; fondo ≤ base×5%).
+
+---
+
 ## [0.33.0] — 2026-07-11
 
 ### Added
