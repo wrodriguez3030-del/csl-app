@@ -36,11 +36,13 @@ async function readRunRules(business_id) {
   if (wPer != null || wPac != null) { const p = Number(wPer ?? 0), q = Number(wPac ?? 0); frac = p + q > 0 ? q / (p + q) : 0.5 }
   else { const s = latest("laser_split")?.percentage; frac = s != null ? Number(s) : 0.5 }
   const zero = latest("laser_zero_patients_fixed")?.fixed_amount
+  const modeFlag = latest("laser_split_mode")?.fixed_amount
   return {
     cardPct: card?.percentage != null ? Number(card.percentage) : 0.27,
     productUnitAmount: prod?.fixed_amount != null ? Number(prod.fixed_amount) : 100,
     categoryPct, laserScale, laserSplitPatientsFraction: frac,
     zeroPatientsGetsFixed: zero == null ? true : Number(zero) !== 0,
+    laserDistributionMode: modeFlag == null || Number(modeFlag) !== 0 ? "equitativo" : "pesos",
   }
 }
 
@@ -74,6 +76,7 @@ async function readRoster(business_id, branch) {
     fixedPercentage: r.fixed_percentage == null ? null : Number(r.fixed_percentage), active: r.active !== false,
     cleaningContribution: r.cleaning_contribution == null ? 400 : Number(r.cleaning_contribution),
     bonusExtra: Number(r.bonus_extra) || 0, evaluationPct: r.evaluation_pct == null ? 100 : Number(r.evaluation_pct),
+    productUnitAmount: r.product_unit_amount == null ? null : Number(r.product_unit_amount),
   }))
 }
 
@@ -108,7 +111,7 @@ async function readPatients(business_id, branch, month, year) {
       readPatients(business_id, branch, MONTH, YEAR),
     ])
     const r = computeRun({ branch, sales, collaborators, patients: pat.patients, patientsSource: pat.source, rules })
-    console.log(`\n── ${branch} · ${String(MONTH).padStart(2, "0")}/${YEAR}: ${sales.length} ventas, ${collaborators.length} colaboradores, pacientes ${r.laser.patientsTotal} (${pat.source})`)
+    console.log(`\n── ${branch} · ${String(MONTH).padStart(2, "0")}/${YEAR}: ${sales.length} ventas, ${collaborators.length} colaboradores, pacientes ${r.laser.patientsTotal} (${pat.source}) · modo ${r.laser.mode} (${r.laser.eligibleCount} elegibles, cuota ${r.laser.perCapita.toFixed(2)})`)
     console.log(`   base láser ${r.laser.base.toFixed(2)} → tramo ${(r.laser.pct * 100).toFixed(0)}% → fondo ${r.laser.fund.toFixed(2)} (pac ${r.laser.fundPatients.toFixed(2)} / lin ${r.laser.fundLinear.toFixed(2)})`)
     console.log(`   fondo personas ${r.laser.fundLinear.toFixed(2)} + pacientes ${r.laser.fundPatients.toFixed(2)} (pesos ${((1 - rules.laserSplitPatientsFraction) * 100).toFixed(0)}/${(rules.laserSplitPatientsFraction * 100).toFixed(0)})`)
     const laserDist = r.items.reduce((s, i) => s + i.laserTotal, 0)

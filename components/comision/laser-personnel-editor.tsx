@@ -21,6 +21,7 @@ const BRANCHES = ["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]
 interface Collab {
   id: string; name: string; branch: string; services: string[]
   active: boolean; evaluationPct: number; cleaningContribution: number
+  bonusExtra: number; productUnitAmount: number | null
 }
 
 export function LaserPersonnelEditor() {
@@ -47,16 +48,19 @@ export function LaserPersonnelEditor() {
 
   const applies = (c: Collab) => c.services?.includes("DEPILACION_LASER")
 
-  const saveRow = async (c: Collab, patch: Partial<{ appliesLaser: boolean; active: boolean; evaluationPct: number; cleaningContribution: number }>) => {
+  const saveRow = async (c: Collab, patch: Partial<{ appliesLaser: boolean; active: boolean; evaluationPct: number; cleaningContribution: number; bonusExtra: number; productUnitAmount: number | null }>) => {
     if (!canManage) return
     setBusyId(c.id)
     try {
+      const prodRate = patch.productUnitAmount !== undefined ? patch.productUnitAmount : c.productUnitAmount
       const res = await apiJsonp(normalizeApiUrl(apiUrl), {
         action: "saveCommissionCollaborator", id: c.id, name: c.name, branch: c.branch,
         appliesLaser: (patch.appliesLaser ?? applies(c)) ? "1" : "0",
         active: (patch.active ?? c.active) ? "1" : "0",
         evaluationPct: String(patch.evaluationPct ?? c.evaluationPct),
         cleaningContribution: String(patch.cleaningContribution ?? c.cleaningContribution),
+        bonusExtra: String(patch.bonusExtra ?? c.bonusExtra ?? 0),
+        productUnitAmount: prodRate == null ? "" : String(prodRate),
       })
       if (!res?.ok) throw new Error((res as { error?: string })?.error || "No se pudo guardar")
       invalidateReadCache("getCommissionLaserDetail"); invalidateReadCache("getCommissionRunPreview")
@@ -119,6 +123,8 @@ export function LaserPersonnelEditor() {
             <th className="px-3 py-2">#</th><th className="px-2 py-2">Empleado</th><th className="px-2 py-2">Sucursal</th>
             <th className="px-2 py-2 text-center">Aplica láser</th><th className="px-2 py-2 text-center">Activo</th>
             <th className="px-2 py-2 text-right">Eval.%</th><th className="px-2 py-2 text-right">Limpieza</th>
+            <th className="px-2 py-2 text-right" title="Bono extra RD$ del mes">Bono</th>
+            <th className="px-2 py-2 text-right" title="Tarifa RD$/unidad de producto; vacío = regla general (RD$100)">Prod. RD$/u</th>
             <th className="px-3 py-2 text-right">Acciones</th>
           </tr></thead>
           <tbody>{rows.map((c, i) => (
@@ -135,6 +141,14 @@ export function LaserPersonnelEditor() {
               <td className="px-2 py-2 text-right">
                 <Input className="ml-auto h-7 w-20 text-right" type="number" defaultValue={c.cleaningContribution} disabled={!canManage}
                   onBlur={(e) => { const v = Number(e.target.value); if (v !== c.cleaningContribution) void saveRow(c, { cleaningContribution: v }) }} />
+              </td>
+              <td className="px-2 py-2 text-right">
+                <Input className="ml-auto h-7 w-20 text-right" type="number" defaultValue={c.bonusExtra || 0} disabled={!canManage}
+                  onBlur={(e) => { const v = Number(e.target.value); if (v !== (c.bonusExtra || 0)) void saveRow(c, { bonusExtra: v }) }} />
+              </td>
+              <td className="px-2 py-2 text-right">
+                <Input className="ml-auto h-7 w-20 text-right" type="number" placeholder="100" defaultValue={c.productUnitAmount ?? ""} disabled={!canManage}
+                  onBlur={(e) => { const raw = e.target.value.trim(); const v = raw === "" ? null : Number(raw); if (v !== (c.productUnitAmount ?? null)) void saveRow(c, { productUnitAmount: v }) }} />
               </td>
               <td className="px-3 py-2 text-right">
                 {canManage ? <Button size="sm" variant="ghost" className="h-7 text-red-600 hover:bg-red-50" disabled={busyId === c.id} onClick={() => del(c)}><Trash2 className="h-3.5 w-3.5" /></Button> : null}

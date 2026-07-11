@@ -15,15 +15,24 @@ export interface LaserBranchDetail {
   fondoPersonas: number; fondoPacientes: number
   personasAplican: number; totalPacientes: number; patientsSource: string
   totalDistribuido: number; cuadre: number
+  eligibleCount?: number; perCapita?: number
   personnel: LaserPersonnel[]; alerts: string[]
 }
 export interface LaserDetail {
   month: number; year: number
+  mode?: "equitativo" | "pesos"
   weights: { personas: number; pacientes: number }
   zeroPatientsGetsFixed: boolean
   cardDiscountBeforeScale?: boolean
   globalAlerts?: string[]
   branches: LaserBranchDetail[]
+}
+
+/** Descripción corta del modo de reparto vigente (para UI/exportes). */
+export function laserModeLabel(d: LaserDetail): string {
+  return d.mode === "pesos"
+    ? `Reparto por pesos: ${d.weights.personas}% por personas / ${d.weights.pacientes}% por pacientes`
+    : "Reparto equitativo (modo cuadro): cuota fondo÷N para quien no tiene pacientes; el resto por pacientes atendidos"
 }
 
 const MONTHS = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -63,7 +72,7 @@ export async function exportLaserExcel(detail: LaserDetail): Promise<void> {
   // ── Hoja Resumen ──
   const rs = wb.addWorksheet("Resumen")
   head(rs, 8)
-  rs.getCell(2, 1).value = `Reparto: ${detail.weights.personas}% por personas / ${detail.weights.pacientes}% por pacientes · 0 pacientes recibe parte fija: ${detail.zeroPatientsGetsFixed ? "Sí" : "No"}`
+  rs.getCell(2, 1).value = `${laserModeLabel(detail)} · 0 pacientes recibe parte fija: ${detail.zeroPatientsGetsFixed ? "Sí" : "No"}`
   headerRow(rs, 4, ["Sucursal", "Venta bruta", "Venta tarjeta", "Desc. tarjeta", "Base neta", "Tramo", "Fondo", "Cuadre"])
   detail.branches.forEach((b, i) => {
     const row = rs.getRow(5 + i)
@@ -137,7 +146,7 @@ export function printLaserPdf(detail: LaserDetail): void {
     @media print{@page{size:A4 landscape;margin:12mm}}
   </style></head><body>
   <h1>Incentivo de depilación láser</h1>
-  <div class="sub">${period} · Reparto ${detail.weights.personas}% personas / ${detail.weights.pacientes}% pacientes · 0 pacientes recibe parte fija: ${detail.zeroPatientsGetsFixed ? "Sí" : "No"}</div>
+  <div class="sub">${period} · ${laserModeLabel(detail)} · 0 pacientes recibe parte fija: ${detail.zeroPatientsGetsFixed ? "Sí" : "No"}</div>
   ${branchBlocks}
   <script>window.onload=function(){window.print()}</script>
   </body></html>`

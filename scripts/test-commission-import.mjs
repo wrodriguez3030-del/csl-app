@@ -279,6 +279,57 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
   // reparto lineal (20,000/3 no divide exacto → diferencia ≤ RD$0.01 esperada).
   const distTotal = rZF.items.reduce((s, i) => s + i.laserTotal, 0)
   t("cuadre: Σ láser repartido ≈ fondo (residuo ≤ 0.01)", Math.abs(distTotal - 40000) <= 0.01, `(dif ${(distTotal - 40000).toFixed(2)})`)
+
+  console.log("── Modo EQUITATIVO — replica el cuadro oficial (SISTEMA INCENTIVOS, Junio RV)")
+  // Base 724,005.50 (la del cuadro) con tramo 2% → fondo 14,480.11. 8 elegibles:
+  // 3 sin pacientes (cuota fija fondo/8 = 1,810.01) + 5 con pacientes que se
+  // reparten el resto (9,050.07) por participación. Valores esperados = Excel.
+  const rEq = computeRun({
+    branch: "RAFAEL VIDAL",
+    sales: [sale({ amount: 724005.5 })],
+    collaborators: ["LUISA", "YANIBEL", "KARLA", "RIQUELMI", "ROSA", "DIANA", "MADELINE", "EMELI"].map((n) => collab(n)),
+    patients: [
+      { collaborator: "RIQUELMI", patients: 246 }, { collaborator: "ROSA", patients: 192 },
+      { collaborator: "DIANA", patients: 206 }, { collaborator: "MADELINE", patients: 244 },
+      { collaborator: "EMELY", patients: 240 }, // alias EMELY→EMELI (como viene del archivo)
+    ],
+    patientsSource: "manual",
+    rules: { ...RULES, laserScale: [{ threshold: 260000, percentage: 0.02 }], laserDistributionMode: "equitativo" },
+  })
+  const eq = (n) => rEq.items.find((i) => i.name === n)
+  t("fondo = 14,480.11 y modo equitativo (8 elegibles, cuota 1,810.01)",
+    rEq.laser.fund === 14480.11 && rEq.laser.mode === "equitativo" && rEq.laser.eligibleCount === 8 && rEq.laser.perCapita === 1810.01)
+  t("fondo personas 5,430.04 + pacientes 9,050.07", rEq.laser.fundLinear === 5430.04 && rEq.laser.fundPatients === 9050.07)
+  t("LUISA/YANIBEL/KARLA cuota fija ≈ 1,810.01", ["LUISA", "YANIBEL", "KARLA"].every((n) => Math.abs(eq(n).laserTotal - 1810.01) <= 0.02))
+  t("RIQUELMI 246 pac → 1,973.69 (Excel 1,973.6852)", Math.abs(eq("RIQUELMI").laserTotal - 1973.69) <= 0.02, `(${eq("RIQUELMI").laserTotal})`)
+  t("ROSA 192 → 1,540.44", Math.abs(eq("ROSA").laserTotal - 1540.44) <= 0.02)
+  t("DIANA 206 → 1,652.76", Math.abs(eq("DIANA").laserTotal - 1652.76) <= 0.02)
+  t("MADELINE 244 → 1,957.64", Math.abs(eq("MADELINE").laserTotal - 1957.64) <= 0.02)
+  t("EMELY 240 → 1,925.55 (con alias)", Math.abs(eq("EMELI").laserTotal - 1925.55) <= 0.02)
+  const sumEq = rEq.items.reduce((s, i) => s + i.laserTotal, 0)
+  t("CUADRE EXACTO: Σ repartido = fondo", Math.round(sumEq * 100) / 100 === 14480.11, `(${sumEq.toFixed(2)})`)
+
+  // Equitativo sin NINGÚN paciente: partes iguales con alerta.
+  const rEq0 = computeRun({
+    branch: "RAFAEL VIDAL", sales: [sale({ amount: 700000 })],
+    collaborators: [collab("ROSA"), collab("DIANA")], patients: [], patientsSource: "ninguna",
+    rules: { ...RULES, laserDistributionMode: "equitativo" },
+  })
+  t("equitativo sin pacientes → partes iguales + alerta", rEq0.alerts.some((a) => a.includes("PARTES IGUALES")) &&
+    Math.abs(rEq0.items.reduce((s, i) => s + i.laserTotal, 0) - rEq0.laser.fund) <= 0.01)
+
+  console.log("── Tarifa de producto POR COLABORADOR (50 P/P del cuadro)")
+  const rProd = computeRun({
+    branch: "RAFAEL VIDAL",
+    sales: [
+      sale({ category: "PRODUCTO", amount: 500, quantity: 3, providerOriginal: "DAYHANA (prestador)", provider: "DAYHANA" }),
+      sale({ category: "PRODUCTO", amount: 900, quantity: 2, providerOriginal: "ROSA (prestador)", provider: "ROSA" }),
+    ],
+    collaborators: [collab("DAYHANA", { productUnitAmount: 50 }), collab("ROSA")],
+    patients: [], patientsSource: "ninguna", rules: RULES,
+  })
+  t("DAYHANA 3 u × RD$50 = 150 (override)", rProd.items.find((i) => i.name === "DAYHANA")?.productIncentive === 150)
+  t("ROSA 2 u × RD$100 = 200 (regla general)", rProd.items.find((i) => i.name === "ROSA")?.productIncentive === 200)
 }
 
 // ── Archivos reales (§33/§34) — solo si están disponibles ──

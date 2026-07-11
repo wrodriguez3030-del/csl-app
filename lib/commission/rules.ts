@@ -49,6 +49,9 @@ export function defaultCommissionRules(businessId: string, effectiveFrom = "2000
     // Banderas (fixedAmount 1 = Sí, 0 = No).
     mk({ name: "Láser: empleado con 0 pacientes recibe parte fija", ruleType: "laser_zero_patients_fixed", fixedAmount: 1 }),
     mk({ name: "Láser: descontar tarjeta antes de la escala", ruleType: "laser_card_discount_before_scale", fixedAmount: 1 }),
+    // Modo de reparto: 1 = EQUITATIVO (cuadro oficial: cuota fondo/N a los de 0
+    // pacientes y el resto por pacientes); 0 = PESOS (usa los % de arriba).
+    mk({ name: "Láser: reparto equitativo por persona (modo cuadro)", ruleType: "laser_split_mode", fixedAmount: 1 }),
   ]
 }
 

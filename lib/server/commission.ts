@@ -1145,6 +1145,7 @@ function mapCollaborator(r: Row) {
     cleaningContribution: r.cleaning_contribution == null ? 400 : Number(r.cleaning_contribution),
     bonusExtra: Number(r.bonus_extra) || 0,
     evaluationPct: r.evaluation_pct == null ? 100 : Number(r.evaluation_pct),
+    productUnitAmount: r.product_unit_amount == null ? null : Number(r.product_unit_amount),
     notes: r.notes == null ? null : String(r.notes),
   }
 }
@@ -1195,6 +1196,8 @@ async function readRunRules(): Promise<RunRules> {
     laserSplitPatientsFraction = split != null ? Number(split) : 0.5
   }
   const zeroFlag = latest("laser_zero_patients_fixed")?.fixed_amount
+  // Modo de reparto: default EQUITATIVO (cuadro oficial) salvo regla en 0.
+  const modeFlag = latest("laser_split_mode")?.fixed_amount
   return {
     cardPct: card?.percentage != null ? Number(card.percentage) : 0.27,
     productUnitAmount: prod?.fixed_amount != null ? Number(prod.fixed_amount) : 100,
@@ -1202,6 +1205,7 @@ async function readRunRules(): Promise<RunRules> {
     laserScale,
     laserSplitPatientsFraction,
     zeroPatientsGetsFixed: zeroFlag == null ? true : Number(zeroFlag) !== 0,
+    laserDistributionMode: (modeFlag == null || Number(modeFlag) !== 0 ? "equitativo" : "pesos") as "equitativo" | "pesos",
   }
 }
 
@@ -1483,6 +1487,8 @@ export async function saveCommissionCollaborator(params: ActionParams, user: Act
     cleaning_contribution: numParam(params, "cleaningContribution", 400),
     bonus_extra: numParam(params, "bonusExtra", 0),
     evaluation_pct: numParam(params, "evaluationPct", 100),
+    // Tarifa de producto propia (RD$/u); vacío = usa la regla general (RD$100).
+    product_unit_amount: textValue(params, "productUnitAmount") === "" ? null : numParam(params, "productUnitAmount", 100),
     start_date: textValue(params, "startDate") || null,
     end_date: textValue(params, "endDate") || null,
     notes: textValue(params, "notes") || null,
@@ -1596,11 +1602,13 @@ export async function getCommissionLaserDetail(params: ActionParams) {
       personasAplican: personnel.filter((p) => p.applies).length,
       totalPacientes: r.laser.patientsTotal, patientsSource: r.laser.patientsSource,
       totalDistribuido, cuadre: round2(r.laser.fund - totalDistribuido),
+      eligibleCount: r.laser.eligibleCount, perCapita: r.laser.perCapita,
       personnel, alerts: r.alerts,
     })
   }
   return {
     ok: true, month, year,
+    mode: rules.laserDistributionMode || "equitativo",
     weights: { personas: round2((1 - rules.laserSplitPatientsFraction) * 100), pacientes: round2(rules.laserSplitPatientsFraction * 100) },
     zeroPatientsGetsFixed: rules.zeroPatientsGetsFixed !== false,
     cardDiscountBeforeScale: true,

@@ -17,6 +17,7 @@ export type RuleType =
   | "laser_weight_pacientes" // % del fondo láser repartido por pacientes atendidos
   | "laser_zero_patients_fixed"        // flag (fixed 1/0): 0 pacientes recibe parte fija
   | "laser_card_discount_before_scale" // flag (fixed 1/0): descontar tarjeta antes de la escala
+  | "laser_split_mode"                 // flag (fixed 1/0): 1 = equitativo (cuadro), 0 = pesos
 
 /** Origen de cada peso de incentivo de servicios (trazabilidad, sección 16). */
 export type ServiceIncentiveSource =

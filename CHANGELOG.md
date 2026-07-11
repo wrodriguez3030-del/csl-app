@@ -18,6 +18,59 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.37.0] — 2026-07-11
+
+### Changed / Fixed
+- **Comisión de Ventas · INCENTIVO LÁSER alineado al cuadro oficial** (análisis
+  de `SISTEMA INCENTIVOS .xlsx`, Junio). El reparto real del negocio NO es
+  50/50: **modo EQUITATIVO** — cuota per cápita = fondo ÷ N elegibles; quien
+  tiene **0 pacientes** cobra exactamente su cuota; el **resto del fondo** se
+  reparte **por pacientes** entre quienes sí atendieron (pesos dinámicos).
+  - **Motor** (`run-engine.ts`): `laserDistributionMode` `"equitativo"` |
+    `"pesos"`; expone `eligibleCount` y `perCapita`. Test replica el cuadro de
+    Junio RV **al centavo**: cuota 1,810.01 (LUISA/YANIBEL/KARLA) y por
+    pacientes RIQUELMI 1,973.69 · ROSA 1,540.44 · DIANA 1,652.76 · MADELINE
+    1,957.64 · EMELY 1,925.55; Σ = fondo exacto.
+  - **Regla** `laser_split_mode` (Sí = equitativo **default**, No = pesos
+    50/50) — editable en Reglas; los pesos quedan etiquetados "(solo modo
+    pesos)" y su validación de 100% solo aplica en ese modo.
+  - **Tarifa de producto POR COLABORADOR** (`product_unit_amount`, cuadro
+    "50 P/P"): columna nueva en el roster (DDL aplicado a db-cls), override en
+    el motor, editable en el editor de personal (vacío = regla general RD$100).
+  - **Roster alineado al cuadro de Junio** (UPDATEs reversibles, sin borrar):
+    RV = 8 elegibles (KARLA ACTIVA, ASHLEY inactiva en RV — cobra en LJ),
+    LJ = 7 (JOELY y BENITA fuera del láser), VO = 4 (EIDYLEE y DAYHANA fuera;
+    DAYHANA productos RD$50/u); alta de ISAURY (RV, sin láser, RD$50/u, sin
+    aporte de limpieza).
+- **UI más fácil y profesional:**
+  - **`PeriodoSucursalPicker` compartido**: Comisión láser, Clientes atendidos
+    y Cálculo mensual usan el mismo selector de mes/año/sucursal y **el período
+    elegido se mantiene al cambiar de pantalla** (antes se reseteaba al mes
+    actual en cada pantalla).
+  - Pantalla láser: franja con el **modo de reparto vigente** (y dónde
+    configurarlo), tarjeta **"Cuota (fondo÷N)"** en el resumen por sucursal;
+    Excel/PDF describen el modo.
+  - Editor de personal: columnas **Bono** (RD$ del mes) y **Prod. RD$/u**
+    editables; fix: guardar una fila ya no resetea el bono a 0.
+- **Migración `202607110004`** (aplicada a db-cls por SSH): columna
+  `product_unit_amount` + seed de `laser_split_mode`.
+- **QA**: `test:commission` **129/129** (12 aserciones nuevas replican el
+  cuadro); smoke db-cls 17/17 con **modo equitativo y cuadre 0.00** en las 3
+  sucursales; captura 7/7; `tsc` 0; `build` OK.
+
+### Notas de negocio (discrepancias del cuadro detectadas — no se tocaron)
+- El cuadro aplica **2% fijo** en Rafael Vidal con base 724,005.50, pero su
+  propia escala (600,000 → 3%) daría 3%. El sistema aplica la escala (3% →
+  fondo 21,347.24 vs 14,480.11 del cuadro). Si se desea 2% fijo, desactivar los
+  tramos superiores en Reglas.
+- El cuadro netea la tarjeta del TOTAL de la sucursal y resta las otras
+  categorías a bruto (aprox. de tabla dinámica); el sistema netea la tarjeta de
+  las ventas láser reales (más preciso; RV jun: 711,574.50 vs 724,005.50).
+- Pacientes del cuadro (1,128/864/303) difieren de reservas (1,076/850/297):
+  ajustables por sucursal/persona en **Clientes atendidos** (captura manual).
+
+---
+
 ## [0.36.0] — 2026-07-11
 
 ### Added

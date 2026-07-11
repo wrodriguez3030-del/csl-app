@@ -30,15 +30,16 @@ const RULE_GROUP: Record<string, { label: string; kind: "pct" | "fixed" | "laser
   card_percentage: { label: "Ventas con tarjeta (%)", kind: "pct" },
   category_commission: { label: "Comisión por categoría (%)", kind: "pct" },
   laser_scale: { label: "Escala depilación láser (umbral → %)", kind: "laser" },
-  laser_weight_personas: { label: "Reparto láser: % por cantidad de personas", kind: "pct" },
-  laser_weight_pacientes: { label: "Reparto láser: % por pacientes atendidos", kind: "pct" },
+  laser_split_mode: { label: "Láser: reparto EQUITATIVO por persona (modo cuadro) — No = usar los pesos de abajo", kind: "flag" },
+  laser_weight_personas: { label: "Reparto láser: % por cantidad de personas (solo modo pesos)", kind: "pct" },
+  laser_weight_pacientes: { label: "Reparto láser: % por pacientes atendidos (solo modo pesos)", kind: "pct" },
   laser_zero_patients_fixed: { label: "Láser: empleado con 0 pacientes recibe parte fija", kind: "flag" },
   laser_card_discount_before_scale: { label: "Láser: descontar tarjeta antes de la escala", kind: "flag" },
   product_unit_incentive: { label: "Incentivo por producto (RD$/unidad)", kind: "fixed" },
   cleaning_contribution: { label: "Aporte de limpieza (RD$)", kind: "fixed" },
   fixed_incentive: { label: "Incentivo fijo (RD$)", kind: "fixed" },
 }
-const GROUP_ORDER = ["card_percentage", "category_commission", "laser_scale", "laser_weight_personas", "laser_weight_pacientes", "laser_zero_patients_fixed", "laser_card_discount_before_scale", "product_unit_incentive", "cleaning_contribution", "fixed_incentive"]
+const GROUP_ORDER = ["card_percentage", "category_commission", "laser_scale", "laser_split_mode", "laser_weight_personas", "laser_weight_pacientes", "laser_zero_patients_fixed", "laser_card_discount_before_scale", "product_unit_incentive", "cleaning_contribution", "fixed_incentive"]
 
 const fmtRD = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -132,11 +133,14 @@ export function ComisionReglasPage() {
   })
   const grouped = GROUP_ORDER.map((g) => ({ type: g, rules: visibles.filter((r) => r.ruleType === g) })).filter((g) => g.rules.length)
 
-  // Validación: los pesos de reparto láser deben sumar 100%.
+  // Validación: los pesos de reparto láser deben sumar 100% (solo en modo pesos;
+  // en modo equitativo los pesos no aplican).
+  const modeFlag = rules.find((r) => r.ruleType === "laser_split_mode" && r.active)?.fixedAmount
+  const isEquitativo = modeFlag == null ? true : Number(modeFlag) !== 0
   const wPer = rules.find((r) => r.ruleType === "laser_weight_personas" && r.active)?.percentage
   const wPac = rules.find((r) => r.ruleType === "laser_weight_pacientes" && r.active)?.percentage
   const weightsSum = wPer != null || wPac != null ? Math.round((Number(wPer || 0) + Number(wPac || 0)) * 100) : null
-  const weightsBad = weightsSum != null && weightsSum !== 100
+  const weightsBad = !isEquitativo && weightsSum != null && weightsSum !== 100
 
   return (
     <div className="space-y-5">

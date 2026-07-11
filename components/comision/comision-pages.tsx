@@ -13,8 +13,9 @@ import {
   Loader2, CheckCircle2, AlertTriangle, Wand2, Download, Printer, RefreshCw, ChevronDown, Save, RotateCcw,
 } from "lucide-react"
 import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
-import { exportLaserExcel, printLaserPdf, type LaserDetail } from "@/lib/commission/laser-export"
+import { exportLaserExcel, printLaserPdf, laserModeLabel, type LaserDetail } from "@/lib/commission/laser-export"
 import { LaserPersonnelEditor } from "./laser-personnel-editor"
+import { PeriodoSucursalPicker, usePeriodoCompartido } from "./periodo-picker"
 
 export { ComisionDashboardPage } from "./comision-dashboard-page"
 
@@ -206,10 +207,7 @@ export function ComisionLaserPage() {
   const { apiUrl, showToast } = useAppStore()
   const user = useSessionUser()
   const canApply = canPerm(user, "sales_commission.calculate")
-  const now = new Date()
-  const [month, setMonth] = useState(now.getMonth() + 1)
-  const [year, setYear] = useState(now.getFullYear())
-  const years = [now.getFullYear() + 1, now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2]
+  const { month, year, setMonth, setYear } = usePeriodoCompartido()
   const [detail, setDetail] = useState<LaserDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -243,23 +241,18 @@ export function ComisionLaserPage() {
   }
 
   const totalFondo = (detail?.branches || []).reduce((s, b) => s + b.fondo, 0)
-  const weightsOk = detail ? Math.abs(detail.weights.personas + detail.weights.pacientes - 100) < 0.01 : true
+  // Los pesos solo aplican (y se validan) en modo "pesos"; en equitativo son dinámicos.
+  const weightsOk = !detail || detail.mode !== "pesos" || Math.abs(detail.weights.personas + detail.weights.pacientes - 100) < 0.01
 
   return (
     <Shell icon={<Zap className="h-4 w-4" />} title="Comisión de Ventas · Comisión depilación láser">
       {/* Selectores período + acciones */}
       <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-end gap-3 p-4">
-        <div><label className="text-[11px] font-medium">Mes</label>
-          <select className="mt-0.5 h-9 w-36 rounded-md border border-input bg-white px-2 text-sm" value={month} onChange={(e) => setMonth(Number(e.target.value))}>{MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select>
-        </div>
-        <div><label className="text-[11px] font-medium">Año</label>
-          <select className="mt-0.5 h-9 w-24 rounded-md border border-input bg-white px-2 text-sm" value={year} onChange={(e) => setYear(Number(e.target.value))}>{years.map((y) => <option key={y} value={y}>{y}</option>)}</select>
-        </div>
+        <PeriodoSucursalPicker month={month} year={year} onMonth={setMonth} onYear={setYear} />
         <Button size="sm" variant="outline" className="h-9" disabled={loading} onClick={() => void load()}>{loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}Recalcular</Button>
         <Button size="sm" variant="outline" className="h-9" disabled={!detail} onClick={() => detail && void exportLaserExcel(detail)}><Download className="mr-1.5 h-3.5 w-3.5" />Excel</Button>
         <Button size="sm" variant="outline" className="h-9" disabled={!detail} onClick={() => detail && printLaserPdf(detail)}><Printer className="mr-1.5 h-3.5 w-3.5" />PDF</Button>
         <div className="ml-auto flex items-center gap-2">
-          {detail ? <Badge variant="secondary">Reparto {detail.weights.personas}% personas / {detail.weights.pacientes}% pacientes</Badge> : null}
           {canApply ? (
             <Button size="sm" className="h-9" disabled={loading || applying || !detail || totalFondo <= 0} onClick={() => setConfirmOpen(true)}>
               <Wand2 className="mr-1.5 h-3.5 w-3.5" />Aplicar a liquidación
@@ -267,6 +260,12 @@ export function ComisionLaserPage() {
           ) : null}
         </div>
       </CardContent></Card>
+
+      {detail ? (
+        <div className="flex items-center gap-1.5 rounded-md border border-[color:var(--brand-border)] bg-[color:var(--brand-primary)]/5 px-3 py-2 text-xs text-slate-700">
+          <CheckCircle2 className="h-3.5 w-3.5 text-[color:var(--brand-primary)]" />{laserModeLabel(detail)} · configurable en <b>Reglas de comisión</b>
+        </div>
+      ) : null}
 
       {!weightsOk ? (
         <div className="flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"><AlertTriangle className="h-3.5 w-3.5" />Los pesos de reparto no suman 100% (personas {detail?.weights.personas}% + pacientes {detail?.weights.pacientes}%). Corrige en Reglas de comisión.</div>
@@ -290,7 +289,7 @@ export function ComisionLaserPage() {
               : <Badge variant="outline" className="ml-auto border-amber-200 bg-amber-50 text-amber-700">Diferencia {fmtRD(b.cuadre)}</Badge>}
           </div>
           {/* Resumen del mes */}
-          <div className="grid grid-cols-2 gap-px bg-slate-100 sm:grid-cols-4 lg:grid-cols-7">
+          <div className="grid grid-cols-2 gap-px bg-slate-100 sm:grid-cols-4 lg:grid-cols-8">
             {[
               ["Venta bruta", fmtRD(b.ventaLaserBruta)],
               ["Venta tarjeta", fmtRD(b.ventaLaserTarjeta)],
@@ -298,6 +297,7 @@ export function ComisionLaserPage() {
               ["Base neta", fmtRD(b.baseLaserNeta)],
               ["Tramo", `${(b.pct * 100).toFixed(0)}%`],
               ["Fondo", fmtRD(b.fondo)],
+              [`Cuota (fondo÷${b.eligibleCount || "N"})`, fmtRD(b.perCapita || 0)],
               ["Pacientes", `${b.totalPacientes}`],
             ].map(([k, v], i) => (
               <div key={i} className="bg-white p-3"><div className="text-[10px] uppercase text-muted-foreground">{k}</div><div className="text-sm font-black tabular-nums">{v}</div></div>
@@ -392,11 +392,7 @@ export function ComisionClientesPage() {
   const { apiUrl, showToast } = useAppStore()
   const user = useSessionUser()
   const canEdit = canPerm(user, "sales_commission.calculate")
-  const now = new Date()
-  const [branch, setBranch] = useState(BRANCHES[0])
-  const [month, setMonth] = useState(now.getMonth() + 1)
-  const [year, setYear] = useState(now.getFullYear())
-  const years = [now.getFullYear() + 1, now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2]
+  const { month, year, branch, setMonth, setYear, setBranch } = usePeriodoCompartido()
   const [rows, setRows] = useState<CapRow[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -449,12 +445,7 @@ export function ComisionClientesPage() {
   return (
     <Shell icon={<Users className="h-4 w-4" />} title="Comisión de Ventas · Clientes atendidos (captura de pacientes)">
       <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-end gap-3 p-4">
-        <div><label className="text-[11px] font-medium">Sucursal</label>
-          <select className="mt-0.5 h-9 w-48 rounded-md border border-input bg-white px-2 text-sm" value={branch} onChange={(e) => setBranch(e.target.value)}>{BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}</select></div>
-        <div><label className="text-[11px] font-medium">Mes</label>
-          <select className="mt-0.5 h-9 w-36 rounded-md border border-input bg-white px-2 text-sm" value={month} onChange={(e) => setMonth(Number(e.target.value))}>{MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select></div>
-        <div><label className="text-[11px] font-medium">Año</label>
-          <select className="mt-0.5 h-9 w-24 rounded-md border border-input bg-white px-2 text-sm" value={year} onChange={(e) => setYear(Number(e.target.value))}>{years.map((y) => <option key={y} value={y}>{y}</option>)}</select></div>
+        <PeriodoSucursalPicker showBranch month={month} year={year} branch={branch} onMonth={setMonth} onYear={setYear} onBranch={setBranch} />
         <Button size="sm" variant="outline" className="h-9" disabled={loading} onClick={() => void load()}>{loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}Recargar</Button>
         <div className="ml-auto text-xs text-muted-foreground">Base: <b>Reservas</b> (atenciones ASISTE). Editar guarda un valor <b>manual</b> que sobre-escribe solo a ese colaborador.</div>
       </CardContent></Card>

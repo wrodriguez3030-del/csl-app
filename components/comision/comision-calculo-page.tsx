@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Calculator, Loader2, CheckCircle2, AlertTriangle, Save, Lock, Ban, RefreshCw } from "lucide-react"
 import { CATEGORY_LABELS } from "@/lib/commission/classification"
 import type { RunResult } from "@/lib/commission/run-engine"
+import { PeriodoSucursalPicker, usePeriodoCompartido } from "./periodo-picker"
 
 const fmtRD = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const BRANCHES = ["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]
@@ -42,11 +43,7 @@ export function ComisionCalculoPage() {
   const user = useSessionUser()
   const canCalc = canPerm(user, "sales_commission.calculate")
 
-  const now = new Date()
-  const [branch, setBranch] = useState(BRANCHES[0])
-  const [month, setMonth] = useState(now.getMonth() + 1)
-  const [year, setYear] = useState(now.getFullYear())
-  const years = [now.getFullYear() + 1, now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2]
+  const { month, year, branch, setMonth, setYear, setBranch } = usePeriodoCompartido()
 
   const [result, setResult] = useState<RunResult | null>(null)
   const [savedRun, setSavedRun] = useState<SavedRun | null>(null)
@@ -126,24 +123,7 @@ export function ComisionCalculoPage() {
 
       {/* Selectores de período/sucursal + estado */}
       <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-end gap-3 p-4">
-        <div>
-          <label className="text-[11px] font-medium">Sucursal</label>
-          <select className="mt-0.5 h-9 w-48 rounded-md border border-input bg-white px-2 text-sm" value={branch} onChange={(e) => setBranch(e.target.value)}>
-            {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="text-[11px] font-medium">Mes</label>
-          <select className="mt-0.5 h-9 w-36 rounded-md border border-input bg-white px-2 text-sm" value={month} onChange={(e) => setMonth(Number(e.target.value))}>
-            {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="text-[11px] font-medium">Año</label>
-          <select className="mt-0.5 h-9 w-24 rounded-md border border-input bg-white px-2 text-sm" value={year} onChange={(e) => setYear(Number(e.target.value))}>
-            {years.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
+        <PeriodoSucursalPicker showBranch month={month} year={year} branch={branch} onMonth={setMonth} onYear={setYear} onBranch={setBranch} />
         <Button size="sm" variant="outline" className="h-9" disabled={loading} onClick={() => void load()}>
           {loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}Recalcular
         </Button>
