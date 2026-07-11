@@ -93,6 +93,8 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
   const ano = quickRange("ano_actual", new Date("2026-07-15T12:00:00Z"))
   t("quick año actual = 01/01..31/12", ano.from === "2026-01-01" && ano.to === "2026-12-31")
   t("lastDayOfMonth abril = 30", lastDayOfMonth(2026, 4) === 30)
+  const todo = quickRange("todo", new Date("2026-07-15T12:00:00Z"))
+  t("quick 'todo' = sin fechas (todos los meses)", todo.from === "" && todo.to === "")
 }
 
 // ── Archivos reales (§33/§34) — solo si están disponibles ──

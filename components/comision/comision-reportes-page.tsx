@@ -88,7 +88,7 @@ export function ComisionReportesPage() {
       {loading ? (
         <Card className="border-[color:var(--brand-border)]"><CardContent className="py-10 text-center text-sm text-muted-foreground">Cargando datos del período…</CardContent></Card>
       ) : empty ? (
-        <Card className="border-[color:var(--brand-border)]"><CardContent className="py-10 text-center text-sm text-muted-foreground">No hay datos para {MONTHS[month - 1]} {year}. Importa un archivo de ventas de ese período primero.</CardContent></Card>
+        <Card className="border-[color:var(--brand-border)]"><CardContent className="py-10 text-center text-sm text-muted-foreground">No hay datos para {periodDisplay}. Importa un archivo de ventas de ese período primero.</CardContent></Card>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {([["Inc. productos", t!.productIncentive], ["Com. servicios", t!.serviceCommission], ["Fondo láser", t!.laserIncentive], ["Bono", t!.bonusExtra], ["Bruto", t!.grossTotal], ["Limpieza", t!.cleaningContribution], ["Total neto", t!.netTotal]] as [string, number][]).map(([l, v]) => (

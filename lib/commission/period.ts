@@ -9,10 +9,11 @@
 export const BUSINESS_TZ = "America/Santo_Domingo"
 
 export type QuickPeriod =
-  | "hoy" | "semana" | "mes_actual" | "mes_anterior" | "ultimos_30"
+  | "todo" | "hoy" | "semana" | "mes_actual" | "mes_anterior" | "ultimos_30"
   | "trimestre" | "ano_actual" | "personalizado"
 
 export const QUICK_OPTIONS: { id: QuickPeriod; label: string }[] = [
+  { id: "todo", label: "Todo (todos los meses)" },
   { id: "hoy", label: "Hoy" },
   { id: "semana", label: "Esta semana" },
   { id: "mes_actual", label: "Mes actual" },
@@ -63,6 +64,9 @@ export function quickRange(quick: QuickPeriod, now: Date = new Date(), tz: strin
   const today = todayInTz(now, tz)
   const [y, m, d] = today.split("-").map(Number)
   switch (quick) {
+    case "todo":
+      // Sin restricción de fechas: el backend no aplica filtro de período.
+      return { from: "", to: "", year: y, month: m }
     case "hoy":
       return { from: today, to: today, year: y, month: m }
     case "semana": {

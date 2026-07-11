@@ -45,15 +45,20 @@ export function useCommissionFilters(): {
   const stored = useAppStore((s) => s.commissionFilters)
   const filters = (stored as CommissionFilters | null) || defaultCommissionFilters()
   const params = useMemo(() => {
-    const p: Record<string, string> = {
-      year: String(filters.year), month: String(filters.month),
-      from: filters.from, to: filters.to,
+    const p: Record<string, string> = {}
+    // "Todo" = sin filtro de período (el backend consulta todos los meses).
+    if (filters.quick !== "todo" && filters.from && filters.to) {
+      p.year = String(filters.year)
+      p.month = String(filters.month)
+      p.from = filters.from
+      p.to = filters.to
     }
     if (filters.branch) p.branch = filters.branch
     if (filters.provider) p.provider = filters.provider
     return p
   }, [filters])
   const label = useMemo(() => {
+    if (filters.quick === "todo") return "Todo el historial"
     if (filters.quick === "mes_actual" || filters.quick === "mes_anterior" || filters.quick === "mes")
       return `${FILTER_MONTHS[filters.month]} ${filters.year}`
     const q = QUICK_OPTIONS.find((o) => o.id === filters.quick)
