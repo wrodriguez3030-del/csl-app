@@ -1080,9 +1080,13 @@ export async function getCommissionExecutiveDashboard(params: ActionParams) {
   const providerOptions = [...new Set([...calcs.map((c) => String(c.provider || "")), ...provSales.keys()])]
     .filter(Boolean).sort()
 
+  // Etiqueta fiel al filtro: mes=0 con rango = "Todos los meses"; sin período = historial.
+  const periodLabel = !hasPeriod ? "Todo el historial"
+    : textValue(params, "month") === "0" ? `Todos los meses ${anchorYear}`
+    : monthLabel(anchorYear, anchorMonth)
   return {
     ok: true,
-    period: { month: anchorMonth, year: anchorYear, label: monthLabel(anchorYear, anchorMonth), isFullMonth, hasPeriod },
+    period: { month: anchorMonth, year: anchorYear, label: periodLabel, isFullMonth, hasPeriod },
     prevLabel: monthLabel(prevYear, prevMonth),
     kpis: {
       salesTotal, serviceCommission, productIncentive, laserIncentive, bonusExtra, netTotal,
@@ -1621,42 +1625,82 @@ export async function getCommissionLaserDetail(params: ActionParams) {
 // ════════════════════════════════════════════════════════════════════════════
 
 /**
- * Filas de captura de pacientes de un mes/sucursal: por colaborador del roster
- * (activo) + cualquier prestador con datos, muestra la base de RESERVAS y el
- * valor MANUAL (si existe) con su valor efectivo (manual gana). Alimenta la
- * edición de "Clientes atendidos" y el reparto láser.
+ * Filas de captura/consulta de pacientes atendidos.
+ *  - month>0 + sucursal: vista EDITABLE del mes (reservas base + manual que gana).
+ *  - month>0 sin sucursal ("Todas"): mismo mes, las 3 sucursales (editable por fila).
+ *  - month=0 ("Todos los meses"): SUMA ANUAL por colaborador+sucursal (efectivo
+ *    por mes = manual si existe, si no reservas) — solo consulta.
  */
 export async function getCommissionPatientCapture(params: ActionParams) {
   const business_id = requireBizId()
   const branch = textValue(params, "branch")
   const month = numberValue(params, "month")
   const year = numberValue(params, "year")
-  if (!branch || !month || !year) throw new Error("Selecciona sucursal, mes y año")
+  if (!year) throw new Error("Selecciona un año")
   const sb = getSupabaseAdmin()
-  const { data: pcRows } = await sb.from("sales_commission_patient_counts")
-    .select("id,provider_name,patient_count,source,service,observation")
-    .eq("business_id", business_id).eq("branch", branch).eq("period_month", month).eq("period_year", year)
-  const roster = await readRoster(branch, false)
+  let q = sb.from("sales_commission_patient_counts")
+    .select("id,provider_name,branch,patient_count,source,service,observation,period_month")
+    .eq("business_id", business_id).eq("period_year", year)
+  if (month) q = q.eq("period_month", month)
+  if (branch) q = q.eq("branch", branch)
+  const { data: pcRows } = await q
+  const roster = await readRoster(branch || undefined, false)
 
-  type Cap = { provider: string; branch: string; inRoster: boolean; reservas: number | null; manual: number | null; manualId: string | null; service: string | null; observation: string | null }
+  type Cap = {
+    provider: string; branch: string; inRoster: boolean
+    reservas: number | null; manual: number | null; manualId: string | null
+    service: string | null; observation: string | null; months: Set<number>
+  }
   const map = new Map<string, Cap>()
-  const ensure = (name: string): Cap => {
-    let c = map.get(name)
-    if (!c) { c = { provider: name, branch, inRoster: false, reservas: null, manual: null, manualId: null, service: null, observation: null }; map.set(name, c) }
+  const ensure = (name: string, b: string): Cap => {
+    const key = `${name}|${b}`
+    let c = map.get(key)
+    if (!c) { c = { provider: name, branch: b, inRoster: false, reservas: null, manual: null, manualId: null, service: null, observation: null, months: new Set() }; map.set(key, c) }
     return c
   }
-  for (const c of roster) ensure(canonicalCollaborator(c.name)).inRoster = true
-  for (const r of (pcRows || []) as Row[]) {
-    const name = canonicalCollaborator(r.provider_name)
-    if (!name) continue
-    const c = ensure(name)
-    if (r.source === "manual") { c.manual = Number(r.patient_count) || 0; c.manualId = String(r.id); c.service = r.service == null ? null : String(r.service); c.observation = r.observation == null ? null : String(r.observation) }
-    else c.reservas = Number(r.patient_count) || 0
+  for (const c of roster) ensure(canonicalCollaborator(c.name), c.branch).inRoster = true
+
+  if (month) {
+    // ── Vista mensual (editable): manual sobre-escribe a reservas por colaborador.
+    for (const r of (pcRows || []) as Row[]) {
+      const name = canonicalCollaborator(r.provider_name)
+      if (!name) continue
+      const c = ensure(name, String(r.branch || branch))
+      if (r.source === "manual") { c.manual = Number(r.patient_count) || 0; c.manualId = String(r.id); c.service = r.service == null ? null : String(r.service); c.observation = r.observation == null ? null : String(r.observation) }
+      else c.reservas = Number(r.patient_count) || 0
+    }
+  } else {
+    // ── Vista ANUAL (solo consulta): por colaborador+sucursal, el efectivo de
+    // cada mes es manual (si existe) o reservas; se suman los 12 meses.
+    const perMonth = new Map<string, { manual: number | null; reservas: number | null }>()
+    for (const r of (pcRows || []) as Row[]) {
+      const name = canonicalCollaborator(r.provider_name)
+      if (!name) continue
+      const k = `${name}|${String(r.branch || "")}|${Number(r.period_month) || 0}`
+      const e = perMonth.get(k) || { manual: null, reservas: null }
+      if (r.source === "manual") e.manual = Number(r.patient_count) || 0
+      else e.reservas = Number(r.patient_count) || 0
+      perMonth.set(k, e)
+    }
+    for (const [k, e] of perMonth) {
+      const [name, b, mStr] = k.split("|")
+      const c = ensure(name, b)
+      const eff = e.manual != null ? e.manual : (e.reservas || 0)
+      c.reservas = round2((c.reservas || 0) + (e.reservas || 0))
+      c.manual = round2((c.manual == null ? 0 : c.manual) + eff) // manual acumula el EFECTIVO anual
+      if (eff > 0) c.months.add(Number(mStr))
+    }
   }
-  const rows = [...map.values()].map((c) => ({ ...c, effective: c.manual != null ? c.manual : (c.reservas || 0), source: c.manual != null ? "manual" : (c.reservas != null ? "reservas" : "—") }))
-    .sort((a, b) => b.effective - a.effective || a.provider.localeCompare(b.provider))
+
+  const rows = [...map.values()].map((c) => {
+    const effective = c.manual != null ? c.manual : (c.reservas || 0)
+    const source = month
+      ? (c.manual != null ? "manual" : (c.reservas != null ? "reservas" : "—"))
+      : (c.months.size ? `${c.months.size} mes${c.months.size === 1 ? "" : "es"}` : "—")
+    return { provider: c.provider, branch: c.branch, inRoster: c.inRoster, reservas: c.reservas, manual: month ? c.manual : null, manualId: c.manualId, service: c.service, observation: c.observation, effective, source }
+  }).sort((a, b) => b.effective - a.effective || a.provider.localeCompare(b.provider))
   const total = rows.reduce((s, r) => s + r.effective, 0)
-  return { ok: true, branch, month, year, total, rows }
+  return { ok: true, branch, month, year, total, editable: month > 0, rows }
 }
 
 /** Alta/edición de pacientes MANUAL de un colaborador (sobre-escribe reservas). */

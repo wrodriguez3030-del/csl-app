@@ -275,6 +275,8 @@ export function ComisionLaserPage() {
       {/* Filtros estándar del módulo + acciones */}
       <CommissionFilterBar branches={BRANCHES} />
       <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-center gap-2 p-3">
+        <Badge variant="outline" className="border-cyan-200 bg-cyan-50 text-cyan-800">{annualMode ? `Resumen anual ${year}` : `${MONTHS[month - 1]} ${year}`}{branch ? ` · ${branch}` : ""}</Badge>
+        {filters.quick === "personalizado" ? <span className="text-[11px] text-amber-700">El detalle láser es mensual: mostrando el mes de inicio del rango.</span> : null}
         <Button size="sm" variant="outline" className="h-9" disabled={loading} onClick={() => void load()}>{loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}Recalcular</Button>
         <Button size="sm" variant="outline" className="h-9" disabled={!detail || annualMode} title={annualMode ? "Elige un mes específico para exportar el detalle" : undefined} onClick={() => detail && void exportLaserExcel(detail)}><Download className="mr-1.5 h-3.5 w-3.5" />Excel</Button>
         <Button size="sm" variant="outline" className="h-9" disabled={!detail || annualMode} title={annualMode ? "Elige un mes específico para exportar el detalle" : undefined} onClick={() => detail && printLaserPdf(detail)}><Printer className="mr-1.5 h-3.5 w-3.5" />PDF</Button>
@@ -459,29 +461,29 @@ export function ComisionClientesPage() {
   const { apiUrl, showToast } = useAppStore()
   const user = useSessionUser()
   const canEdit = canPerm(user, "sales_commission.calculate")
-  const { filters } = useCommissionFilters()
+  const { filters, label } = useCommissionFilters()
   const eff = effectivePeriod(filters)
-  // La captura es POR MES y POR SUCURSAL: si el período global es "Todos los
-  // meses" usa el mes actual; si la sucursal es "Todas" usa la primera.
-  const month = eff.month === 0 ? new Date().getMonth() + 1 : eff.month
+  // month=0 = "Todos los meses" (suma anual, solo consulta); branch="" = las 3 sucursales.
+  const month = eff.month
   const year = eff.year
-  const branch = filters.branch || BRANCHES[0]
-  const coerced = eff.month === 0 || !filters.branch
+  const branch = filters.branch
+  const editable = month > 0
   const [rows, setRows] = useState<CapRow[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [edit, setEdit] = useState<Record<string, { patients: string; service: string; observation: string }>>({})
   const [busyId, setBusyId] = useState<string | null>(null)
+  const rowKey = (r: CapRow) => `${r.provider}|${r.branch}`
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionPatientCapture", branch, month, year })
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionPatientCapture", month, year, ...(branch ? { branch } : {}) })
       if (res?.ok) {
         const list = ((res as { rows: CapRow[] }).rows) || []
         setRows(list); setTotal((res as { total: number }).total || 0)
         const e: typeof edit = {}
-        list.forEach((r) => { e[r.provider] = { patients: String(r.effective), service: r.service || "", observation: r.observation || "" } })
+        list.forEach((r) => { e[`${r.provider}|${r.branch}`] = { patients: String(r.effective), service: r.service || "", observation: r.observation || "" } })
         setEdit(e)
       } else { setRows([]); showToast((res as { error?: string })?.error || "Error", "error") }
     } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
@@ -489,11 +491,11 @@ export function ComisionClientesPage() {
   useEffect(() => { void load() }, [load])
 
   const save = async (r: CapRow) => {
-    if (!canEdit) return
-    setBusyId(r.provider)
+    if (!canEdit || !editable) return
+    setBusyId(rowKey(r))
     try {
-      const e = edit[r.provider] || { patients: "0", service: "", observation: "" }
-      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "saveCommissionPatientCount", branch, month, year, provider: r.provider, patients: e.patients || "0", service: e.service, observation: e.observation })
+      const e = edit[rowKey(r)] || { patients: "0", service: "", observation: "" }
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "saveCommissionPatientCount", branch: r.branch, month, year, provider: r.provider, patients: e.patients || "0", service: e.service, observation: e.observation })
       if (!res?.ok) throw new Error((res as { error?: string })?.error || "No se pudo guardar")
       invalidateReadCache("getCommissionLaserDetail"); invalidateReadCache("getCommissionRunPreview")
       showToast(`Pacientes de ${r.provider} guardados (manual)`, "success")
@@ -502,10 +504,10 @@ export function ComisionClientesPage() {
   }
 
   const revert = async (r: CapRow) => {
-    if (!canEdit) return
-    setBusyId(r.provider)
+    if (!canEdit || !editable) return
+    setBusyId(rowKey(r))
     try {
-      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "deleteCommissionPatientCount", branch, month, year, provider: r.provider })
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "deleteCommissionPatientCount", branch: r.branch, month, year, provider: r.provider })
       if (!res?.ok) throw new Error((res as { error?: string })?.error || "No se pudo revertir")
       invalidateReadCache("getCommissionLaserDetail"); invalidateReadCache("getCommissionRunPreview")
       showToast(`${r.provider} revertido a reservas`, "success")
@@ -513,57 +515,66 @@ export function ComisionClientesPage() {
     } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setBusyId(null) }
   }
 
-  const setE = (p: string, patch: Partial<{ patients: string; service: string; observation: string }>) =>
-    setEdit((prev) => ({ ...prev, [p]: { ...(prev[p] || { patients: "", service: "", observation: "" }), ...patch } }))
+  const setE = (k: string, patch: Partial<{ patients: string; service: string; observation: string }>) =>
+    setEdit((prev) => ({ ...prev, [k]: { ...(prev[k] || { patients: "", service: "", observation: "" }), ...patch } }))
 
   return (
     <Shell icon={<Users className="h-4 w-4" />} title="Incentivos de Ventas · Clientes atendidos (captura de pacientes)">
       <CommissionFilterBar branches={BRANCHES} />
       <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-center gap-2 p-3">
-        <Badge variant="outline" className="border-cyan-200 bg-cyan-50 text-cyan-800">{MONTHS[month - 1]} {year} · {branch}</Badge>
-        {coerced ? <span className="text-[11px] text-amber-700">Esta pantalla trabaja por mes y sucursal: elige un mes y una sucursal específicos en Filtros.</span> : null}
+        <Badge variant="outline" className="border-cyan-200 bg-cyan-50 text-cyan-800">{label} · {branch || "Todas las sucursales"}</Badge>
+        {!editable ? <span className="text-[11px] text-slate-600">Vista de consulta (suma del año por colaborador). Para <b>capturar/editar</b> pacientes elige un mes específico en Filtros.</span> : null}
         <Button size="sm" variant="outline" className="ml-auto h-9" disabled={loading} onClick={() => void load()}>{loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}Recargar</Button>
-        <div className="w-full text-xs text-muted-foreground">Base: <b>Reservas</b> (atenciones ASISTE). Editar guarda un valor <b>manual</b> que sobre-escribe solo a ese colaborador.</div>
+        <div className="w-full text-xs text-muted-foreground">Base: <b>Reservas</b> (atenciones ASISTE). Editar guarda un valor <b>manual</b> que sobre-escribe solo a ese colaborador en ese mes.</div>
       </CardContent></Card>
 
       <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
         {loading ? <div className="py-10 text-center text-sm text-muted-foreground"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
-          : rows.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin colaboradores ni reservas para {branch} en el período.</div>
+          : rows.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin colaboradores ni reservas para el período seleccionado.</div>
           : (<div className="overflow-x-auto"><table className="w-full text-sm">
             <thead><tr className="border-b text-left text-[11px] uppercase text-muted-foreground">
-              <th className="px-3 py-2">Prestador</th><th className="px-2 py-2 text-right">Reservas</th>
+              <th className="px-3 py-2">Prestador</th><th className="px-2 py-2">Sucursal</th>
+              <th className="px-2 py-2 text-right">Reservas</th>
               <th className="px-2 py-2 text-right">Pacientes</th><th className="px-2 py-2 text-center">Fuente</th>
               <th className="px-2 py-2 text-right">% Particip.</th><th className="px-2 py-2">Observación</th>
-              <th className="px-3 py-2 text-right">Acciones</th>
+              {editable ? <th className="px-3 py-2 text-right">Acciones</th> : null}
             </tr></thead>
             <tbody>{rows.map((r) => {
-              const e = edit[r.provider] || { patients: String(r.effective), service: "", observation: "" }
+              const k = rowKey(r)
+              const e = edit[k] || { patients: String(r.effective), service: "", observation: "" }
               const part = total > 0 ? (r.effective / total) * 100 : 0
               return (
-                <tr key={r.provider} className="border-b last:border-0">
+                <tr key={k} className="border-b last:border-0">
                   <td className="px-3 py-2 font-medium">{r.provider}{!r.inRoster ? <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] text-amber-700">fuera de roster</span> : null}</td>
+                  <td className="px-2 py-2 text-xs text-muted-foreground">{r.branch}</td>
                   <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">{r.reservas ?? "—"}</td>
                   <td className="px-2 py-2 text-right">
-                    <input type="number" min={0} className="ml-auto h-8 w-20 rounded-md border border-input bg-white px-2 text-right text-sm" value={e.patients} disabled={!canEdit}
-                      onChange={(ev) => setE(r.provider, { patients: ev.target.value })} />
+                    {editable ? (
+                      <input type="number" min={0} className="ml-auto h-8 w-20 rounded-md border border-input bg-white px-2 text-right text-sm" value={e.patients} disabled={!canEdit}
+                        onChange={(ev) => setE(k, { patients: ev.target.value })} />
+                    ) : <span className="font-semibold tabular-nums">{r.effective}</span>}
                   </td>
                   <td className="px-2 py-2 text-center">
                     <span className={`rounded-full border px-2 py-0.5 text-[10px] ${r.source === "manual" ? "border-[color:var(--brand-primary)] bg-[color:var(--brand-primary)]/10 text-[color:var(--brand-primary)]" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{r.source}</span>
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums">{part.toFixed(2)}%</td>
-                  <td className="px-2 py-2"><input className="h-8 w-40 rounded-md border border-input bg-white px-2 text-sm" placeholder="—" value={e.observation} disabled={!canEdit} onChange={(ev) => setE(r.provider, { observation: ev.target.value })} /></td>
-                  <td className="px-3 py-2 text-right">
-                    {canEdit ? (
-                      <div className="flex items-center justify-end gap-1">
-                        <Button size="sm" className="h-7" disabled={busyId === r.provider} onClick={() => save(r)}>{busyId === r.provider ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}</Button>
-                        {r.source === "manual" ? <Button size="sm" variant="ghost" className="h-7 text-amber-700 hover:bg-amber-50" disabled={busyId === r.provider} title="Revertir a reservas" onClick={() => revert(r)}><RotateCcw className="h-3.5 w-3.5" /></Button> : null}
-                      </div>
-                    ) : null}
-                  </td>
+                  <td className="px-2 py-2">{editable ? (
+                    <input className="h-8 w-40 rounded-md border border-input bg-white px-2 text-sm" placeholder="—" value={e.observation} disabled={!canEdit} onChange={(ev) => setE(k, { observation: ev.target.value })} />
+                  ) : <span className="text-xs text-muted-foreground">{r.observation || "—"}</span>}</td>
+                  {editable ? (
+                    <td className="px-3 py-2 text-right">
+                      {canEdit ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <Button size="sm" className="h-7" disabled={busyId === k} onClick={() => save(r)}>{busyId === k ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}</Button>
+                          {r.source === "manual" ? <Button size="sm" variant="ghost" className="h-7 text-amber-700 hover:bg-amber-50" disabled={busyId === k} title="Revertir a reservas" onClick={() => revert(r)}><RotateCcw className="h-3.5 w-3.5" /></Button> : null}
+                        </div>
+                      ) : null}
+                    </td>
+                  ) : null}
                 </tr>
               )
             })}</tbody>
-            <tfoot><tr className="bg-slate-50 font-bold"><td className="px-3 py-2">Total ({rows.length})</td><td className="px-2 py-2"></td><td className="px-2 py-2 text-right tabular-nums">{total}</td><td className="px-2 py-2"></td><td className="px-2 py-2 text-right tabular-nums">100%</td><td className="px-2 py-2" colSpan={2}></td></tr></tfoot>
+            <tfoot><tr className="bg-slate-50 font-bold"><td className="px-3 py-2">Total ({rows.length})</td><td className="px-2 py-2" colSpan={2}></td><td className="px-2 py-2 text-right tabular-nums">{total}</td><td className="px-2 py-2"></td><td className="px-2 py-2 text-right tabular-nums">100%</td><td className="px-2 py-2" colSpan={editable ? 2 : 1}></td></tr></tfoot>
           </table></div>)}
       </CardContent></Card>
     </Shell>

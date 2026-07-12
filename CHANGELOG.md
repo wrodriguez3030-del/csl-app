@@ -18,6 +18,34 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.39.2] — 2026-07-12
+
+### Fixed
+- **"Todos los meses" ahora FUNCIONA en Clientes atendidos** (reporte del
+  usuario: quedaba en ceros porque forzaba el mes actual sin datos).
+  - `getCommissionPatientCapture` soporta **mes=0 → SUMA ANUAL** por
+    colaborador+sucursal (el efectivo de cada mes = manual si existe, si no
+    reservas; fuente muestra "N meses") y **sucursal vacía → las 3 sucursales**
+    (con columna Sucursal y edición por fila en modo mensual).
+  - Vista anual = solo consulta (chip explica que la captura es por mes);
+    verificado contra db-cls: **14,432 pacientes 2026** — cuadra exacto con
+    las atenciones ASISTE del importador de reservas.
+- **Revisión de las demás pantallas** (pedida por el usuario) con el filtro en
+  "Todos los meses"/"Todo"/rango/Todas:
+  - Historial, Sucursales, Prestadores, Productos, Liquidación, Reportes:
+    ✔ correctas (consultan por rango de fechas).
+  - Dashboard: ✔ datos correctos; se corrigió la **etiqueta del período**
+    (decía el mes actual en vez de "Todos los meses AAAA" / "Todo el
+    historial").
+  - Comisión láser: ✔ anual OK; se agregó **chip del período efectivo** y
+    aviso cuando el filtro es un rango personalizado (muestra el mes inicial).
+  - Cálculo mensual: ✔ chip + aviso ya presentes (los runs son mensuales).
+  - Nota conocida: en Reportes con "Todos", la sección láser del Excel usa el
+    total del período completo (para el detalle láser real usar mes específico).
+- QA: tests 129/129 · `tsc` 0 · `build` OK · smoke anual de pacientes ✓.
+
+---
+
 ## [0.39.1] — 2026-07-12
 
 ### Changed
