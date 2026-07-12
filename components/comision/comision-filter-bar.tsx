@@ -59,6 +59,7 @@ export function useCommissionFilters(): {
   }, [filters])
   const label = useMemo(() => {
     if (filters.quick === "todo") return "Todo el historial"
+    if (filters.quick === "año") return `Todos los meses · ${filters.year}`
     if (filters.quick === "mes_actual" || filters.quick === "mes_anterior" || filters.quick === "mes")
       return `${FILTER_MONTHS[filters.month]} ${filters.year}`
     const q = QUICK_OPTIONS.find((o) => o.id === filters.quick)
@@ -90,14 +91,21 @@ export function CommissionFilterBar({
     setDraft(f)
     apply(f)
   }
-  const setQuick = (q: string) => {
-    if (q === "personalizado") { setDraft((d) => ({ ...d, quick: q })); return } // espera Desde/Hasta válidos
-    const r = quickRange(q as QuickPeriod)
-    update({ quick: q, year: r.year, month: r.month, from: r.from, to: r.to })
+  // Modelo estándar: Mes (0 = todos los meses del año) + Año ("todos" = historial).
+  const setMes = (m: number) => {
+    const y = draft.year || new Date().getFullYear()
+    if (m === 0) update({ quick: "año", month: 0, year: y, from: `${y}-01-01`, to: `${y}-12-31` })
+    else { const r = monthBounds(y, m); update({ quick: "mes", year: y, month: m, from: r.from, to: r.to }) }
   }
-  const setMonthYear = (year: number, month: number) => {
-    const r = monthBounds(year, month)
-    update({ quick: "mes", year, month, from: r.from, to: r.to })
+  const setAño = (v: string) => {
+    if (v === "todos") { update({ quick: "todo", from: "", to: "" }); return }
+    const y = Number(v)
+    if (draft.quick === "todo" || draft.quick === "año" || !draft.month) {
+      update({ quick: "año", month: 0, year: y, from: `${y}-01-01`, to: `${y}-12-31` })
+    } else {
+      const r = monthBounds(y, draft.month)
+      update({ quick: "mes", year: y, month: draft.month, from: r.from, to: r.to })
+    }
   }
   // Desde/Hasta (Personalizado): aplica solo cuando ambos son válidos y coherentes.
   const setRange = (patch: { from?: string; to?: string }) => {
@@ -130,39 +138,38 @@ export function CommissionFilterBar({
           <button onClick={clear} className="ml-auto text-[11px] font-medium text-slate-500 underline-offset-2 hover:underline">Limpiar todo</button>
         </div>
 
-        {/* Controles (colapsables en móvil) */}
+        {/* Controles (modelo estándar del módulo: Mes + Año [+ Sucursal/Prestador]) */}
         <div className={cn("grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6", openMobile ? "" : "hidden sm:grid")}>
           <div>
-            <Label className="text-[11px]">Período</Label>
-            <Select value={draft.quick === "mes" ? "personal_mes" : draft.quick} onValueChange={(v) => v !== "personal_mes" && setQuick(v)}>
+            <Label className="text-[11px]">Mes</Label>
+            <Select
+              value={draft.quick === "todo" || draft.quick === "año" || draft.quick === "personalizado" ? "0" : String(draft.month)}
+              onValueChange={(v) => setMes(Number(v))}
+            >
               <SelectTrigger className="mt-0.5 h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {draft.quick === "mes" ? <SelectItem value="personal_mes">{FILTER_MONTHS[draft.month]} {draft.year}</SelectItem> : null}
-                {QUICK_OPTIONS.map((o) => <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>)}
+                <SelectItem value="0">Todos los meses</SelectItem>
+                {FILTER_MONTHS.slice(1).map((m, i) => <SelectItem key={i + 1} value={String(i + 1)}>{m}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
           <div>
             <Label className="text-[11px]">Año</Label>
-            <Select value={String(draft.year)} onValueChange={(v) => setMonthYear(Number(v), draft.month)}>
+            <Select value={draft.quick === "todo" ? "todos" : String(draft.year)} onValueChange={setAño}>
               <SelectTrigger className="mt-0.5 h-9"><SelectValue /></SelectTrigger>
-              <SelectContent>{[yearNow + 1, yearNow, yearNow - 1, yearNow - 2].map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
+              <SelectContent>
+                <SelectItem value="todos">Todos (historial)</SelectItem>
+                {[yearNow + 1, yearNow, yearNow - 1, yearNow - 2].map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+              </SelectContent>
             </Select>
           </div>
           <div>
-            <Label className="text-[11px]">Mes</Label>
-            <Select value={String(draft.month)} onValueChange={(v) => setMonthYear(draft.year, Number(v))}>
-              <SelectTrigger className="mt-0.5 h-9"><SelectValue /></SelectTrigger>
-              <SelectContent>{FILTER_MONTHS.slice(1).map((m, i) => <SelectItem key={i + 1} value={String(i + 1)}>{m}</SelectItem>)}</SelectContent>
-            </Select>
+            <Label className="text-[11px]">Desde <span className="text-muted-foreground">(rango)</span></Label>
+            <Input type="date" className="mt-0.5 h-9" value={draft.from} onChange={(e) => setRange({ from: e.target.value })} />
           </div>
           <div>
-            <Label className="text-[11px]">Desde</Label>
-            <Input type="date" className="mt-0.5 h-9" value={draft.from} disabled={draft.quick !== "personalizado"} onChange={(e) => setRange({ from: e.target.value })} />
-          </div>
-          <div>
-            <Label className="text-[11px]">Hasta</Label>
-            <Input type="date" className="mt-0.5 h-9" value={draft.to} disabled={draft.quick !== "personalizado"} onChange={(e) => setRange({ to: e.target.value })} />
+            <Label className="text-[11px]">Hasta <span className="text-muted-foreground">(rango)</span></Label>
+            <Input type="date" className="mt-0.5 h-9" value={draft.to} onChange={(e) => setRange({ to: e.target.value })} />
           </div>
           {branches.length ? (
             <div>

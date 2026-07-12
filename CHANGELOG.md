@@ -18,6 +18,37 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.39.0] — 2026-07-12
+
+### Added / Changed
+- **Incentivos de Ventas · filtros UNIFICADOS con "Todos los meses"** (pedido
+  del usuario: un solo modelo de filtro para todo el módulo).
+  - **"Todos los meses"** disponible en el selector de Mes de todas las
+    pantallas (= todo el año elegido); en la barra estándar el Año además
+    ofrece **"Todos (historial)"**.
+  - **Un solo período global**: el picker de Comisión láser / Clientes
+    atendidos / Cálculo mensual ahora escribe en el MISMO store
+    (`commissionFilters`) que la barra de filtros y el Dashboard → elegir
+    "Mayo 2026" en cualquier pantalla se mantiene en todas.
+  - **Barra de filtros simplificada al modelo estándar**: Mes (con Todos los
+    meses) + Año (con historial) + Desde/Hasta (rango) + Sucursal + Prestador;
+    se eliminó el selector de "quick options" redundante. Etiqueta nueva
+    "Todos los meses · YYYY". El Dashboard ejecutivo también ofrece/entiende
+    la opción.
+  - **Comisión láser en "Todos los meses" = RESUMEN ANUAL**: nueva acción
+    `getCommissionLaserAnnual` (una sola consulta paginada de las ventas láser
+    del año, tarjeta neteada por venta) → KPIs (fondo total del año + por
+    sucursal) y tabla **Mes × Sucursal** con tramo aplicado, totales y meses
+    sin datos en gris. Excel/PDF/Aplicar exigen un mes específico (con nota).
+  - Pantallas estrictamente mensuales (Cálculo mensual, Clientes atendidos):
+    sin opción "Todos" (usan el mes actual si el período global es anual).
+  - Exportes: mes 0 → "Todos los meses" / `INCENTIVOS_VENTAS_TODOS LOS MESES_AAAA`.
+- **QA**: smoke anual contra db-cls **3/3** (Junio RV 21,347.24 idéntico al
+  cálculo mensual; 6 meses con fondo; total 2026 RD$412,012.54); tests
+  129/129; `tsc` 0; `build` OK.
+
+---
+
 ## [0.38.1] — 2026-07-11
 
 ### Changed

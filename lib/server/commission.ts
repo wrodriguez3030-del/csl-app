@@ -15,7 +15,7 @@ import { defaultCommissionRules } from "@/lib/commission/rules"
 import { parseDateISO, canonicalCollaborator } from "@/lib/commission/normalize"
 import { exclusiveEnd, monthBounds, monthsCovered, todayInTz } from "@/lib/commission/period"
 import { assignLaserToCalcs } from "@/lib/commission/laser-apply"
-import { computeRun, type RunResult, type RunRules, type RunSaleRow } from "@/lib/commission/run-engine"
+import { computeRun, netAmount, type RunResult, type RunRules, type RunSaleRow } from "@/lib/commission/run-engine"
 
 /**
  * Filtro de período desde params: prioriza from/to (rango INCLUSIVO — el fin
@@ -1706,4 +1706,57 @@ export async function deleteCommissionPatientCount(params: ActionParams, user: A
   if (error) throw new Error(error.message)
   await logAudit(user, "patient_count", null, "manual_revert", null, { branch, provider }, "revertir a reservas", { month, year })
   return { ok: true }
+}
+
+/**
+ * Resumen ANUAL del incentivo láser ("Todos los meses"): base neta, tramo y
+ * fondo por SUCURSAL × MES + totales del año. Rápido: UNA consulta paginada de
+ * las ventas láser del año (tarjeta neteada por venta); sin detalle de personal
+ * (para el reparto por persona se elige un mes específico).
+ */
+export async function getCommissionLaserAnnual(params: ActionParams) {
+  const business_id = requireBizId()
+  const year = numberValue(params, "year")
+  if (!year) throw new Error("Selecciona un año")
+  const rules = await readRunRules()
+  const sb = getSupabaseAdmin()
+  const PAGE = 1000
+  const rows: Row[] = []
+  for (let off = 0; ; off += PAGE) {
+    const { data, error } = await sb.from("sales_commission_sales")
+      .select("branch,payment_method,gross_amount,sale_date")
+      .eq("business_id", business_id).eq("category", "DEPILACION_LASER")
+      .gte("sale_date", `${year}-01-01`).lt("sale_date", `${year + 1}-01-01`)
+      .order("id", { ascending: true }).range(off, off + PAGE - 1)
+    if (error) throw new Error(error.message)
+    rows.push(...((data || []) as Row[]))
+    if (!data || data.length < PAGE) break
+  }
+  // Base neta por sucursal × mes (tarjeta neteada por venta, como el mensual).
+  const base = new Map<string, number>()
+  for (const r of rows) {
+    const m = Number(String(r.sale_date || "").slice(5, 7))
+    if (!m) continue
+    const k = `${String(r.branch || "(sin sucursal)")}|${m}`
+    base.set(k, round2((base.get(k) || 0) + netAmount(Number(r.gross_amount) || 0, String(r.payment_method || "OTROS"), rules.cardPct)))
+  }
+  const tramoOf = (v: number) => rules.laserScale.filter((t) => v >= t.threshold).sort((a, b) => b.threshold - a.threshold)[0] || null
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const m = i + 1
+    const branches = LASER_BRANCHES.map((b) => {
+      const v = base.get(`${b}|${m}`) || 0
+      const t = tramoOf(v)
+      return { branch: b, base: v, pct: t?.percentage || 0, threshold: t?.threshold || 0, fund: t ? round2(v * t.percentage) : 0 }
+    })
+    return { month: m, branches, fundTotal: round2(branches.reduce((s, x) => s + x.fund, 0)) }
+  })
+  const byBranch = LASER_BRANCHES.map((b) => ({
+    branch: b,
+    base: round2(months.reduce((s, mo) => s + (mo.branches.find((x) => x.branch === b)?.base || 0), 0)),
+    fund: round2(months.reduce((s, mo) => s + (mo.branches.find((x) => x.branch === b)?.fund || 0), 0)),
+  }))
+  return {
+    ok: true, year, cardPct: rules.cardPct, months,
+    totals: { byBranch, fundYear: round2(byBranch.reduce((s, b) => s + b.fund, 0)) },
+  }
 }

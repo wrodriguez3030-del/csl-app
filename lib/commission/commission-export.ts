@@ -12,7 +12,7 @@ import type { Business } from "@/lib/types"
 
 type ExcelJSModule = typeof import("exceljs")
 
-const MONTHS = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+const MONTHS = ["Todos los meses", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 
 export interface CommissionReportData {
   period: { month: number; year: number }

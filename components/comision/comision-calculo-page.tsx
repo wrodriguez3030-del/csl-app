@@ -43,7 +43,9 @@ export function ComisionCalculoPage() {
   const user = useSessionUser()
   const canCalc = canPerm(user, "sales_commission.calculate")
 
-  const { month, year, branch, setMonth, setYear, setBranch } = usePeriodoCompartido()
+  const { month: sharedMonth, year, branch, setMonth, setYear, setBranch } = usePeriodoCompartido()
+  // Los runs son POR MES: si el período global es "Todos los meses", usar el mes actual.
+  const month = sharedMonth === 0 ? new Date().getMonth() + 1 : sharedMonth
 
   const [result, setResult] = useState<RunResult | null>(null)
   const [savedRun, setSavedRun] = useState<SavedRun | null>(null)
@@ -123,7 +125,7 @@ export function ComisionCalculoPage() {
 
       {/* Selectores de período/sucursal + estado */}
       <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-end gap-3 p-4">
-        <PeriodoSucursalPicker showBranch month={month} year={year} branch={branch} onMonth={setMonth} onYear={setYear} onBranch={setBranch} />
+        <PeriodoSucursalPicker showBranch allowAllMonths={false} month={month} year={year} branch={branch} onMonth={setMonth} onYear={setYear} onBranch={setBranch} />
         <Button size="sm" variant="outline" className="h-9" disabled={loading} onClick={() => void load()}>
           {loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}Recalcular
         </Button>

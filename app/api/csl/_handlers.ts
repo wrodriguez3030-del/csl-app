@@ -3515,6 +3515,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await commission.voidCommissionRun(params, user)
     case "getCommissionLaserDetail":
       return await commission.getCommissionLaserDetail(params)
+    case "getCommissionLaserAnnual":
+      return await commission.getCommissionLaserAnnual(params)
     case "saveCommissionCollaborator":
       return await commission.saveCommissionCollaborator(params, user)
     case "setCommissionCollaboratorActive":

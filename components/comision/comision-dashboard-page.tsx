@@ -86,12 +86,18 @@ export function DashboardFilterBar({ providers, onRefresh, loading }: {
 
   const monthValue = applied.quick === "todo" ? "todo"
     : applied.quick === "personalizado" ? "personalizado"
+    : applied.quick === "año" ? "año"
     : `${applied.year}-${applied.month}`
 
   const setMonth = (v: string) => {
     if (v === "todo") {
       const r = quickRange("todo")
       setCommissionFilters({ ...applied, quick: "todo", year: r.year, month: r.month, from: "", to: "" })
+      return
+    }
+    if (v === "año") {
+      const y = applied.year || new Date().getFullYear()
+      setCommissionFilters({ ...applied, quick: "año", month: 0, year: y, from: `${y}-01-01`, to: `${y}-12-31` })
       return
     }
     if (v === "personalizado") { setMoreOpen(true); return }
@@ -118,6 +124,7 @@ export function DashboardFilterBar({ providers, onRefresh, loading }: {
               <SelectTrigger className="mt-0.5 h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {monthValue === "personalizado" ? <SelectItem value="personalizado">{applied.from} → {applied.to}</SelectItem> : null}
+                <SelectItem value="año">Todos los meses ({applied.year || new Date().getFullYear()})</SelectItem>
                 {monthOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                 <SelectItem value="todo">Todo el historial</SelectItem>
               </SelectContent>

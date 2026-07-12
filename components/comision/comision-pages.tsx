@@ -203,12 +203,21 @@ interface LaserApplyResult {
   totalApplied: number
 }
 
+// Resumen ANUAL del láser ("Todos los meses"): fondo por sucursal × mes.
+interface LaserAnnual {
+  year: number; cardPct: number
+  months: { month: number; fundTotal: number; branches: { branch: string; base: number; pct: number; fund: number }[] }[]
+  totals: { byBranch: { branch: string; base: number; fund: number }[]; fundYear: number }
+}
+
 export function ComisionLaserPage() {
   const { apiUrl, showToast } = useAppStore()
   const user = useSessionUser()
   const canApply = canPerm(user, "sales_commission.calculate")
   const { month, year, setMonth, setYear } = usePeriodoCompartido()
+  const annualMode = month === 0
   const [detail, setDetail] = useState<LaserDetail | null>(null)
+  const [annual, setAnnual] = useState<LaserAnnual | null>(null)
   const [loading, setLoading] = useState(true)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [applying, setApplying] = useState(false)
@@ -218,9 +227,15 @@ export function ComisionLaserPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionLaserDetail", month, year })
-      if (res?.ok) setDetail(res as unknown as LaserDetail)
-      else { setDetail(null); showToast((res as { error?: string })?.error || "Error", "error") }
+      if (month === 0) {
+        const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionLaserAnnual", year })
+        if (res?.ok) { setAnnual(res as unknown as LaserAnnual); setDetail(null) }
+        else { setAnnual(null); showToast((res as { error?: string })?.error || "Error", "error") }
+      } else {
+        const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionLaserDetail", month, year })
+        if (res?.ok) { setDetail(res as unknown as LaserDetail); setAnnual(null) }
+        else { setDetail(null); showToast((res as { error?: string })?.error || "Error", "error") }
+      }
     } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
   }, [apiUrl, showToast, month, year])
   useEffect(() => { void load() }, [load])
@@ -250,10 +265,10 @@ export function ComisionLaserPage() {
       <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-end gap-3 p-4">
         <PeriodoSucursalPicker month={month} year={year} onMonth={setMonth} onYear={setYear} />
         <Button size="sm" variant="outline" className="h-9" disabled={loading} onClick={() => void load()}>{loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}Recalcular</Button>
-        <Button size="sm" variant="outline" className="h-9" disabled={!detail} onClick={() => detail && void exportLaserExcel(detail)}><Download className="mr-1.5 h-3.5 w-3.5" />Excel</Button>
-        <Button size="sm" variant="outline" className="h-9" disabled={!detail} onClick={() => detail && printLaserPdf(detail)}><Printer className="mr-1.5 h-3.5 w-3.5" />PDF</Button>
+        <Button size="sm" variant="outline" className="h-9" disabled={!detail || annualMode} title={annualMode ? "Elige un mes específico para exportar el detalle" : undefined} onClick={() => detail && void exportLaserExcel(detail)}><Download className="mr-1.5 h-3.5 w-3.5" />Excel</Button>
+        <Button size="sm" variant="outline" className="h-9" disabled={!detail || annualMode} title={annualMode ? "Elige un mes específico para exportar el detalle" : undefined} onClick={() => detail && printLaserPdf(detail)}><Printer className="mr-1.5 h-3.5 w-3.5" />PDF</Button>
         <div className="ml-auto flex items-center gap-2">
-          {canApply ? (
+          {canApply && !annualMode ? (
             <Button size="sm" className="h-9" disabled={loading || applying || !detail || totalFondo <= 0} onClick={() => setConfirmOpen(true)}>
               <Wand2 className="mr-1.5 h-3.5 w-3.5" />Aplicar a liquidación
             </Button>
@@ -276,6 +291,47 @@ export function ComisionLaserPage() {
 
       {loading ? (
         <Card className="border-[color:var(--brand-border)]"><CardContent className="py-10 text-center text-sm text-muted-foreground"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Calculando…</CardContent></Card>
+      ) : annualMode ? (
+        !annual ? (
+          <Card className="border-[color:var(--brand-border)]"><CardContent className="py-10 text-center text-sm text-muted-foreground">Sin datos del año seleccionado.</CardContent></Card>
+        ) : (
+          <>
+            {/* Resumen anual: fondo por sucursal × mes */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <Card className="border-emerald-200"><CardContent className="p-4"><div className="text-xs text-muted-foreground">Fondo total {annual.year}</div><div className="text-lg font-black tabular-nums text-emerald-700">{fmtRD(annual.totals.fundYear)}</div></CardContent></Card>
+              {annual.totals.byBranch.map((b) => (
+                <Card key={b.branch} className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">{b.branch}</div><div className="text-lg font-black tabular-nums">{fmtRD(b.fund)}</div><div className="text-[10px] text-muted-foreground">base neta {fmtRD(b.base)}</div></CardContent></Card>
+              ))}
+            </div>
+            <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
+              <div className="border-b px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-600">Fondo láser por mes · {annual.year} · tarjeta −{(annual.cardPct * 100).toFixed(0)}% antes de la escala</div>
+              <div className="overflow-x-auto"><table className="w-full text-sm">
+                <thead><tr className="border-b text-left text-[11px] uppercase text-muted-foreground">
+                  <th className="px-3 py-2">Mes</th>
+                  {annual.totals.byBranch.map((b) => <th key={b.branch} className="px-2 py-2 text-right">{b.branch}</th>)}
+                  <th className="px-3 py-2 text-right">Fondo total</th>
+                </tr></thead>
+                <tbody>{annual.months.map((mo) => (
+                  <tr key={mo.month} className={`border-b last:border-0 ${mo.fundTotal === 0 ? "text-muted-foreground" : ""}`}>
+                    <td className="px-3 py-2 font-medium">{MONTHS[mo.month - 1]}</td>
+                    {mo.branches.map((b) => (
+                      <td key={b.branch} className="px-2 py-2 text-right tabular-nums">
+                        {b.fund > 0 ? <>{fmtRD(b.fund)} <span className="text-[10px] text-muted-foreground">({(b.pct * 100).toFixed(0)}%)</span></> : "—"}
+                      </td>
+                    ))}
+                    <td className="px-3 py-2 text-right font-bold tabular-nums">{mo.fundTotal > 0 ? fmtRD(mo.fundTotal) : "—"}</td>
+                  </tr>
+                ))}</tbody>
+                <tfoot><tr className="bg-slate-50 font-bold">
+                  <td className="px-3 py-2">Total {annual.year}</td>
+                  {annual.totals.byBranch.map((b) => <td key={b.branch} className="px-2 py-2 text-right tabular-nums">{fmtRD(b.fund)}</td>)}
+                  <td className="px-3 py-2 text-right tabular-nums text-emerald-700">{fmtRD(annual.totals.fundYear)}</td>
+                </tr></tfoot>
+              </table></div>
+              <p className="border-t px-4 py-2 text-[11px] text-muted-foreground">Vista anual (todos los meses): muestra la base neta → tramo → fondo de cada sucursal. Para el reparto por persona, Excel/PDF o aplicar a liquidación, elige un mes específico.</p>
+            </CardContent></Card>
+          </>
+        )
       ) : !detail ? (
         <Card className="border-[color:var(--brand-border)]"><CardContent className="py-10 text-center text-sm text-muted-foreground">Sin datos. Importa ventas del período primero.</CardContent></Card>
       ) : detail.branches.map((b) => (
@@ -392,7 +448,9 @@ export function ComisionClientesPage() {
   const { apiUrl, showToast } = useAppStore()
   const user = useSessionUser()
   const canEdit = canPerm(user, "sales_commission.calculate")
-  const { month, year, branch, setMonth, setYear, setBranch } = usePeriodoCompartido()
+  const { month: sharedMonth, year, branch, setMonth, setYear, setBranch } = usePeriodoCompartido()
+  // La captura es POR MES: si el período global es "Todos los meses", usar el mes actual.
+  const month = sharedMonth === 0 ? new Date().getMonth() + 1 : sharedMonth
   const [rows, setRows] = useState<CapRow[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -445,7 +503,7 @@ export function ComisionClientesPage() {
   return (
     <Shell icon={<Users className="h-4 w-4" />} title="Incentivos de Ventas · Clientes atendidos (captura de pacientes)">
       <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-end gap-3 p-4">
-        <PeriodoSucursalPicker showBranch month={month} year={year} branch={branch} onMonth={setMonth} onYear={setYear} onBranch={setBranch} />
+        <PeriodoSucursalPicker showBranch allowAllMonths={false} month={month} year={year} branch={branch} onMonth={setMonth} onYear={setYear} onBranch={setBranch} />
         <Button size="sm" variant="outline" className="h-9" disabled={loading} onClick={() => void load()}>{loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}Recargar</Button>
         <div className="ml-auto text-xs text-muted-foreground">Base: <b>Reservas</b> (atenciones ASISTE). Editar guarda un valor <b>manual</b> que sobre-escribe solo a ese colaborador.</div>
       </CardContent></Card>
