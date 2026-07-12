@@ -18,6 +18,30 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.39.1] — 2026-07-12
+
+### Changed
+- **La barra de filtros estándar en TODAS las pantallas de Incentivos de
+  Ventas.** Comisión depilación láser, Clientes atendidos y Cálculo mensual
+  dejan el selector chico y usan la misma `CommissionFilterBar` que el resto
+  (Filtros + chip del período, Mes con "Todos los meses", Año, Desde/Hasta,
+  Sucursal, Limpiar) — mismo período global compartido.
+  - **Láser**: el filtro de Sucursal ahora filtra el detalle (una o las 3);
+    con "Todos los meses" muestra el resumen anual.
+  - **Clientes atendidos / Cálculo mensual** (pantallas por mes y sucursal):
+    chip con el mes/sucursal efectivos y aviso cuando el filtro global es
+    "Todos" o "Todas" (usan mes actual / primera sucursal).
+  - Se eliminó `periodo-picker.tsx` (reemplazado por la barra estándar).
+- **Revisión pantalla por pantalla** (pedida por el usuario): barra presente
+  en Historial, Ventas por sucursal, Comisiones por prestador, Incentivos de
+  productos, Comisión láser, Clientes atendidos, Cálculo mensual, Liquidación
+  y Reportes (9/9 pantallas de datos). Excepciones justificadas: Dashboard usa
+  su barra ejecutiva (mismo store, con Actualizar/Exportar), Importador es una
+  pantalla de carga (sin período) y Reglas usa sus filtros de vigencia.
+- QA: tests 129/129 · `tsc` 0 · `build` OK.
+
+---
+
 ## [0.39.0] — 2026-07-12
 
 ### Added / Changed

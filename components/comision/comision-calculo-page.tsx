@@ -19,7 +19,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Calculator, Loader2, CheckCircle2, AlertTriangle, Save, Lock, Ban, RefreshCw } from "lucide-react"
 import { CATEGORY_LABELS } from "@/lib/commission/classification"
 import type { RunResult } from "@/lib/commission/run-engine"
-import { PeriodoSucursalPicker, usePeriodoCompartido } from "./periodo-picker"
+import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
 
 const fmtRD = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const BRANCHES = ["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]
@@ -43,9 +43,16 @@ export function ComisionCalculoPage() {
   const user = useSessionUser()
   const canCalc = canPerm(user, "sales_commission.calculate")
 
-  const { month: sharedMonth, year, branch, setMonth, setYear, setBranch } = usePeriodoCompartido()
-  // Los runs son POR MES: si el período global es "Todos los meses", usar el mes actual.
-  const month = sharedMonth === 0 ? new Date().getMonth() + 1 : sharedMonth
+  const { filters } = useCommissionFilters()
+  // Los runs son POR MES y POR SUCURSAL: si el período global es "Todos los
+  // meses" (o un rango) usa su mes efectivo/actual; sucursal "Todas" → primera.
+  const isAll = filters.quick === "año" || filters.quick === "todo"
+  const month = isAll
+    ? new Date().getMonth() + 1
+    : (filters.quick === "personalizado" && filters.from ? Number(String(filters.from).slice(5, 7)) || filters.month : filters.month) || new Date().getMonth() + 1
+  const year = (filters.quick === "personalizado" && filters.from ? Number(String(filters.from).slice(0, 4)) || filters.year : filters.year) || new Date().getFullYear()
+  const branch = filters.branch || BRANCHES[0]
+  const coerced = isAll || !filters.branch
 
   const [result, setResult] = useState<RunResult | null>(null)
   const [savedRun, setSavedRun] = useState<SavedRun | null>(null)
@@ -124,8 +131,10 @@ export function ComisionCalculoPage() {
       </Card>
 
       {/* Selectores de período/sucursal + estado */}
-      <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-end gap-3 p-4">
-        <PeriodoSucursalPicker showBranch allowAllMonths={false} month={month} year={year} branch={branch} onMonth={setMonth} onYear={setYear} onBranch={setBranch} />
+      <CommissionFilterBar branches={BRANCHES} />
+      <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-center gap-2 p-3">
+        <Badge variant="outline" className="border-cyan-200 bg-cyan-50 text-cyan-800">{MONTHS[month - 1]} {year} · {branch}</Badge>
+        {coerced ? <span className="text-[11px] text-amber-700">El cálculo es por mes y sucursal: elige un mes y una sucursal específicos en Filtros.</span> : null}
         <Button size="sm" variant="outline" className="h-9" disabled={loading} onClick={() => void load()}>
           {loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}Recalcular
         </Button>

@@ -15,7 +15,6 @@ import {
 import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
 import { exportLaserExcel, printLaserPdf, laserModeLabel, type LaserDetail } from "@/lib/commission/laser-export"
 import { LaserPersonnelEditor } from "./laser-personnel-editor"
-import { PeriodoSucursalPicker, usePeriodoCompartido } from "./periodo-picker"
 
 export { ComisionDashboardPage } from "./comision-dashboard-page"
 
@@ -210,11 +209,23 @@ interface LaserAnnual {
   totals: { byBranch: { branch: string; base: number; fund: number }[]; fundYear: number }
 }
 
+/** Mes/año efectivos desde los filtros globales del módulo: "año"/"todo" = 0
+ *  (todos los meses); "personalizado" usa el mes/año del inicio del rango. */
+function effectivePeriod(filters: { quick: string; month: number; year: number; from: string }) {
+  if (filters.quick === "año" || filters.quick === "todo") return { month: 0, year: filters.year || new Date().getFullYear() }
+  if (filters.quick === "personalizado" && filters.from) {
+    return { month: Number(String(filters.from).slice(5, 7)) || 0, year: Number(String(filters.from).slice(0, 4)) || filters.year }
+  }
+  return { month: filters.month || new Date().getMonth() + 1, year: filters.year || new Date().getFullYear() }
+}
+
 export function ComisionLaserPage() {
   const { apiUrl, showToast } = useAppStore()
   const user = useSessionUser()
   const canApply = canPerm(user, "sales_commission.calculate")
-  const { month, year, setMonth, setYear } = usePeriodoCompartido()
+  const { filters } = useCommissionFilters()
+  const { month, year } = effectivePeriod(filters)
+  const branch = filters.branch
   const annualMode = month === 0
   const [detail, setDetail] = useState<LaserDetail | null>(null)
   const [annual, setAnnual] = useState<LaserAnnual | null>(null)
@@ -232,12 +243,12 @@ export function ComisionLaserPage() {
         if (res?.ok) { setAnnual(res as unknown as LaserAnnual); setDetail(null) }
         else { setAnnual(null); showToast((res as { error?: string })?.error || "Error", "error") }
       } else {
-        const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionLaserDetail", month, year })
+        const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionLaserDetail", month, year, ...(branch ? { branch } : {}) })
         if (res?.ok) { setDetail(res as unknown as LaserDetail); setAnnual(null) }
         else { setDetail(null); showToast((res as { error?: string })?.error || "Error", "error") }
       }
     } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
-  }, [apiUrl, showToast, month, year])
+  }, [apiUrl, showToast, month, year, branch])
   useEffect(() => { void load() }, [load])
 
   const applyToSettlement = async () => {
@@ -261,9 +272,9 @@ export function ComisionLaserPage() {
 
   return (
     <Shell icon={<Zap className="h-4 w-4" />} title="Incentivos de Ventas · Comisión depilación láser">
-      {/* Selectores período + acciones */}
-      <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-end gap-3 p-4">
-        <PeriodoSucursalPicker month={month} year={year} onMonth={setMonth} onYear={setYear} />
+      {/* Filtros estándar del módulo + acciones */}
+      <CommissionFilterBar branches={BRANCHES} />
+      <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-center gap-2 p-3">
         <Button size="sm" variant="outline" className="h-9" disabled={loading} onClick={() => void load()}>{loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}Recalcular</Button>
         <Button size="sm" variant="outline" className="h-9" disabled={!detail || annualMode} title={annualMode ? "Elige un mes específico para exportar el detalle" : undefined} onClick={() => detail && void exportLaserExcel(detail)}><Download className="mr-1.5 h-3.5 w-3.5" />Excel</Button>
         <Button size="sm" variant="outline" className="h-9" disabled={!detail || annualMode} title={annualMode ? "Elige un mes específico para exportar el detalle" : undefined} onClick={() => detail && printLaserPdf(detail)}><Printer className="mr-1.5 h-3.5 w-3.5" />PDF</Button>
@@ -448,9 +459,14 @@ export function ComisionClientesPage() {
   const { apiUrl, showToast } = useAppStore()
   const user = useSessionUser()
   const canEdit = canPerm(user, "sales_commission.calculate")
-  const { month: sharedMonth, year, branch, setMonth, setYear, setBranch } = usePeriodoCompartido()
-  // La captura es POR MES: si el período global es "Todos los meses", usar el mes actual.
-  const month = sharedMonth === 0 ? new Date().getMonth() + 1 : sharedMonth
+  const { filters } = useCommissionFilters()
+  const eff = effectivePeriod(filters)
+  // La captura es POR MES y POR SUCURSAL: si el período global es "Todos los
+  // meses" usa el mes actual; si la sucursal es "Todas" usa la primera.
+  const month = eff.month === 0 ? new Date().getMonth() + 1 : eff.month
+  const year = eff.year
+  const branch = filters.branch || BRANCHES[0]
+  const coerced = eff.month === 0 || !filters.branch
   const [rows, setRows] = useState<CapRow[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -502,10 +518,12 @@ export function ComisionClientesPage() {
 
   return (
     <Shell icon={<Users className="h-4 w-4" />} title="Incentivos de Ventas · Clientes atendidos (captura de pacientes)">
-      <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-end gap-3 p-4">
-        <PeriodoSucursalPicker showBranch allowAllMonths={false} month={month} year={year} branch={branch} onMonth={setMonth} onYear={setYear} onBranch={setBranch} />
-        <Button size="sm" variant="outline" className="h-9" disabled={loading} onClick={() => void load()}>{loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}Recargar</Button>
-        <div className="ml-auto text-xs text-muted-foreground">Base: <b>Reservas</b> (atenciones ASISTE). Editar guarda un valor <b>manual</b> que sobre-escribe solo a ese colaborador.</div>
+      <CommissionFilterBar branches={BRANCHES} />
+      <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-center gap-2 p-3">
+        <Badge variant="outline" className="border-cyan-200 bg-cyan-50 text-cyan-800">{MONTHS[month - 1]} {year} · {branch}</Badge>
+        {coerced ? <span className="text-[11px] text-amber-700">Esta pantalla trabaja por mes y sucursal: elige un mes y una sucursal específicos en Filtros.</span> : null}
+        <Button size="sm" variant="outline" className="ml-auto h-9" disabled={loading} onClick={() => void load()}>{loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}Recargar</Button>
+        <div className="w-full text-xs text-muted-foreground">Base: <b>Reservas</b> (atenciones ASISTE). Editar guarda un valor <b>manual</b> que sobre-escribe solo a ese colaborador.</div>
       </CardContent></Card>
 
       <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
