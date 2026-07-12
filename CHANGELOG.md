@@ -18,6 +18,23 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.39.3] — 2026-07-12
+
+### Fixed
+- **Sucursal "Todas" ahora FUNCIONA en Cálculo mensual** (reporte del usuario:
+  se forzaba a RAFAEL VIDAL).
+  - `getCommissionRunPreview` sin sucursal calcula **las 3 sucursales** y
+    devuelve `multi.results` (motor completo por sucursal + run guardado).
+  - La pantalla en modo "Todas" muestra el **consolidado** (Neto total del mes
+    + tarjeta por sucursal con su estado Borrador/Finalizado y neto) y debajo
+    el **detalle completo de cada sucursal** (KPIs, alertas, colaboradores,
+    bases). Botón "Trabajar esta sucursal →" fija el filtro para poder
+    Guardar/Finalizar/Anular (acciones que siguen siendo por sucursal).
+  - Vista de una sucursal: sin cambios (extraída a `RunView` reutilizable).
+- QA: tests 129/129 · `tsc` 0 · `build` OK.
+
+---
+
 ## [0.39.2] — 2026-07-12
 
 ### Fixed

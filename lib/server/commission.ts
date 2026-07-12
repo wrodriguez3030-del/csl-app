@@ -1300,20 +1300,27 @@ export async function getCommissionCollaborators(params: ActionParams) {
   return { ok: true, records }
 }
 
-/** Previsualiza el cálculo mensual (corre el motor, NO persiste). */
+/** Previsualiza el cálculo mensual (corre el motor, NO persiste).
+ *  Sin sucursal ("Todas") calcula LAS 3 y devuelve `multi.results`. */
 export async function getCommissionRunPreview(params: ActionParams) {
   const business_id = requireBizId()
   const branch = textValue(params, "branch")
   const month = numberValue(params, "month")
   const year = numberValue(params, "year")
-  if (!branch || !month || !year) throw new Error("Selecciona sucursal, mes y año para el cálculo")
-  const result = await computeRunForPeriod(branch, month, year)
-  const { data } = await getSupabaseAdmin().from("sales_commission_runs").select("*")
-    .eq("business_id", business_id).eq("branch", branch)
-    .eq("period_month", month).eq("period_year", year).is("deleted_at", null)
-    .order("created_at", { ascending: false })
-  const saved = (data || []).find((r) => (r as Row).status !== "anulado") || null
-  return { ok: true, result, savedRun: saved ? mapRun(saved as Row) : null, patientsSource: result.laser.patientsSource }
+  if (!month || !year) throw new Error("Selecciona mes y año para el cálculo")
+  const branches = branch ? [branch] : LASER_BRANCHES
+  const out: { branch: string; result: RunResult; savedRun: ReturnType<typeof mapRun> | null }[] = []
+  for (const b of branches) {
+    const result = await computeRunForPeriod(b, month, year)
+    const { data } = await getSupabaseAdmin().from("sales_commission_runs").select("*")
+      .eq("business_id", business_id).eq("branch", b)
+      .eq("period_month", month).eq("period_year", year).is("deleted_at", null)
+      .order("created_at", { ascending: false })
+    const saved = (data || []).find((r) => (r as Row).status !== "anulado") || null
+    out.push({ branch: b, result, savedRun: saved ? mapRun(saved as Row) : null })
+  }
+  if (branch) return { ok: true, result: out[0].result, savedRun: out[0].savedRun, patientsSource: out[0].result.laser.patientsSource }
+  return { ok: true, multi: true, month, year, results: out }
 }
 
 /** Guarda (o recalcula) el run como BORRADOR + detalle por colaborador. */
