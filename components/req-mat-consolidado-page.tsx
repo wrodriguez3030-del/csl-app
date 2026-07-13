@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { BarChart3, FileSpreadsheet, Printer, RefreshCcw, CheckCheck } from "lucide-react"
-import { buildConsolidated, fmtNum, REQ_STATUS_LABEL } from "@/lib/materials-client"
+import { buildConsolidated, buildConsolidatedTotals, fmtNum, REQ_STATUS_LABEL } from "@/lib/materials-client"
 import type { ReqItem, ReqStatus } from "@/lib/materials-client"
 import { exportConsolidadoExcel, printConsolidadoPdf } from "@/lib/materials-export"
 
@@ -52,6 +52,7 @@ export function ReqMatConsolidadoPage() {
     [records],
   )
   const consolidated = useMemo(() => buildConsolidated(records, branches), [records, branches])
+  const totals = useMemo(() => buildConsolidatedTotals(consolidated, branches), [consolidated, branches])
   const grouped = useMemo(() => {
     const g: Record<string, typeof consolidated> = {}
     consolidated.forEach((r) => { (g[r.supplierGroup] = g[r.supplierGroup] || []).push(r) })
@@ -130,9 +131,14 @@ export function ReqMatConsolidadoPage() {
 
       <Card className="border-[color:var(--brand-border)]">
         <CardContent className="p-3 sm:p-4">
-          <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+          <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold">
             <BarChart3 className="h-4 w-4 text-[color:var(--brand-primary)]" /> Consolidado de compras
             <Badge variant="secondary">{consolidated.length} materiales</Badge>
+            {consolidated.length > 0 && (
+              <Badge className="border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+                Aprobado total: {fmtNum(totals.approved)}
+              </Badge>
+            )}
           </div>
           {loading ? (
             <div className="py-10 text-center text-sm text-muted-foreground">Cargando...</div>
@@ -142,29 +148,55 @@ export function ReqMatConsolidadoPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b-2 text-[11px] uppercase tracking-wide text-muted-foreground">
-                    <th className="py-2 text-left">Material</th>
-                    {branches.map((b) => <th key={b} className="py-2 text-right">{b}</th>)}
-                    <th className="py-2 text-right">Total</th>
-                    <th className="py-2 text-right">Aprobado</th>
+                  <tr className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                    <th rowSpan={2} className="py-2 text-left align-bottom">Material</th>
+                    {branches.map((b) => (
+                      <th key={b} colSpan={2} className="border-l py-2 text-center">{b}</th>
+                    ))}
+                    <th rowSpan={2} className="border-l py-2 text-right align-bottom">Total</th>
+                    <th rowSpan={2} className="py-2 text-right align-bottom">Aprobado</th>
+                  </tr>
+                  <tr className="border-b-2 text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {branches.map((b) => (
+                      <Fragment key={b}>
+                        <th className="border-l py-1 text-right">Sol.</th>
+                        <th className="py-1 text-right text-emerald-700">Apr.</th>
+                      </Fragment>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
                   {grouped.map(([supplierName, rows]) => (
                     <Fragment key={supplierName}>
                       <tr className="bg-slate-100">
-                        <td colSpan={branches.length + 3} className="py-1.5 pl-2 text-xs font-bold uppercase">{supplierName}</td>
+                        <td colSpan={branches.length * 2 + 3} className="py-1.5 pl-2 text-xs font-bold uppercase">{supplierName}</td>
                       </tr>
                       {rows.map((r) => (
                         <tr key={supplierName + r.materialName} className="border-b last:border-0">
                           <td className="py-1.5 font-medium">{r.materialName}</td>
-                          {branches.map((b) => <td key={b} className="py-1.5 text-right">{r.byBranch[b] ? fmtNum(r.byBranch[b]) : <span className="text-slate-300">0</span>}</td>)}
-                          <td className="py-1.5 text-right font-bold">{fmtNum(r.total)}</td>
+                          {branches.map((b) => (
+                            <Fragment key={b}>
+                              <td className="border-l py-1.5 text-right">{r.byBranch[b] ? fmtNum(r.byBranch[b]) : <span className="text-slate-300">0</span>}</td>
+                              <td className="py-1.5 text-right text-emerald-700">{r.approvedByBranch[b] ? fmtNum(r.approvedByBranch[b]) : <span className="text-slate-300">0</span>}</td>
+                            </Fragment>
+                          ))}
+                          <td className="border-l py-1.5 text-right font-bold">{fmtNum(r.total)}</td>
                           <td className="py-1.5 text-right text-emerald-700">{fmtNum(r.approved)}</td>
                         </tr>
                       ))}
                     </Fragment>
                   ))}
+                  <tr className="border-t-2 bg-slate-50 font-bold">
+                    <td className="py-2 text-xs uppercase">Total general</td>
+                    {branches.map((b) => (
+                      <Fragment key={b}>
+                        <td className="border-l py-2 text-right">{fmtNum(totals.byBranch[b])}</td>
+                        <td className="py-2 text-right text-emerald-700">{fmtNum(totals.approvedByBranch[b])}</td>
+                      </Fragment>
+                    ))}
+                    <td className="border-l py-2 text-right">{fmtNum(totals.total)}</td>
+                    <td className="py-2 text-right text-emerald-700">{fmtNum(totals.approved)}</td>
+                  </tr>
                 </tbody>
               </table>
             </div>

@@ -18,6 +18,27 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.40.0] — 2026-07-13
+
+### Added
+- **Consolidado de compras: aprobado por sucursal + total general** (pedido del
+  usuario: "quiero que me salga lo aprobado por cada sucursal y un total
+  general de lo aprobado").
+  - Cada sucursal ahora muestra dos sub-columnas: **Sol.** (solicitado) y
+    **Apr.** (aprobado, en verde), con encabezado agrupado por sucursal.
+  - Fila **TOTAL GENERAL** al final de la tabla: suma de solicitado y aprobado
+    por sucursal + total global solicitado y aprobado.
+  - Badge "Aprobado total: N" junto al contador de materiales, visible sin
+    hacer scroll.
+  - `buildConsolidated` acumula `approvedByBranch` y nuevo helper
+    `buildConsolidatedTotals` en `lib/materials-client.ts` (fuente única para
+    pantalla y exportes).
+  - **Excel y PDF del consolidado** actualizados con las mismas sub-columnas
+    Sol./Apr. por sucursal y la fila TOTAL GENERAL, para que cuadren con la
+    pantalla.
+
+---
+
 ## [0.39.3] — 2026-07-12
 
 ### Fixed

@@ -122,6 +122,7 @@ export interface ConsolidatedRow {
   supplierGroup: string
   materialName: string
   byBranch: Record<string, number>
+  approvedByBranch: Record<string, number>
   total: number
   approved: number
 }
@@ -134,19 +135,43 @@ export function buildConsolidated(items: ReqItem[], branches: string[]): Consoli
     const key = `${supplier}||${material}`
     let row = map.get(key)
     if (!row) {
-      row = { supplierGroup: supplier, materialName: material, byBranch: {}, total: 0, approved: 0 }
-      branches.forEach((b) => (row!.byBranch[b] = 0))
+      row = { supplierGroup: supplier, materialName: material, byBranch: {}, approvedByBranch: {}, total: 0, approved: 0 }
+      branches.forEach((b) => { row!.byBranch[b] = 0; row!.approvedByBranch[b] = 0 })
       map.set(key, row)
     }
     const qty = Number(it.requestedQty) || 0
+    const approvedQty = it.status === "rechazada" ? 0 : Number(it.approvedQty ?? it.requestedQty) || 0
     const branch = it.branch || "—"
     row.byBranch[branch] = (row.byBranch[branch] || 0) + qty
+    row.approvedByBranch[branch] = (row.approvedByBranch[branch] || 0) + approvedQty
     row.total += qty
-    row.approved += it.status === "rechazada" ? 0 : Number(it.approvedQty ?? it.requestedQty) || 0
+    row.approved += approvedQty
   }
   return Array.from(map.values()).sort(
     (a, b) => a.supplierGroup.localeCompare(b.supplierGroup) || a.materialName.localeCompare(b.materialName),
   )
+}
+
+// ── Totales generales del consolidado: por sucursal + globales ───────────────
+export interface ConsolidatedTotals {
+  byBranch: Record<string, number>
+  approvedByBranch: Record<string, number>
+  total: number
+  approved: number
+}
+
+export function buildConsolidatedTotals(rows: ConsolidatedRow[], branches: string[]): ConsolidatedTotals {
+  const t: ConsolidatedTotals = { byBranch: {}, approvedByBranch: {}, total: 0, approved: 0 }
+  branches.forEach((b) => { t.byBranch[b] = 0; t.approvedByBranch[b] = 0 })
+  for (const r of rows) {
+    branches.forEach((b) => {
+      t.byBranch[b] += r.byBranch[b] || 0
+      t.approvedByBranch[b] += r.approvedByBranch[b] || 0
+    })
+    t.total += r.total
+    t.approved += r.approved
+  }
+  return t
 }
 
 export function fmtNum(n: number | null | undefined): string {

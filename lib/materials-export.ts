@@ -3,7 +3,7 @@
  * PDF (HTML→window.print()). Cliente, sin dependencias de servidor.
  */
 import type { ConsolidatedRow, Requisition } from "./materials-client"
-import { fmtNum, REQ_STATUS_LABEL } from "./materials-client"
+import { buildConsolidatedTotals, fmtNum, REQ_STATUS_LABEL } from "./materials-client"
 
 const esc = (v: unknown) =>
   String(v ?? "")
@@ -34,23 +34,28 @@ function groupBySupplier(rows: ConsolidatedRow[]): [string, ConsolidatedRow[]][]
 
 function tableHtml(opts: ExportOpts): string {
   const { rows, branches } = opts
+  const totals = buildConsolidatedTotals(rows, branches)
+  const cols = branches.length * 2 + 4
   const head = `
     <tr>
-      <th style="text-align:left">Material</th>
-      ${branches.map((b) => `<th>${esc(b)}</th>`).join("")}
-      <th>Total</th>
-      <th>Aprobado</th>
-      <th style="text-align:left">Observación</th>
+      <th rowspan="2" style="text-align:left">Material</th>
+      ${branches.map((b) => `<th colspan="2">${esc(b)}</th>`).join("")}
+      <th rowspan="2">Total</th>
+      <th rowspan="2">Aprobado</th>
+      <th rowspan="2" style="text-align:left">Observación</th>
+    </tr>
+    <tr>
+      ${branches.map(() => `<th>Sol.</th><th>Apr.</th>`).join("")}
     </tr>`
   const body = groupBySupplier(rows)
     .map(([supplier, items]) => {
-      const groupRow = `<tr class="grp"><td colspan="${branches.length + 4}"><b>${esc(supplier)}</b></td></tr>`
+      const groupRow = `<tr class="grp"><td colspan="${cols}"><b>${esc(supplier)}</b></td></tr>`
       const itemRows = items
         .map(
           (r) => `
         <tr>
           <td style="text-align:left">${esc(r.materialName)}</td>
-          ${branches.map((b) => `<td>${fmtNum(r.byBranch[b] || 0)}</td>`).join("")}
+          ${branches.map((b) => `<td>${fmtNum(r.byBranch[b] || 0)}</td><td>${fmtNum(r.approvedByBranch[b] || 0)}</td>`).join("")}
           <td><b>${fmtNum(r.total)}</b></td>
           <td>${fmtNum(r.approved)}</td>
           <td></td>
@@ -60,7 +65,15 @@ function tableHtml(opts: ExportOpts): string {
       return groupRow + itemRows
     })
     .join("")
-  return `<table><thead>${head}</thead><tbody>${body}</tbody></table>`
+  const totalRow = `
+    <tr class="tot">
+      <td style="text-align:left"><b>TOTAL GENERAL</b></td>
+      ${branches.map((b) => `<td><b>${fmtNum(totals.byBranch[b])}</b></td><td><b>${fmtNum(totals.approvedByBranch[b])}</b></td>`).join("")}
+      <td><b>${fmtNum(totals.total)}</b></td>
+      <td><b>${fmtNum(totals.approved)}</b></td>
+      <td></td>
+    </tr>`
+  return `<table><thead>${head}</thead><tbody>${body}${totalRow}</tbody></table>`
 }
 
 export function exportConsolidadoExcel(opts: ExportOpts): void {
@@ -68,7 +81,7 @@ export function exportConsolidadoExcel(opts: ExportOpts): void {
   const html = `<!doctype html><html><head><meta charset="utf-8">
     <style>
       table{border-collapse:collapse} th,td{border:1px solid #999;padding:4px 8px;text-align:center;font-family:Arial}
-      th{background:#0891b2;color:#fff} .grp td{background:#e2e8f0}
+      th{background:#0891b2;color:#fff} .grp td{background:#e2e8f0} .tot td{background:#f1f5f9}
     </style></head><body>
     <h2>REQUISICIÓN DE MATERIALES — ${esc(opts.businessName)}</h2>
     ${opts.filtros ? `<p>${esc(opts.filtros)}</p>` : ""}
@@ -146,10 +159,11 @@ export function printConsolidadoPdf(opts: ExportOpts): void {
       th{ background:#0891b2; color:#fff; }
       td.l, th.l{ text-align:left; }
       tr.grp td{ background:#e2e8f0; font-weight:bold; text-align:left; }
+      tr.tot td{ background:#f1f5f9; font-weight:bold; }
     </style></head><body>
     <h1>REQUISICIÓN DE MATERIALES</h1>
     <div class="meta">${esc(opts.businessName)} · Generado: ${esc(generado)}${opts.filtros ? " · " + esc(opts.filtros) : ""}</div>
-    ${tableHtml(opts).replace("<th style=\"text-align:left\">Material</th>", "<th class=\"l\">Material</th>")}
+    ${tableHtml(opts)}
     </body></html>`
   const popup = window.open("", "_blank", "width=1100,height=900")
   if (!popup) return
