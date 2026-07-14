@@ -2,13 +2,14 @@
 
 /**
  * Exportación profesional de Incentivos de Ventas:
- * - `exportCommissionExcel`: .xlsx nativo con ExcelJS, 10 hojas (Resumen,
- *   Sucursal, Prestador, Productos, Servicios, Láser, Clientes, Liquidación,
- *   Reglas, Conciliación) con encabezado corporativo, colores de marca, bordes,
- *   freeze panes, autofiltro, formato moneda RD$ y totales.
+ * - `exportCommissionExcel`: .xlsx nativo con ExcelJS, 11 hojas (Resumen,
+ *   Sucursal, Prestador, Productos, Servicios, Servicios Detalle, Láser,
+ *   Clientes, Liquidación, Reglas, Conciliación) con encabezado corporativo,
+ *   colores de marca, bordes, freeze panes, autofiltro, moneda RD$ y totales.
  * - `printCommissionPdf`: HTML branded A4 (window.print) con las tablas clave.
  */
 import type { Business } from "@/lib/types"
+import { CATEGORY_LABELS } from "@/lib/commission/classification"
 
 type ExcelJSModule = typeof import("exceljs")
 
@@ -22,6 +23,8 @@ export interface CommissionReportData {
   patients: { total: number; roundingDiff: number; rows: { provider: string; branch: string; patients: number; participation: number }[] }
   laser: { laserTotal: number; tramoPct: number; threshold: number; fund: number; patientsTotal: number; distribution: { provider: string; patients: number; participation: number; amount: number }[] }
   rules: { name: string; ruleType: string; category: string | null; percentage: number | null; fixedAmount: number | null; minAmount: number | null; active: boolean }[]
+  /** Detalle prestador × categoría de la comisión de servicios (venta base × %). */
+  serviceDetail?: { provider: string; branch: string; category: string; base: number; pct: number; amount: number }[]
   generadoPor?: string
 }
 
@@ -147,6 +150,12 @@ export async function buildCommissionWorkbook(
     [{ header: "Prestador", key: "provider", width: 24 }, { header: "Comisión categoría", key: "serviceCommission", money: true }, { header: "Láser", key: "laserIncentive", money: true }, { header: "Incentivo fijo", key: "fixedIncentive", money: true }, { header: "Ajuste", key: "manualAdjustment", money: true }],
     data.calculations as unknown as Record<string, unknown>[],
     { serviceCommission: sum(data.calculations, "serviceCommission"), laserIncentive: sum(data.calculations, "laserIncentive") })
+
+  const svcDetail = (data.serviceDetail || []).map((d) => ({ ...d, categoryLabel: CATEGORY_LABELS[d.category] || d.category }))
+  addTableSheet("Servicios Detalle", "Detalle de comisión por categoría",
+    [{ header: "Prestador", key: "provider", width: 24 }, { header: "Sucursal", key: "branch", width: 22 }, { header: "Categoría", key: "categoryLabel", width: 24 }, { header: "Venta base", key: "base", money: true }, { header: "% aplicado", key: "pct", pct: true, width: 12 }, { header: "Comisión", key: "amount", money: true }],
+    svcDetail as unknown as Record<string, unknown>[],
+    { base: sum(svcDetail, "base"), amount: sum(svcDetail, "amount") })
 
   addKvSheet("Depilación Láser", "Depilación láser", [
     ["Venta láser total", data.laser.laserTotal, true], ["Tramo alcanzado", `${(data.laser.tramoPct * 100).toFixed(0)}%`],

@@ -692,6 +692,35 @@ export async function getCommissionByBranch(params: ActionParams) {
   return { ok: true, cardPct, branches }
 }
 
+/** Detalle de la comisión de servicios por categoría (prestador × categoría):
+ *  venta base atribuible × % vigente de la regla. Recalcula desde las ventas
+ *  persistidas con la MISMA lógica del importador (classifyProvider sobre el
+ *  prestador original, sólo categorías con % configurado; láser va por fondo). */
+export async function getCommissionServiceDetail(params: ActionParams) {
+  const [rows, rules] = await Promise.all([fetchSalesForPeriod(params), readRunRules()])
+  const pctByCat = rules.categoryPct
+  type D = { provider: string; branch: string; category: string; base: number; pct: number; amount: number }
+  const map = new Map<string, D>()
+  for (const r of rows) {
+    const cat = String(r.category || "")
+    const pct = pctByCat[cat]
+    if (pct == null || cat === "DEPILACION_LASER" || cat === "PRODUCTO") continue
+    const p = classifyProvider(r.provider_original ?? r.provider_normalized)
+    if (!p.commissionable || !p.name) continue
+    const key = `${p.name}||${cat}`
+    let d = map.get(key)
+    if (!d) { d = { provider: p.name, branch: String(r.branch || "(sin sucursal)"), category: cat, base: 0, pct: Number(pct), amount: 0 }; map.set(key, d) }
+    d.base = round2(d.base + (Number(r.gross_amount) || 0))
+  }
+  const detail = [...map.values()]
+    .map((d) => ({ ...d, amount: round2(d.base * d.pct) }))
+    .sort((a, b) => a.provider.localeCompare(b.provider) || a.category.localeCompare(b.category))
+  return {
+    ok: true, rows: detail,
+    totals: { base: round2(detail.reduce((s, d) => s + d.base, 0)), amount: round2(detail.reduce((s, d) => s + d.amount, 0)) },
+  }
+}
+
 /** Clientes atendidos por prestador. Fuente preferida: RESERVAS (atenciones
  *  ASISTE persistidas en patient_counts al importar); fallback: derivado de
  *  ventas (clientes distintos) si el período no tiene reservas cargadas. */

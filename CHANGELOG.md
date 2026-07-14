@@ -18,6 +18,23 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.41.0] — 2026-07-13
+
+### Added
+- **Excel de Incentivos: hoja "Servicios Detalle"** (pedido del usuario: hoja
+  con el detalle de la categoría y los cálculos detrás de "Comisión categoría").
+  - Nueva hoja (11 en total) justo después de "Incentivos Servicios":
+    Prestador · Sucursal · Categoría · Venta base · % aplicado · Comisión.
+  - Nueva acción `getCommissionServiceDetail`: recalcula el detalle
+    prestador × categoría desde `sales_commission_sales` con la MISMA lógica
+    del importador (`classifyProvider` sobre el prestador original, sólo
+    categorías con % configurado; láser va por su fondo, no aquí).
+  - **Validado contra junio 2026: RD$41,190.00 exactos** — el total del
+    detalle cuadra al centavo con `service_commission` almacenado.
+  - Botón actualizado a "Exportar Excel (11 hojas)".
+
+---
+
 ## [0.40.0] — 2026-07-13
 
 ### Added

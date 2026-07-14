@@ -34,12 +34,13 @@ export function ComisionReportesPage() {
     setLoading(true)
     try {
       const q = params
-      const [dash, branch, pat, laser, rules] = await Promise.all([
+      const [dash, branch, pat, laser, rules, svcDetail] = await Promise.all([
         apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionDashboard", ...q }),
         apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionByBranch", ...q }),
         apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionPatients", ...q }),
         apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionLaser", ...q }),
         apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionRules" }),
+        apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionServiceDetail", ...q }),
       ])
       const k = (dash?.kpis as Record<string, number>) || {}
       setData({
@@ -50,6 +51,7 @@ export function ComisionReportesPage() {
         patients: { total: (pat?.total as number) || 0, roundingDiff: (pat?.roundingDiff as number) || 0, rows: (pat?.rows as never) || [] },
         laser: { laserTotal: (laser?.laserTotal as number) || 0, tramoPct: (laser?.tramoPct as number) || 0, threshold: (laser?.threshold as number) || 0, fund: (laser?.fund as number) || 0, patientsTotal: (laser?.patientsTotal as number) || 0, distribution: (laser?.distribution as never) || [] },
         rules: (rules?.records as never) || [],
+        serviceDetail: (svcDetail?.rows as never) || [],
         generadoPor: user?.nombre || user?.username || undefined,
       })
     } catch (e) {
@@ -78,7 +80,7 @@ export function ComisionReportesPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" className="h-9" onClick={load} disabled={loading}><RefreshCcw className="mr-1.5 h-4 w-4" />Actualizar</Button>
-          <Button size="sm" className="h-9" onClick={doExcel} disabled={!canExport || empty || exporting}>{exporting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-1.5 h-4 w-4" />}Exportar Excel (10 hojas)</Button>
+          <Button size="sm" className="h-9" onClick={doExcel} disabled={!canExport || empty || exporting}>{exporting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-1.5 h-4 w-4" />}Exportar Excel (11 hojas)</Button>
           <Button size="sm" variant="outline" className="h-9" onClick={doPdf} disabled={!canExport || empty}><FileText className="mr-1.5 h-4 w-4" />Generar PDF</Button>
           <Button size="sm" variant="outline" className="h-9" onClick={doPdf} disabled={empty}><Printer className="mr-1.5 h-4 w-4" />Imprimir</Button>
         </div>
