@@ -18,6 +18,19 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.44.0] — 2026-07-14
+
+### Added
+- **Servicios sin prestador: filtros y ordenamiento** (pedido del usuario).
+  - Búsqueda por servicio o cliente (sin acentos, reutiliza `normalizeName`).
+  - Filtro por categoría (opciones derivadas de las filas del período).
+  - Orden por columna con clic en el encabezado (Fecha, Sucursal, Cliente,
+    Servicio, Categoría, Monto; asc/desc con indicador).
+  - "Seleccionar todo" ahora opera sobre lo VISIBLE (filtrado), y la fila de
+    total muestra el subtotal filtrado ("Total filtrado (n de N)").
+
+---
+
 ## [0.43.0] — 2026-07-13
 
 ### Added
