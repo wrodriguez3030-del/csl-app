@@ -18,6 +18,19 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.42.0] — 2026-07-13
+
+### Added
+- **Detalle de comisión por categoría también en pantalla y PDF** (completa la
+  v0.41.0, que lo agregó solo al Excel — pantalla, PDF y Excel ahora cuentan
+  la misma historia).
+  - Pantalla Reportes: tabla "Detalle de comisión por categoría" bajo los KPIs
+    (Prestador · Sucursal · Categoría · Venta base · % aplicado · Comisión,
+    con fila de totales), usando los mismos filtros del período activo.
+  - PDF: sección homónima después de la Liquidación final, con totales.
+
+---
+
 ## [0.41.0] — 2026-07-13
 
 ### Added

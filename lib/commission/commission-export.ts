@@ -215,6 +215,8 @@ export function printCommissionPdf(data: CommissionReportData, business: Busines
   const t = data.totals
 
   const branchRows = data.branches.map((b) => `<tr><td>${esc(b.branch)}</td><td class="r">${fmtRD(b.gross)}</td><td class="r">${fmtRD(b.tarjeta)}</td><td class="r">${fmtRD(b.cardResult)}</td><td class="r">${fmtRD(b.producto)}</td><td class="r">${fmtRD(b.servicio)}</td><td class="r">${fmtRD(b.laser)}</td></tr>`).join("")
+  const svcDetailRows = (data.serviceDetail || []).map((d) => `<tr><td>${esc(d.provider)}</td><td>${esc(d.branch)}</td><td>${esc(CATEGORY_LABELS[d.category] || d.category)}</td><td class="r">${fmtRD(d.base)}</td><td class="r">${(d.pct * 100).toFixed(2)}%</td><td class="r">${fmtRD(d.amount)}</td></tr>`).join("")
+  const svcDetailTotals = { base: (data.serviceDetail || []).reduce((s, d) => s + d.base, 0), amount: (data.serviceDetail || []).reduce((s, d) => s + d.amount, 0) }
   const liqRows = data.calculations.map((c, i) => `<tr><td class="c">${i + 1}</td><td>${esc(c.provider)}</td><td>${esc(c.branch)}</td><td class="r">${fmtRD(c.productIncentive)}</td><td class="r">${fmtRD(c.serviceCommission + c.laserIncentive + c.fixedIncentive + c.manualAdjustment)}</td><td class="r">${fmtRD(c.bonusExtra)}</td><td class="r">${fmtRD(c.grossTotal)}</td><td class="r">${fmtRD(c.cleaningContribution)}</td><td class="r">${fmtRD(c.netTotal)}</td></tr>`).join("")
 
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(commissionFileBase(business, data.period.month, data.period.year))}</title>
@@ -244,6 +246,10 @@ export function printCommissionPdf(data: CommissionReportData, business: Busines
   <table><thead><tr><th class="c">#</th><th>Prestador</th><th>Sucursal</th><th class="r">Inc. prod.</th><th class="r">Inc. serv.</th><th class="r">Bono</th><th class="r">Bruto</th><th class="r">Limpieza</th><th class="r">Neto</th></tr></thead>
   <tbody>${liqRows || `<tr><td colspan="9" class="c">Sin datos</td></tr>`}</tbody>
   <tfoot><tr><td colspan="6">TOTAL NETO</td><td class="r">${fmtRD(t.grossTotal)}</td><td class="r">${fmtRD(t.cleaningContribution)}</td><td class="r">${fmtRD(t.netTotal)}</td></tr></tfoot></table>
+  ${svcDetailRows ? `<h2>Detalle de comisión por categoría (venta base × %)</h2>
+  <table><thead><tr><th>Prestador</th><th>Sucursal</th><th>Categoría</th><th class="r">Venta base</th><th class="r">% aplicado</th><th class="r">Comisión</th></tr></thead>
+  <tbody>${svcDetailRows}</tbody>
+  <tfoot><tr><td colspan="3">TOTALES</td><td class="r">${fmtRD(svcDetailTotals.base)}</td><td></td><td class="r">${fmtRD(svcDetailTotals.amount)}</td></tr></tfoot></table>` : ""}
   <div class="footer"><span>${esc(business.name)} · Comisión de ventas</span><span>Generado: ${esc(generado)}${data.generadoPor ? ` · Por: ${esc(data.generadoPor)}` : ""}</span></div>
   </body></html>`
   const popup = window.open("", "_blank", "width=1200,height=900")

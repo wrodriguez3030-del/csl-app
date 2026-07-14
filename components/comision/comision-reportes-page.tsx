@@ -7,10 +7,12 @@ import { useSessionUser } from "@/hooks/use-session-user"
 import { canPerm } from "@/lib/permissions"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { FileBarChart2, FileSpreadsheet, FileText, Printer, Loader2, RefreshCcw } from "lucide-react"
 import { exportCommissionExcel, printCommissionPdf, type CommissionReportData } from "@/lib/commission/commission-export"
+import { CATEGORY_LABELS } from "@/lib/commission/classification"
 import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
 
 const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -92,11 +94,54 @@ export function ComisionReportesPage() {
       ) : empty ? (
         <Card className="border-[color:var(--brand-border)]"><CardContent className="py-10 text-center text-sm text-muted-foreground">No hay datos para {periodDisplay}. Importa un archivo de ventas de ese período primero.</CardContent></Card>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {([["Inc. productos", t!.productIncentive], ["Com. servicios", t!.serviceCommission], ["Fondo láser", t!.laserIncentive], ["Bono", t!.bonusExtra], ["Bruto", t!.grossTotal], ["Limpieza", t!.cleaningContribution], ["Total neto", t!.netTotal]] as [string, number][]).map(([l, v]) => (
-            <Card key={l} className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">{l}</div><div className="text-lg font-bold tabular-nums">{fmtRD(v)}</div></CardContent></Card>
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {([["Inc. productos", t!.productIncentive], ["Com. servicios", t!.serviceCommission], ["Fondo láser", t!.laserIncentive], ["Bono", t!.bonusExtra], ["Bruto", t!.grossTotal], ["Limpieza", t!.cleaningContribution], ["Total neto", t!.netTotal]] as [string, number][]).map(([l, v]) => (
+              <Card key={l} className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">{l}</div><div className="text-lg font-bold tabular-nums">{fmtRD(v)}</div></CardContent></Card>
+            ))}
+          </div>
+          {(data!.serviceDetail || []).length > 0 && (
+            <Card className="border-[color:var(--brand-border)]"><CardContent className="p-3 sm:p-4">
+              <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold">
+                <FileBarChart2 className="h-4 w-4 text-[color:var(--brand-primary)]" /> Detalle de comisión por categoría
+                <Badge variant="secondary">{data!.serviceDetail!.length} líneas</Badge>
+                <span className="text-xs font-normal text-muted-foreground">venta base × % de la regla = comisión (hoja "Servicios Detalle" del Excel)</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="py-2 text-left">Prestador</th>
+                      <th className="py-2 text-left">Sucursal</th>
+                      <th className="py-2 text-left">Categoría</th>
+                      <th className="py-2 text-right">Venta base</th>
+                      <th className="py-2 text-right">% aplicado</th>
+                      <th className="py-2 text-right">Comisión</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data!.serviceDetail!.map((d, i) => (
+                      <tr key={`${d.provider}-${d.category}-${i}`} className="border-b last:border-0">
+                        <td className="py-1.5 font-medium">{d.provider}</td>
+                        <td className="py-1.5">{d.branch}</td>
+                        <td className="py-1.5">{CATEGORY_LABELS[d.category] || d.category}</td>
+                        <td className="py-1.5 text-right tabular-nums">{fmtRD(d.base)}</td>
+                        <td className="py-1.5 text-right tabular-nums">{(d.pct * 100).toFixed(2)}%</td>
+                        <td className="py-1.5 text-right font-semibold tabular-nums text-emerald-700">{fmtRD(d.amount)}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t-2 bg-slate-50 font-bold">
+                      <td colSpan={3} className="py-2 text-xs uppercase">Totales</td>
+                      <td className="py-2 text-right tabular-nums">{fmtRD(data!.serviceDetail!.reduce((s, d) => s + d.base, 0))}</td>
+                      <td />
+                      <td className="py-2 text-right tabular-nums text-emerald-700">{fmtRD(data!.serviceDetail!.reduce((s, d) => s + d.amount, 0))}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </CardContent></Card>
+          )}
+        </>
       )}
     </div>
   )
