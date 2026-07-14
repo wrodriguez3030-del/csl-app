@@ -18,6 +18,33 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.43.0] — 2026-07-13
+
+### Added
+- **Servicios sin prestador: hoja Excel + asignación manual en sistema**
+  (pedido del usuario). Junio 2026 real: 37 servicios por RD$58,870 sin
+  prestador comisionable ("Sin Información") — comisión que nadie recibía.
+  - **Nueva pantalla "Servicios sin prestador"** (Incentivos de Ventas):
+    lista los servicios del período sin prestador comisionable (excluye
+    Depilación Láser — va por fondo — y productos), con selección múltiple y
+    asignación manual del colaborador correcto. Permiso
+    `sales_commission.adjust`.
+  - **La asignación recalcula la liquidación**: suma el delta (venta × % de la
+    categoría) a la fila del prestador en el período — o la crea si no tenía —
+    y bloquea períodos cerrados. Auditada en `sales_commission_audit_logs`
+    (acción `prestador_asignado`).
+  - **Hoja "Sin Prestador" en el Excel de Reportes (12 hojas)**: Fecha ·
+    Sucursal · Cliente · Servicio · Categoría · Prestador (archivo) · Monto,
+    con total.
+  - Migración `202607130001` (aplicada a db-cls): columnas `assigned_at` /
+    `assigned_by` en `sales_commission_sales` — `provider_original` conserva
+    la fidelidad del archivo fuente; la asignación escribe
+    `provider_normalized`.
+  - **Fuente única `effectiveProvider`**: detalle por categoría, dashboard,
+    pacientes-desde-ventas y el motor de runs respetan la asignación manual.
+
+---
+
 ## [0.42.0] — 2026-07-13
 
 ### Added

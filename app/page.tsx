@@ -35,6 +35,7 @@ import { ComisionImportarPage } from "@/components/comision/comision-importar-pa
 import { ComisionPrestadoresPage } from "@/components/comision/comision-prestadores-page"
 import { ComisionLiquidacionPage } from "@/components/comision/comision-liquidacion-page"
 import { ComisionReportesPage } from "@/components/comision/comision-reportes-page"
+import { ComisionSinPrestadorPage } from "@/components/comision/comision-sin-prestador-page"
 import { ComisionCalculoPage } from "@/components/comision/comision-calculo-page"
 import {
   ComisionDashboardPage, ComisionHistorialPage, ComisionSucursalesPage,
@@ -369,6 +370,8 @@ export default function HomePage() {
         return <ComisionLaserPage />
       case "comision-clientes":
         return <ComisionClientesPage />
+      case "comision-sin-prestador":
+        return <ComisionSinPrestadorPage />
       case "comision-calculo":
         return <ComisionCalculoPage />
       case "comision-liquidacion":

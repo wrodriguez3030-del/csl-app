@@ -3495,6 +3495,10 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await commission.getCommissionByBranch(params)
     case "getCommissionServiceDetail":
       return await commission.getCommissionServiceDetail(params)
+    case "getCommissionUnassignedServices":
+      return await commission.getCommissionUnassignedServices(params)
+    case "assignCommissionSaleProvider":
+      return await commission.assignCommissionSaleProvider(params, user)
     case "getCommissionPatients":
       return await commission.getCommissionPatients(params)
     case "getCommissionLaser":

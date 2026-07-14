@@ -444,6 +444,7 @@ export type TabId =
   | "comision-productos"
   | "comision-laser"
   | "comision-clientes"
+  | "comision-sin-prestador"
   | "comision-calculo"
   | "comision-liquidacion"
   | "comision-reglas"

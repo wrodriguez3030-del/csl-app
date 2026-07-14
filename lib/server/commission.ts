@@ -641,7 +641,7 @@ async function fetchSalesForPeriod(params: ActionParams) {
   const out: Row[] = []
   for (let offset = 0; ; offset += PAGE) {
     let q = getSupabaseAdmin().from("sales_commission_sales")
-      .select("branch,category,gross_amount,payment_method,provider_normalized,provider_original,customer_name,quantity")
+      .select("id,sale_date,service_name,branch,category,gross_amount,payment_method,provider_normalized,provider_original,customer_name,quantity,assigned_at")
       .eq("business_id", business_id)
       .order("id", { ascending: true })
       .range(offset, offset + PAGE - 1)
@@ -654,6 +654,16 @@ async function fetchSalesForPeriod(params: ActionParams) {
     if (!data || data.length < PAGE) break
   }
   return out
+}
+
+/** Prestador EFECTIVO de una venta: la asignación manual (assigned_at) gana
+ *  sobre la clasificación del prestador original del archivo. Fuente única —
+ *  detalle, dashboard, pacientes y runs deben usar esto, no classifyProvider
+ *  directo, para que las asignaciones manuales fluyan a todos los cálculos. */
+function effectiveProvider(r: Row): { name: string; commissionable: boolean } {
+  if (r.assigned_at && r.provider_normalized) return { name: String(r.provider_normalized), commissionable: true }
+  const info = classifyProvider(r.provider_original ?? r.provider_normalized)
+  return { name: String(r.provider_normalized || info.name), commissionable: info.commissionable && !!info.name }
 }
 
 async function cardPercentage(): Promise<number> {
@@ -705,7 +715,7 @@ export async function getCommissionServiceDetail(params: ActionParams) {
     const cat = String(r.category || "")
     const pct = pctByCat[cat]
     if (pct == null || cat === "DEPILACION_LASER" || cat === "PRODUCTO") continue
-    const p = classifyProvider(r.provider_original ?? r.provider_normalized)
+    const p = effectiveProvider(r)
     if (!p.commissionable || !p.name) continue
     const key = `${p.name}||${cat}`
     let d = map.get(key)
@@ -719,6 +729,117 @@ export async function getCommissionServiceDetail(params: ActionParams) {
     ok: true, rows: detail,
     totals: { base: round2(detail.reduce((s, d) => s + d.base, 0)), amount: round2(detail.reduce((s, d) => s + d.amount, 0)) },
   }
+}
+
+/** SERVICIOS sin prestador asignable (excluye DEPILACION_LASER — va por fondo —
+ *  y PRODUCTO). Son las filas donde el archivo no trae prestador comisionable
+ *  (vacío, "Sin Información", recepción/POS) y nadie ha asignado uno manual. */
+export async function getCommissionUnassignedServices(params: ActionParams) {
+  const rows = await fetchSalesForPeriod(params)
+  const out = rows
+    .filter((r) => {
+      const cat = String(r.category || "")
+      if (cat === "DEPILACION_LASER" || cat === "PRODUCTO") return false
+      return !effectiveProvider(r).commissionable
+    })
+    .map((r) => ({
+      id: String(r.id),
+      date: r.sale_date ? String(r.sale_date).slice(0, 10) : "",
+      branch: String(r.branch || "(sin sucursal)"),
+      customer: String(r.customer_name || ""),
+      service: String(r.service_name || ""),
+      category: String(r.category || "OTROS"),
+      amount: Number(r.gross_amount) || 0,
+      providerOriginal: String(r.provider_original || ""),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.branch.localeCompare(b.branch))
+  return {
+    ok: true, rows: out,
+    totals: { count: out.length, amount: round2(out.reduce((s, r) => s + r.amount, 0)) },
+  }
+}
+
+/** Asigna MANUALMENTE un prestador a ventas sin prestador y recalcula la
+ *  comisión de servicios del prestador en el/los período(s) afectado(s):
+ *  suma el delta (venta × % de la categoría) a su fila de liquidación, o la
+ *  crea si el prestador no tenía cálculo en ese período. Auditado. */
+export async function assignCommissionSaleProvider(params: ActionParams, user: ActionUser) {
+  requirePermission("sales_commission.adjust")
+  const business_id = requireBizId()
+  const provider = canonicalCollaborator(textValue(params, "provider") || "")
+  if (!provider) throw new Error("Falta el prestador a asignar")
+  const ids = (Array.isArray(params.ids) ? params.ids : String(params.ids || "").split(",")).map((x) => String(x).trim()).filter(Boolean)
+  if (!ids.length) throw new Error("Selecciona al menos una venta")
+  const sb = getSupabaseAdmin()
+
+  const { data: rowsRaw, error: selErr } = await sb.from("sales_commission_sales")
+    .select("id,sale_date,branch,category,gross_amount,provider_original,assigned_at")
+    .eq("business_id", business_id).in("id", ids)
+  if (selErr) throw new Error(selErr.message)
+  const rows = ((rowsRaw || []) as Row[]).filter((r) => !r.assigned_at &&
+    String(r.category || "") !== "DEPILACION_LASER" && String(r.category || "") !== "PRODUCTO")
+  if (!rows.length) throw new Error("Las ventas seleccionadas ya tienen prestador o no aplican")
+
+  const now = new Date().toISOString()
+  const { error: upErr } = await sb.from("sales_commission_sales")
+    .update({ provider_normalized: provider, assigned_at: now, assigned_by: user.email || user.id || null })
+    .eq("business_id", business_id).in("id", rows.map((r) => String(r.id)))
+  if (upErr) throw new Error(upErr.message)
+
+  // Delta de comisión por período: Σ por categoría round2(base × % vigente).
+  const rules = await readRunRules()
+  const byPeriod = new Map<string, { month: number; year: number; branch: string; byCat: Record<string, number> }>()
+  for (const r of rows) {
+    const d = String(r.sale_date || "").slice(0, 10)
+    const year = Number(d.slice(0, 4)), month = Number(d.slice(5, 7))
+    if (!year || !month) continue
+    const key = `${year}-${month}`
+    let p = byPeriod.get(key)
+    if (!p) { p = { month, year, branch: String(r.branch || ""), byCat: {} }; byPeriod.set(key, p) }
+    const cat = String(r.category || "")
+    p.byCat[cat] = round2((p.byCat[cat] || 0) + (Number(r.gross_amount) || 0))
+  }
+
+  const deltas: { month: number; year: number; delta: number }[] = []
+  for (const p of byPeriod.values()) {
+    const delta = round2(Object.entries(p.byCat).reduce((s, [cat, base]) => {
+      const pct = rules.categoryPct[cat]
+      return s + (pct != null ? round2(base * pct) : 0)
+    }, 0))
+    deltas.push({ month: p.month, year: p.year, delta })
+    if (!delta) continue
+
+    const { data: calcRows } = await sb.from("sales_commission_calculations").select("*")
+      .eq("business_id", business_id).eq("period_month", p.month).eq("period_year", p.year)
+      .eq("provider_name_snapshot", provider).order("created_at", { ascending: false }).limit(1)
+    const calc = (calcRows || [])[0] as Row | undefined
+    if (calc && String(calc.status) === "cerrado") throw new Error(`Período ${p.month}/${p.year} cerrado: no se puede recalcular`)
+    if (calc) {
+      const svc = round2((Number(calc.service_commission) || 0) + delta)
+      const gross = round2((Number(calc.gross_total) || 0) + delta)
+      const net = round2((Number(calc.net_total) || 0) + delta)
+      const { error } = await sb.from("sales_commission_calculations")
+        .update({ service_commission: svc, gross_total: gross, net_total: net, updated_at: now })
+        .eq("id", calc.id).eq("business_id", business_id)
+      if (error) throw new Error(error.message)
+    } else {
+      const { error } = await sb.from("sales_commission_calculations").insert({
+        business_id, period_month: p.month, period_year: p.year,
+        provider_name_snapshot: provider, branch: p.branch || null,
+        products_count: 0, product_incentive: 0, service_commission: delta,
+        laser_incentive: 0, fixed_incentive: 0, manual_adjustment: 0, bonus_extra: 0,
+        gross_total: delta, cleaning_contribution: 0, net_total: delta,
+        status: "calculado", calculated_by: user.email || user.id || null,
+      })
+      if (error) throw new Error(error.message)
+    }
+  }
+
+  const first = deltas[0]
+  await logAudit(user, "sale", ids.join(","), "prestador_asignado",
+    null, { provider, rows: rows.length, deltas }, textValue(params, "reason") || null,
+    first ? { month: first.month, year: first.year } : undefined)
+  return { ok: true, updated: rows.length, provider, deltas }
 }
 
 /** Clientes atendidos por prestador. Fuente preferida: RESERVAS (atenciones
@@ -761,9 +882,9 @@ async function getCommissionPatientsFromSales(params: ActionParams) {
   const rows = await fetchSalesForPeriod(params)
   const byProv = new Map<string, { provider: string; branch: string; patients: Set<string> }>()
   for (const r of rows) {
-    const info = classifyProvider(r.provider_original)
+    const info = effectiveProvider(r)
     if (!info.commissionable) continue
-    const prov = String(r.provider_normalized || info.name)
+    const prov = info.name
     let e = byProv.get(prov)
     if (!e) { e = { provider: prov, branch: String(r.branch || ""), patients: new Set() }; byProv.set(prov, e) }
     if (r.customer_name) e.patients.add(String(r.customer_name))
@@ -996,10 +1117,9 @@ export async function getCommissionExecutiveDashboard(params: ActionParams) {
     if (String(r.payment_method || "") === "TARJETA") cardTotal = round2(cardTotal + amt)
     const b = String(r.branch || "(sin sucursal)")
     byBranchMap.set(b, round2((byBranchMap.get(b) || 0) + amt))
-    const info = classifyProvider(r.provider_original)
+    const info = effectiveProvider(r)
     if (info.commissionable) {
-      const prov = String(r.provider_normalized || info.name)
-      provSales.set(prov, round2((provSales.get(prov) || 0) + amt))
+      provSales.set(info.name, round2((provSales.get(info.name) || 0) + amt))
     }
   }
   const salesCount = rows.length
@@ -1276,7 +1396,9 @@ async function readRunSales(branch: string, month: number, year: number): Promis
     payment: String(r.payment_method || "OTROS"),
     amount: Number(r.gross_amount) || 0,
     quantity: Number(r.quantity) || 0,
-    providerOriginal: r.provider_original == null ? null : String(r.provider_original),
+    // Asignación manual: el motor clasifica providerOriginal, así que para las
+    // filas asignadas se le pasa el nombre asignado (limpio → comisionable).
+    providerOriginal: r.assigned_at && r.provider_normalized ? String(r.provider_normalized) : r.provider_original == null ? null : String(r.provider_original),
     provider: r.provider_normalized == null ? null : String(r.provider_normalized),
   }))
 }

@@ -2,10 +2,11 @@
 
 /**
  * Exportación profesional de Incentivos de Ventas:
- * - `exportCommissionExcel`: .xlsx nativo con ExcelJS, 11 hojas (Resumen,
- *   Sucursal, Prestador, Productos, Servicios, Servicios Detalle, Láser,
- *   Clientes, Liquidación, Reglas, Conciliación) con encabezado corporativo,
- *   colores de marca, bordes, freeze panes, autofiltro, moneda RD$ y totales.
+ * - `exportCommissionExcel`: .xlsx nativo con ExcelJS, 12 hojas (Resumen,
+ *   Sucursal, Prestador, Productos, Servicios, Servicios Detalle, Sin
+ *   Prestador, Láser, Clientes, Liquidación, Reglas, Conciliación) con
+ *   encabezado corporativo, colores de marca, bordes, freeze panes,
+ *   autofiltro, moneda RD$ y totales.
  * - `printCommissionPdf`: HTML branded A4 (window.print) con las tablas clave.
  */
 import type { Business } from "@/lib/types"
@@ -25,6 +26,8 @@ export interface CommissionReportData {
   rules: { name: string; ruleType: string; category: string | null; percentage: number | null; fixedAmount: number | null; minAmount: number | null; active: boolean }[]
   /** Detalle prestador × categoría de la comisión de servicios (venta base × %). */
   serviceDetail?: { provider: string; branch: string; category: string; base: number; pct: number; amount: number }[]
+  /** Servicios sin prestador comisionable (excluye láser y productos). */
+  unassignedServices?: { date: string; branch: string; customer: string; service: string; category: string; amount: number; providerOriginal: string }[]
   generadoPor?: string
 }
 
@@ -156,6 +159,12 @@ export async function buildCommissionWorkbook(
     [{ header: "Prestador", key: "provider", width: 24 }, { header: "Sucursal", key: "branch", width: 22 }, { header: "Categoría", key: "categoryLabel", width: 24 }, { header: "Venta base", key: "base", money: true }, { header: "% aplicado", key: "pct", pct: true, width: 12 }, { header: "Comisión", key: "amount", money: true }],
     svcDetail as unknown as Record<string, unknown>[],
     { base: sum(svcDetail, "base"), amount: sum(svcDetail, "amount") })
+
+  const unassigned = (data.unassignedServices || []).map((d) => ({ ...d, categoryLabel: CATEGORY_LABELS[d.category] || d.category }))
+  addTableSheet("Sin Prestador", "Servicios sin prestador (excluye láser y productos)",
+    [{ header: "Fecha", key: "date", width: 12 }, { header: "Sucursal", key: "branch", width: 22 }, { header: "Cliente", key: "customer", width: 26 }, { header: "Servicio", key: "service", width: 34 }, { header: "Categoría", key: "categoryLabel", width: 20 }, { header: "Prestador (archivo)", key: "providerOriginal", width: 20 }, { header: "Monto", key: "amount", money: true }],
+    unassigned as unknown as Record<string, unknown>[],
+    { amount: sum(unassigned, "amount") })
 
   addKvSheet("Depilación Láser", "Depilación láser", [
     ["Venta láser total", data.laser.laserTotal, true], ["Tramo alcanzado", `${(data.laser.tramoPct * 100).toFixed(0)}%`],
