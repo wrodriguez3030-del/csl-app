@@ -731,15 +731,15 @@ export async function getCommissionServiceDetail(params: ActionParams) {
   }
 }
 
-/** SERVICIOS sin prestador asignable (excluye DEPILACION_LASER — va por fondo —
- *  y PRODUCTO). Son las filas donde el archivo no trae prestador comisionable
- *  (vacío, "Sin Información", recepción/POS) y nadie ha asignado uno manual. */
+/** Ventas sin prestador asignable: SERVICIOS y PRODUCTOS (excluye
+ *  DEPILACION_LASER — va por fondo). Son las filas donde el archivo no trae
+ *  prestador comisionable (vacío, "Sin Información", recepción/POS) y nadie ha
+ *  asignado uno manual. */
 export async function getCommissionUnassignedServices(params: ActionParams) {
   const rows = await fetchSalesForPeriod(params)
   const out = rows
     .filter((r) => {
-      const cat = String(r.category || "")
-      if (cat === "DEPILACION_LASER" || cat === "PRODUCTO") return false
+      if (String(r.category || "") === "DEPILACION_LASER") return false
       return !effectiveProvider(r).commissionable
     })
     .map((r) => ({
@@ -749,6 +749,7 @@ export async function getCommissionUnassignedServices(params: ActionParams) {
       customer: String(r.customer_name || ""),
       service: String(r.service_name || ""),
       category: String(r.category || "OTROS"),
+      quantity: Number(r.quantity) || 0,
       amount: Number(r.gross_amount) || 0,
       providerOriginal: String(r.provider_original || ""),
     }))
@@ -759,10 +760,26 @@ export async function getCommissionUnassignedServices(params: ActionParams) {
   }
 }
 
-/** Asigna MANUALMENTE un prestador a ventas sin prestador y recalcula la
- *  comisión de servicios del prestador en el/los período(s) afectado(s):
- *  suma el delta (venta × % de la categoría) a su fila de liquidación, o la
- *  crea si el prestador no tenía cálculo en ese período. Auditado. */
+/** Tarifa de incentivo por unidad de producto de cada prestador: la propia del
+ *  roster (`product_unit_amount`) o la regla general. */
+async function productRatesForProviders(providers: string[], generalRate: number): Promise<Record<string, number>> {
+  const business_id = requireBizId()
+  const rates: Record<string, number> = {}
+  providers.forEach((p) => { rates[p] = generalRate })
+  if (!providers.length) return rates
+  const { data } = await getSupabaseAdmin().from("sales_commission_collaborators")
+    .select("name,product_unit_amount").eq("business_id", business_id).is("deleted_at", null)
+    .in("name", providers)
+  for (const r of (data || []) as Row[]) {
+    if (r.product_unit_amount != null) rates[String(r.name)] = Number(r.product_unit_amount)
+  }
+  return rates
+}
+
+/** Asigna MANUALMENTE un prestador a ventas sin prestador y recalcula su
+ *  liquidación en el/los período(s) afectado(s): servicios suman venta × % de
+ *  la categoría; productos suman unidades × tarifa (propia del roster o regla
+ *  general). Crea la fila de liquidación si no existía. Auditado. */
 export async function assignCommissionSaleProvider(params: ActionParams, user: ActionUser) {
   requirePermission("sales_commission.adjust")
   const business_id = requireBizId()
@@ -773,11 +790,11 @@ export async function assignCommissionSaleProvider(params: ActionParams, user: A
   const sb = getSupabaseAdmin()
 
   const { data: rowsRaw, error: selErr } = await sb.from("sales_commission_sales")
-    .select("id,sale_date,branch,category,gross_amount,provider_original,assigned_at")
+    .select("id,sale_date,branch,category,gross_amount,quantity,provider_original,assigned_at")
     .eq("business_id", business_id).in("id", ids)
   if (selErr) throw new Error(selErr.message)
   const rows = ((rowsRaw || []) as Row[]).filter((r) => !r.assigned_at &&
-    String(r.category || "") !== "DEPILACION_LASER" && String(r.category || "") !== "PRODUCTO")
+    String(r.category || "") !== "DEPILACION_LASER")
   if (!rows.length) throw new Error("Las ventas seleccionadas ya tienen prestador o no aplican")
 
   const now = new Date().toISOString()
@@ -786,28 +803,33 @@ export async function assignCommissionSaleProvider(params: ActionParams, user: A
     .eq("business_id", business_id).in("id", rows.map((r) => String(r.id)))
   if (upErr) throw new Error(upErr.message)
 
-  // Delta de comisión por período: Σ por categoría round2(base × % vigente).
+  // Delta por período: servicios Σ round2(base × %) por categoría; productos
+  // Σ unidades × tarifa del prestador.
   const rules = await readRunRules()
-  const byPeriod = new Map<string, { month: number; year: number; branch: string; byCat: Record<string, number> }>()
+  const rate = (await productRatesForProviders([provider], rules.productUnitAmount))[provider]
+  const byPeriod = new Map<string, { month: number; year: number; branch: string; byCat: Record<string, number>; prodUnits: number }>()
   for (const r of rows) {
     const d = String(r.sale_date || "").slice(0, 10)
     const year = Number(d.slice(0, 4)), month = Number(d.slice(5, 7))
     if (!year || !month) continue
     const key = `${year}-${month}`
     let p = byPeriod.get(key)
-    if (!p) { p = { month, year, branch: String(r.branch || ""), byCat: {} }; byPeriod.set(key, p) }
+    if (!p) { p = { month, year, branch: String(r.branch || ""), byCat: {}, prodUnits: 0 }; byPeriod.set(key, p) }
     const cat = String(r.category || "")
-    p.byCat[cat] = round2((p.byCat[cat] || 0) + (Number(r.gross_amount) || 0))
+    if (cat === "PRODUCTO") p.prodUnits += Number(r.quantity) || 0
+    else p.byCat[cat] = round2((p.byCat[cat] || 0) + (Number(r.gross_amount) || 0))
   }
 
   const deltas: { month: number; year: number; delta: number }[] = []
   for (const p of byPeriod.values()) {
-    const delta = round2(Object.entries(p.byCat).reduce((s, [cat, base]) => {
+    const svcDelta = round2(Object.entries(p.byCat).reduce((s, [cat, base]) => {
       const pct = rules.categoryPct[cat]
       return s + (pct != null ? round2(base * pct) : 0)
     }, 0))
+    const prodDelta = round2(p.prodUnits * rate)
+    const delta = round2(svcDelta + prodDelta)
     deltas.push({ month: p.month, year: p.year, delta })
-    if (!delta) continue
+    if (!delta && !p.prodUnits) continue
 
     const { data: calcRows } = await sb.from("sales_commission_calculations").select("*")
       .eq("business_id", business_id).eq("period_month", p.month).eq("period_year", p.year)
@@ -815,18 +837,22 @@ export async function assignCommissionSaleProvider(params: ActionParams, user: A
     const calc = (calcRows || [])[0] as Row | undefined
     if (calc && String(calc.status) === "cerrado") throw new Error(`Período ${p.month}/${p.year} cerrado: no se puede recalcular`)
     if (calc) {
-      const svc = round2((Number(calc.service_commission) || 0) + delta)
-      const gross = round2((Number(calc.gross_total) || 0) + delta)
-      const net = round2((Number(calc.net_total) || 0) + delta)
       const { error } = await sb.from("sales_commission_calculations")
-        .update({ service_commission: svc, gross_total: gross, net_total: net, updated_at: now })
+        .update({
+          products_count: round2((Number(calc.products_count) || 0) + p.prodUnits),
+          product_incentive: round2((Number(calc.product_incentive) || 0) + prodDelta),
+          service_commission: round2((Number(calc.service_commission) || 0) + svcDelta),
+          gross_total: round2((Number(calc.gross_total) || 0) + delta),
+          net_total: round2((Number(calc.net_total) || 0) + delta),
+          updated_at: now,
+        })
         .eq("id", calc.id).eq("business_id", business_id)
       if (error) throw new Error(error.message)
     } else {
       const { error } = await sb.from("sales_commission_calculations").insert({
         business_id, period_month: p.month, period_year: p.year,
         provider_name_snapshot: provider, branch: p.branch || null,
-        products_count: 0, product_incentive: 0, service_commission: delta,
+        products_count: p.prodUnits, product_incentive: prodDelta, service_commission: svcDelta,
         laser_incentive: 0, fixed_incentive: 0, manual_adjustment: 0, bonus_extra: 0,
         gross_total: delta, cleaning_contribution: 0, net_total: delta,
         status: "calculado", calculated_by: user.email || user.id || null,
@@ -854,6 +880,7 @@ export async function getCommissionAssignedServices(params: ActionParams) {
       customer: String(r.customer_name || ""),
       service: String(r.service_name || ""),
       category: String(r.category || "OTROS"),
+      quantity: Number(r.quantity) || 0,
       amount: Number(r.gross_amount) || 0,
       providerOriginal: String(r.provider_original || ""),
       provider: String(r.provider_normalized || ""),
@@ -867,9 +894,10 @@ export async function getCommissionAssignedServices(params: ActionParams) {
   }
 }
 
-/** Deshace asignaciones manuales: resta el delta (venta × % de la categoría)
- *  de la liquidación del prestador en el período y devuelve la venta a su
- *  clasificación original del archivo. Bloquea períodos cerrados. Auditado. */
+/** Deshace asignaciones manuales: resta el delta (servicios: venta × %;
+ *  productos: unidades × tarifa) de la liquidación del prestador en el período
+ *  y devuelve la venta a su clasificación original del archivo. Bloquea
+ *  períodos cerrados. Auditado. */
 export async function unassignCommissionSaleProvider(params: ActionParams, user: ActionUser) {
   requirePermission("sales_commission.adjust")
   const business_id = requireBizId()
@@ -878,15 +906,15 @@ export async function unassignCommissionSaleProvider(params: ActionParams, user:
   const sb = getSupabaseAdmin()
 
   const { data: rowsRaw, error: selErr } = await sb.from("sales_commission_sales")
-    .select("id,sale_date,branch,category,gross_amount,provider_original,provider_normalized,assigned_at")
+    .select("id,sale_date,branch,category,gross_amount,quantity,provider_original,provider_normalized,assigned_at")
     .eq("business_id", business_id).in("id", ids)
   if (selErr) throw new Error(selErr.message)
   const rows = ((rowsRaw || []) as Row[]).filter((r) => r.assigned_at)
   if (!rows.length) throw new Error("Las ventas seleccionadas no tienen asignación manual")
 
-  // Reversa por prestador × período: mismo cálculo venta × % que la asignación.
+  // Reversa por prestador × período: mismo cálculo que la asignación.
   const rules = await readRunRules()
-  const groups = new Map<string, { provider: string; month: number; year: number; byCat: Record<string, number> }>()
+  const groups = new Map<string, { provider: string; month: number; year: number; byCat: Record<string, number>; prodUnits: number }>()
   for (const r of rows) {
     const provider = String(r.provider_normalized || "")
     const d = String(r.sale_date || "").slice(0, 10)
@@ -894,30 +922,38 @@ export async function unassignCommissionSaleProvider(params: ActionParams, user:
     if (!provider || !year || !month) continue
     const key = `${provider}||${year}-${month}`
     let g = groups.get(key)
-    if (!g) { g = { provider, month, year, byCat: {} }; groups.set(key, g) }
+    if (!g) { g = { provider, month, year, byCat: {}, prodUnits: 0 }; groups.set(key, g) }
     const cat = String(r.category || "")
-    g.byCat[cat] = round2((g.byCat[cat] || 0) + (Number(r.gross_amount) || 0))
+    if (cat === "PRODUCTO") g.prodUnits += Number(r.quantity) || 0
+    else g.byCat[cat] = round2((g.byCat[cat] || 0) + (Number(r.gross_amount) || 0))
   }
+  const rates = await productRatesForProviders([...new Set([...groups.values()].map((g) => g.provider))], rules.productUnitAmount)
   const now = new Date().toISOString()
   const deltas: { provider: string; month: number; year: number; delta: number }[] = []
   for (const g of groups.values()) {
-    const delta = round2(Object.entries(g.byCat).reduce((s, [cat, base]) => {
+    const svcDelta = round2(Object.entries(g.byCat).reduce((s, [cat, base]) => {
       const pct = rules.categoryPct[cat]
       return s + (pct != null ? round2(base * pct) : 0)
     }, 0))
+    const prodDelta = round2(g.prodUnits * (rates[g.provider] ?? rules.productUnitAmount))
+    const delta = round2(svcDelta + prodDelta)
     deltas.push({ provider: g.provider, month: g.month, year: g.year, delta })
-    if (!delta) continue
+    if (!delta && !g.prodUnits) continue
     const { data: calcRows } = await sb.from("sales_commission_calculations").select("*")
       .eq("business_id", business_id).eq("period_month", g.month).eq("period_year", g.year)
       .eq("provider_name_snapshot", g.provider).order("created_at", { ascending: false }).limit(1)
     const calc = (calcRows || [])[0] as Row | undefined
     if (!calc) continue // sin fila de liquidación no hay nada que revertir
     if (String(calc.status) === "cerrado") throw new Error(`Período ${g.month}/${g.year} cerrado: no se puede revertir`)
-    const svc = round2((Number(calc.service_commission) || 0) - delta)
-    const gross = round2((Number(calc.gross_total) || 0) - delta)
-    const net = round2((Number(calc.net_total) || 0) - delta)
     const { error } = await sb.from("sales_commission_calculations")
-      .update({ service_commission: svc, gross_total: gross, net_total: net, updated_at: now })
+      .update({
+        products_count: round2((Number(calc.products_count) || 0) - g.prodUnits),
+        product_incentive: round2((Number(calc.product_incentive) || 0) - prodDelta),
+        service_commission: round2((Number(calc.service_commission) || 0) - svcDelta),
+        gross_total: round2((Number(calc.gross_total) || 0) - delta),
+        net_total: round2((Number(calc.net_total) || 0) - delta),
+        updated_at: now,
+      })
       .eq("id", calc.id).eq("business_id", business_id)
     if (error) throw new Error(error.message)
   }

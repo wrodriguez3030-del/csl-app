@@ -26,8 +26,8 @@ export interface CommissionReportData {
   rules: { name: string; ruleType: string; category: string | null; percentage: number | null; fixedAmount: number | null; minAmount: number | null; active: boolean }[]
   /** Detalle prestador × categoría de la comisión de servicios (venta base × %). */
   serviceDetail?: { provider: string; branch: string; category: string; base: number; pct: number; amount: number }[]
-  /** Servicios sin prestador comisionable (excluye láser y productos). */
-  unassignedServices?: { date: string; branch: string; customer: string; service: string; category: string; amount: number; providerOriginal: string }[]
+  /** Ventas sin prestador comisionable: servicios y productos (excluye láser). */
+  unassignedServices?: { date: string; branch: string; customer: string; service: string; category: string; quantity: number; amount: number; providerOriginal: string }[]
   generadoPor?: string
 }
 
@@ -161,10 +161,10 @@ export async function buildCommissionWorkbook(
     { base: sum(svcDetail, "base"), amount: sum(svcDetail, "amount") })
 
   const unassigned = (data.unassignedServices || []).map((d) => ({ ...d, categoryLabel: CATEGORY_LABELS[d.category] || d.category }))
-  addTableSheet("Sin Prestador", "Servicios sin prestador (excluye láser y productos)",
-    [{ header: "Fecha", key: "date", width: 12 }, { header: "Sucursal", key: "branch", width: 22 }, { header: "Cliente", key: "customer", width: 26 }, { header: "Servicio", key: "service", width: 34 }, { header: "Categoría", key: "categoryLabel", width: 20 }, { header: "Prestador (archivo)", key: "providerOriginal", width: 20 }, { header: "Monto", key: "amount", money: true }],
+  addTableSheet("Sin Prestador", "Ventas sin prestador (servicios y productos · excluye láser)",
+    [{ header: "Fecha", key: "date", width: 12 }, { header: "Sucursal", key: "branch", width: 22 }, { header: "Cliente", key: "customer", width: 26 }, { header: "Servicio / Producto", key: "service", width: 34 }, { header: "Categoría", key: "categoryLabel", width: 20 }, { header: "Cant.", key: "quantity", align: "right", width: 8 }, { header: "Prestador (archivo)", key: "providerOriginal", width: 20 }, { header: "Monto", key: "amount", money: true }],
     unassigned as unknown as Record<string, unknown>[],
-    { amount: sum(unassigned, "amount") })
+    { quantity: unassigned.reduce((s, d) => s + (Number(d.quantity) || 0), 0), amount: sum(unassigned, "amount") })
 
   addKvSheet("Depilación Láser", "Depilación láser", [
     ["Venta láser total", data.laser.laserTotal, true], ["Tramo alcanzado", `${(data.laser.tramoPct * 100).toFixed(0)}%`],

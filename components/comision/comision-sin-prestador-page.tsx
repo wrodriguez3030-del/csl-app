@@ -1,13 +1,14 @@
 "use client"
 
 /**
- * Servicios SIN PRESTADOR (Incentivos de Ventas): filas de venta de servicios
- * donde el archivo no trae prestador comisionable (vacío, "Sin Información",
- * recepción/POS). Excluye Depilación Láser (va por fondo) y productos.
+ * Ventas SIN PRESTADOR (Incentivos de Ventas): servicios Y productos donde el
+ * archivo no trae prestador comisionable (vacío, "Sin Información",
+ * recepción/POS). Excluye Depilación Láser (va por fondo).
  * Permite asignar MANUALMENTE el prestador correcto: la asignación actualiza la
- * venta y suma el delta de comisión (venta × % de la categoría) a la
- * liquidación del prestador en el período. La vista "Asignadas" permite revisar
- * y DESHACER (revierte el delta). Requiere `sales_commission.adjust`.
+ * venta y suma el delta a la liquidación del período (servicios: venta × % de
+ * la categoría; productos: unidades × tarifa del roster o regla general). La
+ * vista "Asignadas" permite revisar y DESHACER (revierte el delta). Requiere
+ * `sales_commission.adjust`.
  */
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
@@ -28,13 +29,13 @@ const fmtRD = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { 
 
 interface UnassignedRow {
   id: string; date: string; branch: string; customer: string
-  service: string; category: string; amount: number; providerOriginal: string
+  service: string; category: string; quantity: number; amount: number; providerOriginal: string
   // solo en la vista "Asignadas"
   provider?: string; assignedBy?: string; assignedAt?: string
 }
 interface Collab { id: string; name: string; branch: string; active: boolean }
 
-type SortKey = "date" | "branch" | "customer" | "service" | "category" | "amount"
+type SortKey = "date" | "branch" | "customer" | "service" | "category" | "quantity" | "amount"
 
 function SortableTh({ label, k, sortKey, sortDir, onSort, right }: {
   label: string; k: SortKey; sortKey: SortKey; sortDir: "asc" | "desc"
@@ -121,6 +122,7 @@ export function ComisionSinPrestadorPage() {
     const dir = sortDir === "asc" ? 1 : -1
     return [...list].sort((a, b) => {
       if (sortKey === "amount") return (a.amount - b.amount) * dir
+      if (sortKey === "quantity") return (a.quantity - b.quantity) * dir
       const av = sortKey === "category" ? (CATEGORY_LABELS[a.category] || a.category) : a[sortKey]
       const bv = sortKey === "category" ? (CATEGORY_LABELS[b.category] || b.category) : b[sortKey]
       return String(av).localeCompare(String(bv)) * dir || a.date.localeCompare(b.date)
@@ -194,11 +196,11 @@ export function ComisionSinPrestadorPage() {
       <Card className="border-[color:var(--brand-border)]">
         <CardContent className="flex flex-col gap-3 p-4">
           <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
-            <UserX className="h-4 w-4 text-[color:var(--brand-primary)]" /> Servicios sin prestador
+            <UserX className="h-4 w-4 text-[color:var(--brand-primary)]" /> Ventas sin prestador
             <Badge variant="secondary">{totals.count} pendientes</Badge>
             <Badge className="border-amber-200 bg-amber-100 text-amber-700 hover:bg-amber-100">{fmtRD(totals.amount)} sin comisionar</Badge>
             {aTotals.count > 0 && <Badge className="border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">{aTotals.count} asignados</Badge>}
-            <span className="text-xs font-normal text-muted-foreground">Período: <b className="text-foreground">{periodDisplay}</b> · excluye Depilación Láser y productos</span>
+            <span className="text-xs font-normal text-muted-foreground">Período: <b className="text-foreground">{periodDisplay}</b> · servicios y productos · excluye Depilación Láser</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex overflow-hidden rounded-md border">
@@ -213,7 +215,7 @@ export function ComisionSinPrestadorPage() {
             </div>
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input className="h-9 w-64 pl-8" placeholder={isAssignedView ? "Buscar servicio, cliente o prestador..." : "Buscar servicio o cliente..."} value={search} onChange={(e) => setSearch(e.target.value)} />
+              <Input className="h-9 w-64 pl-8" placeholder={isAssignedView ? "Buscar servicio/producto, cliente o prestador..." : "Buscar servicio/producto o cliente..."} value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
             <Select value={catFilter} onValueChange={setCatFilter}>
               <SelectTrigger className="h-9 w-48"><SelectValue /></SelectTrigger>
@@ -254,10 +256,10 @@ export function ComisionSinPrestadorPage() {
             <div className="py-10 text-center text-sm text-muted-foreground">Cargando...</div>
           ) : activeRows.length === 0 ? (
             <div className="py-10 text-center text-sm text-muted-foreground">
-              {isAssignedView ? `Sin asignaciones manuales para ${periodDisplay}.` : `Sin servicios pendientes de prestador para ${periodDisplay}. ✔`}
+              {isAssignedView ? `Sin asignaciones manuales para ${periodDisplay}.` : `Sin ventas pendientes de prestador para ${periodDisplay}. ✔`}
             </div>
           ) : view.length === 0 ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">Ningún servicio coincide con la búsqueda/categoría. ({activeRows.length} en el período)</div>
+            <div className="py-10 text-center text-sm text-muted-foreground">Ninguna venta coincide con la búsqueda/categoría. ({activeRows.length} en el período)</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -267,8 +269,9 @@ export function ComisionSinPrestadorPage() {
                     <SortableTh label="Fecha" k="date" sortKey={sortKey} sortDir={sortDir} onSort={requestSort} />
                     <SortableTh label="Sucursal" k="branch" sortKey={sortKey} sortDir={sortDir} onSort={requestSort} />
                     <SortableTh label="Cliente" k="customer" sortKey={sortKey} sortDir={sortDir} onSort={requestSort} />
-                    <SortableTh label="Servicio" k="service" sortKey={sortKey} sortDir={sortDir} onSort={requestSort} />
+                    <SortableTh label="Servicio / Producto" k="service" sortKey={sortKey} sortDir={sortDir} onSort={requestSort} />
                     <SortableTh label="Categoría" k="category" sortKey={sortKey} sortDir={sortDir} onSort={requestSort} />
+                    <SortableTh label="Cant." k="quantity" sortKey={sortKey} sortDir={sortDir} onSort={requestSort} right />
                     {isAssignedView ? (
                       <>
                         <th className="py-2 text-left">Prestador asignado</th>
@@ -289,6 +292,7 @@ export function ComisionSinPrestadorPage() {
                       <td className="py-1.5">{r.customer || <span className="text-slate-300">—</span>}</td>
                       <td className="py-1.5 font-medium">{r.service}</td>
                       <td className="py-1.5">{CATEGORY_LABELS[r.category] || r.category}</td>
+                      <td className="py-1.5 text-right tabular-nums">{r.quantity || <span className="text-slate-300">—</span>}</td>
                       {isAssignedView ? (
                         <>
                           <td className="py-1.5 font-semibold text-emerald-700">{r.provider}</td>
@@ -301,7 +305,7 @@ export function ComisionSinPrestadorPage() {
                     </tr>
                   ))}
                   <tr className="border-t-2 bg-slate-50 font-bold">
-                    <td colSpan={isAssignedView ? 8 : 7} className="py-2 text-xs uppercase">{filtered ? `Total filtrado (${view.length} de ${activeRows.length})` : "Total"}</td>
+                    <td colSpan={isAssignedView ? 9 : 8} className="py-2 text-xs uppercase">{filtered ? `Total filtrado (${view.length} de ${activeRows.length})` : "Total"}</td>
                     <td className="py-2 text-right tabular-nums">{fmtRD(filtered ? viewAmount : activeTotals.amount)}</td>
                   </tr>
                 </tbody>

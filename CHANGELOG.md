@@ -18,6 +18,26 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.46.0] — 2026-07-14
+
+### Added
+- **Productos sin empleado asignado: ver y asignar** (pedido del usuario). La
+  pantalla "Servicios sin prestador" pasa a llamarse **"Ventas sin prestador"**
+  y ahora incluye PRODUCTOS además de servicios (sigue excluyendo Depilación
+  Láser). Junio 2026 real: 206 ventas de producto sin empleado (215 unidades,
+  RD$294,200 vendidos, hasta RD$21,500 de incentivo sin pagar — casi todas
+  cobradas en recepción).
+  - **Asignar producto suma a la liquidación**: unidades × tarifa del
+    colaborador (`product_unit_amount` del roster; si no tiene, la regla
+    general RD$100/u) → `products_count` + `product_incentive` + bruto/neto.
+  - **Deshacer también revierte productos** (unidades y montos).
+  - Columna **Cant.** (ordenable) en la tabla y en la hoja Excel
+    "Sin Prestador" (con suma en el total).
+  - Los filtros existentes aplican: el selector de categoría ahora incluye
+    "Productos" para trabajarlos por separado.
+
+---
+
 ## [0.45.0] — 2026-07-14
 
 ### Added
