@@ -18,6 +18,27 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.47.0] — 2026-07-14
+
+### Added
+- **Reasignar ventas asignadas por error** (pedido del usuario: "si le agrego
+  por error un servicio o un producto a un empleado quiero poder volver a
+  asignar a quien corresponde").
+  - En la vista "Asignadas": selecciona las ventas, elige el **nuevo
+    prestador** y pulsa **"Reasignar a X"** — en una sola operación se resta
+    el delta al empleado equivocado y se suma al correcto (cada uno con SU
+    tarifa de producto). Doble entrada de auditoría
+    (`prestador_desasignado` + `prestador_asignado`).
+
+### Fixed
+- **Asignar/deshacer ahora validan períodos cerrados ANTES de escribir**:
+  antes un período cerrado podía abortar la operación a mitad dejando estado
+  parcial (ventas actualizadas sin delta, o deltas sin ventas). Ahora se
+  planifica y valida todo primero, y solo entonces se escriben ventas y
+  liquidaciones.
+
+---
+
 ## [0.46.0] — 2026-07-14
 
 ### Added

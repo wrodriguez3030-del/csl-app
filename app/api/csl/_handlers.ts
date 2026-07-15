@@ -3503,6 +3503,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await commission.assignCommissionSaleProvider(params, user)
     case "unassignCommissionSaleProvider":
       return await commission.unassignCommissionSaleProvider(params, user)
+    case "reassignCommissionSaleProvider":
+      return await commission.reassignCommissionSaleProvider(params, user)
     case "getCommissionPatients":
       return await commission.getCommissionPatients(params)
     case "getCommissionLaser":

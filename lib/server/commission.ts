@@ -797,12 +797,6 @@ export async function assignCommissionSaleProvider(params: ActionParams, user: A
     String(r.category || "") !== "DEPILACION_LASER")
   if (!rows.length) throw new Error("Las ventas seleccionadas ya tienen prestador o no aplican")
 
-  const now = new Date().toISOString()
-  const { error: upErr } = await sb.from("sales_commission_sales")
-    .update({ provider_normalized: provider, assigned_at: now, assigned_by: user.email || user.id || null })
-    .eq("business_id", business_id).in("id", rows.map((r) => String(r.id)))
-  if (upErr) throw new Error(upErr.message)
-
   // Delta por período: servicios Σ round2(base × %) por categoría; productos
   // Σ unidades × tarifa del prestador.
   const rules = await readRunRules()
@@ -820,7 +814,9 @@ export async function assignCommissionSaleProvider(params: ActionParams, user: A
     else p.byCat[cat] = round2((p.byCat[cat] || 0) + (Number(r.gross_amount) || 0))
   }
 
+  // Planificar y VALIDAR (períodos cerrados) ANTES de escribir nada.
   const deltas: { month: number; year: number; delta: number }[] = []
+  const plans: { p: { month: number; year: number; branch: string; prodUnits: number }; svcDelta: number; prodDelta: number; delta: number; calc: Row | undefined }[] = []
   for (const p of byPeriod.values()) {
     const svcDelta = round2(Object.entries(p.byCat).reduce((s, [cat, base]) => {
       const pct = rules.categoryPct[cat]
@@ -830,12 +826,21 @@ export async function assignCommissionSaleProvider(params: ActionParams, user: A
     const delta = round2(svcDelta + prodDelta)
     deltas.push({ month: p.month, year: p.year, delta })
     if (!delta && !p.prodUnits) continue
-
     const { data: calcRows } = await sb.from("sales_commission_calculations").select("*")
       .eq("business_id", business_id).eq("period_month", p.month).eq("period_year", p.year)
       .eq("provider_name_snapshot", provider).order("created_at", { ascending: false }).limit(1)
     const calc = (calcRows || [])[0] as Row | undefined
     if (calc && String(calc.status) === "cerrado") throw new Error(`Período ${p.month}/${p.year} cerrado: no se puede recalcular`)
+    plans.push({ p, svcDelta, prodDelta, delta, calc })
+  }
+
+  const now = new Date().toISOString()
+  const { error: upErr } = await sb.from("sales_commission_sales")
+    .update({ provider_normalized: provider, assigned_at: now, assigned_by: user.email || user.id || null })
+    .eq("business_id", business_id).in("id", rows.map((r) => String(r.id)))
+  if (upErr) throw new Error(upErr.message)
+
+  for (const { p, svcDelta, prodDelta, delta, calc } of plans) {
     if (calc) {
       const { error } = await sb.from("sales_commission_calculations")
         .update({
@@ -929,7 +934,10 @@ export async function unassignCommissionSaleProvider(params: ActionParams, user:
   }
   const rates = await productRatesForProviders([...new Set([...groups.values()].map((g) => g.provider))], rules.productUnitAmount)
   const now = new Date().toISOString()
+
+  // Planificar y VALIDAR (períodos cerrados) ANTES de escribir nada.
   const deltas: { provider: string; month: number; year: number; delta: number }[] = []
+  const plans: { g: { provider: string; month: number; year: number; prodUnits: number }; svcDelta: number; prodDelta: number; delta: number; calc: Row }[] = []
   for (const g of groups.values()) {
     const svcDelta = round2(Object.entries(g.byCat).reduce((s, [cat, base]) => {
       const pct = rules.categoryPct[cat]
@@ -945,6 +953,19 @@ export async function unassignCommissionSaleProvider(params: ActionParams, user:
     const calc = (calcRows || [])[0] as Row | undefined
     if (!calc) continue // sin fila de liquidación no hay nada que revertir
     if (String(calc.status) === "cerrado") throw new Error(`Período ${g.month}/${g.year} cerrado: no se puede revertir`)
+    plans.push({ g, svcDelta, prodDelta, delta, calc })
+  }
+
+  // Devolver cada venta a la clasificación del archivo fuente.
+  await Promise.all(rows.map(async (r) => {
+    const original = classifyProvider(r.provider_original)
+    const { error } = await sb.from("sales_commission_sales")
+      .update({ provider_normalized: original.name || null, assigned_at: null, assigned_by: null })
+      .eq("id", r.id).eq("business_id", business_id)
+    if (error) throw new Error(error.message)
+  }))
+
+  for (const { g, svcDelta, prodDelta, delta, calc } of plans) {
     const { error } = await sb.from("sales_commission_calculations")
       .update({
         products_count: round2((Number(calc.products_count) || 0) - g.prodUnits),
@@ -958,20 +979,21 @@ export async function unassignCommissionSaleProvider(params: ActionParams, user:
     if (error) throw new Error(error.message)
   }
 
-  // Devolver cada venta a la clasificación del archivo fuente.
-  await Promise.all(rows.map(async (r) => {
-    const original = classifyProvider(r.provider_original)
-    const { error } = await sb.from("sales_commission_sales")
-      .update({ provider_normalized: original.name || null, assigned_at: null, assigned_by: null })
-      .eq("id", r.id).eq("business_id", business_id)
-    if (error) throw new Error(error.message)
-  }))
-
   const first = deltas[0]
   await logAudit(user, "sale", ids.join(","), "prestador_desasignado",
     null, { rows: rows.length, deltas }, textValue(params, "reason") || null,
     first ? { month: first.month, year: first.year } : undefined)
   return { ok: true, updated: rows.length, deltas }
+}
+
+/** REASIGNA ventas ya asignadas a otro prestador en una sola operación:
+ *  primero deshace (resta el delta al prestador equivocado) y luego asigna al
+ *  correcto (le suma su delta, con SU tarifa de producto). Ambos pasos quedan
+ *  auditados (prestador_desasignado + prestador_asignado). */
+export async function reassignCommissionSaleProvider(params: ActionParams, user: ActionUser) {
+  const removed = await unassignCommissionSaleProvider(params, user)
+  const added = await assignCommissionSaleProvider(params, user)
+  return { ok: true, updated: added.updated, provider: added.provider, removed: removed.deltas, added: added.deltas }
 }
 
 /** Clientes atendidos por prestador. Fuente preferida: RESERVAS (atenciones

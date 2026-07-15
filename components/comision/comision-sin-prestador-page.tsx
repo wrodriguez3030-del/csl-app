@@ -189,6 +189,24 @@ export function ComisionSinPrestadorPage() {
     } finally { setAssigning(false) }
   }
 
+  const reassign = async () => {
+    if (!provider || !selected.size) return
+    setAssigning(true)
+    try {
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), {
+        action: "reassignCommissionSaleProvider", provider, ids: [...selected].join(","),
+      })
+      if (res?.ok) {
+        const added = (res.added as { delta: number }[]) || []
+        const deltaTotal = added.reduce((s, d) => s + d.delta, 0)
+        showToast(`${res.updated} venta(s) reasignada(s) a ${res.provider}${deltaTotal ? ` · comisión movida ${fmtRD(deltaTotal)}` : ""}`, "success")
+        await load()
+      } else showToast((res as { error?: string })?.error || "Error al reasignar", "error")
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Error al reasignar", "error")
+    } finally { setAssigning(false) }
+  }
+
   return (
     <div className="space-y-5">
       <CommissionFilterBar branches={["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]} />
@@ -224,25 +242,29 @@ export function ComisionSinPrestadorPage() {
                 {categories.map((c) => <SelectItem key={c} value={c}>{CATEGORY_LABELS[c] || c}</SelectItem>)}
               </SelectContent>
             </Select>
+            <Select value={provider || "none"} onValueChange={(v) => setProvider(v === "none" ? "" : v)}>
+              <SelectTrigger className="h-9 w-64"><SelectValue placeholder={isAssignedView ? "Nuevo prestador" : "Prestador a asignar"} /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">— Selecciona prestador —</SelectItem>
+                {collabs.map((c) => <SelectItem key={c.id} value={c.name}>{c.name} · {c.branch}</SelectItem>)}
+              </SelectContent>
+            </Select>
             {!isAssignedView ? (
+              <Button className="h-9" onClick={assign} disabled={!canAssign || !provider || !selected.size || assigning}>
+                {assigning ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <UserCheck className="mr-1.5 h-4 w-4" />}
+                Asignar a seleccionadas ({selected.size}{selected.size ? ` · ${fmtRD(selectedAmount)}` : ""})
+              </Button>
+            ) : (
               <>
-                <Select value={provider || "none"} onValueChange={(v) => setProvider(v === "none" ? "" : v)}>
-                  <SelectTrigger className="h-9 w-64"><SelectValue placeholder="Prestador a asignar" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">— Selecciona prestador —</SelectItem>
-                    {collabs.map((c) => <SelectItem key={c.id} value={c.name}>{c.name} · {c.branch}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Button className="h-9" onClick={assign} disabled={!canAssign || !provider || !selected.size || assigning}>
+                <Button className="h-9" onClick={reassign} disabled={!canAssign || !provider || !selected.size || assigning}>
                   {assigning ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <UserCheck className="mr-1.5 h-4 w-4" />}
-                  Asignar a seleccionadas ({selected.size}{selected.size ? ` · ${fmtRD(selectedAmount)}` : ""})
+                  Reasignar a {provider || "..."} ({selected.size})
+                </Button>
+                <Button variant="outline" className="h-9 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700" onClick={unassign} disabled={!canAssign || !selected.size || assigning}>
+                  {assigning ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <UserX className="mr-1.5 h-4 w-4" />}
+                  Quitar asignación ({selected.size})
                 </Button>
               </>
-            ) : (
-              <Button variant="outline" className="h-9 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700" onClick={unassign} disabled={!canAssign || !selected.size || assigning}>
-                {assigning ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <UserX className="mr-1.5 h-4 w-4" />}
-                Quitar asignación ({selected.size}{selected.size ? ` · ${fmtRD(selectedAmount)}` : ""})
-              </Button>
             )}
             <Button variant="outline" className="h-9" onClick={load} disabled={loading}><RefreshCcw className="mr-1.5 h-4 w-4" />Actualizar</Button>
           </div>
