@@ -16,9 +16,9 @@ import { canPerm } from "@/lib/permissions"
 import { useGiftCertificates, type GiftCertRecord } from "./cf-imprimir/use-gift-certificates"
 import { GiftCertList } from "./cf-imprimir/gift-cert-list"
 import { GiftCertEditor } from "./cf-imprimir/gift-cert-editor"
-import { LegacyPreimpresoPage } from "./cf-imprimir/legacy-preimpreso"
+import { TalonarioPage } from "./cf-imprimir/talonario-page"
 
-type Tab = "digital" | "legacy"
+type Tab = "talonario" | "digital"
 type View = "list" | "editor"
 
 export function CertificadosRegaloImpresionPage() {
@@ -26,7 +26,7 @@ export function CertificadosRegaloImpresionPage() {
   const user = useSessionUser()
   const gc = useGiftCertificates()
 
-  const [tab, setTab] = useState<Tab>("digital")
+  const [tab, setTab] = useState<Tab>("talonario")
   const [view, setView] = useState<View>("list")
   const [editing, setEditing] = useState<GiftCertRecord | null>(null)
 
@@ -70,16 +70,16 @@ export function CertificadosRegaloImpresionPage() {
 
       {/* Pestañas */}
       <div className="flex gap-1 border-b">
+        <TabButton active={tab === "talonario"} onClick={() => setTab("talonario")} icon={<Stamp className="h-4 w-4" />}>
+          Talonario pre-impreso
+        </TabButton>
         <TabButton active={tab === "digital"} onClick={() => setTab("digital")} icon={<LayoutList className="h-4 w-4" />}>
           Certificados digitales
         </TabButton>
-        <TabButton active={tab === "legacy"} onClick={() => setTab("legacy")} icon={<Stamp className="h-4 w-4" />}>
-          Pre-impreso (físico)
-        </TabButton>
       </div>
 
-      {tab === "legacy" ? (
-        <LegacyPreimpresoPage />
+      {tab === "talonario" ? (
+        <TalonarioPage />
       ) : !canView ? (
         <div className="rounded-lg border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
           No tienes permiso para ver los certificados de regalo. Solicita el permiso <b>gift_certificates.view</b> a un administrador.

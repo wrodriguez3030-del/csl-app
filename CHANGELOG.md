@@ -18,6 +18,35 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.49.0] — 2026-07-15
+
+### Added
+- **CF PARA IMPRIMIR · modo "Talonario pre-impreso"** (corrección de alcance: el
+  papel del certificado ya viene impreso —lazo, logo, título, cintas— y solo hay
+  que completar los campos y que caigan en el lugar correcto).
+  - Nueva pestaña **"Talonario pre-impreso"** (ahora la **pestaña por defecto**):
+    formulario + **previsualización con la foto real del talonario de fondo** para
+    ver dónde caen los campos, y **calibración** (mover horizontal/vertical, escala
+    general, tamaño de letra) persistida en el navegador.
+  - **Impresión de solo los campos** (fondo transparente) en página tamaño tarjeta
+    (9.78×6.3 in) → al imprimir sobre el talonario físico, el texto cae en su sitio.
+  - Reutiliza el modelo de datos y etiquetas EXACTAS ("VÁLIDO PARA:") y la fecha en
+    español del módulo digital. Renderer `lib/certificados/cert-talonario.ts`
+    (posiciones verificadas contra la foto del talonario real).
+  - Botón "Guardar registro" opcional: persiste vía el backend (giftCertSave/emit)
+    para que el certificado quede trazado y reimprimible.
+- Asset `public/certificados/talonario-preimpreso.jpg` (guía de alineación).
+
+### Changed
+- El modo "Pre-impreso (físico)" anterior (overlay genérico con calibración por
+  puntos) se **reemplazó** por el modo "Talonario pre-impreso" con posiciones
+  correctas para el certificado actual y preview foto-guiada.
+
+### Removed
+- `components/cf-imprimir/legacy-preimpreso.tsx` (superado por `talonario-page.tsx`).
+
+---
+
 ## [0.48.0] — 2026-07-15
 
 ### Added
