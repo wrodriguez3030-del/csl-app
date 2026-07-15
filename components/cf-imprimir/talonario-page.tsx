@@ -9,7 +9,7 @@
  * de fondo para ver dónde caen; la calibración ajusta a la impresora real.
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react"
-import { Printer, RotateCcw, Save, Loader2, AlertCircle, CheckCircle2, Eye, EyeOff } from "lucide-react"
+import { Printer, RotateCcw, Save, Loader2, AlertCircle, CheckCircle2, Eye, EyeOff, ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -92,6 +92,7 @@ export function TalonarioPage() {
     localStorage.setItem(CAL_KEY, JSON.stringify(defaultTalonarioCalibration))
     setCal(defaultTalonarioCalibration)
   }
+  const nudge = (axis: "offsetX" | "offsetY", delta: number) => updateCal({ [axis]: Math.round((cal[axis] + delta) * 10) / 10 })
 
   const branch = useMemo(() => sucursales.find((s) => s.nombre === form.sucursal), [sucursales, form.sucursal])
   const sucursalDireccion = branch?.direccion || ""
@@ -151,7 +152,9 @@ export function TalonarioPage() {
       if (!w) { setError("Habilita las ventanas emergentes para imprimir."); return }
       w.document.write(
         `<!doctype html><html><head><meta charset="utf-8"><title>Talonario</title>` +
-          `<style>@page{size:9.78in 6.3in;margin:0}html,body{margin:0;padding:0;background:#fff}svg{width:9.78in;height:6.3in;display:block}</style>` +
+          `<style>@page{size:9.78in 6.3in;margin:0}html,body{margin:0;padding:0;background:#fff}` +
+          `body{display:flex;align-items:center;justify-content:center;min-height:100vh}` +
+          `svg{width:9.78in;height:6.3in;display:block}</style>` +
           `</head><body>${svg}</body></html>`,
       )
       w.document.close()
@@ -240,10 +243,30 @@ export function TalonarioPage() {
           <Card>
             <CardHeader className="pb-3"><CardTitle className="text-base">Calibración de impresión</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              <p className="text-xs text-muted-foreground">Ajusta si el texto no cae exacto en tu impresora. 100 = 1 pulgada. Haz una prueba y corrige.</p>
+              <p className="text-xs text-muted-foreground">
+                Si al imprimir el texto sale corrido, muévelo con las flechas. En el diálogo de impresión pon
+                <b> Márgenes: Ninguno</b> y <b>Escala: 100%</b> (sin “ajustar a la página”).
+              </p>
+              <div className="space-y-2">
+                <Label className="text-xs">Mover el texto</Label>
+                <div className="flex items-center gap-2">
+                  <span className="w-16 text-xs text-muted-foreground">Horizontal</span>
+                  <NudgeBtn onClick={() => nudge("offsetX", -30)}><ChevronLeft className="h-4 w-4" /><ChevronLeft className="-ml-2.5 h-4 w-4" /></NudgeBtn>
+                  <NudgeBtn onClick={() => nudge("offsetX", -6)}><ChevronLeft className="h-4 w-4" /></NudgeBtn>
+                  <Input className="h-8 w-16 text-center" type="number" step="2" value={cal.offsetX} onChange={(e) => updateCal({ offsetX: Number(e.target.value) || 0 })} />
+                  <NudgeBtn onClick={() => nudge("offsetX", 6)}><ChevronRight className="h-4 w-4" /></NudgeBtn>
+                  <NudgeBtn onClick={() => nudge("offsetX", 30)}><ChevronRight className="h-4 w-4" /><ChevronRight className="-ml-2.5 h-4 w-4" /></NudgeBtn>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-16 text-xs text-muted-foreground">Vertical</span>
+                  <NudgeBtn onClick={() => nudge("offsetY", -30)}><ChevronUp className="h-4 w-4" /><ChevronUp className="-ml-2.5 h-4 w-4" /></NudgeBtn>
+                  <NudgeBtn onClick={() => nudge("offsetY", -6)}><ChevronUp className="h-4 w-4" /></NudgeBtn>
+                  <Input className="h-8 w-16 text-center" type="number" step="2" value={cal.offsetY} onChange={(e) => updateCal({ offsetY: Number(e.target.value) || 0 })} />
+                  <NudgeBtn onClick={() => nudge("offsetY", 6)}><ChevronDown className="h-4 w-4" /></NudgeBtn>
+                  <NudgeBtn onClick={() => nudge("offsetY", 30)}><ChevronDown className="h-4 w-4" /><ChevronDown className="-ml-2.5 h-4 w-4" /></NudgeBtn>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-3">
-                <F label="Mover horizontal (→ +)"><Input type="number" step="2" value={cal.offsetX} onChange={(e) => updateCal({ offsetX: Number(e.target.value) || 0 })} /></F>
-                <F label="Mover vertical (↓ +)"><Input type="number" step="2" value={cal.offsetY} onChange={(e) => updateCal({ offsetY: Number(e.target.value) || 0 })} /></F>
                 <F label="Escala general"><Input type="number" step="0.02" value={cal.scale} onChange={(e) => updateCal({ scale: Number(e.target.value) || 1 })} /></F>
                 <F label="Tamaño de letra"><Input type="number" step="0.05" value={cal.fontScale} onChange={(e) => updateCal({ fontScale: Number(e.target.value) || 1 })} /></F>
               </div>
@@ -266,6 +289,18 @@ export function TalonarioPage() {
         </Card>
       </div>
     </div>
+  )
+}
+
+function NudgeBtn({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-8 items-center justify-center rounded-md border border-input px-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+    >
+      {children}
+    </button>
   )
 }
 

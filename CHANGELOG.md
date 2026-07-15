@@ -18,6 +18,20 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.50.4] — 2026-07-15
+
+### Fixed
+- **Talonario · al imprimir el texto salía corrido a la izquierda** aunque la
+  vista se veía bien: ahora el contenido se **centra en la página** al imprimir
+  (muchas impresoras centran la tarjeta en la bandeja), lo que corrige el corrimiento.
+
+### Added
+- **Calibración con flechas** ◀ ▶ ▲ ▼ (paso fino y grueso) para mover el texto
+  fácilmente sin escribir números, + guía para poner en el diálogo de impresión
+  **Márgenes: Ninguno** y **Escala: 100%**. La calibración se guarda sola.
+
+---
+
 ## [0.50.3] — 2026-07-15
 
 ### Fixed
