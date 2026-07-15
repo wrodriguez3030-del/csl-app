@@ -80,9 +80,9 @@ function block(labelY: number, valueY: number, label: string, lines: string[], s
 // Posición/tamaño del QR según formato: digital (grande) o talonario (mitad).
 type QrSpec = { x: number; y: number; size: number; code: number }
 const QR_FULL: QrSpec = { x: 806, y: 452, size: 120, code: 12 }
-// Talonario: QR alejado del borde derecho (margen ~1.2in) para que al calibrar
-// horizontalmente no se salga de la impresión.
-const QR_COMPACT: QrSpec = { x: 792, y: 456, size: 60, code: 8 }
+// Talonario: QR alejado del borde derecho (margen amplio) para que al calibrar
+// horizontalmente no se salga; movido 2 cm a la izquierda respecto al borde.
+const QR_COMPACT: QrSpec = { x: 713, y: 456, size: 60, code: 8 }
 
 function qrBlock(qrDataUri: string, code: string, q: QrSpec): string {
   const parts = [

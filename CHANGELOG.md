@@ -18,6 +18,14 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.50.5] — 2026-07-15
+
+### Changed
+- **Talonario:** el QR se movió ~2 cm a la izquierda (queda separado del borde
+  derecho y del bloque de texto, con su código debajo). El digital no cambia.
+
+---
+
 ## [0.50.4] — 2026-07-15
 
 ### Fixed
