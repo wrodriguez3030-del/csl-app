@@ -18,6 +18,15 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.51.2] — 2026-07-15
+
+### Changed
+- **Código de confirmación con prefijo de sucursal:** el QR y el código impreso
+  ahora llevan prefijo por sucursal — **RV-** (Rafael Vidal), **JAR-** (Los Jardines),
+  **VO-** (Villa Olga) + los 4 dígitos (ej. `RV-0024`, `JAR-0024`, `VO-0024`).
+
+---
+
 ## [0.51.1] — 2026-07-15
 
 ### Changed

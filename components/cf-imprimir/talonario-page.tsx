@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label"
 import { useAppStore } from "@/lib/store"
 import { useSessionUser } from "@/hooks/use-session-user"
 import { canPerm } from "@/lib/permissions"
-import { addDaysIso, validateGiftCert, confirmCode4, type GiftCertData } from "@/lib/certificados/cert-layout"
+import { addDaysIso, validateGiftCert, giftConfirmCode, type GiftCertData } from "@/lib/certificados/cert-layout"
 import {
   renderTalonarioSvg, TALON_CARD, defaultTalonarioCalibration, type TalonarioCalibration,
 } from "@/lib/certificados/cert-talonario"
@@ -101,8 +101,8 @@ export function TalonarioPage() {
     () => ({ ...form, sucursalDireccion, sucursalTelefono, templateId: "moderno" }),
     [form, sucursalDireccion, sucursalTelefono],
   )
-  // Código corto de 4 dígitos (confirmación) — se codifica en el QR y se imprime.
-  const confirm4 = useMemo(() => confirmCode4(form), [form])
+  // Código de confirmación (prefijo de sucursal + 4 dígitos, ej. "RV-0024") — va en el QR y se imprime.
+  const confirm4 = useMemo(() => giftConfirmCode(form), [form])
   // La VISTA se muestra siempre CENTRADA (desplazamiento 0); el "Mover" de la
   // calibración se aplica SOLO al imprimir (para alinear sobre el papel físico).
   const previewCal = useMemo(() => ({ ...cal, offsetX: 0, offsetY: 0 }), [cal])

@@ -122,6 +122,24 @@ export function confirmCode4(data: {
   return String((hash >>> 0) % 10000).padStart(4, "0")
 }
 
+/** Prefijo de sucursal para el código: RV (Rafael Vidal), JAR (Los Jardines), VO (Villa Olga). */
+export function branchPrefix(sucursal?: string): string {
+  const s = displayText(sucursal || "")
+  if (s.includes("RAFAEL VIDAL") || s === "RV") return "RV"
+  if (s.includes("JARDINES") || s === "JAR") return "JAR"
+  if (s.includes("VILLA OLGA") || s === "VO") return "VO"
+  return ""
+}
+
+/** Código de confirmación completo: prefijo de sucursal + 4 dígitos (ej. "RV-0024"). */
+export function giftConfirmCode(data: {
+  otorgadoA?: string; cortesiaDe?: string; validoPara?: string; validoHasta?: string; fechaEmision?: string; sucursal?: string
+}): string {
+  const pfx = branchPrefix(data.sucursal)
+  const num = confirmCode4(data)
+  return pfx ? `${pfx}-${num}` : num
+}
+
 // ── Ajuste automático de tamaño (por conteo de caracteres, §9 del spec) ──────
 type Tier = { max: number; size: number }
 
