@@ -80,7 +80,9 @@ function block(labelY: number, valueY: number, label: string, lines: string[], s
 // Posición/tamaño del QR según formato: digital (grande) o talonario (mitad).
 type QrSpec = { x: number; y: number; size: number; code: number }
 const QR_FULL: QrSpec = { x: 806, y: 452, size: 120, code: 12 }
-const QR_COMPACT: QrSpec = { x: 878, y: 486, size: 60, code: 8 }
+// Talonario: QR alejado del borde derecho (margen ~1.2in) para que al calibrar
+// horizontalmente no se salga de la impresión.
+const QR_COMPACT: QrSpec = { x: 792, y: 456, size: 60, code: 8 }
 
 function qrBlock(qrDataUri: string, code: string, q: QrSpec): string {
   const parts = [
@@ -173,17 +175,21 @@ export function renderCertificate(data: GiftCertData, opts: CertRenderOpts = {})
   const F = opts.compact ? FMT_COMPACT : FMT_FULL
   const sc = F.scale
   const labelSize = LABEL_SIZE * sc
-  const oSize = fit("otorgadoA", data.otorgadoA) * sc
-  const cSize = fit("cortesiaDe", data.cortesiaDe) * sc
-  const vSize = fit("validoPara", data.validoPara) * sc
+  // En el talonario, los 3 campos principales (Otorgado a, Cortesía de, Válido
+  // para) van MÁS GRANDES que la fecha/sucursal → jerarquía visual.
+  const boost = opts.compact ? 1.32 : 1
+  const priLabel = labelSize * (opts.compact ? 1.2 : 1)
+  const oSize = fit("otorgadoA", data.otorgadoA) * sc * boost
+  const cSize = fit("cortesiaDe", data.cortesiaDe) * sc * boost
+  const vSize = fit("validoPara", data.validoPara) * sc * boost
   const sSize = fit("sucursal", data.sucursal) * sc
   const fs = cal.fontScale || 1
 
   // Bloque de campos centrado en el área en blanco, sin rozar las cintas.
   const fields = [
-    block(F.pos[0][0], F.pos[0][1], LABELS.otorgadoA, wrapText(data.otorgadoA, oSize, 1, FIELD_WIDTH), oSize, BRAND.grisOscuro, fs, labelSize),
-    block(F.pos[1][0], F.pos[1][1], LABELS.cortesiaDe, wrapText(data.cortesiaDe, cSize, 1, FIELD_WIDTH), cSize, BRAND.grisOscuro, fs, labelSize),
-    block(F.pos[2][0], F.pos[2][1], LABELS.validoPara, wrapText(data.validoPara, vSize, 2, FIELD_WIDTH), vSize, BRAND.grisOscuro, fs, labelSize),
+    block(F.pos[0][0], F.pos[0][1], LABELS.otorgadoA, wrapText(data.otorgadoA, oSize, 1, FIELD_WIDTH), oSize, BRAND.grisOscuro, fs, priLabel),
+    block(F.pos[1][0], F.pos[1][1], LABELS.cortesiaDe, wrapText(data.cortesiaDe, cSize, 1, FIELD_WIDTH), cSize, BRAND.grisOscuro, fs, priLabel),
+    block(F.pos[2][0], F.pos[2][1], LABELS.validoPara, wrapText(data.validoPara, vSize, 2, FIELD_WIDTH), vSize, BRAND.grisOscuro, fs, priLabel),
     block(F.pos[3][0], F.pos[3][1], LABELS.validoHasta, [formatSpanishDateUpper(data.validoHasta)], F.vh, BRAND.grisOscuro, fs, labelSize),
     block(F.pos[4][0], F.pos[4][1], LABELS.sucursal, wrapText(data.sucursal, sSize, 2, FIELD_WIDTH), sSize, BRAND.turquesa, fs, labelSize),
   ].join("")

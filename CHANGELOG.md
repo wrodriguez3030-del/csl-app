@@ -18,6 +18,20 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.50.3] — 2026-07-15
+
+### Fixed
+- **Talonario · QR se salía de la impresión al calibrar horizontal:** el QR
+  estaba pegado al borde derecho; se alejó (margen ~1.2 in) para que el
+  desplazamiento horizontal de calibración no lo saque del área imprimible.
+
+### Changed
+- **Talonario:** los campos principales **OTORGADO A / CORTESÍA DE / VÁLIDO PARA**
+  se muestran más grandes (jerarquía visual: nombres/servicio grandes, fecha y
+  sucursal más pequeñas). El certificado digital no cambia.
+
+---
+
 ## [0.50.2] — 2026-07-15
 
 ### Changed
