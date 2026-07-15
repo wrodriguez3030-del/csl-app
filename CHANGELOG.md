@@ -18,6 +18,49 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.48.0] — 2026-07-15
+
+### Added
+- **CF PARA IMPRIMIR — módulo profesional de Certificados de Regalo.** Se amplió
+  el módulo existente (menú `cliente-certificados-imprimir`, **sin renombrarlo ni
+  duplicarlo**; encabezado ahora "CF PARA IMPRIMIR") de un simple overlay de
+  impresión a un módulo completo de creación, personalización, previsualización en
+  tiempo real, emisión, impresión, descarga (PDF/PNG/JPG), consulta, reimpresión,
+  canje y anulación.
+  - **Tres diseños** profesionales (moderno turquesa / minimalista / premium) desde
+    un solo componente parametrizable (`lib/certificados/cert-svg.ts`); se guarda
+    solo el `template_id`.
+  - **Fuente única "lo que ves es lo que sale":** el mismo SVG alimenta preview,
+    impresión (vector) y exportación (raster ×3 embebido en PDF). Tipografía
+    Montserrat + Allura; QR generado **localmente** (`qrcode`, sin servicios
+    externos). Auto-fit por longitud + wrapping a 2 líneas; fecha en español
+    (`14 DE AGOSTO DE 2026`); etiquetas exactas (**"VÁLIDO PARA:"**, nunca "VÁLIDO POR:");
+    pie con teléfono·dirección + Instagram/Facebook `@cibaospalaser`.
+  - **Máquina de estados** (Borrador→Emitido→Entregado→Canjeado, + Vencido/Anulado)
+    revalidada en **servidor** (no doble canje; no canjear vencido/anulado/borrador;
+    editar solo borradores; código bloqueado al emitir).
+  - **Backend:** handlers `giftCert*` con RBAC (`gift_certificates.*`), aislamiento
+    por `business_id`, snapshot de sucursal y **auditoría** de cada operación.
+  - **Código único** server-side `CSL-REG-2026-000001` (secuencia + función SQL).
+  - **Listado** con filtros (búsqueda/estado/sucursal), paginación, historial y
+    acciones por fila (abrir, imprimir, PDF, imagen, duplicar).
+  - Permisos nuevos en el catálogo RBAC: sección "Certificados de Regalo".
+  - Pruebas `pnpm test:gift` (22 casos); verificación visual de los 3 diseños.
+- Migración aditiva `202607150001_gift_certificates_module.sql` (aplicada a db-cls):
+  columnas de vencimiento/plantilla/contacto/snapshot/trazas de estado, secuencia +
+  función de código, tabla `csl_certificados_regalo_audit`. **No destructiva.**
+
+### Changed
+- El componente `certificados-regalo-impresion-page.tsx` pasa a ser un contenedor
+  con pestañas: **"Certificados digitales"** (flujo nuevo) y **"Pre-impreso (físico)"**
+  (flujo histórico de overlay + calibración, conservado íntegro).
+
+### Security
+- RBAC y aislamiento por `business_id` en todos los handlers de certificados de
+  regalo; estados y permisos validados en servidor (no se confía en el cliente).
+
+---
+
 ## [0.47.0] — 2026-07-14
 
 ### Added

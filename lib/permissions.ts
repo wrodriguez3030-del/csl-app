@@ -46,6 +46,15 @@ export const PERMISSION_OPTIONS: PermissionOption[] = [
   { id: "sales_commission.close", label: "Cerrar período", section: "Incentivos de Ventas" },
   { id: "sales_commission.export", label: "Exportar Excel/PDF", section: "Incentivos de Ventas" },
   { id: "sales_commission.audit.view", label: "Ver auditoría de comisiones", section: "Incentivos de Ventas" },
+  // CF PARA IMPRIMIR · Certificados de regalo
+  { id: "gift_certificates.view", label: "Ver certificados de regalo", section: "Certificados de Regalo" },
+  { id: "gift_certificates.create", label: "Crear / duplicar certificados", section: "Certificados de Regalo" },
+  { id: "gift_certificates.edit", label: "Editar borradores", section: "Certificados de Regalo" },
+  { id: "gift_certificates.emit", label: "Emitir certificados", section: "Certificados de Regalo" },
+  { id: "gift_certificates.deliver", label: "Marcar como entregado", section: "Certificados de Regalo" },
+  { id: "gift_certificates.redeem", label: "Canjear certificados", section: "Certificados de Regalo" },
+  { id: "gift_certificates.void", label: "Anular certificados", section: "Certificados de Regalo" },
+  { id: "gift_certificates.audit.view", label: "Ver historial / auditoría", section: "Certificados de Regalo" },
 ]
 
 export const ALL_PERMISSION_IDS: string[] = PERMISSION_OPTIONS.map((p) => p.id)
