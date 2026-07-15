@@ -112,7 +112,7 @@ type FooterSpec = {
   igX: number; igTx: number; fbX: number; fbTx: number
 }
 const FOOTER_FULL: FooterSpec = { y1: 552, dateSize: 10.5, y2: 578, socialSize: 11, iconScale: 0.5, igX: -168, igTx: -150, fbX: 18, fbTx: 36 }
-const FOOTER_COMPACT: FooterSpec = { y1: 542, dateSize: 8, y2: 562, socialSize: 8.5, iconScale: 0.4, igX: -128, igTx: -113, fbX: 14, fbTx: 29 }
+const FOOTER_COMPACT: FooterSpec = { y1: 544, dateSize: 9.5, y2: 566, socialSize: 10, iconScale: 0.46, igX: -150, igTx: -133, fbX: 16, fbTx: 33 }
 
 function footerBlock(data: GiftCertData, f: FooterSpec): string {
   const parts: string[] = []
@@ -138,9 +138,9 @@ const FMT_FULL: FmtSpec = {
   vh: 16, qr: QR_FULL, footer: FOOTER_FULL,
 }
 const FMT_COMPACT: FmtSpec = {
-  scale: 0.52,
-  pos: [[338, 351], [376, 389], [414, 427], [452, 464], [489, 502]],
-  vh: 9, qr: QR_COMPACT, footer: FOOTER_COMPACT,
+  scale: 0.73, // +40% respecto al compacto anterior (0.52)
+  pos: [[322, 341], [364, 383], [406, 425], [448, 467], [490, 509]],
+  vh: 12, qr: QR_COMPACT, footer: FOOTER_COMPACT,
 }
 
 export interface CertRenderOpts {

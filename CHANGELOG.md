@@ -18,6 +18,17 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.50.2] — 2026-07-15
+
+### Changed
+- **Talonario:** letras de los campos **+40%** (escala compacta 0.52 → 0.73) y
+  **bloque re-centrado** en el área en blanco; pie levemente mayor para equilibrio.
+  El **QR se mantiene** en su tamaño compacto (a pedido del usuario).
+- **Vista web del talonario al 100%**: la previsualización ocupa el ancho completo
+  de su columna (antes limitada a 820px). El certificado digital no cambia.
+
+---
+
 ## [0.50.1] — 2026-07-15
 
 ### Changed

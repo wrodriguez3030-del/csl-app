@@ -255,7 +255,7 @@ export function TalonarioPage() {
         <Card>
           <CardHeader className="pb-3"><CardTitle className="text-base">Previsualización sobre el talonario</CardTitle></CardHeader>
           <CardContent>
-            <div className="relative mx-auto max-w-[820px] overflow-hidden rounded-lg shadow-xl ring-1 ring-black/10" style={{ aspectRatio: `${TALON_CARD.w} / ${TALON_CARD.h}`, background: "#fff" }}>
+            <div className="relative w-full overflow-hidden rounded-lg shadow-xl ring-1 ring-black/10" style={{ aspectRatio: `${TALON_CARD.w} / ${TALON_CARD.h}`, background: "#fff" }}>
               {showGuide ? (
                 <img src={GUIDE_SRC} alt="Talonario pre-impreso" className="absolute inset-0 h-full w-full object-cover" />
               ) : null}
