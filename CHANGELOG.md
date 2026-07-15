@@ -18,6 +18,25 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.45.0] — 2026-07-14
+
+### Added
+- **Servicios sin prestador: vista "Asignadas" + deshacer asignación** (cierra
+  el flujo: asignar → revisar → deshacer; antes una asignación equivocada no
+  se podía ver ni revertir).
+  - Toggle **Pendientes (n) | Asignadas (m)** en la pantalla; la vista
+    Asignadas muestra prestador asignado, quién asignó y cuándo.
+  - **"Quitar asignación"** (multi-selección): revierte el delta (venta × % de
+    la categoría) de la liquidación del prestador y devuelve la venta a su
+    clasificación original del archivo. Bloquea períodos cerrados. Auditado
+    (`prestador_desasignado`).
+  - Acciones `getCommissionAssignedServices` / `unassignCommissionSaleProvider`
+    (permiso `sales_commission.adjust`).
+  - Los filtros (servicio/cliente/categoría) y el orden por columna aplican a
+    ambas vistas; en Asignadas la búsqueda también encuentra por prestador.
+
+---
+
 ## [0.44.0] — 2026-07-14
 
 ### Added

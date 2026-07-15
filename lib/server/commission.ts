@@ -641,7 +641,7 @@ async function fetchSalesForPeriod(params: ActionParams) {
   const out: Row[] = []
   for (let offset = 0; ; offset += PAGE) {
     let q = getSupabaseAdmin().from("sales_commission_sales")
-      .select("id,sale_date,service_name,branch,category,gross_amount,payment_method,provider_normalized,provider_original,customer_name,quantity,assigned_at")
+      .select("id,sale_date,service_name,branch,category,gross_amount,payment_method,provider_normalized,provider_original,customer_name,quantity,assigned_at,assigned_by")
       .eq("business_id", business_id)
       .order("id", { ascending: true })
       .range(offset, offset + PAGE - 1)
@@ -840,6 +840,102 @@ export async function assignCommissionSaleProvider(params: ActionParams, user: A
     null, { provider, rows: rows.length, deltas }, textValue(params, "reason") || null,
     first ? { month: first.month, year: first.year } : undefined)
   return { ok: true, updated: rows.length, provider, deltas }
+}
+
+/** Servicios con prestador ASIGNADO manualmente (para revisar/deshacer). */
+export async function getCommissionAssignedServices(params: ActionParams) {
+  const rows = await fetchSalesForPeriod(params)
+  const out = rows
+    .filter((r) => r.assigned_at)
+    .map((r) => ({
+      id: String(r.id),
+      date: r.sale_date ? String(r.sale_date).slice(0, 10) : "",
+      branch: String(r.branch || "(sin sucursal)"),
+      customer: String(r.customer_name || ""),
+      service: String(r.service_name || ""),
+      category: String(r.category || "OTROS"),
+      amount: Number(r.gross_amount) || 0,
+      providerOriginal: String(r.provider_original || ""),
+      provider: String(r.provider_normalized || ""),
+      assignedBy: String(r.assigned_by || ""),
+      assignedAt: String(r.assigned_at).slice(0, 10),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.branch.localeCompare(b.branch))
+  return {
+    ok: true, rows: out,
+    totals: { count: out.length, amount: round2(out.reduce((s, r) => s + r.amount, 0)) },
+  }
+}
+
+/** Deshace asignaciones manuales: resta el delta (venta × % de la categoría)
+ *  de la liquidación del prestador en el período y devuelve la venta a su
+ *  clasificación original del archivo. Bloquea períodos cerrados. Auditado. */
+export async function unassignCommissionSaleProvider(params: ActionParams, user: ActionUser) {
+  requirePermission("sales_commission.adjust")
+  const business_id = requireBizId()
+  const ids = (Array.isArray(params.ids) ? params.ids : String(params.ids || "").split(",")).map((x) => String(x).trim()).filter(Boolean)
+  if (!ids.length) throw new Error("Selecciona al menos una venta")
+  const sb = getSupabaseAdmin()
+
+  const { data: rowsRaw, error: selErr } = await sb.from("sales_commission_sales")
+    .select("id,sale_date,branch,category,gross_amount,provider_original,provider_normalized,assigned_at")
+    .eq("business_id", business_id).in("id", ids)
+  if (selErr) throw new Error(selErr.message)
+  const rows = ((rowsRaw || []) as Row[]).filter((r) => r.assigned_at)
+  if (!rows.length) throw new Error("Las ventas seleccionadas no tienen asignación manual")
+
+  // Reversa por prestador × período: mismo cálculo venta × % que la asignación.
+  const rules = await readRunRules()
+  const groups = new Map<string, { provider: string; month: number; year: number; byCat: Record<string, number> }>()
+  for (const r of rows) {
+    const provider = String(r.provider_normalized || "")
+    const d = String(r.sale_date || "").slice(0, 10)
+    const year = Number(d.slice(0, 4)), month = Number(d.slice(5, 7))
+    if (!provider || !year || !month) continue
+    const key = `${provider}||${year}-${month}`
+    let g = groups.get(key)
+    if (!g) { g = { provider, month, year, byCat: {} }; groups.set(key, g) }
+    const cat = String(r.category || "")
+    g.byCat[cat] = round2((g.byCat[cat] || 0) + (Number(r.gross_amount) || 0))
+  }
+  const now = new Date().toISOString()
+  const deltas: { provider: string; month: number; year: number; delta: number }[] = []
+  for (const g of groups.values()) {
+    const delta = round2(Object.entries(g.byCat).reduce((s, [cat, base]) => {
+      const pct = rules.categoryPct[cat]
+      return s + (pct != null ? round2(base * pct) : 0)
+    }, 0))
+    deltas.push({ provider: g.provider, month: g.month, year: g.year, delta })
+    if (!delta) continue
+    const { data: calcRows } = await sb.from("sales_commission_calculations").select("*")
+      .eq("business_id", business_id).eq("period_month", g.month).eq("period_year", g.year)
+      .eq("provider_name_snapshot", g.provider).order("created_at", { ascending: false }).limit(1)
+    const calc = (calcRows || [])[0] as Row | undefined
+    if (!calc) continue // sin fila de liquidación no hay nada que revertir
+    if (String(calc.status) === "cerrado") throw new Error(`Período ${g.month}/${g.year} cerrado: no se puede revertir`)
+    const svc = round2((Number(calc.service_commission) || 0) - delta)
+    const gross = round2((Number(calc.gross_total) || 0) - delta)
+    const net = round2((Number(calc.net_total) || 0) - delta)
+    const { error } = await sb.from("sales_commission_calculations")
+      .update({ service_commission: svc, gross_total: gross, net_total: net, updated_at: now })
+      .eq("id", calc.id).eq("business_id", business_id)
+    if (error) throw new Error(error.message)
+  }
+
+  // Devolver cada venta a la clasificación del archivo fuente.
+  await Promise.all(rows.map(async (r) => {
+    const original = classifyProvider(r.provider_original)
+    const { error } = await sb.from("sales_commission_sales")
+      .update({ provider_normalized: original.name || null, assigned_at: null, assigned_by: null })
+      .eq("id", r.id).eq("business_id", business_id)
+    if (error) throw new Error(error.message)
+  }))
+
+  const first = deltas[0]
+  await logAudit(user, "sale", ids.join(","), "prestador_desasignado",
+    null, { rows: rows.length, deltas }, textValue(params, "reason") || null,
+    first ? { month: first.month, year: first.year } : undefined)
+  return { ok: true, updated: rows.length, deltas }
 }
 
 /** Clientes atendidos por prestador. Fuente preferida: RESERVAS (atenciones
