@@ -97,12 +97,13 @@ export function renderTalonarioSvg(
 
   const fs = cal.fontScale || 1
   // Posiciones (área en blanco bajo el título pre-impreso "Certificado de Regalo").
+  // Bloque centrado verticalmente en el espacio libre, sin rozar las cintas inferiores.
   const fields = [
-    block(348, 378, LABELS.otorgadoA, wrapText(data.otorgadoA, oSize, 1, FIELD_WIDTH), oSize, BRAND.grisOscuro, fs),
-    block(404, 433, LABELS.cortesiaDe, wrapText(data.cortesiaDe, cSize, 1, FIELD_WIDTH), cSize, BRAND.grisOscuro, fs),
-    block(460, 488, LABELS.validoPara, wrapText(data.validoPara, vSize, 2, FIELD_WIDTH), vSize, BRAND.grisOscuro, fs),
-    block(520, 549, LABELS.validoHasta, [formatSpanishDateUpper(data.validoHasta)], 19, BRAND.grisOscuro, fs),
-    block(576, 604, LABELS.sucursal, wrapText(data.sucursal, sSize, 2, FIELD_WIDTH), sSize, BRAND.turquesa, fs),
+    block(330, 360, LABELS.otorgadoA, wrapText(data.otorgadoA, oSize, 1, FIELD_WIDTH), oSize, BRAND.grisOscuro, fs),
+    block(386, 415, LABELS.cortesiaDe, wrapText(data.cortesiaDe, cSize, 1, FIELD_WIDTH), cSize, BRAND.grisOscuro, fs),
+    block(442, 470, LABELS.validoPara, wrapText(data.validoPara, vSize, 2, FIELD_WIDTH), vSize, BRAND.grisOscuro, fs),
+    block(502, 531, LABELS.validoHasta, [formatSpanishDateUpper(data.validoHasta)], 19, BRAND.grisOscuro, fs),
+    block(558, 586, LABELS.sucursal, wrapText(data.sucursal, sSize, 2, FIELD_WIDTH), sSize, BRAND.turquesa, fs),
   ].join("")
 
   let fontFace = ""

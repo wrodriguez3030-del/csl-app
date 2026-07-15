@@ -18,6 +18,16 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.49.1] — 2026-07-15
+
+### Changed
+- **Talonario:** se reemplazó la guía por el **arte plano digital oficial** del
+  certificado (`talonario-preimpreso.jpg`, sin perspectiva) y se **reajustaron las
+  posiciones** de los campos contra ese arte: el bloque queda centrado en el área en
+  blanco, sin rozar las cintas inferiores. Verificado por overlay (headless Chrome).
+
+---
+
 ## [0.49.0] — 2026-07-15
 
 ### Added
