@@ -18,6 +18,17 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.50.1] — 2026-07-15
+
+### Changed
+- **Talonario pre-impreso:** letras de los campos y **QR reducidos a la mitad**
+  (formato COMPACTO), a pedido del usuario, con posiciones recompactadas. El
+  **certificado digital NO cambia** (queda con su formato/tamaños actuales).
+  Implementado con formatos `FMT_FULL` (digital) / `FMT_COMPACT` (talonario) en
+  `cert-talonario.ts`; el talonario pasa `compact: true`.
+
+---
+
 ## [0.50.0] — 2026-07-15
 
 ### Added

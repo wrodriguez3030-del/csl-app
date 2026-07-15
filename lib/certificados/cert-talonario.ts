@@ -63,10 +63,10 @@ function esc(v: string): string {
   return String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
-/** Bloque etiqueta + valor(es), centrado en la tarjeta. `fs` = factor de tamaño. */
-function block(labelY: number, valueY: number, label: string, lines: string[], size: number, color: string, fs: number): string {
+/** Bloque etiqueta + valor(es), centrado. `fs` = calibración; `labelSize` ya escalado. */
+function block(labelY: number, valueY: number, label: string, lines: string[], size: number, color: string, fs: number, labelSize: number): string {
   const parts = [
-    `<text x="${CX}" y="${labelY}" text-anchor="middle" font-family="${FONT_MONT}" font-weight="500" font-size="${(LABEL_SIZE * fs).toFixed(1)}" letter-spacing="1.6" fill="${BRAND.grisSecundario}">${esc(label)}</text>`,
+    `<text x="${CX}" y="${labelY}" text-anchor="middle" font-family="${FONT_MONT}" font-weight="500" font-size="${(labelSize * fs).toFixed(1)}" letter-spacing="${labelSize > 8 ? 1.6 : 1}" fill="${BRAND.grisSecundario}">${esc(label)}</text>`,
   ]
   const vSize = size * fs
   lines.forEach((line, i) => {
@@ -77,18 +77,20 @@ function block(labelY: number, valueY: number, label: string, lines: string[], s
   return parts.join("")
 }
 
-// Posición/tamaño del QR (esquina inferior derecha, sobre zona blanca del arte).
-const QR = { x: 806, y: 452, size: 120 } as const
+// Posición/tamaño del QR según formato: digital (grande) o talonario (mitad).
+type QrSpec = { x: number; y: number; size: number; code: number }
+const QR_FULL: QrSpec = { x: 806, y: 452, size: 120, code: 12 }
+const QR_COMPACT: QrSpec = { x: 878, y: 486, size: 60, code: 8 }
 
-function qrBlock(qrDataUri: string, code: string): string {
+function qrBlock(qrDataUri: string, code: string, q: QrSpec): string {
   const parts = [
     // Recuadro blanco detrás del QR → legible aunque caiga sobre una cinta clara.
-    `<rect x="${QR.x - 6}" y="${QR.y - 6}" width="${QR.size + 12}" height="${QR.size + 12}" rx="6" fill="#FFFFFF"/>`,
-    `<image href="${qrDataUri}" x="${QR.x}" y="${QR.y}" width="${QR.size}" height="${QR.size}"/>`,
+    `<rect x="${q.x - 5}" y="${q.y - 5}" width="${q.size + 10}" height="${q.size + 10}" rx="5" fill="#FFFFFF"/>`,
+    `<image href="${qrDataUri}" x="${q.x}" y="${q.y}" width="${q.size}" height="${q.size}"/>`,
   ]
   if (code) {
     parts.push(
-      `<text x="${QR.x + QR.size / 2}" y="${QR.y + QR.size + 15}" text-anchor="middle" font-family="${FONT_MONT}" font-weight="500" font-size="12" letter-spacing="0.5" fill="${BRAND.grisSecundario}">${esc(code)}</text>`,
+      `<text x="${q.x + q.size / 2}" y="${q.y + q.size + q.code + 2}" text-anchor="middle" font-family="${FONT_MONT}" font-weight="500" font-size="${q.code}" letter-spacing="0.3" fill="${BRAND.grisSecundario}">${esc(code)}</text>`,
     )
   }
   return parts.join("")
@@ -104,22 +106,41 @@ const FB_PATH =
  * Pie del certificado: fecha de entrega (pequeña) + teléfono de la sucursal +
  * redes sociales (Instagram/Facebook @cibaospalaser con ícono).
  */
-function footerBlock(data: GiftCertData): string {
+type FooterSpec = {
+  y1: number; dateSize: number
+  y2: number; socialSize: number; iconScale: number
+  igX: number; igTx: number; fbX: number; fbTx: number
+}
+const FOOTER_FULL: FooterSpec = { y1: 552, dateSize: 10.5, y2: 578, socialSize: 11, iconScale: 0.5, igX: -168, igTx: -150, fbX: 18, fbTx: 36 }
+const FOOTER_COMPACT: FooterSpec = { y1: 542, dateSize: 8, y2: 562, socialSize: 8.5, iconScale: 0.4, igX: -128, igTx: -113, fbX: 14, fbTx: 29 }
+
+function footerBlock(data: GiftCertData, f: FooterSpec): string {
   const parts: string[] = []
   const dateStr = formatSpanishDate(data.fechaEmision)
   const phone = String(data.sucursalTelefono ?? "").trim()
   const line1 = `Fecha de entrega: ${dateStr}` + (phone ? `     ·     Tel. ${phone}` : "")
   parts.push(
-    `<text x="${CX}" y="552" text-anchor="middle" font-family="${FONT_MONT}" font-weight="500" font-size="10.5" letter-spacing="0.3" fill="${BRAND.grisSecundario}">${esc(line1)}</text>`,
+    `<text x="${CX}" y="${f.y1}" text-anchor="middle" font-family="${FONT_MONT}" font-weight="500" font-size="${f.dateSize}" letter-spacing="0.2" fill="${BRAND.grisSecundario}">${esc(line1)}</text>`,
   )
-  // Redes sociales centradas con ícono + handle.
-  const y2 = 578
-  const icon = (x: number, path: string) => `<g transform="translate(${x} ${y2 - 11}) scale(0.5)"><path d="${path}" fill="${BRAND.turquesa}"/></g>`
-  parts.push(icon(CX - 168, IG_PATH))
-  parts.push(`<text x="${CX - 150}" y="${y2}" font-family="${FONT_MONT}" font-weight="600" font-size="11" fill="${BRAND.grisOscuro}">${esc(INSTAGRAM_HANDLE)}</text>`)
-  parts.push(icon(CX + 18, FB_PATH))
-  parts.push(`<text x="${CX + 36}" y="${y2}" font-family="${FONT_MONT}" font-weight="600" font-size="11" fill="${BRAND.grisOscuro}">${esc(FACEBOOK_HANDLE)}</text>`)
+  const icon = (x: number, path: string) => `<g transform="translate(${x} ${f.y2 - f.socialSize * 0.75}) scale(${f.iconScale})"><path d="${path}" fill="${BRAND.turquesa}"/></g>`
+  parts.push(icon(CX + f.igX, IG_PATH))
+  parts.push(`<text x="${CX + f.igTx}" y="${f.y2}" font-family="${FONT_MONT}" font-weight="600" font-size="${f.socialSize}" fill="${BRAND.grisOscuro}">${esc(INSTAGRAM_HANDLE)}</text>`)
+  parts.push(icon(CX + f.fbX, FB_PATH))
+  parts.push(`<text x="${CX + f.fbTx}" y="${f.y2}" font-family="${FONT_MONT}" font-weight="600" font-size="${f.socialSize}" fill="${BRAND.grisOscuro}">${esc(FACEBOOK_HANDLE)}</text>`)
   return parts.join("")
+}
+
+// Formatos: digital (grande) y talonario compacto (~mitad). pos=[labelY, valueY].
+type FmtSpec = { scale: number; pos: [number, number][]; vh: number; qr: QrSpec; footer: FooterSpec }
+const FMT_FULL: FmtSpec = {
+  scale: 1,
+  pos: [[316, 340], [362, 386], [408, 432], [456, 478], [500, 523]],
+  vh: 16, qr: QR_FULL, footer: FOOTER_FULL,
+}
+const FMT_COMPACT: FmtSpec = {
+  scale: 0.52,
+  pos: [[338, 351], [376, 389], [414, 427], [452, 464], [489, 502]],
+  vh: 9, qr: QR_COMPACT, footer: FOOTER_COMPACT,
 }
 
 export interface CertRenderOpts {
@@ -133,6 +154,8 @@ export interface CertRenderOpts {
   includeArt?: boolean
   /** data:URI o URL del arte de fondo. */
   artSrc?: string
+  /** true → formato COMPACTO (~mitad) para imprimir sobre el talonario físico. */
+  compact?: boolean
   embedFonts?: boolean
   montserratB64?: string
 }
@@ -147,23 +170,26 @@ export function renderCertificate(data: GiftCertData, opts: CertRenderOpts = {})
   const { w, h } = TALON_CARD
   const cal = opts.cal ?? defaultTalonarioCalibration
 
-  const oSize = fit("otorgadoA", data.otorgadoA)
-  const cSize = fit("cortesiaDe", data.cortesiaDe)
-  const vSize = fit("validoPara", data.validoPara)
-  const sSize = fit("sucursal", data.sucursal)
+  const F = opts.compact ? FMT_COMPACT : FMT_FULL
+  const sc = F.scale
+  const labelSize = LABEL_SIZE * sc
+  const oSize = fit("otorgadoA", data.otorgadoA) * sc
+  const cSize = fit("cortesiaDe", data.cortesiaDe) * sc
+  const vSize = fit("validoPara", data.validoPara) * sc
+  const sSize = fit("sucursal", data.sucursal) * sc
   const fs = cal.fontScale || 1
 
   // Bloque de campos centrado en el área en blanco, sin rozar las cintas.
   const fields = [
-    block(316, 340, LABELS.otorgadoA, wrapText(data.otorgadoA, oSize, 1, FIELD_WIDTH), oSize, BRAND.grisOscuro, fs),
-    block(362, 386, LABELS.cortesiaDe, wrapText(data.cortesiaDe, cSize, 1, FIELD_WIDTH), cSize, BRAND.grisOscuro, fs),
-    block(408, 432, LABELS.validoPara, wrapText(data.validoPara, vSize, 2, FIELD_WIDTH), vSize, BRAND.grisOscuro, fs),
-    block(456, 478, LABELS.validoHasta, [formatSpanishDateUpper(data.validoHasta)], 16, BRAND.grisOscuro, fs),
-    block(500, 523, LABELS.sucursal, wrapText(data.sucursal, sSize, 2, FIELD_WIDTH), sSize, BRAND.turquesa, fs),
+    block(F.pos[0][0], F.pos[0][1], LABELS.otorgadoA, wrapText(data.otorgadoA, oSize, 1, FIELD_WIDTH), oSize, BRAND.grisOscuro, fs, labelSize),
+    block(F.pos[1][0], F.pos[1][1], LABELS.cortesiaDe, wrapText(data.cortesiaDe, cSize, 1, FIELD_WIDTH), cSize, BRAND.grisOscuro, fs, labelSize),
+    block(F.pos[2][0], F.pos[2][1], LABELS.validoPara, wrapText(data.validoPara, vSize, 2, FIELD_WIDTH), vSize, BRAND.grisOscuro, fs, labelSize),
+    block(F.pos[3][0], F.pos[3][1], LABELS.validoHasta, [formatSpanishDateUpper(data.validoHasta)], F.vh, BRAND.grisOscuro, fs, labelSize),
+    block(F.pos[4][0], F.pos[4][1], LABELS.sucursal, wrapText(data.sucursal, sSize, 2, FIELD_WIDTH), sSize, BRAND.turquesa, fs, labelSize),
   ].join("")
 
-  const footer = footerBlock(data)
-  const qr = opts.qrDataUri ? qrBlock(opts.qrDataUri, opts.code || "") : ""
+  const footer = footerBlock(data, F.footer)
+  const qr = opts.qrDataUri ? qrBlock(opts.qrDataUri, opts.code || "", F.qr) : ""
 
   let fontFace = ""
   if (opts.embedFonts && opts.montserratB64) {
@@ -202,6 +228,7 @@ export function renderTalonarioSvg(
     qrDataUri: assets.qrDataUri,
     code: assets.code,
     includeArt: false,
+    compact: true,
     embedFonts: assets.embedFonts,
     montserratB64: assets.montserratB64,
   })
