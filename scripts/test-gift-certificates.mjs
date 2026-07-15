@@ -26,7 +26,7 @@ import {
   effectiveEstado,
   isExpired,
 } from "../lib/certificados/cert-state.ts"
-import { renderCertificateSvg } from "../lib/certificados/cert-svg.ts"
+import { renderCertificate } from "../lib/certificados/cert-talonario.ts"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 let passed = 0
@@ -143,7 +143,7 @@ test("Emitido vencido → efectivo Vencido", () => {
 
 // 9. SVG: etiquetas exactas, socials, sin "VÁLIDO POR"
 test("SVG usa etiquetas exactas y socials, nunca 'VÁLIDO POR'", () => {
-  const svg = renderCertificateSvg({
+  const svg = renderCertificate({
     codigo: "CSL-REG-2026-000001",
     otorgadoA: "Licely Germosen",
     cortesiaDe: "Wendy Chaljub",
@@ -151,13 +151,16 @@ test("SVG usa etiquetas exactas y socials, nunca 'VÁLIDO POR'", () => {
     validoHasta: "2026-08-14",
     fechaEmision: "2026-07-15",
     sucursal: "Rafael Vidal – Plaza Mediterránea",
+    sucursalTelefono: "809-555-1234",
     templateId: "moderno",
-  })
+  }, { code: "CSL-REG-2026-000001" })
   assert.ok(svg.includes("VÁLIDO PARA:"), "falta VÁLIDO PARA:")
   assert.ok(svg.includes("SUCURSAL DE ENTREGA:"), "falta SUCURSAL DE ENTREGA:")
   assert.ok(!svg.includes("VÁLIDO POR"), "no debe contener VÁLIDO POR")
   assert.ok(svg.includes("@cibaospalaser"), "falta @cibaospalaser")
   assert.ok(svg.includes("14 DE AGOSTO DE 2026"), "falta fecha en español")
+  assert.ok(svg.includes("Fecha de entrega:"), "falta la fecha de entrega en el pie")
+  assert.ok(svg.includes("Tel. 809-555-1234"), "falta el teléfono de la sucursal")
   assert.ok(svg.startsWith("<svg"))
 })
 test("buildCertificateModel expone las 5 etiquetas correctas", () => {

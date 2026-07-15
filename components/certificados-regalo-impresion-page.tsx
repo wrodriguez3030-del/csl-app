@@ -35,7 +35,7 @@ export function CertificadosRegaloImpresionPage() {
     () =>
       (sucursalesDb || [])
         .filter((s) => s.Estado !== "Inactiva")
-        .map((s) => ({ nombre: s.Nombre, direccion: s.Direccion || "" }))
+        .map((s) => ({ nombre: s.Nombre, direccion: s.Direccion || "", telefono: s.Telefono || "" }))
         .filter((s) => s.nombre),
     [sucursalesDb],
   )

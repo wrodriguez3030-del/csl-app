@@ -18,6 +18,35 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.50.0] — 2026-07-15
+
+### Added
+- **Formato único de certificado + QR + pie.** El **certificado digital** ahora
+  usa el **mismo formato** que el talonario: arte oficial de fondo + campos + QR.
+  - **Código QR de validación en la esquina derecha**, legible (recuadro blanco
+    de fondo para que escanee incluso sobre las cintas), con el código debajo.
+    Generado localmente (`qrcode`, sin servicios externos).
+  - **Pie del certificado** en cada certificado: **fecha de entrega** (día mes año,
+    pequeña) + **teléfono de la sucursal** + **redes sociales** con ícono
+    (Instagram/Facebook `@cibaospalaser`).
+  - **Teléfono por sucursal**: nueva columna `csl_sucursales.telefono` (migración
+    `202607150002`) + campo en la config de Sucursales; el certificado guarda un
+    snapshot del teléfono al emitir y lo muestra en el pie.
+- El talonario también imprime el QR (genera/emite el código al imprimir para que
+  el QR valide) y el pie.
+
+### Changed
+- **Tamaño de letra reducido** en los campos del certificado (a pedido del usuario)
+  y bloque recompactado para dar lugar al pie.
+- El módulo digital deja de ofrecer 3 diseños: se unifica en el **formato oficial**
+  (arte del talonario). Se retira el selector de diseño.
+
+### Removed
+- `lib/certificados/cert-svg.ts` (los 3 diseños sintéticos) — reemplazado por el
+  formato oficial único (`cert-talonario.ts` → `renderCertificate`).
+
+---
+
 ## [0.49.1] — 2026-07-15
 
 ### Changed

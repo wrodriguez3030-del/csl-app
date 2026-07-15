@@ -4,6 +4,7 @@ export interface Sucursal {
   Nombre: string
   Ciudad: string
   Direccion?: string
+  Telefono?: string
   Estado: "Activa" | "Inactiva"
   Notas?: string
   Correo?: string

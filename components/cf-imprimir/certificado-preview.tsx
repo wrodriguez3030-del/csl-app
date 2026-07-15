@@ -8,7 +8,7 @@
  * es lo que sale". Responsive (el SVG llena el ancho del contenedor).
  */
 import { useEffect, useMemo } from "react"
-import { renderCertificateSvg } from "@/lib/certificados/cert-svg"
+import { renderCertificate, CERT_ART_SRC } from "@/lib/certificados/cert-talonario"
 import type { GiftCertData } from "@/lib/certificados/cert-layout"
 
 let assetsInjected = false
@@ -45,9 +45,11 @@ export function CertificadoPreview({
 
   const svg = useMemo(
     () =>
-      renderCertificateSvg(data, {
-        logoSrc: "/cibao-spa-laser-logo.jpeg",
+      renderCertificate(data, {
+        includeArt: true,
+        artSrc: CERT_ART_SRC,
         qrDataUri,
+        code: data.codigo,
         embedFonts: false,
       }),
     [data, qrDataUri],

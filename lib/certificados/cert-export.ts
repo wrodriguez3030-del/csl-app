@@ -10,11 +10,14 @@
  */
 import QRCode from "qrcode"
 import { PDFDocument } from "pdf-lib"
-import { CANVAS, BRAND, type GiftCertData } from "./cert-layout"
-import { renderCertificateSvg, type CertAssets } from "./cert-svg"
+import { BRAND, type GiftCertData } from "./cert-layout"
+import { renderCertificate, TALON_CARD, CERT_ART_SRC } from "./cert-talonario"
 
-// ── Carga y cache de assets pesados (fuentes + logo) ────────────────────────
-let cachedAssets: { montserratB64: string; alluraB64: string; logoSrc: string } | null = null
+// Lienzo del certificado (tarjeta física ≈ 9.78×6.3 in).
+const CANVAS = TALON_CARD
+
+// ── Carga y cache de assets pesados (fuente + arte oficial) ─────────────────
+let cachedAssets: { montserratB64: string; artDataUri: string } | null = null
 
 function bufToB64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf)
@@ -34,18 +37,16 @@ async function fetchB64(url: string): Promise<string> {
   return bufToB64(buf)
 }
 
-/** Carga (una vez) fuentes y logo embebibles para exportación/impresión. */
+/** Carga (una vez) la fuente y el arte oficial embebibles para exportación/impresión. */
 export async function loadCertAssets(): Promise<NonNullable<typeof cachedAssets>> {
   if (cachedAssets) return cachedAssets
-  const [montserratB64, alluraB64, logoB64] = await Promise.all([
+  const [montserratB64, artB64] = await Promise.all([
     fetchB64("/fonts/Montserrat.ttf"),
-    fetchB64("/fonts/Allura-Regular.ttf"),
-    fetchB64("/cibao-spa-laser-logo.jpeg"),
+    fetchB64(CERT_ART_SRC),
   ])
   cachedAssets = {
     montserratB64,
-    alluraB64,
-    logoSrc: `data:image/jpeg;base64,${logoB64}`,
+    artDataUri: `data:image/jpeg;base64,${artB64}`,
   }
   return cachedAssets
 }
@@ -61,17 +62,17 @@ export async function makeQrDataUri(validationUrl: string): Promise<string> {
   })
 }
 
-/** SVG listo para EXPORTAR (fuentes + logo embebidos, QR embebido). */
+/** SVG del certificado DIGITAL listo para EXPORTAR (arte + fuente + QR embebidos). */
 export async function buildExportSvg(data: GiftCertData, qrDataUri: string): Promise<string> {
   const assets = await loadCertAssets()
-  const full: CertAssets = {
+  return renderCertificate(data, {
+    includeArt: true,
+    artSrc: assets.artDataUri,
     embedFonts: true,
     montserratB64: assets.montserratB64,
-    alluraB64: assets.alluraB64,
-    logoSrc: assets.logoSrc,
     qrDataUri,
-  }
-  return renderCertificateSvg(data, full)
+    code: data.codigo,
+  })
 }
 
 // ── Rasterizado ─────────────────────────────────────────────────────────────

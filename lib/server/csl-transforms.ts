@@ -27,7 +27,7 @@ import type { Row } from "./csl-types"
 export function fromDb(entity: string, row: Row): Row {
   switch (entity) {
     case "sucursales":
-      return { Codigo: row.codigo, Nombre: row.nombre, Ciudad: row.ciudad, Direccion: row.direccion, Estado: row.estado, Notas: row.notas, Correo: row.correo }
+      return { Codigo: row.codigo, Nombre: row.nombre, Ciudad: row.ciudad, Direccion: row.direccion, Telefono: row.telefono, Estado: row.estado, Notas: row.notas, Correo: row.correo }
     case "equipos":
       return {
         // business_id se expone al frontend para que el filtro superadmin

@@ -594,15 +594,15 @@ async function nextGiftCode(): Promise<string> {
   return `CSL-REG-${y}-${rand}`
 }
 
-/** Dirección snapshot de una sucursal por nombre dentro del tenant activo. */
-async function giftBranchSnapshot(nombre: string): Promise<{ direccion: string }> {
+/** Snapshot (dirección + teléfono) de una sucursal por nombre dentro del tenant. */
+async function giftBranchSnapshot(nombre: string): Promise<{ direccion: string; telefono: string }> {
   const sb = getSupabaseAdmin()
   const biz = effectiveBusinessId()
-  let q = sb.from("csl_sucursales").select("nombre,direccion,business_id").ilike("nombre", nombre)
+  let q = sb.from("csl_sucursales").select("nombre,direccion,telefono,business_id").ilike("nombre", nombre)
   if (biz) q = q.eq("business_id", biz)
   const { data } = await q.limit(1)
   const row = Array.isArray(data) && data[0] ? (data[0] as Row) : null
-  return { direccion: row ? String(row.direccion || "") : "" }
+  return { direccion: row ? String(row.direccion || "") : "", telefono: row ? String(row.telefono || "") : "" }
 }
 
 export async function handleAction(params: ActionParams, user: ActionUser) {
@@ -3071,7 +3071,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true }
     }
     case "saveSucursal": {
-      const row = { codigo: textValue(params, "codigo"), nombre: textValue(params, "nombre"), ciudad: textValue(params, "ciudad"), direccion: textValue(params, "direccion"), estado: textValue(params, "estado", "Activa"), notas: textValue(params, "notas"), correo: textValue(params, "correo") }
+      const row = { codigo: textValue(params, "codigo"), nombre: textValue(params, "nombre"), ciudad: textValue(params, "ciudad"), direccion: textValue(params, "direccion"), telefono: textValue(params, "telefono"), estado: textValue(params, "estado", "Activa"), notas: textValue(params, "notas"), correo: textValue(params, "correo") }
       await upsertRow("sucursales", row)
       return { ok: true, record: fromDb("sucursales", row) }
     }
@@ -4223,6 +4223,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         fecha_vencimiento: dateValue(payload.validoHasta),
         sucursal: String(payload.sucursal || ""),
         sucursal_direccion: String(payload.sucursalDireccion || snapshot.direccion || ""),
+        sucursal_telefono: String(payload.sucursalTelefono || snapshot.telefono || ""),
         telefono: String(payload.telefono || ""),
         correo: String(payload.correo || ""),
         nota_interna: String(payload.notaInterna || ""),

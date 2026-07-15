@@ -96,6 +96,14 @@ export function formatSpanishDateUpper(iso: string | null | undefined): string {
   return `${date.getDate()} DE ${MESES[date.getMonth()]} DE ${date.getFullYear()}`.toUpperCase()
 }
 
+/** Fecha ISO → "14 de agosto de 2026" (español, minúsculas — para el pie). */
+export function formatSpanishDate(iso: string | null | undefined): string {
+  if (!iso) return ""
+  const date = new Date(`${iso}T12:00:00`)
+  if (Number.isNaN(date.getTime())) return ""
+  return `${date.getDate()} de ${MESES[date.getMonth()]} de ${date.getFullYear()}`
+}
+
 // ── Ajuste automático de tamaño (por conteo de caracteres, §9 del spec) ──────
 type Tier = { max: number; size: number }
 

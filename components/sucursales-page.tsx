@@ -40,6 +40,7 @@ const emptySucursal: Sucursal = {
   Nombre: "",
   Ciudad: "",
   Direccion: "",
+  Telefono: "",
   Estado: "Activa",
   Notas: "",
   Correo: "",
@@ -111,6 +112,7 @@ export function SucursalesPage() {
         nombre: formData.Nombre,
         ciudad: formData.Ciudad || "",
         direccion: formData.Direccion || "",
+        telefono: formData.Telefono || "",
         estado: formData.Estado,
         notas: formData.Notas || "",
         correo: formData.Correo || "",
@@ -284,6 +286,10 @@ export function SucursalesPage() {
             <div className="space-y-1.5">
               <Label>Dirección</Label>
               <Input value={formData.Direccion} onChange={(e) => setFormData({ ...formData, Direccion: e.target.value })} placeholder="Dirección" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Teléfono</Label>
+              <Input value={formData.Telefono || ""} onChange={(e) => setFormData({ ...formData, Telefono: e.target.value })} placeholder="809-000-0000 (aparece en el pie del certificado)" />
             </div>
             <div className="space-y-1.5">
               <Label>Correo</Label>

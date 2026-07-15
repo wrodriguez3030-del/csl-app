@@ -21,7 +21,7 @@ import { addDaysIso, validateGiftCert, type GiftCertData } from "@/lib/certifica
 import {
   renderTalonarioSvg, TALON_CARD, defaultTalonarioCalibration, type TalonarioCalibration,
 } from "@/lib/certificados/cert-talonario"
-import { loadCertAssets } from "@/lib/certificados/cert-export"
+import { loadCertAssets, makeQrDataUri } from "@/lib/certificados/cert-export"
 import { useGiftCertificates, errMsg } from "./use-gift-certificates"
 
 const TODAY = new Date().toISOString().slice(0, 10)
@@ -38,6 +38,7 @@ function ensureFont() {
 }
 
 interface TalonForm {
+  codigo: string
   otorgadoA: string
   cortesiaDe: string
   validoPara: string
@@ -52,14 +53,15 @@ export function TalonarioPage() {
   const gc = useGiftCertificates()
 
   const sucursales = useMemo(
-    () => (sucursalesDb || []).filter((s) => s.Estado !== "Inactiva").map((s) => ({ nombre: s.Nombre, direccion: s.Direccion || "" })).filter((s) => s.nombre),
+    () => (sucursalesDb || []).filter((s) => s.Estado !== "Inactiva").map((s) => ({ nombre: s.Nombre, direccion: s.Direccion || "", telefono: s.Telefono || "" })).filter((s) => s.nombre),
     [sucursalesDb],
   )
 
   const [form, setForm] = useState<TalonForm>({
-    otorgadoA: "", cortesiaDe: "", validoPara: "",
+    codigo: "", otorgadoA: "", cortesiaDe: "", validoPara: "",
     validoHasta: addDaysIso(TODAY, 30), fechaEmision: TODAY, sucursal: "",
   })
+  const [qrDataUri, setQrDataUri] = useState("")
   const [cal, setCal] = useState<TalonarioCalibration>(defaultTalonarioCalibration)
   const [showGuide, setShowGuide] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
@@ -91,12 +93,21 @@ export function TalonarioPage() {
     setCal(defaultTalonarioCalibration)
   }
 
-  const sucursalDireccion = useMemo(() => sucursales.find((s) => s.nombre === form.sucursal)?.direccion || "", [sucursales, form.sucursal])
+  const branch = useMemo(() => sucursales.find((s) => s.nombre === form.sucursal), [sucursales, form.sucursal])
+  const sucursalDireccion = branch?.direccion || ""
+  const sucursalTelefono = branch?.telefono || ""
   const data: GiftCertData = useMemo(
-    () => ({ codigo: "", ...form, sucursalDireccion, templateId: "moderno" }),
-    [form, sucursalDireccion],
+    () => ({ ...form, sucursalDireccion, sucursalTelefono, templateId: "moderno" }),
+    [form, sucursalDireccion, sucursalTelefono],
   )
-  const previewSvg = useMemo(() => renderTalonarioSvg(data, cal), [data, cal])
+  const previewSvg = useMemo(() => renderTalonarioSvg(data, cal, { qrDataUri, code: form.codigo }), [data, cal, qrDataUri, form.codigo])
+
+  // QR (local) desde el código, una vez guardado el certificado.
+  useEffect(() => {
+    if (!form.codigo) { setQrDataUri(""); return }
+    const url = `${typeof window !== "undefined" ? window.location.origin : ""}/certificado-regalo/validar?c=${encodeURIComponent(form.codigo)}`
+    void makeQrDataUri(url).then(setQrDataUri).catch(() => setQrDataUri(""))
+  }, [form.codigo])
 
   function validateNow(): boolean {
     const errs = validateGiftCert({ ...form })
@@ -107,13 +118,35 @@ export function TalonarioPage() {
 
   function flash(m: string) { setMsg(m); setError(""); window.setTimeout(() => setMsg(""), 4000) }
 
+  function validationUrl(code: string) {
+    return `${typeof window !== "undefined" ? window.location.origin : ""}/certificado-regalo/validar?c=${encodeURIComponent(code)}`
+  }
+
+  /** Guarda+emite (si aún no tiene código) y devuelve el código para el QR. */
+  async function ensureRecord(): Promise<string> {
+    if (form.codigo) return form.codigo
+    if (!canPerm(user, "gift_certificates.create")) return ""
+    const rec = await gc.save({
+      otorgadoA: form.otorgadoA, cortesiaDe: form.cortesiaDe, validoPara: form.validoPara,
+      validoHasta: form.validoHasta, fechaEmision: form.fechaEmision, sucursal: form.sucursal,
+      sucursalDireccion, sucursalTelefono, templateId: "moderno",
+    })
+    await gc.emit(rec.codigo).catch(() => undefined)
+    set({ codigo: rec.codigo })
+    void gc.refresh()
+    return rec.codigo
+  }
+
   async function doPrint() {
     if (busy) return
     if (!validateNow()) return
     setBusy("print")
     try {
+      // Asegura un código real → el QR valida (si el usuario puede registrar).
+      const code = await ensureRecord()
+      const qr = code ? (qrDataUri || (await makeQrDataUri(validationUrl(code)))) : ""
       const assets = await loadCertAssets()
-      const svg = renderTalonarioSvg(data, cal, { embedFonts: true, montserratB64: assets.montserratB64 })
+      const svg = renderTalonarioSvg(data, cal, { embedFonts: true, montserratB64: assets.montserratB64, qrDataUri: qr, code })
       const w = window.open("", "_blank")
       if (!w) { setError("Habilita las ventanas emergentes para imprimir."); return }
       w.document.write(
@@ -138,14 +171,8 @@ export function TalonarioPage() {
     if (!canPerm(user, "gift_certificates.create")) { setError("No tienes permiso para registrar certificados."); return }
     setBusy("save")
     try {
-      const rec = await gc.save({
-        otorgadoA: form.otorgadoA, cortesiaDe: form.cortesiaDe, validoPara: form.validoPara,
-        validoHasta: form.validoHasta, fechaEmision: form.fechaEmision, sucursal: form.sucursal,
-        sucursalDireccion, templateId: "moderno",
-      })
-      await gc.emit(rec.codigo).catch(() => undefined)
-      void gc.refresh()
-      flash(`Registrado y emitido · ${rec.codigo}`)
+      const code = await ensureRecord()
+      flash(code ? `Registrado y emitido · ${code}` : "Guardado")
     } catch (e) {
       setError(errMsg(e))
     } finally {

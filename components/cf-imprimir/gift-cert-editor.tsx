@@ -20,7 +20,7 @@ import { Label } from "@/components/ui/label"
 import { canPerm } from "@/lib/permissions"
 import type { SystemUser } from "@/lib/security"
 import {
-  validateGiftCert, addDaysIso, GIFT_TEMPLATES,
+  validateGiftCert, addDaysIso,
   type GiftCertData, type GiftTemplateId,
 } from "@/lib/certificados/cert-layout"
 import { canDo, effectiveEstado, type GiftCertAction } from "@/lib/certificados/cert-state"
@@ -83,7 +83,7 @@ export function GiftCertEditor({
   onChanged,
 }: {
   initial: GiftCertRecord | null
-  sucursales: { nombre: string; direccion: string }[]
+  sucursales: { nombre: string; direccion: string; telefono: string }[]
   user: SystemUser | null
   gc: ReturnType<typeof useGiftCertificates>
   onBack: () => void
@@ -103,10 +103,9 @@ export function GiftCertEditor({
   const can = (p: string) => canPerm(user, p)
 
   const set = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }))
-  const sucursalDireccion = useMemo(
-    () => sucursales.find((s) => s.nombre === form.sucursal)?.direccion || "",
-    [sucursales, form.sucursal],
-  )
+  const branch = useMemo(() => sucursales.find((s) => s.nombre === form.sucursal), [sucursales, form.sucursal])
+  const sucursalDireccion = branch?.direccion || ""
+  const sucursalTelefono = branch?.telefono || ""
 
   const previewData: GiftCertData = useMemo(
     () => ({
@@ -118,9 +117,10 @@ export function GiftCertEditor({
       fechaEmision: form.fechaEmision,
       sucursal: form.sucursal,
       sucursalDireccion,
+      sucursalTelefono,
       templateId: form.templateId,
     }),
-    [form, sucursalDireccion],
+    [form, sucursalDireccion, sucursalTelefono],
   )
 
   // QR (local) para el preview: depende solo del código (una vez guardado).
@@ -170,6 +170,7 @@ export function GiftCertEditor({
         fechaEmision: form.fechaEmision,
         sucursal: form.sucursal,
         sucursalDireccion,
+        sucursalTelefono,
         telefono: form.telefono,
         correo: form.correo,
         notaInterna: form.notaInterna,
@@ -214,7 +215,7 @@ export function GiftCertEditor({
   async function exportSvg(): Promise<{ svg: string; code: string } | null> {
     const rec = await ensureSaved()
     if (!rec) return null
-    const data: GiftCertData = { ...previewData, codigo: rec.codigo, sucursalDireccion: rec.sucursalDireccion || sucursalDireccion }
+    const data: GiftCertData = { ...previewData, codigo: rec.codigo, sucursalDireccion: rec.sucursalDireccion || sucursalDireccion, sucursalTelefono: rec.sucursalTelefono || sucursalTelefono }
     const url = `${window.location.origin}/certificado-regalo/validar?c=${encodeURIComponent(rec.codigo)}`
     const qr = await makeQrDataUri(url)
     const svg = await buildExportSvg(data, qr)
@@ -382,24 +383,6 @@ export function GiftCertEditor({
             </CardContent>
           </Card>
 
-          {/* Selector de diseño */}
-          <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-base">Diseño</CardTitle></CardHeader>
-            <CardContent className="grid grid-cols-3 gap-2">
-              {GIFT_TEMPLATES.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  disabled={!editable}
-                  onClick={() => set({ templateId: t.id })}
-                  className={`rounded-lg border p-2 text-left text-xs transition ${form.templateId === t.id ? "border-primary ring-2 ring-primary/30" : "border-input hover:border-primary/50"} disabled:opacity-60`}
-                >
-                  <div className="mb-1 font-semibold">{t.nombre}</div>
-                  <div className="text-[11px] leading-tight text-muted-foreground">{t.descripcion}</div>
-                </button>
-              ))}
-            </CardContent>
-          </Card>
         </div>
 
         {/* ── Preview + acciones ── */}
