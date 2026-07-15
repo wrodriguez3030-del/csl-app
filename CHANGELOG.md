@@ -18,6 +18,16 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.51.1] — 2026-07-15
+
+### Changed
+- **Talonario · vista centrada, impresión con calibración:** la previsualización
+  web se muestra siempre **centrada** en la tarjeta (offset 0), mientras que la
+  **impresión** usa la calibración (Mover) para alinear sobre el papel físico.
+  Así la vista se ve balanceada y el papel sale correcto.
+
+---
+
 ## [0.51.0] — 2026-07-15
 
 ### Changed

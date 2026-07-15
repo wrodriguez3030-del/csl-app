@@ -103,7 +103,10 @@ export function TalonarioPage() {
   )
   // Código corto de 4 dígitos (confirmación) — se codifica en el QR y se imprime.
   const confirm4 = useMemo(() => confirmCode4(form), [form])
-  const previewSvg = useMemo(() => renderTalonarioSvg(data, cal, { qrDataUri, code: confirm4 }), [data, cal, qrDataUri, confirm4])
+  // La VISTA se muestra siempre CENTRADA (desplazamiento 0); el "Mover" de la
+  // calibración se aplica SOLO al imprimir (para alinear sobre el papel físico).
+  const previewCal = useMemo(() => ({ ...cal, offsetX: 0, offsetY: 0 }), [cal])
+  const previewSvg = useMemo(() => renderTalonarioSvg(data, previewCal, { qrDataUri, code: confirm4 }), [data, previewCal, qrDataUri, confirm4])
 
   // QR (local) con SOLO los 4 dígitos — siempre visible en la vista (sin guardar).
   useEffect(() => {
@@ -240,6 +243,7 @@ export function TalonarioPage() {
             <CardHeader className="pb-3"><CardTitle className="text-base">Calibración de impresión</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               <p className="text-xs text-muted-foreground">
+                La vista se muestra <b>centrada</b>; estos ajustes se aplican <b>solo al imprimir</b>.
                 Si al imprimir el texto sale corrido, muévelo con las flechas. En el diálogo de impresión pon
                 <b> Márgenes: Ninguno</b> y <b>Escala: 100%</b> (sin “ajustar a la página”).
               </p>
