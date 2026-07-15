@@ -18,6 +18,22 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.51.0] — 2026-07-15
+
+### Changed
+- **Talonario · centrado por defecto:** el texto ahora sale centrado bajo el
+  título pre-impreso sin calibrar (se hornea el desplazamiento 130/-8 que el
+  usuario validó como correcto para impresión). El certificado digital usa
+  calibración cero (no cambia). "Restablecer" vuelve a ese valor centrado.
+
+### Added
+- **Código de confirmación de 4 dígitos** en el talonario: el QR ahora codifica
+  **solo 4 dígitos** (derivados de los datos, estables) y se imprimen debajo del QR.
+- **El QR siempre aparece** en la vista y en la impresión del talonario (antes solo
+  salía tras guardar).
+
+---
+
 ## [0.50.5] — 2026-07-15
 
 ### Changed

@@ -104,6 +104,24 @@ export function formatSpanishDate(iso: string | null | undefined): string {
   return `${date.getDate()} de ${MESES[date.getMonth()]} de ${date.getFullYear()}`
 }
 
+/**
+ * Código corto de 4 dígitos para CONFIRMAR el certificado (se imprime bajo el QR
+ * y se codifica en el QR). Derivado (hash estable) de los datos del certificado
+ * → mismo dato = mismo código; se ve en la vista sin necesidad de guardar.
+ */
+export function confirmCode4(data: {
+  otorgadoA?: string; cortesiaDe?: string; validoPara?: string; validoHasta?: string; fechaEmision?: string
+}): string {
+  const text = [data.otorgadoA, data.cortesiaDe, data.validoPara, data.validoHasta, data.fechaEmision]
+    .map((v) => displayText(v || "")).join("|")
+  let hash = 2166136261
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return String((hash >>> 0) % 10000).padStart(4, "0")
+}
+
 // ── Ajuste automático de tamaño (por conteo de caracteres, §9 del spec) ──────
 type Tier = { max: number; size: number }
 

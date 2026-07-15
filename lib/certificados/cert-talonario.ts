@@ -34,12 +34,17 @@ export interface TalonarioCalibration {
   fontScale: number
 }
 
+// Por defecto el talonario va desplazado para quedar CENTRADO bajo el título
+// pre-impreso (el lazo empuja el logo/título a la derecha). Valores validados
+// contra la impresión real. El certificado DIGITAL usa calibración cero (ZERO_CAL).
 export const defaultTalonarioCalibration: TalonarioCalibration = {
-  offsetX: 0,
-  offsetY: 0,
+  offsetX: 130,
+  offsetY: -8,
   scale: 1,
   fontScale: 1,
 }
+
+const ZERO_CAL: TalonarioCalibration = { offsetX: 0, offsetY: 0, scale: 1, fontScale: 1 }
 
 // Auto-fit (por conteo de caracteres) en unidades de la tarjeta física.
 type Tier = { max: number; size: number }
@@ -170,7 +175,8 @@ export interface CertRenderOpts {
  */
 export function renderCertificate(data: GiftCertData, opts: CertRenderOpts = {}): string {
   const { w, h } = TALON_CARD
-  const cal = opts.cal ?? defaultTalonarioCalibration
+  // Digital (sin cal) → cero; talonario pasa su propia calibración (default 130/-8).
+  const cal = opts.cal ?? ZERO_CAL
 
   const F = opts.compact ? FMT_COMPACT : FMT_FULL
   const sc = F.scale

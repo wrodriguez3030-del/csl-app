@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label"
 import { useAppStore } from "@/lib/store"
 import { useSessionUser } from "@/hooks/use-session-user"
 import { canPerm } from "@/lib/permissions"
-import { addDaysIso, validateGiftCert, type GiftCertData } from "@/lib/certificados/cert-layout"
+import { addDaysIso, validateGiftCert, confirmCode4, type GiftCertData } from "@/lib/certificados/cert-layout"
 import {
   renderTalonarioSvg, TALON_CARD, defaultTalonarioCalibration, type TalonarioCalibration,
 } from "@/lib/certificados/cert-talonario"
@@ -101,14 +101,14 @@ export function TalonarioPage() {
     () => ({ ...form, sucursalDireccion, sucursalTelefono, templateId: "moderno" }),
     [form, sucursalDireccion, sucursalTelefono],
   )
-  const previewSvg = useMemo(() => renderTalonarioSvg(data, cal, { qrDataUri, code: form.codigo }), [data, cal, qrDataUri, form.codigo])
+  // Código corto de 4 dígitos (confirmación) — se codifica en el QR y se imprime.
+  const confirm4 = useMemo(() => confirmCode4(form), [form])
+  const previewSvg = useMemo(() => renderTalonarioSvg(data, cal, { qrDataUri, code: confirm4 }), [data, cal, qrDataUri, confirm4])
 
-  // QR (local) desde el código, una vez guardado el certificado.
+  // QR (local) con SOLO los 4 dígitos — siempre visible en la vista (sin guardar).
   useEffect(() => {
-    if (!form.codigo) { setQrDataUri(""); return }
-    const url = `${typeof window !== "undefined" ? window.location.origin : ""}/certificado-regalo/validar?c=${encodeURIComponent(form.codigo)}`
-    void makeQrDataUri(url).then(setQrDataUri).catch(() => setQrDataUri(""))
-  }, [form.codigo])
+    void makeQrDataUri(confirm4).then(setQrDataUri).catch(() => setQrDataUri(""))
+  }, [confirm4])
 
   function validateNow(): boolean {
     const errs = validateGiftCert({ ...form })
@@ -119,11 +119,7 @@ export function TalonarioPage() {
 
   function flash(m: string) { setMsg(m); setError(""); window.setTimeout(() => setMsg(""), 4000) }
 
-  function validationUrl(code: string) {
-    return `${typeof window !== "undefined" ? window.location.origin : ""}/certificado-regalo/validar?c=${encodeURIComponent(code)}`
-  }
-
-  /** Guarda+emite (si aún no tiene código) y devuelve el código para el QR. */
+  /** Guarda+emite (si aún no tiene código) para dejar trazado el certificado. */
   async function ensureRecord(): Promise<string> {
     if (form.codigo) return form.codigo
     if (!canPerm(user, "gift_certificates.create")) return ""
@@ -143,11 +139,11 @@ export function TalonarioPage() {
     if (!validateNow()) return
     setBusy("print")
     try {
-      // Asegura un código real → el QR valida (si el usuario puede registrar).
-      const code = await ensureRecord()
-      const qr = code ? (qrDataUri || (await makeQrDataUri(validationUrl(code)))) : ""
+      // Deja trazado el certificado (best-effort); el QR/código impreso es de 4 dígitos.
+      await ensureRecord()
+      const qr = qrDataUri || (await makeQrDataUri(confirm4))
       const assets = await loadCertAssets()
-      const svg = renderTalonarioSvg(data, cal, { embedFonts: true, montserratB64: assets.montserratB64, qrDataUri: qr, code })
+      const svg = renderTalonarioSvg(data, cal, { embedFonts: true, montserratB64: assets.montserratB64, qrDataUri: qr, code: confirm4 })
       const w = window.open("", "_blank")
       if (!w) { setError("Habilita las ventanas emergentes para imprimir."); return }
       w.document.write(
