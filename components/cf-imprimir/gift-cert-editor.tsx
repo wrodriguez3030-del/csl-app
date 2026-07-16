@@ -277,10 +277,12 @@ export function GiftCertEditor({
     })
 
   const eff = effectiveEstado(form.estado, form.validoHasta, TODAY)
-  const stCanDeliver = can("gift_certificates.deliver") && canDo("entregar", form.estado, form.validoHasta, TODAY)
-  const stCanRedeem = can("gift_certificates.redeem") && canDo("canjear", form.estado, form.validoHasta, TODAY)
+  // Acceso por MENÚ (decisión del usuario): las acciones comunes se muestran a
+  // quien tenga el módulo; solo "Anular" (destructiva) queda con permiso.
+  const stCanDeliver = canDo("entregar", form.estado, form.validoHasta, TODAY)
+  const stCanRedeem = canDo("canjear", form.estado, form.validoHasta, TODAY)
   const stCanVoid = can("gift_certificates.void") && canDo("anular", form.estado, form.validoHasta, TODAY)
-  const canExport = can("gift_certificates.view")
+  const canExport = true
 
   return (
     <div className="space-y-4">
@@ -409,12 +411,12 @@ export function GiftCertEditor({
 
           {/* Acciones */}
           <div className="flex flex-wrap gap-2">
-            {editable && can("gift_certificates.create") ? (
+            {editable ? (
               <Button variant="outline" onClick={doSaveDraft} disabled={!!busy}>
                 {busy === "save" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Guardar borrador
               </Button>
             ) : null}
-            {isDraft && can("gift_certificates.emit") ? (
+            {isDraft ? (
               <Button onClick={doEmit} disabled={!!busy}>
                 {busy === "emit" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}Emitir certificado
               </Button>
@@ -444,7 +446,7 @@ export function GiftCertEditor({
             {stCanVoid ? (
               <Button variant="outline" className="text-rose-700 hover:text-rose-800" onClick={() => askConfirm("anular", true)} disabled={!!busy}><Ban className="mr-2 h-4 w-4" />Anular</Button>
             ) : null}
-            {form.codigo && can("gift_certificates.create") ? (
+            {form.codigo ? (
               <Button
                 variant="ghost"
                 onClick={() =>

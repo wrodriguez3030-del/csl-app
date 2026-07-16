@@ -4160,7 +4160,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
 
     // ── CF PARA IMPRIMIR · Certificados de regalo (módulo profesional) ───────
     case "giftCertList": {
-      requirePermission("gift_certificates.view")
+      // Acceso por MENÚ (cliente-certificados-imprimir), decisión del usuario;
+      // datos aislados por business_id. Solo "anular" queda con permiso.
       const sb = getSupabaseAdmin()
       const biz = effectiveBusinessId()
       let q = sb.from(GIFT_TABLE).select("*").order("emitido_en", { ascending: false }).limit(2000)
@@ -4170,13 +4171,11 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true, records: (data as Row[]).map(mapGiftRow) }
     }
     case "giftCertGet": {
-      requirePermission("gift_certificates.view")
       const row = await loadGiftRow(textValue(params, "codigo"))
       if (!row) return { ok: false, error: "Certificado no encontrado." }
       return { ok: true, record: mapGiftRow(row) }
     }
     case "giftCertAudit": {
-      requirePermission("gift_certificates.audit.view")
       const { data, error } = await getSupabaseAdmin()
         .from(GIFT_AUDIT_TABLE).select("*").eq("codigo", textValue(params, "codigo"))
         .order("created_at", { ascending: false }).limit(500)
@@ -4201,11 +4200,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (errs.length) return { ok: false, error: errs.join(" ") }
 
       if (existing) {
-        requirePermission("gift_certificates.edit")
         const blocked = transitionError("editar", String(existing.estado), String(existing.fecha_vencimiento || ""), giftToday())
         if (blocked) return { ok: false, error: blocked }
-      } else {
-        requirePermission("gift_certificates.create")
       }
 
       const codigo = existing ? String(existing.codigo) : await nextGiftCode()
@@ -4243,7 +4239,6 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true, record: saved ? mapGiftRow(saved) : mapGiftRow(row) }
     }
     case "giftCertEmit": {
-      requirePermission("gift_certificates.emit")
       const codigo = textValue(params, "codigo")
       const row = await loadGiftRow(codigo)
       if (!row) return { ok: false, error: "Certificado no encontrado." }
@@ -4259,14 +4254,9 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
     }
     case "giftCertTransition": {
       const accion = textValue(params, "accion") as GiftCertAction // entregar|canjear|anular
-      const permMap: Record<string, string> = {
-        entregar: "gift_certificates.deliver",
-        canjear: "gift_certificates.redeem",
-        anular: "gift_certificates.void",
-      }
-      const perm = permMap[accion]
-      if (!perm) return { ok: false, error: "Acción no soportada." }
-      requirePermission(perm)
+      if (!["entregar", "canjear", "anular"].includes(accion)) return { ok: false, error: "Acción no soportada." }
+      // Solo la ANULACIÓN (destructiva/irreversible) queda con permiso.
+      if (accion === "anular") requirePermission("gift_certificates.void")
       const codigo = textValue(params, "codigo")
       const row = await loadGiftRow(codigo)
       if (!row) return { ok: false, error: "Certificado no encontrado." }
@@ -4295,7 +4285,6 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true, record: saved ? mapGiftRow(saved) : null }
     }
     case "giftCertDuplicate": {
-      requirePermission("gift_certificates.create")
       const src = await loadGiftRow(textValue(params, "codigo"))
       if (!src) return { ok: false, error: "Certificado no encontrado." }
       const biz = effectiveBusinessId()
@@ -4326,7 +4315,6 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true, record: mapGiftRow(row) }
     }
     case "giftCertLogExport": {
-      requirePermission("gift_certificates.view")
       const accion = textValue(params, "accionExport") // imprimir|descargar_pdf|descargar_png|descargar_jpg
       await recordGiftAudit({ business_id: effectiveBusinessId(), codigo: textValue(params, "codigo"), usuario: user.email, accion: accion || "descargar" })
       return { ok: true }

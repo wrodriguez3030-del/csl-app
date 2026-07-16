@@ -18,6 +18,23 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.52.0] — 2026-07-15
+
+### Changed
+- **CF PARA IMPRIMIR · acceso por MENÚ** (decisión del usuario): el módulo de
+  certificados de regalo (talonario y digital) ahora se controla solo con el
+  menú `cliente-certificados-imprimir` — quien tiene el menú puede ver, crear,
+  emitir, imprimir, descargar, entregar, canjear y duplicar. Se retiró el permiso
+  extra `gift_certificates.view` que bloqueaba el certificado digital.
+  - **Solo la ANULACIÓN** (destructiva/irreversible) mantiene permiso:
+    `gift_certificates.void`. El resto de permisos granulares se retiraron del
+    catálogo (ya no se usaban).
+  - Diagnóstico previo: ningún usuario tenía el permiso `gift_certificates.view`
+    asignado en BD (nunca se guardó), por eso salía "no tienes permiso".
+- El aislamiento por `business_id` (multi-tenant) se mantiene en todos los handlers.
+
+---
+
 ## [0.51.2] — 2026-07-15
 
 ### Changed

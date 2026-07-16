@@ -12,7 +12,6 @@ import { useMemo, useState, type ReactNode } from "react"
 import { Gift, LayoutList, Stamp } from "lucide-react"
 import { useAppStore } from "@/lib/store"
 import { useSessionUser } from "@/hooks/use-session-user"
-import { canPerm } from "@/lib/permissions"
 import { useGiftCertificates, type GiftCertRecord } from "./cf-imprimir/use-gift-certificates"
 import { GiftCertList } from "./cf-imprimir/gift-cert-list"
 import { GiftCertEditor } from "./cf-imprimir/gift-cert-editor"
@@ -39,8 +38,6 @@ export function CertificadosRegaloImpresionPage() {
         .filter((s) => s.nombre),
     [sucursalesDb],
   )
-
-  const canView = canPerm(user, "gift_certificates.view")
 
   const openNew = () => {
     setEditing(null)
@@ -80,10 +77,6 @@ export function CertificadosRegaloImpresionPage() {
 
       {tab === "talonario" ? (
         <TalonarioPage />
-      ) : !canView ? (
-        <div className="rounded-lg border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
-          No tienes permiso para ver los certificados de regalo. Solicita el permiso <b>gift_certificates.view</b> a un administrador.
-        </div>
       ) : view === "list" ? (
         <GiftCertList gc={gc} user={user} onNew={openNew} onOpen={openRecord} />
       ) : (

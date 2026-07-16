@@ -16,7 +16,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { usePagination } from "@/lib/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
-import { canPerm } from "@/lib/permissions"
 import type { SystemUser } from "@/lib/security"
 import { effectiveEstado } from "@/lib/certificados/cert-state"
 import { GIFT_ESTADOS, type GiftCertData } from "@/lib/certificados/cert-layout"
@@ -72,7 +71,6 @@ export function GiftCertList({
   const [audit, setAudit] = useState<GiftCertAuditRow[]>([])
   const [auditLoading, setAuditLoading] = useState(false)
 
-  const can = (p: string) => canPerm(user, p)
   const sucursalOptions = useMemo(
     () => Array.from(new Set(gc.records.map((r) => r.sucursal).filter(Boolean))).sort(),
     [gc.records],
@@ -147,9 +145,7 @@ export function GiftCertList({
           <Button variant="outline" size="sm" onClick={() => void gc.refresh()} disabled={gc.loading}>
             <RefreshCw className={`mr-2 h-4 w-4 ${gc.loading ? "animate-spin" : ""}`} />Actualizar
           </Button>
-          {can("gift_certificates.create") ? (
-            <Button size="sm" onClick={onNew}><Plus className="mr-2 h-4 w-4" />Nuevo certificado</Button>
-          ) : null}
+          <Button size="sm" onClick={onNew}><Plus className="mr-2 h-4 w-4" />Nuevo certificado</Button>
         </div>
       </div>
 
@@ -210,19 +206,11 @@ export function GiftCertList({
                         <td className="px-3 py-2">
                           <div className="flex items-center justify-end gap-0.5">
                             <IconBtn title="Abrir / editar" onClick={() => onOpen(r)}><Pencil className="h-4 w-4" /></IconBtn>
-                            {can("gift_certificates.view") ? (
-                              <>
-                                <IconBtn title="Imprimir" onClick={() => exportRow(r, "print")} busy={spinning(`${r.codigo}:print`)}><Printer className="h-4 w-4" /></IconBtn>
-                                <IconBtn title="Descargar PDF" onClick={() => exportRow(r, "pdf")} busy={spinning(`${r.codigo}:pdf`)}><FileDown className="h-4 w-4" /></IconBtn>
-                                <IconBtn title="Descargar imagen (PNG)" onClick={() => exportRow(r, "png")} busy={spinning(`${r.codigo}:png`)}><ImageDown className="h-4 w-4" /></IconBtn>
-                              </>
-                            ) : null}
-                            {can("gift_certificates.create") ? (
-                              <IconBtn title="Duplicar como nuevo" onClick={() => void gc.duplicate(r.codigo).then((rec) => onOpen(rec)).catch((e) => setRowError(errMsg(e)))}><Copy className="h-4 w-4" /></IconBtn>
-                            ) : null}
-                            {can("gift_certificates.audit.view") ? (
-                              <IconBtn title="Historial" onClick={() => openHistory(r)}><History className="h-4 w-4" /></IconBtn>
-                            ) : null}
+                            <IconBtn title="Imprimir" onClick={() => exportRow(r, "print")} busy={spinning(`${r.codigo}:print`)}><Printer className="h-4 w-4" /></IconBtn>
+                            <IconBtn title="Descargar PDF" onClick={() => exportRow(r, "pdf")} busy={spinning(`${r.codigo}:pdf`)}><FileDown className="h-4 w-4" /></IconBtn>
+                            <IconBtn title="Descargar imagen (PNG)" onClick={() => exportRow(r, "png")} busy={spinning(`${r.codigo}:png`)}><ImageDown className="h-4 w-4" /></IconBtn>
+                            <IconBtn title="Duplicar como nuevo" onClick={() => void gc.duplicate(r.codigo).then((rec) => onOpen(rec)).catch((e) => setRowError(errMsg(e)))}><Copy className="h-4 w-4" /></IconBtn>
+                            <IconBtn title="Historial" onClick={() => openHistory(r)}><History className="h-4 w-4" /></IconBtn>
                           </div>
                         </td>
                       </tr>
