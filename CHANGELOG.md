@@ -18,6 +18,18 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.54.2] — 2026-07-16
+
+### Fixed
+- **Incentivos de Ventas · Reportes — BLINDAJE anti-bucle definitivo.** Además de
+  memoizar `filters` (v0.54.1), la pantalla de Reportes ahora dispara la carga por
+  **VALOR** (`inputsKey` = apiUrl|año|mes|JSON(params)) vía `useRef`, no por identidad
+  del callback `load`. Así, aunque cualquier dependencia sea un objeto nuevo en cada
+  render, el efecto NO se re-dispara → es **imposible** que las 7 consultas entren en
+  bucle (que tumbaba la sesión → "Inicia sesión con Supabase" / "sesión inválida").
+
+---
+
 ## [0.54.1] — 2026-07-16
 
 ### Fixed

@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { useSessionUser } from "@/hooks/use-session-user"
@@ -62,7 +62,13 @@ export function ComisionReportesPage() {
       showToast(e instanceof Error ? e.message : "Error al cargar", "error")
     } finally { setLoading(false) }
   }, [apiUrl, params, month, year, user, showToast])
-  useEffect(() => { void load() }, [load])
+  // BLINDAJE anti-bucle: disparar la carga solo cuando cambian los inputs REALES
+  // (por VALOR, no por identidad de objeto). Aunque algún dep sea un objeto nuevo
+  // en cada render, este efecto NO se re-dispara → imposible entrar en bucle.
+  const loadRef = useRef(load)
+  useEffect(() => { loadRef.current = load }, [load])
+  const inputsKey = `${normalizeApiUrl(apiUrl)}|${year}|${month}|${JSON.stringify(params)}`
+  useEffect(() => { void loadRef.current() }, [inputsKey])
 
   const doExcel = async () => {
     if (!data) return
