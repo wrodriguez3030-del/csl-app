@@ -52,7 +52,7 @@ export function ComisionReportesPage() {
         branches: (branch?.branches as never) || [],
         calculations: (dash?.calculations as never) || [],
         patients: { total: (pat?.total as number) || 0, roundingDiff: (pat?.roundingDiff as number) || 0, rows: (pat?.rows as never) || [] },
-        laser: { laserTotal: (laser?.laserTotal as number) || 0, tramoPct: (laser?.tramoPct as number) || 0, threshold: (laser?.threshold as number) || 0, fund: (laser?.fund as number) || 0, patientsTotal: (laser?.patientsTotal as number) || 0, byBranch: (laser?.byBranch as never) || [], distribution: (laser?.distribution as never) || [] },
+        laser: { laserTotal: (laser?.laserTotal as number) || 0, tramoPct: (laser?.tramoPct as number) || 0, threshold: (laser?.threshold as number) || 0, fund: (laser?.fund as number) || 0, patientsTotal: (laser?.patientsTotal as number) || 0, cardPct: (laser?.cardPct as number) || 0, byBranch: (laser?.byBranch as never) || [], distribution: (laser?.distribution as never) || [] },
         rules: (rules?.records as never) || [],
         serviceDetail: (svcDetail?.rows as never) || [],
         unassignedServices: (unassigned?.rows as never) || [],
@@ -112,7 +112,7 @@ export function ComisionReportesPage() {
             <Card className="border-[color:var(--brand-border)]"><CardContent className="p-3 sm:p-4">
               <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold">
                 <FileBarChart2 className="h-4 w-4 text-[color:var(--brand-primary)]" /> Incentivo láser · tramo por sucursal
-                <span className="text-xs font-normal text-muted-foreground">cada sucursal cae en su tramo según SU venta láser individual (no sobre el total combinado)</span>
+                <span className="text-xs font-normal text-muted-foreground">se netea la tarjeta por sucursal{data!.laser.cardPct ? ` (−${(data!.laser.cardPct * 100).toFixed(0)}%)` : ""} y cada sucursal cae en su tramo según SU base neta individual (no sobre el total combinado)</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -120,6 +120,7 @@ export function ComisionReportesPage() {
                     <tr className="border-b-2 text-[11px] uppercase tracking-wide text-muted-foreground">
                       <th className="py-2 text-left">Sucursal</th>
                       <th className="py-2 text-right">Venta láser</th>
+                      <th className="py-2 text-right">Base neta</th>
                       <th className="py-2 text-right">Tramo %</th>
                       <th className="py-2 text-right">Fondo</th>
                     </tr>
@@ -128,6 +129,7 @@ export function ComisionReportesPage() {
                     {data!.laser.byBranch!.map((b) => (
                       <tr key={b.branch} className="border-b last:border-0">
                         <td className="py-1.5 font-medium">{b.branch}</td>
+                        <td className="py-1.5 text-right tabular-nums text-muted-foreground">{fmtRD(b.gross)}</td>
                         <td className="py-1.5 text-right tabular-nums">{fmtRD(b.base)}</td>
                         <td className="py-1.5 text-right tabular-nums">{(b.pct * 100).toFixed(2)}%</td>
                         <td className="py-1.5 text-right font-semibold tabular-nums text-emerald-700">{fmtRD(b.fund)}</td>
@@ -135,6 +137,7 @@ export function ComisionReportesPage() {
                     ))}
                     <tr className="border-t-2 bg-slate-50 font-bold">
                       <td className="py-2 text-xs uppercase">Total</td>
+                      <td className="py-2 text-right tabular-nums text-muted-foreground">{fmtRD(data!.laser.byBranch!.reduce((s, b) => s + b.gross, 0))}</td>
                       <td className="py-2 text-right tabular-nums">{fmtRD(data!.laser.byBranch!.reduce((s, b) => s + b.base, 0))}</td>
                       <td />
                       <td className="py-2 text-right tabular-nums text-emerald-700">{fmtRD(data!.laser.byBranch!.reduce((s, b) => s + b.fund, 0))}</td>

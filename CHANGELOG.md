@@ -18,6 +18,25 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.55.2] — 2026-07-16
+
+### Fixed
+- **Incentivos de Ventas · el tramo del incentivo de láser ahora NETEA la TARJETA por
+  sucursal antes de aplicar la escala.** El reporte (`getCommissionLaser`) calculaba el
+  tramo sobre la venta láser **bruta** de cada sucursal, mientras que la liquidación real
+  (`run-engine.ts`) netea la tarjeta (`bruta × (1 − cardPct)`, efectivo/transferencia/otros
+  completos) **antes** de la escala. Ahora el reporte replica el motor: por cada venta
+  láser con método `TARJETA` descuenta el `%` de tarjeta (27% por defecto), acumula la
+  **base neta por sucursal** y con esa base determina el tramo y el fondo. Esto no solo
+  reduce la base sino que puede **cambiar el tramo** (p. ej. junio 2026 RAFAEL VIDAL:
+  bruto 813,000 → tramo 4%, pero base neta 711,574.50 → tramo 3%). El `%` y el incentivo
+  varían mes a mes según la venta de cada sucursal, ya cubierto por el enfoque por sucursal.
+- La tabla "Incentivo láser · tramo por sucursal" del reporte y una nueva hoja de Excel
+  ("Láser · Tramo Sucursal") ahora muestran **Venta láser (bruta)**, **Base neta**,
+  **Tramo %** y **Fondo** por sucursal, con el `%` de tarjeta neteado indicado.
+
+---
+
 ## [0.55.1] — 2026-07-16
 
 ### Fixed

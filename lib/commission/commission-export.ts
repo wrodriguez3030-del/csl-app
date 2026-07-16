@@ -22,7 +22,7 @@ export interface CommissionReportData {
   branches: { branch: string; gross: number; tarjeta: number; efectivo: number; transferencia: number; otros: number; cardPct: number; cardResult: number; producto: number; servicio: number; laser: number }[]
   calculations: { provider: string; branch: string; productsCount: number; productIncentive: number; serviceCommission: number; laserIncentive: number; fixedIncentive: number; manualAdjustment: number; bonusExtra: number; grossTotal: number; cleaningContribution: number; netTotal: number; status: string }[]
   patients: { total: number; roundingDiff: number; rows: { provider: string; branch: string; patients: number; participation: number }[] }
-  laser: { laserTotal: number; tramoPct: number; threshold: number; fund: number; patientsTotal: number; byBranch?: { branch: string; base: number; pct: number; threshold: number; fund: number }[]; distribution: { provider: string; patients: number; participation: number; amount: number }[] }
+  laser: { laserTotal: number; tramoPct: number; threshold: number; fund: number; patientsTotal: number; cardPct?: number; byBranch?: { branch: string; gross: number; base: number; pct: number; threshold: number; fund: number }[]; distribution: { provider: string; patients: number; participation: number; amount: number }[] }
   rules: { name: string; ruleType: string; category: string | null; percentage: number | null; fixedAmount: number | null; minAmount: number | null; active: boolean }[]
   /** Detalle prestador × categoría de la comisión de servicios (venta base × %). */
   serviceDetail?: { provider: string; branch: string; category: string; base: number; pct: number; amount: number }[]
@@ -169,7 +169,14 @@ export async function buildCommissionWorkbook(
   addKvSheet("Depilación Láser", "Depilación láser", [
     ["Venta láser total", data.laser.laserTotal, true], ["Tramo alcanzado", `${(data.laser.tramoPct * 100).toFixed(0)}%`],
     ["Umbral", data.laser.threshold, true], ["Fondo generado", data.laser.fund, true], ["Pacientes totales", data.laser.patientsTotal],
+    ["% tarjeta neteada", data.laser.cardPct != null ? `${(data.laser.cardPct * 100).toFixed(0)}%` : "—"],
   ])
+  if ((data.laser.byBranch || []).length > 0) {
+    addTableSheet("Láser · Tramo Sucursal", "Incentivo láser · tramo por sucursal (tarjeta neteada antes de la escala)",
+      [{ header: "Sucursal", key: "branch", width: 22 }, { header: "Venta láser (bruta)", key: "gross", money: true }, { header: "Base neta", key: "base", money: true }, { header: "Tramo %", key: "pct", pct: true, width: 12 }, { header: "Umbral", key: "threshold", money: true }, { header: "Fondo", key: "fund", money: true }],
+      data.laser.byBranch as unknown as Record<string, unknown>[],
+      { gross: sum(data.laser.byBranch || [], "gross"), base: sum(data.laser.byBranch || [], "base"), fund: sum(data.laser.byBranch || [], "fund") })
+  }
   addTableSheet("Láser · Reparto", "Reparto del fondo láser",
     [{ header: "Prestador", key: "provider", width: 24 }, { header: "Pacientes", key: "patients", align: "right" }, { header: "Participación %", key: "participation", align: "right" }, { header: "Incentivo", key: "amount", money: true }],
     data.laser.distribution as unknown as Record<string, unknown>[], { amount: data.laser.fund })

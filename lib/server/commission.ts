@@ -1055,29 +1055,40 @@ async function getCommissionPatientsFromSales(params: ActionParams) {
 export async function getCommissionLaser(params: ActionParams) {
   const business_id = requireBizId()
   const rows = await fetchSalesForPeriod(params)
-  // Venta láser total y por sucursal.
-  let laserTotal = 0
-  const byBranch: Record<string, number> = {}
+  // Venta láser BRUTA y BASE NETA por sucursal.
+  // La liquidación real NETEA la TARJETA (bruta × (1 − cardPct)) ANTES de aplicar
+  // la escala; efectivo/transferencia/otros entran completos. El tramo se calcula
+  // sobre esta base neta, no sobre la venta bruta.
+  const cardPct = await cardPercentage()
+  let laserTotal = 0 // venta láser bruta (informativa)
+  const grossByBranch: Record<string, number> = {}
+  const netByBranch: Record<string, number> = {}
   for (const r of rows) if (String(r.category) === "DEPILACION_LASER") {
-    const amt = Number(r.gross_amount) || 0
-    laserTotal = round2(laserTotal + amt)
+    const gross = Number(r.gross_amount) || 0
+    const pm = String(r.payment_method || "OTROS")
+    const net = pm === "TARJETA" ? round2(gross * (1 - cardPct)) : gross
     const b = String(r.branch || "(sin sucursal)")
-    byBranch[b] = round2((byBranch[b] || 0) + amt)
+    laserTotal = round2(laserTotal + gross)
+    grossByBranch[b] = round2((grossByBranch[b] || 0) + gross)
+    netByBranch[b] = round2((netByBranch[b] || 0) + net)
   }
   // Escala desde reglas.
   const { data: scaleRows } = await getSupabaseAdmin().from("sales_commission_rules")
     .select("min_amount,percentage").eq("business_id", business_id).eq("rule_type", "laser_scale").eq("active", true)
   const scale = (scaleRows || []).map((s) => ({ threshold: Number((s as Row).min_amount), percentage: Number((s as Row).percentage) }))
     .filter((s) => Number.isFinite(s.threshold)).sort((a, b) => a.threshold - b.threshold)
-  // TRAMO POR SUCURSAL: cada sucursal cae en su propio tramo según SU venta láser
-  // INDIVIDUAL (no sobre el total combinado). El fondo total = suma de los fondos
-  // por sucursal. Alinea el reporte con la liquidación real (que ya es por sucursal).
+  // TRAMO POR SUCURSAL sobre la BASE NETA (tarjeta neteada antes de la escala):
+  // cada sucursal cae en su propio tramo según SU base neta individual. El fondo
+  // total = suma de los fondos por sucursal. El % y el incentivo varían mes a mes
+  // según la venta de cada sucursal. Alinea el reporte con la liquidación real.
   const tramoFor = (amount: number) => scale.filter((t) => amount >= t.threshold).sort((a, b) => b.threshold - a.threshold)[0] || null
-  const branchDetail = Object.entries(byBranch)
-    .map(([branch, base]) => {
+  const branchDetail = Object.keys(grossByBranch)
+    .map((branch) => {
+      const gross = grossByBranch[branch]
+      const base = netByBranch[branch] || 0
       const t = tramoFor(base)
       const pct = t?.percentage || 0
-      return { branch, base, pct, threshold: t?.threshold || 0, fund: round2(base * pct) }
+      return { branch, gross, base, pct, threshold: t?.threshold || 0, fund: round2(base * pct) }
     })
     .sort((a, b) => a.branch.localeCompare(b.branch))
   const fund = round2(branchDetail.reduce((s, b) => s + b.fund, 0))
@@ -1086,7 +1097,7 @@ export async function getCommissionLaser(params: ActionParams) {
   // Reparto por participación de pacientes.
   const pat = await getCommissionPatients(params)
   const distribution = pat.rows.map((p) => ({ provider: p.provider, patients: p.patients, participation: p.participation, amount: round2(fund * (p.participation / 100)) }))
-  return { ok: true, laserTotal, byBranch: branchDetail, tramoPct, fund, threshold: 0, distribution, patientsTotal: pat.total }
+  return { ok: true, laserTotal, byBranch: branchDetail, cardPct, tramoPct, fund, threshold: 0, distribution, patientsTotal: pat.total }
 }
 
 /** Sucursales de Cibao para el cálculo láser POR SUCURSAL. */
