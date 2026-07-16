@@ -43,7 +43,11 @@ export function useCommissionFilters(): {
   label: string
 } {
   const stored = useAppStore((s) => s.commissionFilters)
-  const filters = (stored as CommissionFilters | null) || defaultCommissionFilters()
+  // MEMOIZADO: sin esto, cuando el store está en null, `defaultCommissionFilters()`
+  // devuelve un OBJETO NUEVO en cada render → params/label/load cambian de
+  // identidad → el useEffect([load]) de las pantallas re-dispara las consultas en
+  // BUCLE INFINITO (machaca el servidor, parpadeo y falsos "sesión inválida").
+  const filters = useMemo(() => (stored as CommissionFilters | null) || defaultCommissionFilters(), [stored])
   const params = useMemo(() => {
     const p: Record<string, string> = {}
     // "Todo" = sin filtro de período (el backend consulta todos los meses).

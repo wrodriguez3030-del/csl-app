@@ -18,6 +18,20 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.54.1] — 2026-07-16
+
+### Fixed
+- **Incentivos de Ventas · bucle infinito en Reportes/Dashboard → "sesión inválida"
+  y parpadeo.** En `useCommissionFilters`, cuando `commissionFilters` del store
+  estaba en `null`, `defaultCommissionFilters()` devolvía un **objeto nuevo en cada
+  render** → `params`/`load` cambiaban de identidad → el `useEffect([load])` de las
+  pantallas re-disparaba las 7 consultas pesadas de comisión **en bucle infinito**,
+  machacando el servidor (de ahí el falso "sesión inválida" y el parpadeo). Fix:
+  **memoizar `filters`** (`useMemo([stored])`). Corrige las 7 pantallas del módulo
+  (reportes, dashboard, cálculo, liquidación, prestadores, sin-prestador).
+
+---
+
 ## [0.54.0] — 2026-07-16
 
 ### Fixed
