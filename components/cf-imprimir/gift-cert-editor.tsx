@@ -213,8 +213,18 @@ export function GiftCertEditor({
     })
 
   async function exportSvg(): Promise<{ svg: string; code: string } | null> {
-    const rec = await ensureSaved()
+    let rec = await ensureSaved()
     if (!rec) return null
+    // Imprimir/descargar = certificado real → EMITIR si aún es borrador
+    // (queda disponible en "Validar Certificados").
+    if (rec.estado === "Borrador") {
+      try {
+        const emitted = await gc.emit(rec.codigo)
+        set({ estado: emitted.estado })
+        onChanged(emitted)
+        rec = emitted
+      } catch { /* si falla el emit, se exporta igual el borrador guardado */ }
+    }
     const data: GiftCertData = { ...previewData, codigo: rec.codigo, sucursalDireccion: rec.sucursalDireccion || sucursalDireccion, sucursalTelefono: rec.sucursalTelefono || sucursalTelefono }
     const url = `${window.location.origin}/certificado-regalo/validar?c=${encodeURIComponent(rec.codigo)}`
     const qr = await makeQrDataUri(url)

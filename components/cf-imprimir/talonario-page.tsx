@@ -146,8 +146,8 @@ export function TalonarioPage() {
     if (!validateNow()) return
     setBusy("print")
     try {
-      // Deja trazado el certificado (best-effort); el QR/código impreso es de 4 dígitos.
-      await ensureRecord()
+      // GUARDA + EMITE el certificado antes de imprimir (queda en "Validar Certificados").
+      const savedCode = await ensureRecord()
       const qr = qrDataUri || (await makeQrDataUri(confirm4))
       const assets = await loadCertAssets()
       const svg = renderTalonarioSvg(data, cal, { embedFonts: true, montserratB64: assets.montserratB64, qrDataUri: qr, code: confirm4 })
@@ -163,7 +163,7 @@ export function TalonarioPage() {
       w.document.close()
       w.focus()
       window.setTimeout(() => w.print(), 450)
-      flash("Enviado a impresión. Coloca el talonario pre-impreso en la bandeja.")
+      flash(savedCode ? `Guardado ${savedCode} · enviado a impresión.` : "Enviado a impresión.")
     } catch (e) {
       setError(errMsg(e))
     } finally {

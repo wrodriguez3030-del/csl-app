@@ -18,6 +18,17 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.53.2] — 2026-07-16
+
+### Changed
+- **CF PARA IMPRIMIR · al imprimir se guarda (y se confirma):** el talonario ya
+  guardaba+emitía al imprimir; ahora el mensaje muestra el **código guardado**
+  (`Guardado CSL-REG-… · enviado a impresión`). En el **certificado digital**,
+  imprimir/descargar ahora **emite** el certificado si estaba en borrador (antes
+  quedaba como borrador) → queda disponible en "Validar Certificados".
+
+---
+
 ## [0.53.1] — 2026-07-16
 
 ### Changed
