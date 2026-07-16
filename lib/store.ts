@@ -226,27 +226,50 @@ export async function apiCall(
 ): Promise<Record<string, unknown>> {
   const params = injectActiveBusiness(rawParams)
   const endpoint = normalizeApiUrl(apiUrl)
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 25000)
+
+  // Token vigente. Si getSession devuelve null (el cliente puede estar
+  // refrescando el token justo ahora), reintenta una vez tras un respiro —
+  // así un hipo transitorio no muestra "sesión inválida".
+  async function currentToken(): Promise<string | null> {
+    let session = (await supabaseBrowser.auth.getSession()).data.session
+    if (!session?.access_token) {
+      await new Promise((r) => setTimeout(r, 350))
+      session = (await supabaseBrowser.auth.getSession()).data.session
+    }
+    return session?.access_token ?? null
+  }
+
+  async function send(token: string): Promise<Response> {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 25000)
+    try {
+      return await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(params),
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
 
   try {
-    const {
-      data: { session },
-    } = await supabaseBrowser.auth.getSession()
+    const token = await currentToken()
+    if (!token) throw new Error("Inicia sesion con Supabase antes de conectar")
 
-    if (!session?.access_token) {
-      throw new Error("Inicia sesion con Supabase antes de conectar")
+    let response = await send(token)
+    // Token vencido/rechazado a mitad de vuelo (401) → refresca el token y
+    // reintenta UNA vez de forma transparente (evita el falso "sesión inválida").
+    if (response.status === 401) {
+      let fresh: string | null = null
+      try {
+        fresh = (await supabaseBrowser.auth.refreshSession()).data.session?.access_token ?? null
+      } catch {
+        /* sin sesión válida → cae al manejo de error normal */
+      }
+      if (fresh) response = await send(fresh)
     }
-
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify(params),
-      signal: controller.signal,
-    })
 
     const result = (await response.json().catch(() => ({}))) as Record<string, unknown>
 
@@ -260,8 +283,6 @@ export async function apiCall(
       throw new Error("Timeout - verifica la conexion con Supabase")
     }
     throw error
-  } finally {
-    clearTimeout(timeout)
   }
 }
 

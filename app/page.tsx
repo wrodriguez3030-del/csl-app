@@ -166,7 +166,11 @@ export default function HomePage() {
       }
     }
     void sync()
-    const authListener = supabaseBrowser.auth.onAuthStateChange(() => {
+    const authListener = supabaseBrowser.auth.onAuthStateChange((event) => {
+      // TOKEN_REFRESHED (refresco periódico del token cada ~hora) no cambia la
+      // identidad → NO re-sincronizar: evita el parpadeo "actualizando" y el
+      // churn de consultas que amplificaba los falsos "sesión inválida".
+      if (event === "TOKEN_REFRESHED") return
       void sync()
     })
     window.addEventListener("storage", sync as EventListener)

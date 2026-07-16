@@ -30,7 +30,10 @@ export async function GET(request: Request) {
     const params = await readParams(request)
     return json(await handleAction(params, { id: user.id, email: user.email }))
   } catch (error) {
-    return json({ ok: false, error: errorMessage(error) }, 500)
+    const msg = errorMessage(error)
+    // Errores de AUTH → 401 (el cliente refresca el token y reintenta), no 500.
+    const status = msg === "Sesion invalida" || msg === "No autenticado" ? 401 : 500
+    return json({ ok: false, error: msg }, status)
   }
 }
 
@@ -40,6 +43,9 @@ export async function POST(request: Request) {
     const params = await readParams(request)
     return json(await handleAction(params, { id: user.id, email: user.email }))
   } catch (error) {
-    return json({ ok: false, error: errorMessage(error) }, 500)
+    const msg = errorMessage(error)
+    // Errores de AUTH → 401 (el cliente refresca el token y reintenta), no 500.
+    const status = msg === "Sesion invalida" || msg === "No autenticado" ? 401 : 500
+    return json({ ok: false, error: msg }, status)
   }
 }

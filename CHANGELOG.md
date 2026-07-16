@@ -18,6 +18,24 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.54.0] — 2026-07-16
+
+### Fixed
+- **Sesión inválida intermitente + parpadeo "actualizando".** Cuando el access
+  token de Supabase vencía un instante, el cliente enviaba el token viejo y el
+  servidor respondía "Sesion invalida" (HTTP 500) → mensaje + reintentos. Endurecido:
+  - **API `/api/csl`**: los errores de auth ahora devuelven **401** (no 500) para
+    que el cliente los distinga.
+  - **Cliente (`apiCall`)**: ante **401 refresca el token y reintenta** la petición
+    UNA vez de forma transparente; además reintenta `getSession` si vuelve null
+    (hipo durante el refresco). El usuario ya no ve el falso "sesión inválida".
+  - **`page.tsx`**: no se re-sincroniza la sesión en `TOKEN_REFRESHED` (refresco
+    horario del token) → elimina el churn/parpadeo. Diagnóstico previo confirmó que
+    las llaves, el endpoint, el reloj y el cliente estaban sanos (causa = token en el
+    Supabase self-hosted).
+
+---
+
 ## [0.53.2] — 2026-07-16
 
 ### Changed
