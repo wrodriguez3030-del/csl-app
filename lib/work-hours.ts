@@ -34,6 +34,24 @@ export function lunchMinutesForShift(startTime: string | null | undefined, isDay
   return startMin >= NO_LUNCH_FROM_MINUTE ? 0 : DEFAULT_LUNCH_MINUTES
 }
 
+/** Zona horaria oficial de operación (República Dominicana, UTC-4, sin DST). */
+export const OPERATION_TZ = "America/Santo_Domingo"
+
+/**
+ * Inicio (medianoche) del día calendario RD para un instante, como `Date`.
+ *
+ * Los servidores (Vercel) corren en UTC: `new Date(); setHours(0,0,0,0)` da la
+ * medianoche UTC, que en RD (UTC-4) es las 8 PM del día ANTERIOR. Por eso una
+ * SALIDA hecha después de las 8 PM RD caía en el día UTC siguiente y no
+ * encontraba la entrada del día → "No hay entrada previa" (rechazo indebido).
+ * Este helper ancla el día al calendario RD. RD no observa horario de verano,
+ * así que el offset -04:00 es estable todo el año.
+ */
+export function dominicanDayStart(now: Date = new Date()): Date {
+  const drDate = now.toLocaleDateString("en-CA", { timeZone: OPERATION_TZ }) // YYYY-MM-DD
+  return new Date(`${drDate}T00:00:00-04:00`)
+}
+
 export interface ScheduleDay {
   day_of_week: number
   is_working_day: boolean

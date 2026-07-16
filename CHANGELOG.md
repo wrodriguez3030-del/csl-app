@@ -18,6 +18,20 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.52.1] — 2026-07-15
+
+### Fixed
+- **Ponche (reloj checador) · SALIDA de noche rechazada indebidamente.** La ventana
+  de "hoy" para buscar la entrada usaba la medianoche del servidor (**UTC**), no la
+  de República Dominicana (UTC-4). Una salida después de las **8 PM RD** caía en el
+  día UTC siguiente y no encontraba la entrada del día → *"No hay una entrada previa
+  registrada hoy"* (rechazo). Se corrigió en los **3 canales** (kiosko QR, ponche
+  móvil y kiosko autenticado) + la inferencia del próximo tipo de marca, anclando el
+  día al calendario RD (`dominicanDayStart` en `lib/work-hours.ts`). RD no tiene
+  horario de verano → offset -04:00 estable.
+
+---
+
 ## [0.52.0] — 2026-07-15
 
 ### Changed

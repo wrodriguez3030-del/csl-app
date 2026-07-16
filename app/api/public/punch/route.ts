@@ -17,7 +17,7 @@
 import { NextResponse } from "next/server"
 import { getSupabaseAdmin } from "@/lib/server/supabase"
 import { haversineMeters } from "@/lib/hr-geo"
-import { lunchMinutesForShift } from "@/lib/work-hours"
+import { lunchMinutesForShift, dominicanDayStart } from "@/lib/work-hours"
 import { createHash } from "node:crypto"
 
 export const dynamic = "force-dynamic"
@@ -137,7 +137,7 @@ export async function POST(request: Request) {
   }
 
   if (status === "approved") {
-    const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)
+    const dayStart = dominicanDayStart()
     const { data: lastRows } = await sb.from("hr_punches").select("type").eq("business_id", businessId).eq("employee_id", employeeId).eq("status", "approved").gte("punched_at", dayStart.toISOString()).order("punched_at", { ascending: false }).limit(1)
     const last = lastRows && lastRows[0] ? String((lastRows[0] as { type: string }).type) : ""
     if (punchType === "entrada" && last === "entrada") { status = "rejected"; code = "dup_in"; reason = "Ya existe una entrada sin salida (corrige desde el panel)" }
@@ -160,7 +160,7 @@ export async function POST(request: Request) {
       if (punchType === "entrada" && ss != null) lateMin = Math.max(0, nowMin - ss)
       if (punchType === "salida") {
         if (se != null) earlyMin = Math.max(0, se - nowMin)
-        const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)
+        const dayStart = dominicanDayStart()
         const { data: ent } = await sb.from("hr_punches").select("punched_at").eq("business_id", businessId).eq("employee_id", employeeId).eq("type", "entrada").eq("status", "approved").gte("punched_at", dayStart.toISOString()).order("punched_at", { ascending: true }).limit(1)
         const entIso = ent && ent[0] ? String((ent[0] as { punched_at: string }).punched_at) : ""
         if (entIso) { const [eh, em] = new Date(entIso).toLocaleTimeString("en-GB", { timeZone: TZ, hour12: false }).split(":"); workedMin = Math.max(0, nowMin - (Number(eh) * 60 + Number(em)) - lunchMinutesForShift(sd.start)); if (expectedMin != null) overtimeMin = Math.max(0, workedMin - expectedMin) }

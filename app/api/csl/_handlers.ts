@@ -8,7 +8,7 @@
  */
 
 import { ALL_MENU_IDS } from "@/lib/menus"
-import { lunchMinutesForShift } from "@/lib/work-hours"
+import { lunchMinutesForShift, dominicanDayStart } from "@/lib/work-hours"
 import { sendFichaDermoEmail } from "@/lib/dermo-server"
 import { getSupabaseAdmin } from "@/lib/server/supabase"
 import {
@@ -1319,7 +1319,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       }
       // Consistencia básica entrada/salida (solo si va a aprobarse).
       if (status === "approved") {
-        const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)
+        const dayStart = dominicanDayStart()
         const { data: lastRows } = await sb.from("hr_punches").select("type").eq("business_id", businessId).eq("employee_id", employeeId).eq("status", "approved").gte("punched_at", dayStart.toISOString()).order("punched_at", { ascending: false }).limit(1)
         const last = lastRows && lastRows[0] ? String((lastRows[0] as { type: string }).type) : ""
         if (punchType === "entrada" && last === "entrada") { status = "rejected"; reason = "Ya existe una entrada sin salida (corrige desde el panel)" }
@@ -1344,7 +1344,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
           if (punchType === "entrada" && ss != null) lateMin = Math.max(0, nowMin - ss)
           if (punchType === "salida") {
             if (se != null) earlyMin = Math.max(0, se - nowMin)
-            const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)
+            const dayStart = dominicanDayStart()
             const { data: ent } = await sb.from("hr_punches").select("punched_at").eq("business_id", businessId).eq("employee_id", employeeId).eq("type", "entrada").eq("status", "approved").gte("punched_at", dayStart.toISOString()).order("punched_at", { ascending: true }).limit(1)
             const entIso = ent && ent[0] ? String((ent[0] as { punched_at: string }).punched_at) : ""
             if (entIso) {
@@ -1622,7 +1622,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         .maybeSingle()
       const empSucursal = (asg as { sucursal?: string } | null)?.sucursal ?? null
       // Inferir el próximo tipo de marca según la última del día.
-      const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)
+      const dayStart = dominicanDayStart()
       const { data: lastRows } = await sb
         .from("hr_punches")
         .select("type, punched_at")
