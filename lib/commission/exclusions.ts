@@ -8,9 +8,11 @@
  *
  * 1. Prestadores excluidos: personas que nunca cobran incentivo (p. ej.
  *    administradores locales), aunque tengan ventas asignadas manualmente.
- * 2. Ítems sin incentivo: insumos/consumibles que se le cobran al cliente pero
- *    no comisionan (rasuradoras, anestesia en cualquier presentación). Se
+ * 2. Ítems sin incentivo: insumos/servicios que se le cobran al cliente pero no
+ *    comisionan (rasuradoras y el SERVICIO de "aplicación de anestesia"). Se
  *    comparan por nombre normalizado (sin acentos, MAYÚSCULAS) como subcadena.
+ *    OJO: los PRODUCTOS anestésicos (ANESTESIA ENCAIN / ZK-INA) SÍ pagan
+ *    incentivo — solo se excluye la aplicación (el servicio), no el producto.
  *
  * Las ventas excluidas SÍ siguen contando en la facturación/ingreso del negocio
  * (reporte por sucursal, medios de pago): la exclusión aplica solo al incentivo.
@@ -20,8 +22,10 @@ import { normalizeName } from "./normalize"
 /** Prestadores (nombre normalizado) que NUNCA cobran incentivo. */
 export const EXCLUDED_PROVIDERS = ["CARLOS ARIAS"] as const
 
-/** Patrones de nombre de ítem (servicio/producto) que NO generan incentivo. */
-export const NON_INCENTIVE_ITEM_PATTERNS = ["RASURADORA", "ANESTESIA"] as const
+/** Patrones de nombre de ítem (servicio/producto) que NO generan incentivo.
+ *  "APLICACION DE ANESTESIA" es el servicio de aplicación; NO incluye los
+ *  productos "ANESTESIA ENCAIN"/"ANESTESIA ZK-INA", que sí comisionan. */
+export const NON_INCENTIVE_ITEM_PATTERNS = ["RASURADORA", "APLICACION DE ANESTESIA"] as const
 
 /** ¿Este prestador está excluido de todo incentivo? */
 export function isExcludedProvider(name: unknown): boolean {

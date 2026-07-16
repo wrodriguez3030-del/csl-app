@@ -18,6 +18,18 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.56.1] — 2026-07-16
+
+### Changed
+- **Anestesia: se excluye SOLO el servicio "APLICACION DE ANESTESIA", NO los productos
+  anestésicos.** Por decisión del negocio, los productos `ANESTESIA ENCAIN` y
+  `ANESTESIA ZK-INA` **sí** vuelven a pagar incentivo de producto (≈RD$19,500 histórico);
+  únicamente el servicio de aplicación queda sin incentivo. Patrón ajustado en
+  `exclusions.ts`: `["RASURADORA", "APLICACION DE ANESTESIA"]` (antes `"ANESTESIA"` amplio).
+  Rasuradoras y el prestador Carlos Arias siguen excluidos igual. Tests 140/140.
+
+---
+
 ## [0.56.0] — 2026-07-16
 
 ### Added
