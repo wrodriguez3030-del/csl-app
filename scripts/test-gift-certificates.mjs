@@ -69,9 +69,16 @@ test("displayText conserva acentos/Ñ y colapsa espacios", () => {
 })
 
 // 4. Validación (§5, §13, §23)
-test("validación exige campos obligatorios", () => {
+test("validación exige campos obligatorios (Válido hasta es opcional)", () => {
   const errs = validateGiftCert({})
-  assert.ok(errs.length >= 5)
+  assert.ok(errs.length >= 4)
+})
+test("certificado sin vencimiento es válido", () => {
+  const errs = validateGiftCert({
+    otorgadoA: "A", cortesiaDe: "B", validoPara: "C", sucursal: "D",
+    fechaEmision: "2026-08-01", validoHasta: "",
+  })
+  assert.equal(errs.length, 0)
 })
 test("vencimiento no puede ser anterior a emisión", () => {
   const errs = validateGiftCert({

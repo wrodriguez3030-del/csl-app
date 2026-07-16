@@ -18,6 +18,19 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.53.0] — 2026-07-16
+
+### Added
+- **CF PARA IMPRIMIR · vencimiento opcional + vigencia 30/120.** En la vigencia,
+  un **check "Válido hasta"** activa/desactiva el vencimiento: desmarcado → el
+  certificado **NO VENCE** (se imprime "VÁLIDO HASTA: NO VENCE"). Los botones de
+  vigencia rápida ahora son **30 y 120 días** (antes 30/60/90). Aplica al talonario
+  y al certificado digital. `Válido hasta` pasó a ser opcional en la validación
+  (frontend y backend); el resto de reglas (orden de fechas, no canjear vencido) se
+  mantienen y un cert sin vencimiento nunca se marca "Vencido".
+
+---
+
 ## [0.52.2] — 2026-07-16
 
 ### Fixed

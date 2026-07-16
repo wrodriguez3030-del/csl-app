@@ -90,6 +90,7 @@ export function GiftCertEditor({
   onChanged: (rec: GiftCertRecord) => void
 }) {
   const [form, setForm] = useState<FormState>(() => toForm(initial, sucursales))
+  const [conVencimiento, setConVencimiento] = useState<boolean>(() => (initial ? !!initial.validoHasta : true))
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState("")
   const [msg, setMsg] = useState("")
@@ -351,14 +352,28 @@ export function GiftCertEditor({
                 <Field label="Fecha de emisión" required>
                   <Input type="date" value={form.fechaEmision} disabled={!editable} onChange={(e) => set({ fechaEmision: e.target.value })} />
                 </Field>
-                <Field label="Válido hasta" required>
-                  <Input type="date" value={form.validoHasta} disabled={!editable} onChange={(e) => set({ validoHasta: e.target.value })} />
-                </Field>
+                <div className="space-y-1.5">
+                  <label className="flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5"
+                      disabled={!editable}
+                      checked={conVencimiento}
+                      onChange={(e) => {
+                        const on = e.target.checked
+                        setConVencimiento(on)
+                        set({ validoHasta: on ? addDaysIso(form.fechaEmision, 30) : "" })
+                      }}
+                    />
+                    Válido hasta {conVencimiento ? null : <span className="text-muted-foreground">(sin vencimiento)</span>}
+                  </label>
+                  <Input type="date" value={form.validoHasta} disabled={!editable || !conVencimiento} onChange={(e) => set({ validoHasta: e.target.value })} />
+                </div>
               </div>
-              {editable ? (
+              {editable && conVencimiento ? (
                 <div className="flex flex-wrap gap-1.5">
                   <span className="text-xs text-muted-foreground">Vigencia rápida:</span>
-                  {[30, 60, 90].map((d) => (
+                  {[30, 120].map((d) => (
                     <button key={d} type="button" className="rounded border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => set({ validoHasta: addDaysIso(form.fechaEmision, d) })}>
                       {d} días
                     </button>

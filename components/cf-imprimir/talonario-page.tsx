@@ -61,6 +61,7 @@ export function TalonarioPage() {
   const [qrDataUri, setQrDataUri] = useState("")
   const [cal, setCal] = useState<TalonarioCalibration>(defaultTalonarioCalibration)
   const [showGuide, setShowGuide] = useState(true)
+  const [conVencimiento, setConVencimiento] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState("")
   const [msg, setMsg] = useState("")
@@ -223,14 +224,31 @@ export function TalonarioPage() {
               <F label="Válido para" req><Input value={form.validoPara} onChange={(e) => set({ validoPara: e.target.value })} placeholder="Servicio" /></F>
               <div className="grid grid-cols-2 gap-3">
                 <F label="Emisión" req><Input type="date" value={form.fechaEmision} onChange={(e) => set({ fechaEmision: e.target.value })} /></F>
-                <F label="Válido hasta" req><Input type="date" value={form.validoHasta} onChange={(e) => set({ validoHasta: e.target.value })} /></F>
+                <div className="space-y-1.5">
+                  <label className="flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5"
+                      checked={conVencimiento}
+                      onChange={(e) => {
+                        const on = e.target.checked
+                        setConVencimiento(on)
+                        set({ validoHasta: on ? addDaysIso(form.fechaEmision, 30) : "" })
+                      }}
+                    />
+                    Válido hasta {conVencimiento ? null : <span className="text-muted-foreground">(sin vencimiento)</span>}
+                  </label>
+                  <Input type="date" value={form.validoHasta} disabled={!conVencimiento} onChange={(e) => set({ validoHasta: e.target.value })} />
+                </div>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                <span className="text-xs text-muted-foreground">Vigencia:</span>
-                {[30, 60, 90].map((d) => (
-                  <button key={d} type="button" className="rounded border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => set({ validoHasta: addDaysIso(form.fechaEmision, d) })}>{d} días</button>
-                ))}
-              </div>
+              {conVencimiento ? (
+                <div className="flex flex-wrap gap-1.5">
+                  <span className="text-xs text-muted-foreground">Vigencia:</span>
+                  {[30, 120].map((d) => (
+                    <button key={d} type="button" className="rounded border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => set({ validoHasta: addDaysIso(form.fechaEmision, d) })}>{d} días</button>
+                  ))}
+                </div>
+              ) : null}
               <F label="Sucursal de entrega" req>
                 <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.sucursal} onChange={(e) => set({ sucursal: e.target.value })}>
                   {sucursales.length === 0 ? <option value="">(sin sucursales)</option> : null}

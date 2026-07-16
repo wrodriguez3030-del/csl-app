@@ -196,7 +196,7 @@ export function renderCertificate(data: GiftCertData, opts: CertRenderOpts = {})
     block(F.pos[0][0], F.pos[0][1], LABELS.otorgadoA, wrapText(data.otorgadoA, oSize, 1, FIELD_WIDTH), oSize, BRAND.grisOscuro, fs, priLabel),
     block(F.pos[1][0], F.pos[1][1], LABELS.cortesiaDe, wrapText(data.cortesiaDe, cSize, 1, FIELD_WIDTH), cSize, BRAND.grisOscuro, fs, priLabel),
     block(F.pos[2][0], F.pos[2][1], LABELS.validoPara, wrapText(data.validoPara, vSize, 2, FIELD_WIDTH), vSize, BRAND.grisOscuro, fs, priLabel),
-    block(F.pos[3][0], F.pos[3][1], LABELS.validoHasta, [formatSpanishDateUpper(data.validoHasta)], F.vh, BRAND.grisOscuro, fs, labelSize),
+    block(F.pos[3][0], F.pos[3][1], LABELS.validoHasta, [data.validoHasta ? formatSpanishDateUpper(data.validoHasta) : "NO VENCE"], F.vh, BRAND.grisOscuro, fs, labelSize),
     block(F.pos[4][0], F.pos[4][1], LABELS.sucursal, wrapText(data.sucursal, sSize, 2, FIELD_WIDTH), sSize, BRAND.turquesa, fs, labelSize),
   ].join("")
 

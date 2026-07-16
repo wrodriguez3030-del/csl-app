@@ -302,8 +302,9 @@ export function validateGiftCert(input: GiftCertValidationInput): string[] {
   if (!req(input.otorgadoA)) errors.push('El campo "Otorgado a" es obligatorio.')
   if (!req(input.cortesiaDe)) errors.push('El campo "Cortesía de" es obligatorio.')
   if (!req(input.validoPara)) errors.push('El campo "Válido para" es obligatorio.')
-  if (!req(input.validoHasta)) errors.push('El campo "Válido hasta" es obligatorio.')
   if (!req(input.sucursal)) errors.push("La sucursal de entrega es obligatoria.")
+  // "Válido hasta" es OPCIONAL (puede desactivarse → certificado sin vencimiento).
+  // Solo se valida el orden de fechas cuando hay vencimiento.
   if (req(input.validoHasta) && req(input.fechaEmision)) {
     const venc = new Date(`${input.validoHasta}T12:00:00`)
     const emi = new Date(`${input.fechaEmision}T12:00:00`)
