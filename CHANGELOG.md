@@ -18,6 +18,16 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.53.1] — 2026-07-16
+
+### Changed
+- **CF PARA IMPRIMIR · vigencia simplificada:** se quitaron los campos de fecha
+  (Emisión y Válido hasta) y el check; ahora la vigencia es **solo dos botones,
+  30 y 90 días** (el activo se resalta). La emisión es la fecha de hoy automática.
+  Aplica al talonario y al certificado digital.
+
+---
+
 ## [0.53.0] — 2026-07-16
 
 ### Added

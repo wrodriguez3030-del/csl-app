@@ -90,7 +90,6 @@ export function GiftCertEditor({
   onChanged: (rec: GiftCertRecord) => void
 }) {
   const [form, setForm] = useState<FormState>(() => toForm(initial, sucursales))
-  const [conVencimiento, setConVencimiento] = useState<boolean>(() => (initial ? !!initial.validoHasta : true))
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState("")
   const [msg, setMsg] = useState("")
@@ -348,38 +347,25 @@ export function GiftCertEditor({
               <Field label="Válido para" required>
                 <Input value={form.validoPara} disabled={!editable} onChange={(e) => set({ validoPara: e.target.value })} placeholder="Servicio (ej. Masaje relajante)" />
               </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Fecha de emisión" required>
-                  <Input type="date" value={form.fechaEmision} disabled={!editable} onChange={(e) => set({ fechaEmision: e.target.value })} />
-                </Field>
-                <div className="space-y-1.5">
-                  <label className="flex items-center gap-2 text-xs">
-                    <input
-                      type="checkbox"
-                      className="h-3.5 w-3.5"
-                      disabled={!editable}
-                      checked={conVencimiento}
-                      onChange={(e) => {
-                        const on = e.target.checked
-                        setConVencimiento(on)
-                        set({ validoHasta: on ? addDaysIso(form.fechaEmision, 30) : "" })
-                      }}
-                    />
-                    Válido hasta {conVencimiento ? null : <span className="text-muted-foreground">(sin vencimiento)</span>}
-                  </label>
-                  <Input type="date" value={form.validoHasta} disabled={!editable || !conVencimiento} onChange={(e) => set({ validoHasta: e.target.value })} />
+              <div className="space-y-1.5">
+                <Label className="text-xs">Vigencia <span className="text-rose-500">*</span></Label>
+                <div className="flex flex-wrap gap-2">
+                  {[30, 90].map((d) => {
+                    const active = form.validoHasta === addDaysIso(form.fechaEmision, d)
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        disabled={!editable}
+                        className={`rounded-md border px-3 py-1.5 text-sm transition disabled:opacity-60 ${active ? "border-primary bg-primary/10 font-semibold text-primary" : "border-input hover:bg-muted"}`}
+                        onClick={() => set({ validoHasta: addDaysIso(form.fechaEmision, d) })}
+                      >
+                        {d} días
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
-              {editable && conVencimiento ? (
-                <div className="flex flex-wrap gap-1.5">
-                  <span className="text-xs text-muted-foreground">Vigencia rápida:</span>
-                  {[30, 120].map((d) => (
-                    <button key={d} type="button" className="rounded border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => set({ validoHasta: addDaysIso(form.fechaEmision, d) })}>
-                      {d} días
-                    </button>
-                  ))}
-                </div>
-              ) : null}
               <Field label="Sucursal de entrega" required>
                 <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60" value={form.sucursal} disabled={!editable} onChange={(e) => set({ sucursal: e.target.value })}>
                   {sucursales.length === 0 ? <option value="">(sin sucursales)</option> : null}
