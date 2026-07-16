@@ -15,8 +15,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAppStore } from "@/lib/store"
-import { useSessionUser } from "@/hooks/use-session-user"
-import { canPerm } from "@/lib/permissions"
 import { addDaysIso, validateGiftCert, giftConfirmCode, type GiftCertData } from "@/lib/certificados/cert-layout"
 import {
   renderTalonarioSvg, TALON_CARD, defaultTalonarioCalibration, type TalonarioCalibration,
@@ -49,7 +47,6 @@ interface TalonForm {
 
 export function TalonarioPage() {
   const sucursalesDb = useAppStore((s) => s.db.sucursales)
-  const user = useSessionUser()
   const gc = useGiftCertificates()
 
   const sucursales = useMemo(
@@ -80,7 +77,14 @@ export function TalonarioPage() {
     if (!form.sucursal && sucursales[0]) setForm((f) => ({ ...f, sucursal: sucursales[0].nombre }))
   }, [form.sucursal, sucursales])
 
-  const set = (patch: Partial<TalonForm>) => setForm((f) => ({ ...f, ...patch }))
+  // Al cambiar cualquier dato de identidad, se descarta el código previo para
+  // que el próximo guardado/impresión cree un certificado NUEVO (no reúse el anterior).
+  const IDENTITY_FIELDS = ["otorgadoA", "cortesiaDe", "validoPara", "validoHasta", "fechaEmision", "sucursal"]
+  const set = (patch: Partial<TalonForm>) =>
+    setForm((f) => {
+      const touchesIdentity = Object.keys(patch).some((k) => IDENTITY_FIELDS.includes(k))
+      return { ...f, ...patch, ...(touchesIdentity ? { codigo: "" } : {}) }
+    })
   const updateCal = (patch: Partial<TalonarioCalibration>) => {
     setCal((c) => {
       const next = { ...c, ...patch }
@@ -122,17 +126,17 @@ export function TalonarioPage() {
 
   function flash(m: string) { setMsg(m); setError(""); window.setTimeout(() => setMsg(""), 4000) }
 
-  /** Guarda+emite (si aún no tiene código) para dejar trazado el certificado. */
+  /** Guarda+emite (si aún no tiene código) para dejar trazado el certificado
+   *  (acceso por MENÚ; queda disponible en "Validar Certificados"). */
   async function ensureRecord(): Promise<string> {
     if (form.codigo) return form.codigo
-    if (!canPerm(user, "gift_certificates.create")) return ""
     const rec = await gc.save({
       otorgadoA: form.otorgadoA, cortesiaDe: form.cortesiaDe, validoPara: form.validoPara,
       validoHasta: form.validoHasta, fechaEmision: form.fechaEmision, sucursal: form.sucursal,
       sucursalDireccion, sucursalTelefono, templateId: "moderno",
     })
     await gc.emit(rec.codigo).catch(() => undefined)
-    set({ codigo: rec.codigo })
+    setForm((f) => ({ ...f, codigo: rec.codigo }))
     void gc.refresh()
     return rec.codigo
   }
@@ -170,7 +174,6 @@ export function TalonarioPage() {
   async function doSave() {
     if (busy) return
     if (!validateNow()) return
-    if (!canPerm(user, "gift_certificates.create")) { setError("No tienes permiso para registrar certificados."); return }
     setBusy("save")
     try {
       const code = await ensureRecord()
@@ -194,11 +197,9 @@ export function TalonarioPage() {
             {showGuide ? <EyeOff className="mr-2 h-4 w-4" /> : <Eye className="mr-2 h-4 w-4" />}
             {showGuide ? "Ocultar guía" : "Ver guía"}
           </Button>
-          {canPerm(user, "gift_certificates.create") ? (
-            <Button variant="outline" size="sm" onClick={doSave} disabled={!!busy}>
-              {busy === "save" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Guardar registro
-            </Button>
-          ) : null}
+          <Button variant="outline" size="sm" onClick={doSave} disabled={!!busy}>
+            {busy === "save" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Guardar registro
+          </Button>
           <Button size="sm" onClick={doPrint} disabled={!!busy}>
             {busy === "print" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}Imprimir en talonario
           </Button>

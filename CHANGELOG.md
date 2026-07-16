@@ -18,6 +18,21 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.52.2] — 2026-07-16
+
+### Fixed
+- **CF PARA IMPRIMIR · el talonario no guardaba → no aparecía en "Validar
+  Certificados".** El guardado (`ensureRecord`/`doSave`/botón) todavía exigía el
+  permiso `gift_certificates.create`, que se **retiró** al pasar el módulo a
+  control-por-menú (v0.52.0) → para no-admin devolvía false y no persistía. Ahora
+  el talonario guarda+emite para cualquiera con el menú, y el certificado queda
+  disponible en "Validar Certificados". (0 certificados `CSL-REG-*` en BD lo confirmó.)
+- **Talonario · certificados en secuencia reusaban el código.** Al cambiar cualquier
+  dato de identidad (otorgado a / cortesía / servicio / fechas / sucursal) ahora se
+  descarta el código previo → cada certificado distinto genera su propio registro.
+
+---
+
 ## [0.52.1] — 2026-07-15
 
 ### Fixed
