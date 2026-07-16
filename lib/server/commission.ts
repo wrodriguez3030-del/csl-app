@@ -1069,13 +1069,24 @@ export async function getCommissionLaser(params: ActionParams) {
     .select("min_amount,percentage").eq("business_id", business_id).eq("rule_type", "laser_scale").eq("active", true)
   const scale = (scaleRows || []).map((s) => ({ threshold: Number((s as Row).min_amount), percentage: Number((s as Row).percentage) }))
     .filter((s) => Number.isFinite(s.threshold)).sort((a, b) => a.threshold - b.threshold)
-  const reached = scale.filter((t) => laserTotal >= t.threshold).sort((a, b) => b.threshold - a.threshold)[0] || null
-  const tramoPct = reached?.percentage || 0
-  const fund = round2(laserTotal * tramoPct)
+  // TRAMO POR SUCURSAL: cada sucursal cae en su propio tramo según SU venta láser
+  // INDIVIDUAL (no sobre el total combinado). El fondo total = suma de los fondos
+  // por sucursal. Alinea el reporte con la liquidación real (que ya es por sucursal).
+  const tramoFor = (amount: number) => scale.filter((t) => amount >= t.threshold).sort((a, b) => b.threshold - a.threshold)[0] || null
+  const branchDetail = Object.entries(byBranch)
+    .map(([branch, base]) => {
+      const t = tramoFor(base)
+      const pct = t?.percentage || 0
+      return { branch, base, pct, threshold: t?.threshold || 0, fund: round2(base * pct) }
+    })
+    .sort((a, b) => a.branch.localeCompare(b.branch))
+  const fund = round2(branchDetail.reduce((s, b) => s + b.fund, 0))
+  // % efectivo global (solo informativo): fondo total / venta total.
+  const tramoPct = laserTotal > 0 ? Math.round((fund / laserTotal) * 10000) / 10000 : 0
   // Reparto por participación de pacientes.
   const pat = await getCommissionPatients(params)
   const distribution = pat.rows.map((p) => ({ provider: p.provider, patients: p.patients, participation: p.participation, amount: round2(fund * (p.participation / 100)) }))
-  return { ok: true, laserTotal, byBranch, tramoPct, fund, threshold: reached?.threshold || 0, distribution, patientsTotal: pat.total }
+  return { ok: true, laserTotal, byBranch: branchDetail, tramoPct, fund, threshold: 0, distribution, patientsTotal: pat.total }
 }
 
 /** Sucursales de Cibao para el cálculo láser POR SUCURSAL. */

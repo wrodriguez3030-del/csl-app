@@ -22,7 +22,7 @@ export interface CommissionReportData {
   branches: { branch: string; gross: number; tarjeta: number; efectivo: number; transferencia: number; otros: number; cardPct: number; cardResult: number; producto: number; servicio: number; laser: number }[]
   calculations: { provider: string; branch: string; productsCount: number; productIncentive: number; serviceCommission: number; laserIncentive: number; fixedIncentive: number; manualAdjustment: number; bonusExtra: number; grossTotal: number; cleaningContribution: number; netTotal: number; status: string }[]
   patients: { total: number; roundingDiff: number; rows: { provider: string; branch: string; patients: number; participation: number }[] }
-  laser: { laserTotal: number; tramoPct: number; threshold: number; fund: number; patientsTotal: number; distribution: { provider: string; patients: number; participation: number; amount: number }[] }
+  laser: { laserTotal: number; tramoPct: number; threshold: number; fund: number; patientsTotal: number; byBranch?: { branch: string; base: number; pct: number; threshold: number; fund: number }[]; distribution: { provider: string; patients: number; participation: number; amount: number }[] }
   rules: { name: string; ruleType: string; category: string | null; percentage: number | null; fixedAmount: number | null; minAmount: number | null; active: boolean }[]
   /** Detalle prestador × categoría de la comisión de servicios (venta base × %). */
   serviceDetail?: { provider: string; branch: string; category: string; base: number; pct: number; amount: number }[]

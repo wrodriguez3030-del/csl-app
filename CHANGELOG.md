@@ -18,6 +18,22 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.55.1] — 2026-07-16
+
+### Fixed
+- **Incentivos de Ventas · el tramo del incentivo de láser ahora es POR SUCURSAL.**
+  El reporte (`getCommissionLaser`) calculaba el tramo/% sobre la venta láser TOTAL
+  combinada de todas las sucursales (`fondo = ventaTotal × %único`), mientras que la
+  liquidación real ya lo hacía por sucursal. Ahora el reporte también calcula el tramo
+  con la **venta láser individual de cada sucursal** (cada una cae en su propio tramo)
+  y el fondo total = suma de fondos por sucursal.
+
+### Added
+- **Reportes · tabla "Incentivo láser · tramo por sucursal"**: muestra por sucursal la
+  venta láser, el % del tramo aplicado y el fondo, con total.
+
+---
+
 ## [0.55.0] — 2026-07-16
 
 ### Added
