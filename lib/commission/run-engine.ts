@@ -27,6 +27,7 @@
 import { round2 } from "./money"
 import { canonicalCollaborator } from "./normalize"
 import { classifyProvider } from "./classification"
+import { isExcludedProvider, isNonIncentiveItem } from "./exclusions"
 
 export interface RunSaleRow {
   branch: string
@@ -36,6 +37,9 @@ export interface RunSaleRow {
   quantity: number
   providerOriginal: string | null
   provider: string | null // normalizado
+  /** Nombre del ítem (servicio/producto): permite excluir insumos sin incentivo
+   *  (rasuradoras, anestesia) por nombre. Opcional por compatibilidad. */
+  serviceName?: string | null
 }
 
 export interface RunCollaborator {
@@ -259,10 +263,14 @@ export function computeRun(input: ComputeRunInput): RunResult {
 
   // ── Incentivos por servicio y productos (atribución por prestador) ────────
   for (const s of sales) {
+    // Insumos sin incentivo (rasuradoras, anestesia): se cobran al cliente pero
+    // no comisionan. Se excluyen del incentivo (no de la facturación).
+    if (isNonIncentiveItem(s.serviceName)) continue
     const info = classifyProvider(s.providerOriginal ?? s.provider)
     if (!info.commissionable) continue
     const name = canonicalCollaborator(s.provider || info.name)
-    if (!name) continue
+    // Prestador excluido (p. ej. administrador): nunca cobra incentivo.
+    if (!name || isExcludedProvider(name)) continue
     const it = itemFor(name)
     if (s.category === "PRODUCTO") {
       it.productUnits += Number(s.quantity) || 0

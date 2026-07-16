@@ -627,6 +627,7 @@ export async function setCommissionCalcStatus(params: ActionParams, user: Action
 
 // ── Vistas agregadas desde las ventas persistidas ───────────────────────────
 import { classifyProvider } from "@/lib/commission/classification"
+import { isExcludedProvider, isNonIncentiveItem } from "@/lib/commission/exclusions"
 
 /** Trae las ventas del negocio filtradas en DB por período (sale_date, rango
  *  inclusivo), sucursal y prestador — los filtros se aplican en backend.
@@ -661,9 +662,14 @@ async function fetchSalesForPeriod(params: ActionParams) {
  *  detalle, dashboard, pacientes y runs deben usar esto, no classifyProvider
  *  directo, para que las asignaciones manuales fluyan a todos los cálculos. */
 function effectiveProvider(r: Row): { name: string; commissionable: boolean } {
-  if (r.assigned_at && r.provider_normalized) return { name: String(r.provider_normalized), commissionable: true }
+  if (r.assigned_at && r.provider_normalized) {
+    const name = String(r.provider_normalized)
+    // Un prestador excluido nunca comisiona, ni siquiera si se le asignó manual.
+    return { name, commissionable: !isExcludedProvider(name) }
+  }
   const info = classifyProvider(r.provider_original ?? r.provider_normalized)
-  return { name: String(r.provider_normalized || info.name), commissionable: info.commissionable && !!info.name }
+  const name = String(r.provider_normalized || info.name)
+  return { name, commissionable: info.commissionable && !!info.name && !isExcludedProvider(name) }
 }
 
 async function cardPercentage(): Promise<number> {
@@ -715,6 +721,7 @@ export async function getCommissionServiceDetail(params: ActionParams) {
     const cat = String(r.category || "")
     const pct = pctByCat[cat]
     if (pct == null || cat === "DEPILACION_LASER" || cat === "PRODUCTO") continue
+    if (isNonIncentiveItem(r.service_name)) continue // insumo sin incentivo
     const p = effectiveProvider(r)
     if (!p.commissionable || !p.name) continue
     const key = `${p.name}||${cat}`
@@ -790,7 +797,7 @@ export async function assignCommissionSaleProvider(params: ActionParams, user: A
   const sb = getSupabaseAdmin()
 
   const { data: rowsRaw, error: selErr } = await sb.from("sales_commission_sales")
-    .select("id,sale_date,branch,category,gross_amount,quantity,provider_original,assigned_at")
+    .select("id,sale_date,service_name,branch,category,gross_amount,quantity,provider_original,assigned_at")
     .eq("business_id", business_id).in("id", ids)
   if (selErr) throw new Error(selErr.message)
   const rows = ((rowsRaw || []) as Row[]).filter((r) => !r.assigned_at &&
@@ -798,11 +805,15 @@ export async function assignCommissionSaleProvider(params: ActionParams, user: A
   if (!rows.length) throw new Error("Las ventas seleccionadas ya tienen prestador o no aplican")
 
   // Delta por período: servicios Σ round2(base × %) por categoría; productos
-  // Σ unidades × tarifa del prestador.
+  // Σ unidades × tarifa del prestador. Los insumos sin incentivo (rasuradoras,
+  // anestesia) y los prestadores excluidos NO generan delta: se asignan igual
+  // pero no suman incentivo (misma regla que el motor de liquidación).
+  const providerExcluded = isExcludedProvider(provider)
   const rules = await readRunRules()
   const rate = (await productRatesForProviders([provider], rules.productUnitAmount))[provider]
   const byPeriod = new Map<string, { month: number; year: number; branch: string; byCat: Record<string, number>; prodUnits: number }>()
   for (const r of rows) {
+    if (providerExcluded || isNonIncentiveItem(r.service_name)) continue
     const d = String(r.sale_date || "").slice(0, 10)
     const year = Number(d.slice(0, 4)), month = Number(d.slice(5, 7))
     if (!year || !month) continue
@@ -911,20 +922,23 @@ export async function unassignCommissionSaleProvider(params: ActionParams, user:
   const sb = getSupabaseAdmin()
 
   const { data: rowsRaw, error: selErr } = await sb.from("sales_commission_sales")
-    .select("id,sale_date,branch,category,gross_amount,quantity,provider_original,provider_normalized,assigned_at")
+    .select("id,sale_date,service_name,branch,category,gross_amount,quantity,provider_original,provider_normalized,assigned_at")
     .eq("business_id", business_id).in("id", ids)
   if (selErr) throw new Error(selErr.message)
   const rows = ((rowsRaw || []) as Row[]).filter((r) => r.assigned_at)
   if (!rows.length) throw new Error("Las ventas seleccionadas no tienen asignación manual")
 
-  // Reversa por prestador × período: mismo cálculo que la asignación.
+  // Reversa por prestador × período: mismo cálculo que la asignación. Los
+  // insumos sin incentivo y los prestadores excluidos no habían sumado delta,
+  // así que tampoco se revierten (simetría exacta con la asignación).
   const rules = await readRunRules()
   const groups = new Map<string, { provider: string; month: number; year: number; byCat: Record<string, number>; prodUnits: number }>()
   for (const r of rows) {
     const provider = String(r.provider_normalized || "")
+    if (!provider || isExcludedProvider(provider) || isNonIncentiveItem(r.service_name)) continue
     const d = String(r.sale_date || "").slice(0, 10)
     const year = Number(d.slice(0, 4)), month = Number(d.slice(5, 7))
-    if (!provider || !year || !month) continue
+    if (!year || !month) continue
     const key = `${provider}||${year}-${month}`
     let g = groups.get(key)
     if (!g) { g = { provider, month, year, byCat: {}, prodUnits: 0 }; groups.set(key, g) }
@@ -1576,6 +1590,7 @@ async function readRunSales(branch: string, month: number, year: number): Promis
     // filas asignadas se le pasa el nombre asignado (limpio → comisionable).
     providerOriginal: r.assigned_at && r.provider_normalized ? String(r.provider_normalized) : r.provider_original == null ? null : String(r.provider_original),
     provider: r.provider_normalized == null ? null : String(r.provider_normalized),
+    serviceName: r.service_name == null ? null : String(r.service_name),
   }))
 }
 

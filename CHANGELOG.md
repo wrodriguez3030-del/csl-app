@@ -18,6 +18,34 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.56.0] — 2026-07-16
+
+### Added
+- **Exclusiones de incentivo centralizadas** (`lib/commission/exclusions.ts`, fuente única
+  usada por el motor de liquidación y por el reporte/deltas de asignación):
+  - **Rasuradoras y anestesia NO pagan incentivo.** Son insumos que se le cobran al
+    cliente pero no comisionan. Patrones por nombre: `RASURADORA`, `ANESTESIA` (cubre
+    `RASURADORAS`, `ANESTESIA ENCAIN`, `ANESTESIA ZK-INA` y `APLICACION DE ANESTESIA`).
+    Antes generaban incentivo de producto por unidad (≈RD$100/u): impacto histórico
+    ≈RD$16,800 rasuradoras + ≈RD$19,500 anestesia.
+  - **El prestador CARLOS ARIAS (Administrador Local) nunca cobra incentivo**, aunque se
+    le asigne una venta manualmente. Ya quedaba fuera por rol "Administrador"; ahora es
+    una regla explícita y robusta.
+  - Las ventas excluidas **siguen contando en la facturación/ingreso** del negocio
+    (reporte por sucursal y medios de pago): la exclusión aplica solo al incentivo.
+- Tests del motor: 10 casos nuevos de exclusión (139/139 en verde).
+
+### Changed
+- `RunSaleRow` lleva ahora `serviceName` (opcional) para poder excluir insumos por nombre;
+  el motor (`run-engine`) salta ítems sin incentivo y prestadores excluidos en la
+  atribución de servicio y producto; `readRunSales`, `assign/unassign/reassign` y
+  `getCommissionServiceDetail`/`effectiveProvider` aplican el mismo criterio.
+
+> **Para aplicar:** re-correr **Cálculo mensual** de los meses afectados (el reporte lee
+> las liquidaciones persistidas; el neteo/exclusión se materializa al recalcular).
+
+---
+
 ## [0.55.2] — 2026-07-16
 
 ### Fixed

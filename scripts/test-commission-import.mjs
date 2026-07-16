@@ -330,6 +330,35 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
   })
   t("DAYHANA 3 u × RD$50 = 150 (override)", rProd.items.find((i) => i.name === "DAYHANA")?.productIncentive === 150)
   t("ROSA 2 u × RD$100 = 200 (regla general)", rProd.items.find((i) => i.name === "ROSA")?.productIncentive === 200)
+
+  console.log("── Exclusiones de incentivo (rasuradoras, anestesia, prestador excluido)")
+  const { isExcludedProvider, isNonIncentiveItem } = await import("../lib/commission/exclusions.ts")
+  t("RASURADORAS es ítem sin incentivo", isNonIncentiveItem("RASURADORAS") === true)
+  t("ANESTESIA ENCAIN es ítem sin incentivo", isNonIncentiveItem("ANESTESIA ENCAIN ") === true)
+  t("APLICACION DE ANESTESIA es ítem sin incentivo", isNonIncentiveItem("APLICACION DE ANESTESIA ") === true)
+  t("un producto normal SÍ comisiona", isNonIncentiveItem("CREMA HIDRATANTE") === false)
+  t("CARLOS ARIAS es prestador excluido", isExcludedProvider("CARLOS ARIAS") === true)
+  t("CARLOS ARIAS (con acento/minúsculas) excluido", isExcludedProvider("carlos arias") === true)
+  t("otra prestadora NO está excluida", isExcludedProvider("DAYHANA") === false)
+
+  const rExcl = computeRun({
+    branch: "RAFAEL VIDAL",
+    sales: [
+      // Rasuradoras y anestesia (productos) NO generan incentivo aunque las venda
+      // una prestadora comisionable.
+      sale({ category: "PRODUCTO", serviceName: "RASURADORAS", amount: 50, quantity: 4, providerOriginal: "ROSA (prestador)", provider: "ROSA" }),
+      sale({ category: "PRODUCTO", serviceName: "ANESTESIA ENCAIN", amount: 1000, quantity: 5, providerOriginal: "ROSA (prestador)", provider: "ROSA" }),
+      // Un producto normal SÍ paga (2 u × RD$100 = 200).
+      sale({ category: "PRODUCTO", serviceName: "CREMA", amount: 900, quantity: 2, providerOriginal: "ROSA (prestador)", provider: "ROSA" }),
+      // Producto vendido por el prestador excluido: no cobra nada.
+      sale({ category: "PRODUCTO", serviceName: "CREMA", amount: 900, quantity: 3, providerOriginal: "CARLOS ARIAS (Administrador Local)", provider: "CARLOS ARIAS" }),
+    ],
+    collaborators: [collab("ROSA")],
+    patients: [], patientsSource: "ninguna", rules: RULES,
+  })
+  t("ROSA solo cobra el producto normal (2 u × 100 = 200)", rExcl.items.find((i) => i.name === "ROSA")?.productIncentive === 200)
+  t("rasuradoras/anestesia no suman unidades a ROSA", rExcl.items.find((i) => i.name === "ROSA")?.productUnits === 2)
+  t("CARLOS ARIAS no aparece con incentivo", !rExcl.items.some((i) => i.name === "CARLOS ARIAS" && i.productIncentive > 0))
 }
 
 // ── Archivos reales (§33/§34) — solo si están disponibles ──
