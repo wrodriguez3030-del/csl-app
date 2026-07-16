@@ -18,6 +18,19 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.55.0] — 2026-07-16
+
+### Added
+- **Incentivos de Ventas · Reportes — tabla "Comisión por prestador" con TODAS las
+  prestadoras.** El "Detalle de comisión por categoría" solo mostraba SERVICIOS
+  (excluye láser y productos por diseño), así que las empleadas cuya comisión venía
+  de láser o productos **no aparecían**. Se agrega una tabla que lista a **todas** las
+  prestadoras con su desglose: Inc. productos · Com. servicios · Inc. láser · Bono ·
+  Bruto · Neto (los mismos datos de la hoja "Ventas por Prestador" del Excel, que ya
+  se traían pero no se mostraban en pantalla).
+
+---
+
 ## [0.54.2] — 2026-07-16
 
 ### Fixed

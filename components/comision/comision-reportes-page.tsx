@@ -108,6 +108,54 @@ export function ComisionReportesPage() {
               <Card key={l} className="border-[color:var(--brand-border)]"><CardContent className="p-4"><div className="text-xs text-muted-foreground">{l}</div><div className="text-lg font-bold tabular-nums">{fmtRD(v)}</div></CardContent></Card>
             ))}
           </div>
+          {(data!.calculations || []).length > 0 && (
+            <Card className="border-[color:var(--brand-border)]"><CardContent className="p-3 sm:p-4">
+              <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold">
+                <FileBarChart2 className="h-4 w-4 text-[color:var(--brand-primary)]" /> Comisión por prestador
+                <Badge variant="secondary">{data!.calculations.length} prestadores</Badge>
+                <span className="text-xs font-normal text-muted-foreground">incluye TODAS las prestadoras con comisión de productos, servicios y láser</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="py-2 text-left">Prestador</th>
+                      <th className="py-2 text-left">Sucursal</th>
+                      <th className="py-2 text-right">Inc. productos</th>
+                      <th className="py-2 text-right">Com. servicios</th>
+                      <th className="py-2 text-right">Inc. láser</th>
+                      <th className="py-2 text-right">Bono</th>
+                      <th className="py-2 text-right">Bruto</th>
+                      <th className="py-2 text-right">Neto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data!.calculations.map((c, i) => (
+                      <tr key={`${c.provider}-${c.branch}-${i}`} className="border-b last:border-0">
+                        <td className="py-1.5 font-medium">{c.provider}</td>
+                        <td className="py-1.5">{c.branch}</td>
+                        <td className="py-1.5 text-right tabular-nums">{fmtRD(c.productIncentive)}</td>
+                        <td className="py-1.5 text-right tabular-nums">{fmtRD(c.serviceCommission)}</td>
+                        <td className="py-1.5 text-right tabular-nums">{fmtRD(c.laserIncentive)}</td>
+                        <td className="py-1.5 text-right tabular-nums">{fmtRD(c.bonusExtra)}</td>
+                        <td className="py-1.5 text-right tabular-nums">{fmtRD(c.grossTotal)}</td>
+                        <td className="py-1.5 text-right font-semibold tabular-nums text-emerald-700">{fmtRD(c.netTotal)}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t-2 bg-slate-50 font-bold">
+                      <td colSpan={2} className="py-2 text-xs uppercase">Totales</td>
+                      <td className="py-2 text-right tabular-nums">{fmtRD(data!.calculations.reduce((s, c) => s + c.productIncentive, 0))}</td>
+                      <td className="py-2 text-right tabular-nums">{fmtRD(data!.calculations.reduce((s, c) => s + c.serviceCommission, 0))}</td>
+                      <td className="py-2 text-right tabular-nums">{fmtRD(data!.calculations.reduce((s, c) => s + c.laserIncentive, 0))}</td>
+                      <td className="py-2 text-right tabular-nums">{fmtRD(data!.calculations.reduce((s, c) => s + c.bonusExtra, 0))}</td>
+                      <td className="py-2 text-right tabular-nums">{fmtRD(data!.calculations.reduce((s, c) => s + c.grossTotal, 0))}</td>
+                      <td className="py-2 text-right tabular-nums text-emerald-700">{fmtRD(data!.calculations.reduce((s, c) => s + c.netTotal, 0))}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </CardContent></Card>
+          )}
           {(data!.serviceDetail || []).length > 0 && (
             <Card className="border-[color:var(--brand-border)]"><CardContent className="p-3 sm:p-4">
               <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold">
