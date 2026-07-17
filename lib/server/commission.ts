@@ -12,6 +12,7 @@ import { getBusinessContext, requirePermission, hasPermission } from "./business
 import { textValue, numberValue } from "./csl-helpers"
 import type { ActionParams, ActionUser, Row } from "./csl-types"
 import { defaultCommissionRules } from "@/lib/commission/rules"
+import { orderCommissionBranches } from "@/lib/business"
 import { parseDateISO, canonicalCollaborator, normalizeName } from "@/lib/commission/normalize"
 import { exclusiveEnd, monthBounds, monthsCovered, todayInTz } from "@/lib/commission/period"
 import { assignLaserToCalcs } from "@/lib/commission/laser-apply"
@@ -1176,7 +1177,7 @@ async function readTenantBranches(): Promise<string[]> {
       .select("branch").eq("business_id", business_id).is("deleted_at", null)
     names = (roster || []).map((r) => String((r as Row).branch || "").trim().toUpperCase()).filter(Boolean)
   }
-  return [...new Set(names)].sort()
+  return orderCommissionBranches(getBusinessContext()?.businessSlug, [...new Set(names)])
 }
 
 /**

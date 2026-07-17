@@ -18,6 +18,17 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.62.1] — 2026-07-17
+
+### Changed
+- **Orden de sucursales en filtros y menús de comisión: Rafael Vidal → Los Jardines → Villa Olga**
+  (antes salía alfabético con "Los Jardines" primero, tras hacerlas tenant-scoped en 0.61.0). Nuevo
+  orden preferido por tenant `COMMISSION_BRANCH_ORDER` + `orderCommissionBranches(slug, branches)` en
+  `lib/business.ts`; lo usan el hook `useCommissionBranches()` (cliente) y `readTenantBranches()`
+  (servidor). Las sucursales no listadas quedan al final, alfabéticas. Cada tenant define su orden.
+
+---
+
 ## [0.62.0] — 2026-07-17
 
 ### Fixed

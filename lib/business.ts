@@ -108,6 +108,27 @@ export function businessIdForSlug(slug: string | null | undefined): string | nul
 }
 
 /**
+ * Orden preferido de sucursales por tenant para los filtros y menús del módulo
+ * de comisión (MAYÚSCULAS, formato canónico). Cada tenant define el suyo aquí;
+ * las sucursales no listadas quedan después, en orden alfabético. Así no se
+ * ordena alfabéticamente por defecto (que ponía "Los Jardines" antes que
+ * "Rafael Vidal") y cada tenant es independiente.
+ */
+export const COMMISSION_BRANCH_ORDER: Record<string, string[]> = {
+  csl: ["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"],
+}
+
+/** Ordena una lista de sucursales según el orden preferido del tenant. */
+export function orderCommissionBranches(slug: string | null | undefined, branches: string[]): string[] {
+  const pref = COMMISSION_BRANCH_ORDER[String(slug || "")] || []
+  const idx = (b: string) => {
+    const i = pref.indexOf(b)
+    return i === -1 ? pref.length : i
+  }
+  return [...branches].sort((a, b) => idx(a) - idx(b) || a.localeCompare(b))
+}
+
+/**
  * Branding normalizado para exportaciones (PDF, Excel, encabezados, footers).
  *
  * REGLA: ninguna exportación debe hardcodear "Cibao Spa Láser" / "CSL".
