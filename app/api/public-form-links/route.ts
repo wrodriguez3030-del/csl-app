@@ -16,6 +16,7 @@ import {
   type FormType,
   type PrefillPayload,
 } from "@/lib/server/public-form-links"
+import { getBusinessBranding } from "@/lib/business"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -42,20 +43,13 @@ const CONSENT_NAME_BY_TYPE: Record<FormType, string> = {
   solicitud_empleo: "Solicitud de empleo",
 }
 
-// Mapa business_id → nombre corto para el mensaje WhatsApp.
-const BUSINESS_NAME_BY_ID: Record<string, string> = {
-  "66b0cf3e-4cd7-4cfb-a7cf-0674b77fc4e6": "Cibao Spa Laser",
-  "03b96698-c5df-4b4b-84df-1160a7ad56b9": "Depicenter Skin Láser",
-}
-
 function buildWhatsappUrl(
   publicUrl: string,
   ttlHours: number,
-  clienteNombre?: string,
-  formType?: FormType,
-  businessId?: string,
+  clienteNombre: string | undefined,
+  formType: FormType | undefined,
+  businessName: string,
 ): string {
-  const businessName = (businessId && BUSINESS_NAME_BY_ID[businessId]) || "Cibao Spa Laser"
   const firstName = clienteNombre ? clienteNombre.trim().split(/\s+/)[0].toUpperCase() : ""
 
   let mensaje: string
@@ -131,12 +125,15 @@ export async function POST(request: Request) {
     })
 
     const publicUrl = buildPublicUrl(request, token)
+    // El nombre del tenant sale de la marca canónica (tabla businesses vía slug),
+    // no de un mapa hardcodeado — así queda dividido por tenant sin fallback a CSL.
+    const businessName = getBusinessBranding(ctx.businessSlug).name
     const whatsappUrl = buildWhatsappUrl(
       publicUrl,
       ttlHours,
       clienteNombre || prefillPayload?.nombre,
       formType as FormType,
-      ctx.businessId,
+      businessName,
     )
 
     return json({

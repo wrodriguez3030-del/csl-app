@@ -129,7 +129,7 @@ async function resolveMaintenanceTargetBusiness(
 import { createHash, randomBytes } from "node:crypto"
 import { haversineMeters } from "@/lib/hr-geo"
 import { makeAgendaMatchKey, normalizeSucursal, normalizeOperadora, sucursalesForTenant, sucursalAllowedForTenant, tenantSlugForSucursal } from "@/lib/normalize-pulse"
-import { businessIdForSlug } from "@/lib/business"
+import { businessIdForSlug, getBusinessBranding } from "@/lib/business"
 import { toUpperField, toUpperFieldOrNull } from "@/lib/normalize-fields"
 import {
   clienteCosmiatriaToDb,
@@ -3995,7 +3995,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       row.payload_json = { ...((row.payload_json as unknown as Row) || {}), email: row.email, Email: row.email }
       await upsertRow("ficha_dermatologica", row)
       await syncFichasCliente(cliente)
-      const email = await sendFichaDermoEmail(row).catch((error: unknown) => ({
+      const emailBrand = getBusinessBranding(getBusinessContext()?.businessSlug).name
+      const email = await sendFichaDermoEmail(row, emailBrand).catch((error: unknown) => ({
         sent: false,
         warning: error instanceof Error ? error.message : "No se pudo enviar el correo",
       }))

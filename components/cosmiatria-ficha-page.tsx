@@ -14,6 +14,7 @@ import { SeqBadge } from "@/components/seq-badge"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { useSessionUser } from "@/hooks/use-session-user"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
+import { getBusinessBranding } from "@/lib/business"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
 import type { Business, ClienteCosmiatria } from "@/lib/types"
 import { displayPhone, displayDocumento } from "@/lib/formatters"
@@ -124,10 +125,11 @@ function buildFichaPrintHtml(ficha: FichaDermoCosmiatrica, business?: Business) 
   const watermarkBanner = isPendiente
     ? `<div style="background:#fef3c7;border:2px solid #f59e0b;color:#92400e;padding:8px 12px;margin:0 0 8px;text-align:center;font-weight:bold;font-size:11px;border-radius:6px;">⚠ ${ficha.estado === "Pendiente de revisión" ? "PENDIENTE DE REVISIÓN POR ESPECIALISTA" : "PENDIENTE — falta completar"} · Esta ficha NO está finalizada.</div>`
     : ""
-  const brandName = business?.name || "Cibao Spa Laser"
-  const brandColor = business?.primaryColor || "#00897b"
-  const logoSrc = business?.logoUrl && typeof window !== "undefined" ? `${window.location.origin}${business.logoUrl}` : ""
-  return `<!doctype html><html><head><meta charset="utf-8" /><title>Ficha Dermatología - ${escapeHtml(ficha.nombre || ficha.id)}</title><style>
+  const branding = getBusinessBranding(business?.slug)
+  const brandName = branding.name
+  const brandColor = branding.primaryColor
+  const logoSrc = typeof window !== "undefined" ? `${window.location.origin}${branding.logoUrl}` : ""
+  const html = `<!doctype html><html><head><meta charset="utf-8" /><title>Ficha Dermatología - ${escapeHtml(ficha.nombre || ficha.id)}</title><style>
 @page{size:letter;margin:10mm;}
 *{box-sizing:border-box;}
 body{font-family:Arial,Helvetica,sans-serif;margin:0;font-size:9px;color:#111827;background:white;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
@@ -158,7 +160,7 @@ td{border:1px solid #ccc;padding:2px 3px;vertical-align:top;}
 .meta{margin-top:4px;color:#374151;font-size:8px;}
 @media print{button{display:none}}
 </style></head><body>
-${watermarkBanner}<div class="header">${logoSrc ? `<img src="${escapeHtml(logoSrc)}" alt="${escapeHtml(brandName)}" onerror="this.style.display='none'" />` : ""}<div class="header-text"><div class="logo">${escapeHtml(brandName.toUpperCase())}</div><h1>FICHA DERMATOLÓGICA / DERMO-COSMIÁTRICA</h1><p class="subtitle">Documento generado desde el sistema CSL</p></div></div>
+${watermarkBanner}<div class="header">${logoSrc ? `<img src="${escapeHtml(logoSrc)}" alt="${escapeHtml(brandName)}" onerror="this.style.display='none'" />` : ""}<div class="header-text"><div class="logo">${escapeHtml(brandName.toUpperCase())}</div><h1>FICHA DERMATOLÓGICA / DERMO-COSMIÁTRICA</h1><p class="subtitle">Documento generado desde ${escapeHtml(branding.subtitle)}</p></div></div>
 ${printRow(printField("Fecha", ficha.fecha), printField("Estado", ficha.estado))}
 ${printRow(printField("Sucursal", ficha.sucursal), printField("Operadora", ficha.operadora), printField("Especialista", ficha.nombreEspecialista || ficha.especialista))}
 <h2>Datos del cliente</h2>
@@ -228,6 +230,8 @@ ${printRow(printField("Declaración aceptada", ficha.declaracionAceptada ? "Sí"
   </div>
 </div>
 </body></html>`
+  // Red de seguridad: la marca legada del texto legal se reemplaza por la del tenant.
+  return html.replace(/Cibao Spa L[aá]ser/g, brandName)
 }
 
 export function CosmiatriaFichaPage() {

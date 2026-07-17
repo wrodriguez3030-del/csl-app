@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { SignaturePad } from "@/components/signature-pad"
 import { displayPhone, displayDocumento } from "@/lib/formatters"
+import { getBusinessBranding } from "@/lib/business"
 
 // Public form de Consentimiento de Depilación Láser (eliminación del vello no
 // deseado). Mismo modelo que Tatuajes/Cejas: el cliente solo ve "Cliente
@@ -45,11 +46,6 @@ interface Props {
   businessSlug?: string
 }
 
-const BUSINESS_NAME_BY_SLUG: Record<string, string> = {
-  csl: "Cibao Spa Laser",
-  depicenter: "Depicenter Skin Láser",
-}
-
 // Título visible (web). El PDF usa el encabezado formal de dos líneas.
 const TITULO_DOC = "Consentimiento informado para eliminación del vello no deseado"
 const PDF_TITULO = "CONSENTIMIENTO INFORMADO"
@@ -81,21 +77,28 @@ function buildPrintHtml(args: {
   firmaDataUrl: string
   recordId: string
   businessName?: string
+  logoUrl?: string
+  primaryColor?: string
 }) {
-  const { cliente, fechaFirma, firmaDataUrl, recordId, businessName = "CIBAO SPA LASER" } = args
-  return `<!doctype html><html><head><meta charset="utf-8" />
+  const {
+    cliente, fechaFirma, firmaDataUrl, recordId,
+    businessName = "CIBAO SPA LASER", logoUrl = "", primaryColor = "#00897b",
+  } = args
+  const logoSrc = logoUrl ? `${typeof window !== "undefined" ? window.location.origin : ""}${logoUrl}` : ""
+  const html = `<!doctype html><html><head><meta charset="utf-8" />
 <title>${escapeHtml(buildPdfBaseName(cliente.nombre))}</title>
 <style>
   @page { size: letter; margin: 14mm; }
   * { box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; color: #111827; font-size: 11px; margin: 0; }
-  .header { border-bottom: 3px solid #00897b; padding-bottom: 10px; margin-bottom: 14px; }
-  .logo { font-size: 18px; font-weight: 800; color: #00897b; letter-spacing: .02em; }
+  .header { border-bottom: 3px solid ${primaryColor}; padding-bottom: 10px; margin-bottom: 14px; }
+  .brand-logo { max-height: 66px; max-width: 220px; object-fit: contain; display: block; margin: 0 auto 6px; }
+  .logo { font-size: 18px; font-weight: 800; color: ${primaryColor}; letter-spacing: .02em; }
   .center { text-align: center; }
   .meta { color: #475569; font-size: 10px; margin-top: 2px; }
   h1 { font-size: 14px; margin: 6px 0 2px; }
-  .subtitle { font-size: 11.5px; font-weight: 700; color: #00695c; margin: 0 0 2px; }
-  h2 { font-size: 11.5px; background: #00897b; color: white; padding: 5px 8px; margin: 10px 0 5px; text-transform: uppercase; letter-spacing: .03em; border-radius: 4px; break-after: avoid; page-break-after: avoid; }
+  .subtitle { font-size: 11.5px; font-weight: 700; color: ${primaryColor}; margin: 0 0 2px; }
+  h2 { font-size: 11.5px; background: ${primaryColor}; color: white; padding: 5px 8px; margin: 10px 0 5px; text-transform: uppercase; letter-spacing: .03em; border-radius: 4px; break-after: avoid; page-break-after: avoid; }
   p { margin: 3px 0; line-height: 1.4; text-align: justify; }
   ul, ol { margin: 3px 0 3px 18px; line-height: 1.45; break-inside: auto; page-break-inside: auto; }
   li { margin: 2px 0; break-inside: avoid; page-break-inside: avoid; }
@@ -111,6 +114,7 @@ function buildPrintHtml(args: {
 </style></head><body>
 
 <div class="header center">
+  ${logoSrc ? `<img class="brand-logo" src="${escapeHtml(logoSrc)}" alt="${escapeHtml(businessName)}" onerror="this.style.display='none'" />` : ""}
   <div class="logo">${escapeHtml(businessName.toUpperCase())}</div>
   <h1>${escapeHtml(PDF_TITULO)}</h1>
   <div class="subtitle">${escapeHtml(PDF_SUBTITULO)}</div>
@@ -232,14 +236,18 @@ function buildPrintHtml(args: {
 </div>
 
 <div class="footer">
-  ${escapeHtml(businessName)} · cibaospa.consentimientos@gmail.com · Documento generado el ${escapeHtml(new Date().toLocaleString("es-DO"))} · Ref ${escapeHtml(recordId)}
+  ${escapeHtml(businessName)} · Documento generado el ${escapeHtml(new Date().toLocaleString("es-DO"))} · Ref ${escapeHtml(recordId)}
 </div>
 
 </body></html>`
+  // Red de seguridad: cualquier "Cibao Spa Laser/Láser" embebido en el cuerpo
+  // legal se reemplaza por la marca del tenant.
+  return html.replace(/Cibao Spa L[aá]ser/g, businessName)
 }
 
 export function PublicDepilacionLaserConsentForm({ prefill = {}, onSubmit, businessSlug = "csl" }: Props) {
-  const businessName = BUSINESS_NAME_BY_SLUG[businessSlug] || BUSINESS_NAME_BY_SLUG.csl
+  const branding = getBusinessBranding(businessSlug)
+  const businessName = branding.name
   const cliente: Required<PublicDepilacionLaserPrefill> = {
     clienteId: prefill.clienteId || "",
     nombre: prefill.nombre || "",
@@ -314,6 +322,8 @@ export function PublicDepilacionLaserConsentForm({ prefill = {}, onSubmit, busin
       firmaDataUrl: success.firma,
       recordId: success.recordId,
       businessName,
+      logoUrl: branding.logoUrl,
+      primaryColor: branding.primaryColor,
     })
     const popup = window.open("", "_blank", "width=1000,height=900")
     if (!popup) return
@@ -350,6 +360,13 @@ export function PublicDepilacionLaserConsentForm({ prefill = {}, onSubmit, busin
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4 px-3 py-5 text-sm">
+      {/* Encabezado de marca del tenant */}
+      <div className="flex flex-col items-center gap-2 pt-1">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={branding.logoUrl} alt={businessName} className="h-16 w-auto object-contain" />
+        <p className="text-sm font-semibold text-muted-foreground">{businessName}</p>
+      </div>
+
       {/* 1) Cliente vinculado (solo lectura) */}
       <Card>
         <CardHeader>
@@ -387,14 +404,14 @@ export function PublicDepilacionLaserConsentForm({ prefill = {}, onSubmit, busin
           <Section title="Descripción del procedimiento">
             <p>
               La depilación láser es un método efectivo y duradero para eliminar el vello no
-              deseado en diferentes áreas del cuerpo. En Cibao Spa Laser, ofrecemos una experiencia
+              deseado en diferentes áreas del cuerpo. En {businessName}, ofrecemos una experiencia
               segura y profesional, utilizando tecnología de vanguardia.
             </p>
           </Section>
 
           <Section title="Confirmación del cliente">
             <ol className="ml-5 list-decimal space-y-2">
-              <li><strong>CONFIRMO</strong> que Cibao Spa Laser me ha explicado detalladamente, en palabras comprensibles para mí, el efecto y la naturaleza del (los) procedimientos a efectuar; incluyendo los posibles riesgos, otras soluciones alternativas de procedimientos (cuando existan), así como las molestias que se pueden sentir, aun teniendo un periodo post-tratamiento normal. Han sido contestadas a satisfacción todas las preguntas que libremente he formulado acerca de todo el procedimiento.</li>
+              <li><strong>CONFIRMO</strong> que {businessName} me ha explicado detalladamente, en palabras comprensibles para mí, el efecto y la naturaleza del (los) procedimientos a efectuar; incluyendo los posibles riesgos, otras soluciones alternativas de procedimientos (cuando existan), así como las molestias que se pueden sentir, aun teniendo un periodo post-tratamiento normal. Han sido contestadas a satisfacción todas las preguntas que libremente he formulado acerca de todo el procedimiento.</li>
               <li><strong>ACEPTO y CONSIENTO</strong>, que al firmar cada sesión recibida, estaré firmando además el consentimiento informado del tratamiento.</li>
             </ol>
           </Section>
@@ -496,9 +513,9 @@ export function PublicDepilacionLaserConsentForm({ prefill = {}, onSubmit, busin
           <Section title="Declaraciones finales del cliente">
             <p>El fin del procedimiento que he solicitado tiene como objetivo mejorar mi apariencia física.</p>
             <p><strong>COMPRENDO</strong> que los resultados están en relación directamente proporcional a la capacidad que tiene mi organismo de eliminación de los materiales que se hayan aplicado.</p>
-            <p><strong>CONSIENTO</strong> en aportar datos personales antes y después del tratamiento, siendo este material de diagnóstico y de registro para mi historia clínica, propiedad de Cibao Spa Laser.</p>
-            <p><strong>Acepto</strong> que Cibao Spa Laser retrase o suspenda el procedimiento si lo cree preciso.</p>
-            <p><strong>ME COMPROMETO</strong> a seguir fielmente, en la mejor medida de mis posibilidades, las instrucciones impartidas por Cibao Spa Laser para antes, durante y después de la intervención arriba mencionada.</p>
+            <p><strong>CONSIENTO</strong> en aportar datos personales antes y después del tratamiento, siendo este material de diagnóstico y de registro para mi historia clínica, propiedad de {businessName}.</p>
+            <p><strong>Acepto</strong> que {businessName} retrase o suspenda el procedimiento si lo cree preciso.</p>
+            <p><strong>ME COMPROMETO</strong> a seguir fielmente, en la mejor medida de mis posibilidades, las instrucciones impartidas por {businessName} para antes, durante y después de la intervención arriba mencionada.</p>
             <p>Yo entiendo que el personal médico y otros asistentes se basarán en declaraciones hechas por mí con el fin de determinar si el proceso puede ser seguro y efectivo para mi persona. Yo entiendo que la reducción del vello mediante tratamiento con láser no es una ciencia exacta, y que no se me pueden ofrecer garantías o seguridad total en cuanto a los resultados de este procedimiento.</p>
           </Section>
 
@@ -507,7 +524,7 @@ export function PublicDepilacionLaserConsentForm({ prefill = {}, onSubmit, busin
               <li>Reservas y cancelaciones con 48 h de antelación.</li>
               <li>Horario de lunes a viernes de 9:00 a.m. a 8:00 p.m.; sábados de 8:00 a.m. a 4:00 p.m. Si la cancelación de la cita o reprogramación no es comunicada, se dará por realizada la sesión.</li>
               <li>Validez: 2 años desde la fecha de compra.</li>
-              <li>Los pagos se podrán realizar en efectivo, transferencias o con tarjeta de crédito. Los precios en Cibao Spa Laser no incluyen el ITBIS.</li>
+              <li>Los pagos se podrán realizar en efectivo, transferencias o con tarjeta de crédito. Los precios en {businessName} no incluyen el ITBIS.</li>
               <li>El tiempo de la cita no puede extenderse bajo ningún motivo porque perjudicará nuestro itinerario programado.</li>
               <li>Si atendemos alguna cita con retraso por responsabilidad nuestra, los tiempos serán repuestos por el Centro. Si los retrasos son ocasionados por el cliente, lo atenderemos solo el tiempo restante hasta completar la hora del término de cita.</li>
             </ul>
@@ -515,7 +532,7 @@ export function PublicDepilacionLaserConsentForm({ prefill = {}, onSubmit, busin
 
           <Section title="Protección de datos">
             <p>
-              Cibao Spa Laser enviará información, respuesta a consultas y contactos genéricos,
+              {businessName} enviará información, respuesta a consultas y contactos genéricos,
               mientras dure nuestra relación y tengamos su consentimiento de destinatario. No se
               cederán datos a terceros salvo obligación legal.
             </p>
@@ -529,8 +546,8 @@ export function PublicDepilacionLaserConsentForm({ prefill = {}, onSubmit, busin
               persona a otra y que no se garantiza la eliminación completa del vello no deseado.
             </p>
             <p>
-              Doy mi consentimiento para realizar el procedimiento en Cibao Spa Laser y libero a
-              Cibao Spa Laser y su personal de cualquier responsabilidad Legal en lo Penal y Civil en
+              Doy mi consentimiento para realizar el procedimiento en {businessName} y libero a
+              {businessName} y su personal de cualquier responsabilidad Legal en lo Penal y Civil en
               caso de complicaciones que puedan surgir durante o después del tratamiento.
             </p>
           </Section>

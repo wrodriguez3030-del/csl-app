@@ -18,6 +18,36 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.58.0] — 2026-07-17
+
+### Fixed
+- **Consentimientos ahora usan la marca del tenant activo (Depicenter vs CSL).**
+  El texto legal y los formularios salían a nombre de "Cibao Spa Laser" aunque el
+  tenant fuera **Depicenter**. Ahora todo consentimiento (interno y público) toma el
+  nombre desde la marca canónica `getBusinessBranding(slug)` (`lib/business.ts`):
+  CSL → "Cibao Spa Láser", Depicenter → "Depicenter Skin Laser". Cero regresión para CSL.
+  - Interno `components/consentimientos-page.tsx` (masajes/peeling/tatuajes/depilación):
+    impresión, vista en pantalla, `DetailDialog` y guardado normalizan la marca (helper
+    `applyBrand` + red de seguridad `replace(/Cibao Spa L[aá]ser/g, marca)`).
+  - Formularios públicos (los que abre el cliente por WhatsApp): `public-masajes-`,
+    `public-peeling-`, `public-tatuajes-`, `public-depilacion-laser-`,
+    `public-ficha-consent-form.tsx` — nombre del tenant en cuerpo, PDF y pie.
+  - Ficha dermatológica: `cosmiatria-ficha-page.tsx` (impresión) y `lib/dermo-server.ts`
+    (PDF + correo Resend: encabezado, asunto y `from` por tenant).
+
+### Added
+- **Logo del tenant en los formularios públicos.** Antes el encabezado era solo texto;
+  ahora muestra la imagen del logo (Depicenter/CSL según tenant) en pantalla y en el PDF,
+  con el color primario del tenant. Reutiliza `public/brands/depicenter-logo.jpg`.
+
+### Changed
+- **Envío por WhatsApp dividido por tenant sin fallback a CSL.**
+  `app/api/public-form-links/route.ts` toma el nombre del negocio desde la marca canónica
+  (vía `ctx.businessSlug`), no desde un mapa hardcodeado. Se eliminó el fallback duro a
+  "Cibao Spa Laser".
+
+---
+
 ## [0.57.1] — 2026-07-17
 
 ### Changed

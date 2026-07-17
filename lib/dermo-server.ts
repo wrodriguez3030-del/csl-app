@@ -253,8 +253,8 @@ function buildPdf(lines: string[]) {
   return Buffer.from(pdf, "ascii")
 }
 
-export function buildFichaDermoPdf(row: Row) {
-  return buildFichaDermoPrintPdf(fichaDermoFromDb(row))
+export function buildFichaDermoPdf(row: Row, businessName = "Cibao Spa Laser") {
+  return buildFichaDermoPrintPdf(fichaDermoFromDb(row), businessName)
 }
 
 type PdfCtx = {
@@ -377,7 +377,7 @@ async function drawSignature(ctx: PdfCtx, ficha: FichaDermoCosmiatrica, y: numbe
   y = fieldsRow(ctx, y, [["Documento", ficha.documento || ficha.cedula], ["Fecha", ficha.fecha], ["Sucursal", ficha.sucursal], ["Declaracion", ficha.declaracionAceptada ? "Aceptada" : "Pendiente"]])
   return y
 }
-async function buildFichaDermoPrintPdf(ficha: FichaDermoCosmiatrica) {
+async function buildFichaDermoPrintPdf(ficha: FichaDermoCosmiatrica, businessName = "Cibao Spa Laser") {
   const doc = await PDFDocument.create()
   const font = await doc.embedFont(StandardFonts.Helvetica)
   const bold = await doc.embedFont(StandardFonts.HelveticaBold)
@@ -395,7 +395,7 @@ async function buildFichaDermoPrintPdf(ficha: FichaDermoCosmiatrica) {
   })
   const header = (ctx: PdfCtx, title = "FICHA DERMATOLOGICA / DERMO-COSMIATRICA") => {
     let y = 762
-    drawCentered(ctx, "CIBAO SPA LASER", y, 15, bold, ctx.teal)
+    drawCentered(ctx, businessName.toUpperCase(), y, 15, bold, ctx.teal)
     y -= 17
     drawCentered(ctx, title, y, 11, bold, ctx.text)
     ctx.page.drawLine({ start: { x: ctx.margin, y: y - 10 }, end: { x: ctx.width - ctx.margin, y: y - 10 }, thickness: 1.1, color: ctx.teal })
@@ -455,7 +455,7 @@ async function buildFichaDermoPrintPdf(ficha: FichaDermoCosmiatrica) {
   y = drawParagraph(ctx, ficha.recomendaciones || "-", ctx.margin, y, ctx.width - ctx.margin * 2)
   y = fieldsRow(ctx, y, [["Cuidados sugeridos", ficha.cuidadosSugeridos], ["Recomienda procedimiento", ficha.recomiendaProcedimiento], ["Proxima evaluacion", ficha.proximaEvaluacion]])
   y = section(ctx, "Declaracion del cliente", y)
-  const declaracion = "Declaro que la informacion suministrada en esta ficha dermatologica es verdadera y completa. Entiendo que Cibao Spa Laser y su personal utilizaran esta informacion para evaluar mi piel, mis antecedentes y las condiciones necesarias antes de realizar cualquier procedimiento estetico o dermatologico. Declaro que he informado sobre alergias, medicamentos, enfermedades, embarazo, lactancia, tratamientos previos y cualquier condicion relevante. Entiendo que omitir informacion puede afectar la seguridad y los resultados del tratamiento."
+  const declaracion = `Declaro que la informacion suministrada en esta ficha dermatologica es verdadera y completa. Entiendo que ${businessName} y su personal utilizaran esta informacion para evaluar mi piel, mis antecedentes y las condiciones necesarias antes de realizar cualquier procedimiento estetico o dermatologico. Declaro que he informado sobre alergias, medicamentos, enfermedades, embarazo, lactancia, tratamientos previos y cualquier condicion relevante. Entiendo que omitir informacion puede afectar la seguridad y los resultados del tratamiento.`
   y = drawParagraph(ctx, declaracion, ctx.margin, y, ctx.width - ctx.margin * 2)
   y = fieldsRow(ctx, y, [["Aceptacion", ficha.declaracionAceptada ? "Aceptada" : "Pendiente"], ["Fecha registro", ficha.fechaRegistro]])
   await drawSignature(ctx, ficha, Math.max(y - 8, 160))
@@ -467,11 +467,11 @@ function htmlEscape(value: unknown) {
   return clean(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
 }
 
-export function fichaDermoEmailHtml(row: Row) {
+export function fichaDermoEmailHtml(row: Row, businessName = "Cibao Spa Laser") {
   const ficha = fichaDermoFromDb(row)
   const field = (label: string, value: unknown) => `<tr><td style="font-weight:700;border-top:1px solid #e5e7eb;padding:7px">${htmlEscape(label)}</td><td style="border-top:1px solid #e5e7eb;padding:7px">${htmlEscape(Array.isArray(value) ? value.join(", ") : value)}</td></tr>`
   return `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#111827">
-    <h1 style="color:#00897b">CONSENTIMIENTO INFORMADO CIBAO SPA LASER</h1>
+    <h1 style="color:#00897b">CONSENTIMIENTO INFORMADO ${htmlEscape(businessName.toUpperCase())}</h1>
     <p style="color:#4b5563">Ficha dermatologica firmada y guardada en el sistema.</p>
     <table cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%;max-width:860px;border:1px solid #e5e7eb">
       ${field("ID de ficha", ficha.id)}
@@ -496,11 +496,11 @@ export function fichaDermoEmailHtml(row: Row) {
     ${ficha.firmaEspecialista ? `<h2>Firma especialista</h2><img src="${htmlEscape(ficha.firmaEspecialista)}" alt="Firma especialista" style="max-width:360px;border:1px solid #d1d5db;background:white" />` : ""}
   </body></html>`
 }
-export async function sendFichaDermoEmail(row: Row) {
+export async function sendFichaDermoEmail(row: Row, businessName = "Cibao Spa Laser") {
   const apiKey = (process.env.RESEND_API_KEY || "").replace(/\\r\\n|\\n|\\r/g, "").trim()
   if (!apiKey) return { sent: false, warning: "Falta RESEND_API_KEY" }
-  const from = (process.env.EMAIL_FROM || "Cibao Spa Laser <onboarding@resend.dev>").replace(/\\r\\n|\\n|\\r/g, "").trim()
-  const pdf = await buildFichaDermoPdf(row)
+  const from = (process.env.EMAIL_FROM || `${businessName} <onboarding@resend.dev>`).replace(/\\r\\n|\\n|\\r/g, "").trim()
+  const pdf = await buildFichaDermoPdf(row, businessName)
   const clientEmail = clean(row.email)
   // Destinatarios internos (env CSL_NOTIFY_EMAILS_FICHAS) + cliente si dejó email válido.
   const internal = getNotifyEmails("fichas")
@@ -522,8 +522,8 @@ export async function sendFichaDermoEmail(row: Row) {
     body: JSON.stringify({
       from,
       to: recipients,
-      subject: "CONSENTIMIENTO INFORMADO CIBAO SPA LASER",
-      html: fichaDermoEmailHtml(row),
+      subject: `CONSENTIMIENTO INFORMADO ${businessName.toUpperCase()}`,
+      html: fichaDermoEmailHtml(row, businessName),
       attachments: [{ filename: `ficha-dermatologia-${pdfText(row.ficha_id || "cliente")}.pdf`, content: pdf.toString("base64") }],
     }),
   })

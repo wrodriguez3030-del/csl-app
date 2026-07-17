@@ -24,6 +24,7 @@ import { SEQ_HEADER_CLASS, SeqBadge } from "@/components/seq-badge"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { useSessionUser } from "@/hooks/use-session-user"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
+import { getBusinessBranding } from "@/lib/business"
 import type { Business } from "@/lib/types"
 import { displayPhone, displayDocumento, formatPhone, formatCedula } from "@/lib/formatters"
 import { usePagination } from "@/lib/use-pagination"
@@ -541,6 +542,15 @@ const KIND_CONFIG = {
   },
 } satisfies Record<ConsentKind, Record<string, string>>
 
+/**
+ * Sustituye la marca legada ("Cibao Spa Laser" / "Cibao Spa Láser") por el
+ * nombre del tenant activo. Fuente única de marca por tenant. Al aplicarse
+ * sobre el HTML/JSX ya renderizado no hace falta editar cada frase legal.
+ */
+function applyBrand(text: string, brand: string): string {
+  return String(text ?? "").replace(/Cibao Spa L[aá]ser/g, brand)
+}
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10)
 }
@@ -805,9 +815,10 @@ function peelingDisplay(record: ConsentimientoRecord) {
 
 function printConsent(record: ConsentimientoRecord, kind: ConsentKind, business?: Business) {
   const config = KIND_CONFIG[kind]
-  const brandName = business?.name || "Cibao Spa Laser"
-  const brandColor = business?.primaryColor || "#008d81"
-  const brandLogo = business?.logoUrl || "/cibao-spa-laser-logo.jpeg"
+  const branding = getBusinessBranding(business?.slug)
+  const brandName = branding.name
+  const brandColor = branding.primaryColor
+  const brandLogo = branding.logoUrl
   const display = kind === "masajes" ? masajesDisplay(record) : null
   const tDisplay = kind === "tatuajes" ? tatuajesDisplay(record) : null
   const pDisplay = kind === "peeling" ? peelingDisplay(record) : null
@@ -1046,14 +1057,16 @@ function printConsent(record: ConsentimientoRecord, kind: ConsentKind, business?
           ${signatureBlock("Firma del especialista", record.firmaEspecialista, record.nombreEspecialista)}
         </div>
       </div>
-      <div class="footer">${escapeHtml(brandName)} · Documento generado por Sistema Integral CSL · ${new Date().toLocaleString("es-DO")}</div>
+      <div class="footer">${escapeHtml(brandName)} · Documento generado por ${escapeHtml(branding.subtitle)} · ${new Date().toLocaleString("es-DO")}</div>
       <script>setTimeout(() => window.print(), 450)</script>
     </body>
   </html>`
 
   const popup = window.open("", "_blank", "width=1000,height=900")
   if (!popup) return
-  popup.document.write(html)
+  // Red de seguridad: cualquier "Cibao Spa Laser/Láser" que quede embebido en el
+  // texto legal se reemplaza por la marca del tenant activo.
+  popup.document.write(applyBrand(html, brandName))
   popup.document.close()
 }
 
@@ -1063,6 +1076,7 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
   const sessionUser = useSessionUser()
   const isUsuario = !!sessionUser && !sessionUser.isAdmin && !sessionUser.isSuperadmin
   const business = useCurrentBusiness()
+  const brandName = getBusinessBranding(business?.slug).name
   const sucursales = useMemo(() => db.sucursales.filter((s) => s.Estado !== "Inactiva").map((s) => s.Nombre).filter(Boolean), [db.sucursales])
   const [records, setRecords] = useState<ConsentimientoRecord[]>([])
   const [clientes, setClientes] = useState<ClienteCosmiatria[]>([])
@@ -1406,6 +1420,9 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
         // Aseguramos que el nombre que viaja al backend NUNCA esté vacío
         // cuando hay un cliente vinculado con nombre real.
         nombreCliente: effectiveNombre,
+        // El texto se persiste con la marca del tenant activo (no "Cibao Spa
+        // Laser" bajo Depicenter).
+        textoConsentimiento: applyBrand(form.textoConsentimiento, brandName),
         estado: form.firmaCliente ? "Firmado" : form.estado,
         fechaRegistro: form.fechaRegistro || new Date().toISOString(),
       }
@@ -1721,6 +1738,8 @@ function ConsentFormDialog({
   onLinkFicha: (ficha: FichaResumen) => void
 }) {
   const config = KIND_CONFIG[kind]
+  const business = useCurrentBusiness()
+  const brandName = getBusinessBranding(business?.slug).name
   const linkedCliente = useMemo(
     () => (form.clienteId ? clientes.find((c) => c.ClienteID === form.clienteId) : null),
     [clientes, form.clienteId],
@@ -1826,15 +1845,15 @@ function ConsentFormDialog({
           </section>
 
           {kind === "masajes" ? (
-            <MasajesTemplateSections form={form} onUpdate={onUpdate} />
+            <MasajesTemplateSections form={form} onUpdate={onUpdate} brandName={brandName} />
           ) : null}
 
           {kind === "tatuajes" ? (
-            <TatuajesTemplateSections form={form} onUpdate={onUpdate} />
+            <TatuajesTemplateSections form={form} onUpdate={onUpdate} brandName={brandName} />
           ) : null}
 
           {kind === "peeling" ? (
-            <PeelingTemplateSections form={form} onUpdate={onUpdate} />
+            <PeelingTemplateSections form={form} onUpdate={onUpdate} brandName={brandName} />
           ) : null}
 
           <section className="rounded-2xl border p-4">
@@ -1868,6 +1887,8 @@ function ConsentFormDialog({
 }
 
 function DetailDialog({ record, kind, clientes, onClose, onPrint, onEdit }: { record: ConsentimientoRecord | null; kind: ConsentKind; clientes: ClienteCosmiatria[]; onClose: () => void; onPrint: (record: ConsentimientoRecord) => void; onEdit: (record: ConsentimientoRecord) => void }) {
+  const business = useCurrentBusiness()
+  const brandName = getBusinessBranding(business?.slug).name
   if (!record) return null
   const linkedCliente = record.clienteId ? clientes.find((c) => c.ClienteID === record.clienteId) : null
   const display = kind === "masajes" ? masajesDisplay(record) : null
@@ -2099,7 +2120,7 @@ function DetailDialog({ record, kind, clientes, onClose, onPrint, onEdit }: { re
           {kind !== "masajes" ? (
             <div className="md:col-span-2 rounded-2xl border p-4">
               <div className="text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">Consentimiento</div>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{record.textoConsentimiento}</p>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{applyBrand(record.textoConsentimiento, brandName)}</p>
             </div>
           ) : null}
           <div className="md:col-span-2 grid gap-4 md:grid-cols-2">
@@ -2145,10 +2166,13 @@ function SignaturePreview({ label, value }: { label: string; value: string }) {
 export function MasajesTemplateSections({
   form,
   onUpdate,
+  brandName = "Cibao Spa Laser",
 }: {
   form: ConsentimientoRecord
   onUpdate: (patch: Partial<ConsentimientoRecord>) => void
+  brandName?: string
 }) {
+  const brand = (text: string) => applyBrand(text, brandName)
   const toggleArrayItem = (key: "instrucciones" | "contraindicacionesList" | "politicasAceptadas", value: string, checked: boolean) => {
     const current = (form[key] as string[] | undefined) ?? []
     const next = checked ? Array.from(new Set([...current, value])) : current.filter((v) => v !== value)
@@ -2349,7 +2373,7 @@ export function MasajesTemplateSections({
       <section className="rounded-2xl border p-4">
         <h3 className="mb-3 font-heading text-lg font-black">Declaración del cliente</h3>
         <ul className="mb-4 list-disc space-y-2 pl-5 text-sm leading-relaxed text-muted-foreground">
-          {DECLARACION_MASAJES.map((line, idx) => <li key={idx}>{line}</li>)}
+          {DECLARACION_MASAJES.map((line, idx) => <li key={idx}>{brand(line)}</li>)}
         </ul>
         <label className="flex cursor-pointer items-start gap-2 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 p-3 text-sm">
           <Checkbox
@@ -2391,7 +2415,7 @@ export function MasajesTemplateSections({
       <section className="rounded-2xl border p-4">
         <h3 className="mb-3 font-heading text-lg font-black">Autorización final</h3>
         <ul className="mb-4 list-disc space-y-2 pl-5 text-sm leading-relaxed text-muted-foreground">
-          {AUTORIZACION_MASAJES.map((line, idx) => <li key={idx}>{line}</li>)}
+          {AUTORIZACION_MASAJES.map((line, idx) => <li key={idx}>{brand(line)}</li>)}
         </ul>
         <label className="flex cursor-pointer items-start gap-2 rounded-lg border-2 border-dashed border-emerald-400/30 bg-emerald-50/40 p-3 text-sm">
           <Checkbox
@@ -2400,7 +2424,7 @@ export function MasajesTemplateSections({
             className="mt-0.5"
           />
           <span className="font-semibold leading-snug">
-            Autorizo a Cibao Spa Laser y a su personal a realizar el procedimiento descrito.
+            Autorizo a {brandName} y a su personal a realizar el procedimiento descrito.
           </span>
         </label>
       </section>
@@ -2430,10 +2454,13 @@ export function MasajesTemplateSections({
 export function PeelingTemplateSections({
   form,
   onUpdate,
+  brandName = "Cibao Spa Laser",
 }: {
   form: ConsentimientoRecord
   onUpdate: (patch: Partial<ConsentimientoRecord>) => void
+  brandName?: string
 }) {
+  const brand = (text: string) => applyBrand(text, brandName)
   type PeelingArrayKey =
     | "contraindicacionesList"
     | "instruccionesAntes"
@@ -2480,7 +2507,7 @@ export function PeelingTemplateSections({
                 onCheckedChange={(v) => toggleArrayItem(key, opt, !!v)}
                 className="mt-0.5"
               />
-              <span className="leading-snug">{opt}</span>
+              <span className="leading-snug">{brand(opt)}</span>
             </label>
           ))}
         </div>
@@ -2604,7 +2631,7 @@ export function PeelingTemplateSections({
       <section className="rounded-2xl border p-4">
         <h3 className="mb-3 font-heading text-lg font-black">Declaración del cliente</h3>
         <ul className="mb-4 list-disc space-y-2 pl-5 text-sm leading-relaxed text-muted-foreground">
-          {DECLARACION_PEELING.map((line, idx) => <li key={idx}>{line}</li>)}
+          {DECLARACION_PEELING.map((line, idx) => <li key={idx}>{brand(line)}</li>)}
         </ul>
         <label className="flex cursor-pointer items-start gap-2 rounded-lg border-2 border-dashed border-emerald-400/30 bg-emerald-50/40 p-3 text-sm">
           <Checkbox
@@ -2613,7 +2640,7 @@ export function PeelingTemplateSections({
             className="mt-0.5"
           />
           <span className="font-semibold leading-snug">
-            Requiero y autorizo a Cibao Spa Láser a realizar el procedimiento de peeling descrito.
+            Requiero y autorizo a {brandName} a realizar el procedimiento de peeling descrito.
           </span>
         </label>
       </section>
@@ -2634,7 +2661,7 @@ export function PeelingTemplateSections({
       {/* Protección de datos */}
       <section className="rounded-2xl border p-4">
         <h3 className="mb-3 font-heading text-lg font-black">Protección de datos</h3>
-        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{PROTECCION_DATOS_PEELING}</p>
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{brand(PROTECCION_DATOS_PEELING)}</p>
         <label className="flex cursor-pointer items-start gap-2 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 p-3 text-sm">
           <Checkbox
             checked={Boolean(form.aceptaProteccionDatos)}
@@ -2670,10 +2697,13 @@ export function PeelingTemplateSections({
 export function TatuajesTemplateSections({
   form,
   onUpdate,
+  brandName = "Cibao Spa Laser",
 }: {
   form: ConsentimientoRecord
   onUpdate: (patch: Partial<ConsentimientoRecord>) => void
+  brandName?: string
 }) {
+  const brand = (text: string) => applyBrand(text, brandName)
   const toggleListItem = (key: "instruccionesAntes" | "cuidadosDespuesList" | "riesgosAceptadosList" | "politicasAceptadas" | "coloresPigmento", value: string, checked: boolean) => {
     const current = (form[key] as string[] | undefined) ?? []
     const next = checked ? Array.from(new Set([...current, value])) : current.filter((v) => v !== value)
@@ -2963,7 +2993,7 @@ export function TatuajesTemplateSections({
                 onCheckedChange={(v) => toggleListItem("cuidadosDespuesList", opt, !!v)}
                 className="mt-0.5"
               />
-              <span className="leading-snug">{opt}</span>
+              <span className="leading-snug">{brand(opt)}</span>
             </label>
           ))}
         </div>
@@ -3019,7 +3049,7 @@ export function TatuajesTemplateSections({
       {/* 7. Autorización fotográfica */}
       <section className="rounded-2xl border p-4">
         <h3 className="mb-3 font-heading text-lg font-black">Autorización para registro fotográfico</h3>
-        <p className="mb-3 text-sm leading-relaxed text-muted-foreground">{AUTORIZACION_FOTOGRAFICA_TATUAJES}</p>
+        <p className="mb-3 text-sm leading-relaxed text-muted-foreground">{brand(AUTORIZACION_FOTOGRAFICA_TATUAJES)}</p>
         <label className="flex cursor-pointer items-start gap-2 rounded-lg border bg-muted/20 p-3 text-sm">
           <Checkbox
             checked={Boolean(form.autorizacionFotograficaAceptada)}
@@ -3061,7 +3091,7 @@ export function TatuajesTemplateSections({
       {/* 9. Autorización final (obligatoria) */}
       <section className="rounded-2xl border p-4">
         <h3 className="mb-3 font-heading text-lg font-black">Autorización final</h3>
-        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{AUTORIZACION_FINAL_TATUAJES}</p>
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{brand(AUTORIZACION_FINAL_TATUAJES)}</p>
         <label className="flex cursor-pointer items-start gap-2 rounded-lg border-2 border-dashed border-emerald-400/30 bg-emerald-50/40 p-3 text-sm">
           <Checkbox
             checked={Boolean(form.autorizacionProcedimientoAceptada)}
