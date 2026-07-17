@@ -48,13 +48,13 @@ export function LaserPersonnelEditor() {
 
   const applies = (c: Collab) => c.services?.includes("DEPILACION_LASER")
 
-  const saveRow = async (c: Collab, patch: Partial<{ appliesLaser: boolean; active: boolean; evaluationPct: number; cleaningContribution: number; bonusExtra: number; productUnitAmount: number | null }>) => {
+  const saveRow = async (c: Collab, patch: Partial<{ appliesLaser: boolean; active: boolean; evaluationPct: number; cleaningContribution: number; bonusExtra: number; productUnitAmount: number | null; branch: string }>) => {
     if (!canManage) return
     setBusyId(c.id)
     try {
       const prodRate = patch.productUnitAmount !== undefined ? patch.productUnitAmount : c.productUnitAmount
       const res = await apiJsonp(normalizeApiUrl(apiUrl), {
-        action: "saveCommissionCollaborator", id: c.id, name: c.name, branch: c.branch,
+        action: "saveCommissionCollaborator", id: c.id, name: c.name, branch: patch.branch ?? c.branch,
         appliesLaser: (patch.appliesLaser ?? applies(c)) ? "1" : "0",
         active: (patch.active ?? c.active) ? "1" : "0",
         evaluationPct: String(patch.evaluationPct ?? c.evaluationPct),
@@ -131,7 +131,19 @@ export function LaserPersonnelEditor() {
             <tr key={c.id} className={`border-b last:border-0 ${!c.active ? "bg-slate-50/60 text-muted-foreground" : ""}`}>
               <td className="px-3 py-2 tabular-nums text-muted-foreground">{i + 1}</td>
               <td className="px-2 py-2 font-medium">{c.name}</td>
-              <td className="px-2 py-2 text-xs">{c.branch}</td>
+              <td className="px-2 py-2 text-xs">
+                {canManage ? (
+                  <select
+                    className="h-7 rounded-md border border-input bg-white px-1 text-xs"
+                    value={c.branch}
+                    disabled={busyId === c.id}
+                    title="Cambiar de sucursal"
+                    onChange={(e) => { if (e.target.value !== c.branch) void saveRow(c, { branch: e.target.value }) }}
+                  >
+                    {(BRANCHES.includes(c.branch) ? BRANCHES : [c.branch, ...BRANCHES]).map((b) => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                ) : c.branch}
+              </td>
               <td className="px-2 py-2 text-center"><Toggle on={applies(c)} disabled={!canManage || busyId === c.id} onClick={() => saveRow(c, { appliesLaser: !applies(c) })} /></td>
               <td className="px-2 py-2 text-center"><Toggle on={c.active} disabled={!canManage || busyId === c.id} onClick={() => saveRow(c, { active: !c.active })} labelOn="Activo" labelOff="Inactivo" /></td>
               <td className="px-2 py-2 text-right">

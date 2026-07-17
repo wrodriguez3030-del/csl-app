@@ -86,6 +86,13 @@ export interface RunRules {
    *    entre lineales + fondo × peso_pacientes por participación.
    */
   laserDistributionMode?: "equitativo" | "pesos"
+  /**
+   * Compuerta del aporte de limpieza POR SUCURSAL. Si el valor para una
+   * sucursal es false, NADIE de esa sucursal aporta limpieza (limpieza = 0),
+   * aunque cada colaborador tenga su monto propio. Si true o ausente, cada
+   * colaborador aporta su `cleaningContribution` (default RD$400, editable/0).
+   */
+  cleaningAppliesByBranch?: Record<string, boolean>
 }
 
 export interface PaymentBase {
@@ -234,6 +241,9 @@ export interface ComputeRunInput {
 
 export function computeRun(input: ComputeRunInput): RunResult {
   const { branch, rules } = input
+  // Compuerta de limpieza por sucursal: si la sucursal no aplica, la limpieza
+  // es 0 para todos sus colaboradores (default: aplica).
+  const cleaningApplies = rules.cleaningAppliesByBranch?.[branch] ?? true
   const alerts: string[] = []
   const sales = input.sales.filter((s) => s.branch === branch)
   if (sales.length === 0) alerts.push("Sin ventas registradas para la sucursal en el período.")
@@ -271,7 +281,7 @@ export function computeRun(input: ComputeRunInput): RunResult {
         evaluationPct: c?.evaluationPct ?? 100, serviceIncentiveAdjusted: 0,
         laserLinear: 0, laserPatients: 0, laserTotal: 0,
         bonusExtra: c?.bonusExtra ?? 0,
-        cleaningContribution: c?.cleaningContribution ?? 0,
+        cleaningContribution: cleaningApplies ? (c?.cleaningContribution ?? 0) : 0,
         grossTotal: 0, netTotal: 0,
       }
       items.set(canon, it)

@@ -18,6 +18,23 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.60.0] — 2026-07-17
+
+### Added
+- **Aporte de limpieza (RD$400) por sucursal, con compuerta Sí/No** en "Reglas de comisión".
+  Nueva sección "Aporte de limpieza por sucursal" que lista cada sucursal del roster con un
+  toggle: en **No aplica**, nadie de esa sucursal aporta limpieza (RD$0); en **Sí aplica**, cada
+  colaborador aporta su propio monto (default 400, editable/0 por persona). Se respalda en reglas
+  `cleaning_applies_branch` (flag por `branch`); el motor (`run-engine`) aplica la compuerta
+  (`cleaningAppliesByBranch`). Default = aplica → cero cambio hasta que se apague una sucursal.
+  Tests: commission 154/154, smoke mensual 17/17 (cuadre 0.00).
+- **Cambiar de sucursal a un empleado** desde el editor "Personal que aplica incentivo láser":
+  la sucursal pasó de solo-lectura a un selector editable (usa el update existente del servidor;
+  si choca con el índice único de la sucursal destino, muestra el error). Activar/inactivar,
+  agregar y multi-sucursal (una fila por sucursal) ya existían.
+
+---
+
 ## [0.59.1] — 2026-07-17
 
 ### Fixed

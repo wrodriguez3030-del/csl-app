@@ -1555,7 +1555,7 @@ async function readRoster(branch?: string, includeInactive = false) {
 async function readRunRules(): Promise<RunRules> {
   const business_id = requireBizId()
   const { data, error } = await getSupabaseAdmin().from("sales_commission_rules")
-    .select("rule_type,category,percentage,fixed_amount,min_amount,effective_from,active")
+    .select("rule_type,category,branch,percentage,fixed_amount,min_amount,effective_from,active")
     .eq("business_id", business_id).eq("active", true)
   if (error) throw new Error(error.message)
   const rows = (data || []) as Row[]
@@ -1586,6 +1586,13 @@ async function readRunRules(): Promise<RunRules> {
   const zeroFlag = latest("laser_zero_patients_fixed")?.fixed_amount
   // Modo de reparto: default EQUITATIVO (cuadro oficial) salvo regla en 0.
   const modeFlag = latest("laser_split_mode")?.fixed_amount
+  // Compuerta de aporte de limpieza POR SUCURSAL: una regla `cleaning_applies_branch`
+  // con branch y fixed_amount 1 (aplica) / 0 (no aplica). Sin regla para una
+  // sucursal → aplica (default). El motor pone limpieza 0 a toda sucursal en 0.
+  const cleaningAppliesByBranch: Record<string, boolean> = {}
+  for (const r of rows.filter((r) => r.rule_type === "cleaning_applies_branch")) {
+    if (r.branch != null) cleaningAppliesByBranch[String(r.branch)] = Number(r.fixed_amount) !== 0
+  }
   return {
     cardPct: card?.percentage != null ? Number(card.percentage) : 0.27,
     productUnitAmount: prod?.fixed_amount != null ? Number(prod.fixed_amount) : 100,
@@ -1594,6 +1601,7 @@ async function readRunRules(): Promise<RunRules> {
     laserSplitPatientsFraction,
     zeroPatientsGetsFixed: zeroFlag == null ? true : Number(zeroFlag) !== 0,
     laserDistributionMode: (modeFlag == null || Number(modeFlag) !== 0 ? "equitativo" : "pesos") as "equitativo" | "pesos",
+    cleaningAppliesByBranch,
   }
 }
 

@@ -56,6 +56,8 @@ export function ComisionReglasPage() {
   const [vigenteEn, setVigenteEn] = useState("")
   const [tipoFiltro, setTipoFiltro] = useState("")
   const [estadoFiltro, setEstadoFiltro] = useState("")
+  // Sucursales reales del roster (tenant-scoped) para la compuerta de limpieza.
+  const [branches, setBranches] = useState<string[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -81,6 +83,37 @@ export function ComisionReglasPage() {
     }
   }, [apiUrl, showToast])
   useEffect(() => { void load() }, [load])
+
+  // Sucursales distintas del roster (mismas cadenas que usa el motor) para la
+  // compuerta de limpieza por sucursal.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionCollaborators", includeInactive: "1" })
+        if (res?.ok) {
+          const list = (res.records as { branch: string }[]) || []
+          setBranches([...new Set(list.map((c) => c.branch).filter(Boolean))].sort())
+        }
+      } catch { /* la sección de limpieza queda vacía si no carga */ }
+    })()
+  }, [apiUrl])
+
+  // ── Compuerta de aporte de limpieza por sucursal ────────────────────────────
+  const cleaningFlagFor = (branch: string) => rules.find((r) => r.ruleType === "cleaning_applies_branch" && r.branch === branch)
+  const branchAppliesCleaning = (branch: string) => { const r = cleaningFlagFor(branch); return !r || Number(r.fixedAmount) !== 0 }
+  const setBranchCleaning = async (branch: string, applies: boolean) => {
+    if (!canManage) return
+    setSavingId(`clean-${branch}`)
+    try {
+      const existing = cleaningFlagFor(branch)
+      const payload: Record<string, string> = { action: "saveCommissionRule", ruleType: "cleaning_applies_branch", branch, name: `Aporte de limpieza — ${branch}`, fixedAmount: applies ? "1" : "0", active: "true" }
+      if (existing) payload.id = existing.id
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), payload)
+      if (!res?.ok) throw new Error((res as { error?: string })?.error || "No se pudo guardar")
+      showToast(applies ? `Limpieza ACTIVADA en ${branch}` : `Limpieza DESACTIVADA en ${branch}`, "success")
+      await load()
+    } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setSavingId(null) }
+  }
 
   const setE = (id: string, patch: Partial<{ pct: string; fixed: string; threshold: string }>) =>
     setEdit((p) => ({ ...p, [id]: { ...(p[id] || { pct: "", fixed: "", threshold: "" }), ...patch } }))
@@ -258,6 +291,36 @@ export function ComisionReglasPage() {
           )
         })
       )}
+
+      {/* Aporte de limpieza por sucursal (compuerta Sí/No) */}
+      <Card className="border-[color:var(--brand-border)]">
+        <CardContent className="p-0">
+          <div className="flex items-center gap-2 border-b px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-600">
+            <SlidersHorizontal className="h-3.5 w-3.5 text-[color:var(--brand-primary)]" /> Aporte de limpieza por sucursal
+          </div>
+          <div className="px-4 pt-2 text-[11px] text-muted-foreground">
+            Compuerta por sucursal: en <b>“No aplica”</b> nadie de esa sucursal aporta limpieza (RD$0). En <b>“Sí aplica”</b> cada colaborador aporta su monto (default RD$400, editable/0 por persona abajo). No cambia períodos ya finalizados.
+          </div>
+          <div className="divide-y">
+            {branches.length === 0 ? (
+              <div className="px-4 py-3 text-sm text-muted-foreground">No hay sucursales en el roster todavía.</div>
+            ) : branches.map((b) => (
+              <div key={b} className="flex items-center gap-3 px-4 py-3">
+                <div className="min-w-0 flex-1 font-medium">{b}</div>
+                <div className="flex items-center gap-1">
+                  {([true, false] as const).map((val) => (
+                    <button key={String(val)} type="button" disabled={!canManage || savingId === `clean-${b}`}
+                      onClick={() => setBranchCleaning(b, val)}
+                      className={`rounded-md border px-2.5 py-1 text-xs ${branchAppliesCleaning(b) === val ? "border-[color:var(--brand-primary)] bg-[color:var(--brand-primary)] text-white" : "border-input bg-white text-slate-600"} ${canManage && savingId !== `clean-${b}` ? "cursor-pointer" : "cursor-default"}`}>
+                      {val ? "Sí aplica" : "No aplica"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Personal elegible para el incentivo láser (roster editable) */}
       <LaserPersonnelEditor />
