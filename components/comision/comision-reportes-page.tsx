@@ -36,7 +36,7 @@ export function ComisionReportesPage() {
     setLoading(true)
     try {
       const q = params
-      const [dash, branch, pat, laser, rules, svcDetail, unassigned] = await Promise.all([
+      const [dash, branch, pat, laser, rules, svcDetail, unassigned, recepSplit] = await Promise.all([
         apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionDashboard", ...q }),
         apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionByBranch", ...q }),
         apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionPatients", ...q }),
@@ -44,6 +44,7 @@ export function ComisionReportesPage() {
         apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionRules" }),
         apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionServiceDetail", ...q }),
         apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionUnassignedServices", ...q }),
+        apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionReceptionSplit", ...q }),
       ])
       const k = (dash?.kpis as Record<string, number>) || {}
       setData({
@@ -56,6 +57,7 @@ export function ComisionReportesPage() {
         rules: (rules?.records as never) || [],
         serviceDetail: (svcDetail?.rows as never) || [],
         unassignedServices: (unassigned?.rows as never) || [],
+        receptionSplit: (recepSplit?.rows as never) || [],
         generadoPor: user?.nombre || user?.username || undefined,
       })
     } catch (e) {
@@ -141,6 +143,44 @@ export function ComisionReportesPage() {
                       <td className="py-2 text-right tabular-nums">{fmtRD(data!.laser.byBranch!.reduce((s, b) => s + b.base, 0))}</td>
                       <td />
                       <td className="py-2 text-right tabular-nums text-emerald-700">{fmtRD(data!.laser.byBranch!.reduce((s, b) => s + b.fund, 0))}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </CardContent></Card>
+          )}
+          {(data!.receptionSplit || []).length > 0 && (
+            <Card className="border-[color:var(--brand-border)]"><CardContent className="p-3 sm:p-4">
+              <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold">
+                <FileBarChart2 className="h-4 w-4 text-[color:var(--brand-primary)]" /> Reparto de productos de recepción
+                <span className="text-xs font-normal text-muted-foreground">las ventas de PRODUCTO de las cuentas de recepción designadas se reparten en partes iguales (por unidades) entre las prestadoras de la sucursal</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="py-2 text-left">Sucursal</th>
+                      <th className="py-2 text-left">Cuenta de recepción</th>
+                      <th className="py-2 text-right">Unidades</th>
+                      <th className="py-2 text-left">Reparto</th>
+                      <th className="py-2 text-right">Incentivo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data!.receptionSplit!.map((g) => (
+                      <tr key={`${g.branch}||${g.account}`} className="border-b last:border-0 align-top">
+                        <td className="py-1.5 font-medium">{g.branch}</td>
+                        <td className="py-1.5">{g.account}</td>
+                        <td className="py-1.5 text-right tabular-nums">{g.totalUnits}</td>
+                        <td className="py-1.5">{g.recipients.map((r) => `${r.name} ${r.units}u`).join(" · ")}</td>
+                        <td className="py-1.5 text-right font-semibold tabular-nums text-emerald-700">{fmtRD(g.recipients.reduce((s, r) => s + r.incentive, 0))}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t-2 bg-slate-50 font-bold">
+                      <td className="py-2 text-xs uppercase" colSpan={2}>Total</td>
+                      <td className="py-2 text-right tabular-nums">{data!.receptionSplit!.reduce((s, g) => s + g.totalUnits, 0)}</td>
+                      <td />
+                      <td className="py-2 text-right tabular-nums text-emerald-700">{fmtRD(data!.receptionSplit!.reduce((s, g) => s + g.recipients.reduce((x, r) => x + r.incentive, 0), 0))}</td>
                     </tr>
                   </tbody>
                 </table>

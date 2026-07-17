@@ -360,6 +360,39 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
   t("ROSA cobra ENCAIN + crema, NO rasuradoras (7 u × 100 = 700)", rExcl.items.find((i) => i.name === "ROSA")?.productIncentive === 700)
   t("rasuradoras no suman unidades a ROSA (7, no 11)", rExcl.items.find((i) => i.name === "ROSA")?.productUnits === 7)
   t("CARLOS ARIAS no aparece con incentivo", !rExcl.items.some((i) => i.name === "CARLOS ARIAS" && i.productIncentive > 0))
+
+  console.log("── Reparto de PRODUCTO de recepción entre prestadoras")
+  const { allocateInt } = await import("../lib/commission/run-engine.ts")
+  t("allocateInt 100 en 3 → 34,33,33", JSON.stringify(allocateInt(100, 3)) === JSON.stringify([34, 33, 33]))
+  t("allocateInt 312 en 3 → 104,104,104", JSON.stringify(allocateInt(312, 3)) === JSON.stringify([104, 104, 104]))
+  t("allocateInt 196 en 2 → 98,98", JSON.stringify(allocateInt(196, 2)) === JSON.stringify([98, 98]))
+  t("allocateInt 197 en 2 → 99,98 (remanente a la 1ª)", JSON.stringify(allocateInt(197, 2)) === JSON.stringify([99, 98]))
+
+  const { receptionSplitsForBranch, isReceptionSplitSale } = await import("../lib/commission/reception-splits.ts")
+  t("RAFAEL VIDAL reparte entre 3", receptionSplitsForBranch("RAFAEL VIDAL")[0]?.recipients.length === 3)
+  t("ENCARGADA 1 (LJ) es cuenta de reparto", isReceptionSplitSale("LOS JARDINES", "LOS JARDINES  ENCARGADA 1 (Recepcionista)") === true)
+  t("ENCARGADA 2 (LJ) NO es cuenta de reparto", isReceptionSplitSale("LOS JARDINES", "LOS JARDINES  ENCARGADA 2 (Recepcionista)") === false)
+
+  const rRecep = computeRun({
+    branch: "RAFAEL VIDAL",
+    sales: [
+      // Recepción vendió 100 u de producto → se reparte 34/33/33 entre LUISA, YANIBEL, KARLA.
+      { branch: "RAFAEL VIDAL", category: "PRODUCTO", payment: "EFECTIVO", amount: 5000, quantity: 100,
+        providerOriginal: "PC Recepcion  LAP TOP R VIDAL (Recepcionista)", provider: null, serviceName: "CREMA" },
+      // Una rasuradora de recepción NO se reparte (insumo sin incentivo).
+      { branch: "RAFAEL VIDAL", category: "PRODUCTO", payment: "EFECTIVO", amount: 50, quantity: 9,
+        providerOriginal: "PC Recepcion  LAP TOP R VIDAL (Recepcionista)", provider: null, serviceName: "RASURADORAS" },
+    ],
+    collaborators: [collab("LUISA"), collab("YANIBEL"), collab("KARLA")],
+    patients: [], patientsSource: "ninguna", rules: RULES,
+    receptionSplits: receptionSplitsForBranch("RAFAEL VIDAL"),
+  })
+  t("LUISA recibe 34 u (remanente)", rRecep.items.find((i) => i.name === "LUISA")?.productUnits === 34)
+  t("YANIBEL recibe 33 u", rRecep.items.find((i) => i.name === "YANIBEL")?.productUnits === 33)
+  t("KARLA recibe 33 u", rRecep.items.find((i) => i.name === "KARLA")?.productUnits === 33)
+  t("suma repartida = 100 (rasuradoras excluidas)",
+    ["LUISA", "YANIBEL", "KARLA"].reduce((s, n) => s + (rRecep.items.find((i) => i.name === n)?.productUnits || 0), 0) === 100)
+  t("LUISA incentivo 34 × 100 = 3,400", rRecep.items.find((i) => i.name === "LUISA")?.productIncentive === 3400)
 }
 
 // ── Archivos reales (§33/§34) — solo si están disponibles ──

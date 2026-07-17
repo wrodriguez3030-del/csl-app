@@ -28,6 +28,8 @@ export interface CommissionReportData {
   serviceDetail?: { provider: string; branch: string; category: string; base: number; pct: number; amount: number }[]
   /** Ventas sin prestador comisionable: servicios y productos (excluye láser). */
   unassignedServices?: { date: string; branch: string; customer: string; service: string; category: string; quantity: number; amount: number; providerOriginal: string }[]
+  /** Reparto de PRODUCTO de cuentas de recepción designadas entre prestadoras. */
+  receptionSplit?: { branch: string; account: string; totalUnits: number; recipients: { name: string; units: number; rate: number; incentive: number }[] }[]
   generadoPor?: string
 }
 
@@ -165,6 +167,15 @@ export async function buildCommissionWorkbook(
     [{ header: "Fecha", key: "date", width: 12 }, { header: "Sucursal", key: "branch", width: 22 }, { header: "Cliente", key: "customer", width: 26 }, { header: "Servicio / Producto", key: "service", width: 34 }, { header: "Categoría", key: "categoryLabel", width: 20 }, { header: "Cant.", key: "quantity", align: "right", width: 8 }, { header: "Prestador (archivo)", key: "providerOriginal", width: 20 }, { header: "Monto", key: "amount", money: true }],
     unassigned as unknown as Record<string, unknown>[],
     { quantity: unassigned.reduce((s, d) => s + (Number(d.quantity) || 0), 0), amount: sum(unassigned, "amount") })
+
+  const recepSplit = (data.receptionSplit || []).flatMap((g) =>
+    g.recipients.map((r) => ({ branch: g.branch, account: g.account, totalUnits: g.totalUnits, name: r.name, units: r.units, rate: r.rate, incentive: r.incentive })))
+  if (recepSplit.length > 0) {
+    addTableSheet("Reparto Recepción", "Reparto de productos de recepción (por unidades, partes iguales)",
+      [{ header: "Sucursal", key: "branch", width: 22 }, { header: "Cuenta recepción", key: "account", width: 30 }, { header: "Unid. cuenta", key: "totalUnits", align: "right", width: 12 }, { header: "Prestadora", key: "name", width: 20 }, { header: "Unid.", key: "units", align: "right", width: 8 }, { header: "Tarifa", key: "rate", money: true }, { header: "Incentivo", key: "incentive", money: true }],
+      recepSplit as unknown as Record<string, unknown>[],
+      { incentive: sum(recepSplit, "incentive") })
+  }
 
   addKvSheet("Depilación Láser", "Depilación láser", [
     ["Venta láser total", data.laser.laserTotal, true], ["Tramo alcanzado", `${(data.laser.tramoPct * 100).toFixed(0)}%`],

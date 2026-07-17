@@ -3601,6 +3601,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await commission.getCommissionServiceDetail(params)
     case "getCommissionUnassignedServices":
       return await commission.getCommissionUnassignedServices(params)
+    case "getCommissionReceptionSplit":
+      return await commission.getCommissionReceptionSplit(params)
     case "getCommissionAssignedServices":
       return await commission.getCommissionAssignedServices(params)
     case "assignCommissionSaleProvider":

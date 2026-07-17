@@ -18,6 +18,32 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.57.0] — 2026-07-17
+
+### Added
+- **Reparto de ventas de PRODUCTO de recepción entre prestadoras designadas**
+  (`lib/commission/reception-splits.ts`, fuente única). Ciertas cuentas de recepción
+  (rol "Recepcionista", no comisionables) reparten sus ventas de PRODUCTO en partes
+  iguales por UNIDADES (reparto entero, remanente a las primeras: 100 u ÷ 3 → 34/33/33)
+  entre prestadoras de la misma sucursal. Cada destinataria aplica SU tarifa de producto.
+  Alcance confirmado con el usuario: **solo estas 3 cuentas** (las demás cuentas de
+  recepción NO se reparten), **solo PRODUCTO**, insumos sin incentivo (rasuradoras)
+  excluidos del pool:
+  - **RAFAEL VIDAL** · "PC Recepcion LAP TOP R VIDAL" → LUISA, YANIBEL, KARLA
+  - **LOS JARDINES** · "ENCARGADA 1" (no "ENCARGADA 2") → LESLIE, YADIBEL
+  - **VILLA OLGA** · "ENCARGADA" → ANGELICA, GIPSY
+- `allocateInt(total, n)` en `run-engine` (reparto entero en partes iguales) y campo
+  `receptionSplits` en el input del motor; el reparto se calcula en la liquidación.
+- Acción/reporte `getCommissionReceptionSplit` + tabla "Reparto de productos de recepción"
+  en pantalla y hoja de Excel "Reparto Recepción" (Sucursal · Cuenta · Unidades · Reparto
+  por prestadora · Incentivo) para transparencia.
+- Estas ventas ya no aparecen en "Ventas sin prestador" (se reparten automáticamente).
+- Tests del motor: casos de `allocateInt` y del reparto (152/152 en verde).
+
+> **Para aplicar:** re-correr **Cálculo mensual** de los meses afectados.
+
+---
+
 ## [0.56.1] — 2026-07-16
 
 ### Changed

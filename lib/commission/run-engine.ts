@@ -25,7 +25,7 @@
  *    neto  = bruto − aporte_limpieza (default RD$400, configurable, puede ser 0)
  */
 import { round2 } from "./money"
-import { canonicalCollaborator } from "./normalize"
+import { canonicalCollaborator, normalizeName } from "./normalize"
 import { classifyProvider } from "./classification"
 import { isExcludedProvider, isNonIncentiveItem } from "./exclusions"
 
@@ -204,6 +204,23 @@ export function allocateExact(total: number, weights: number[]): number[] {
   return cents.map((c) => c / 100)
 }
 
+/** Reparto entero de un total en N partes iguales; el remanente va a las
+ *  primeras (100, 3 → [34, 33, 33]). Para unidades de producto (enteros). */
+export function allocateInt(total: number, n: number): number[] {
+  if (n <= 0) return []
+  const t = Math.max(0, Math.round(Number(total) || 0))
+  const base = Math.floor(t / n)
+  const rem = t - base * n
+  return Array.from({ length: n }, (_, i) => base + (i < rem ? 1 : 0))
+}
+
+/** Reparto de ventas de PRODUCTO de una cuenta de recepción entre prestadoras.
+ *  `account` = nombre normalizado (sin rol) de la cuenta de recepción. */
+export interface ReceptionSplit {
+  account: string
+  recipients: string[]
+}
+
 export interface ComputeRunInput {
   branch: string
   sales: RunSaleRow[]
@@ -211,6 +228,8 @@ export interface ComputeRunInput {
   patients: RunPatientCount[]
   patientsSource: string // "manual" | "reservas" | "ninguna"
   rules: RunRules
+  /** Cuentas de recepción cuyas ventas de PRODUCTO se reparten (opcional). */
+  receptionSplits?: ReceptionSplit[]
 }
 
 export function computeRun(input: ComputeRunInput): RunResult {
@@ -283,6 +302,33 @@ export function computeRun(input: ComputeRunInput): RunResult {
     e.base = round2(e.base + net)
     e.amount = round2(e.base * pct)
   }
+
+  // ── Reparto de PRODUCTO de cuentas de recepción designadas ────────────────
+  // Ciertas cuentas de recepción (no comisionables) reparten sus ventas de
+  // PRODUCTO entre prestadoras designadas de la sucursal, por UNIDADES en partes
+  // iguales (reparto entero, remanente a las primeras). Cada destinataria luego
+  // aplica SU tarifa de producto. Insumos sin incentivo no se reparten.
+  const receptionSplits = input.receptionSplits || []
+  if (receptionSplits.length > 0) {
+    const unitsBySplit = new Map<number, number>()
+    for (const s of sales) {
+      if (s.category !== "PRODUCTO") continue
+      if (isNonIncentiveItem(s.serviceName)) continue
+      const info = classifyProvider(s.providerOriginal ?? s.provider)
+      if (info.commissionable) continue // ya tiene prestador que comisiona
+      const origN = normalizeName(info.name)
+      const idx = receptionSplits.findIndex((r) => origN === r.account)
+      if (idx < 0) continue
+      unitsBySplit.set(idx, (unitsBySplit.get(idx) || 0) + (Number(s.quantity) || 0))
+    }
+    for (const [idx, units] of unitsBySplit) {
+      const recips = receptionSplits[idx].recipients.map((r) => canonicalCollaborator(r)).filter(Boolean)
+      if (!recips.length || units <= 0) continue
+      const shares = allocateInt(units, recips.length)
+      recips.forEach((name, i) => { itemFor(name).productUnits += shares[i] })
+    }
+  }
+
   for (const it of items.values()) {
     // Tarifa de producto: por colaborador si la tiene (p.ej. RD$50/u), si no la general.
     const rate = rosterByName.get(it.name)?.productUnitAmount ?? rules.productUnitAmount

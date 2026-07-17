@@ -12,10 +12,10 @@ import { getBusinessContext, requirePermission, hasPermission } from "./business
 import { textValue, numberValue } from "./csl-helpers"
 import type { ActionParams, ActionUser, Row } from "./csl-types"
 import { defaultCommissionRules } from "@/lib/commission/rules"
-import { parseDateISO, canonicalCollaborator } from "@/lib/commission/normalize"
+import { parseDateISO, canonicalCollaborator, normalizeName } from "@/lib/commission/normalize"
 import { exclusiveEnd, monthBounds, monthsCovered, todayInTz } from "@/lib/commission/period"
 import { assignLaserToCalcs } from "@/lib/commission/laser-apply"
-import { computeRun, netAmount, type RunResult, type RunRules, type RunSaleRow } from "@/lib/commission/run-engine"
+import { computeRun, netAmount, allocateInt, type RunResult, type RunRules, type RunSaleRow } from "@/lib/commission/run-engine"
 
 /**
  * Filtro de período desde params: prioriza from/to (rango INCLUSIVO — el fin
@@ -628,6 +628,7 @@ export async function setCommissionCalcStatus(params: ActionParams, user: Action
 // ── Vistas agregadas desde las ventas persistidas ───────────────────────────
 import { classifyProvider } from "@/lib/commission/classification"
 import { isExcludedProvider, isNonIncentiveItem } from "@/lib/commission/exclusions"
+import { receptionSplitsForBranch, isReceptionSplitSale } from "@/lib/commission/reception-splits"
 
 /** Trae las ventas del negocio filtradas en DB por período (sale_date, rango
  *  inclusivo), sucursal y prestador — los filtros se aplican en backend.
@@ -747,6 +748,9 @@ export async function getCommissionUnassignedServices(params: ActionParams) {
   const out = rows
     .filter((r) => {
       if (String(r.category || "") === "DEPILACION_LASER") return false
+      // Las ventas de PRODUCTO de cuentas de recepción designadas se reparten
+      // automáticamente entre prestadoras: no son "sin prestador".
+      if (String(r.category || "") === "PRODUCTO" && isReceptionSplitSale(r.branch, r.provider_original)) return false
       return !effectiveProvider(r).commissionable
     })
     .map((r) => ({
@@ -765,6 +769,47 @@ export async function getCommissionUnassignedServices(params: ActionParams) {
     ok: true, rows: out,
     totals: { count: out.length, amount: round2(out.reduce((s, r) => s + r.amount, 0)) },
   }
+}
+
+/** Reparto de PRODUCTO de cuentas de recepción designadas: por sucursal/cuenta,
+ *  las unidades totales se reparten en partes iguales (entero, remanente a las
+ *  primeras) entre las prestadoras designadas; cada una aplica SU tarifa de
+ *  producto. Espeja lo que el motor ya aplica en la liquidación (transparencia). */
+export async function getCommissionReceptionSplit(params: ActionParams) {
+  const [rows, rules] = await Promise.all([fetchSalesForPeriod(params), readRunRules()])
+  type Grp = { branch: string; account: string; recipients: string[]; units: number }
+  const groups: Grp[] = []
+  const seen = new Map<string, Grp>()
+  for (const r of rows) {
+    if (String(r.category || "") !== "PRODUCTO") continue
+    if (isNonIncentiveItem(r.service_name)) continue
+    const branch = String(r.branch || "")
+    const splits = receptionSplitsForBranch(branch)
+    if (!splits.length) continue
+    const name = normalizeName(classifyProvider(r.provider_original ?? r.provider_normalized).name)
+    const split = splits.find((s) => name === s.account)
+    if (!split) continue
+    const key = `${branch}||${split.account}`
+    let g = seen.get(key)
+    if (!g) { g = { branch, account: split.account, recipients: split.recipients, units: 0 }; seen.set(key, g); groups.push(g) }
+    g.units += Number(r.quantity) || 0
+  }
+  const allRecips = [...new Set(groups.flatMap((g) => g.recipients.map((x) => canonicalCollaborator(x))))]
+  const rates = await productRatesForProviders(allRecips, rules.productUnitAmount)
+  const detail = groups.map((g) => {
+    const recips = g.recipients.map((x) => canonicalCollaborator(x))
+    const shares = allocateInt(g.units, recips.length)
+    return {
+      branch: g.branch, account: g.account, totalUnits: g.units,
+      recipients: recips.map((name, i) => ({
+        name, units: shares[i], rate: rates[name] ?? rules.productUnitAmount,
+        incentive: round2(shares[i] * (rates[name] ?? rules.productUnitAmount)),
+      })),
+    }
+  }).sort((a, b) => a.branch.localeCompare(b.branch) || a.account.localeCompare(b.account))
+  const totalUnits = detail.reduce((s, d) => s + d.totalUnits, 0)
+  const totalIncentive = round2(detail.reduce((s, d) => s + d.recipients.reduce((x, r) => x + r.incentive, 0), 0))
+  return { ok: true, rows: detail, totals: { units: totalUnits, incentive: totalIncentive } }
 }
 
 /** Tarifa de incentivo por unidad de producto de cada prestador: la propia del
@@ -1602,7 +1647,8 @@ async function computeRunForPeriod(branch: string, month: number, year: number):
     readRunRules(),
   ])
   const { patients, source } = await readPatientsForRun(branch, month, year)
-  return computeRun({ branch, sales, collaborators, patients, patientsSource: source, rules })
+  return computeRun({ branch, sales, collaborators, patients, patientsSource: source, rules,
+    receptionSplits: receptionSplitsForBranch(branch) })
 }
 
 function mapRun(r: Row) {
