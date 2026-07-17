@@ -2176,6 +2176,10 @@ export function MasajesTemplateSections({
   brandName?: string
 }) {
   const brand = (text: string) => applyBrand(text, brandName)
+  // La lista cerrada de especialistas de masajes es de CSL. Solo se usa en CSL;
+  // otros tenants (Depicenter/La Vega) capturan el nombre libremente — nunca se
+  // muestran nombres de otro negocio.
+  const isCsl = useCurrentBusiness().slug === "csl"
   const toggleArrayItem = (key: "instrucciones" | "contraindicacionesList" | "politicasAceptadas", value: string, checked: boolean) => {
     const current = (form[key] as string[] | undefined) ?? []
     const next = checked ? Array.from(new Set([...current, value])) : current.filter((v) => v !== value)
@@ -2244,17 +2248,25 @@ export function MasajesTemplateSections({
             ) : null}
           </Field>
           <Field label="Especialista en masajes *" className="md:col-span-2">
-            <Select
-              value={form.nombreEspecialista || ""}
-              onValueChange={(value) => onUpdate({ nombreEspecialista: value })}
-            >
-              <SelectTrigger className="w-full"><SelectValue placeholder="Seleccionar especialista" /></SelectTrigger>
-              <SelectContent>
-                {MASSAGE_SPECIALISTS.map((esp) => (
-                  <SelectItem key={esp} value={esp}>{esp}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {isCsl ? (
+              <Select
+                value={form.nombreEspecialista || ""}
+                onValueChange={(value) => onUpdate({ nombreEspecialista: value })}
+              >
+                <SelectTrigger className="w-full"><SelectValue placeholder="Seleccionar especialista" /></SelectTrigger>
+                <SelectContent>
+                  {MASSAGE_SPECIALISTS.map((esp) => (
+                    <SelectItem key={esp} value={esp}>{esp}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                value={form.nombreEspecialista || ""}
+                onChange={(e) => onUpdate({ nombreEspecialista: e.target.value })}
+                placeholder="Nombre de la especialista en masajes"
+              />
+            )}
           </Field>
         </div>
       </section>

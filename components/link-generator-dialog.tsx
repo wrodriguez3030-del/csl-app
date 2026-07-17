@@ -247,6 +247,16 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
     }
   }, [apiUrl])
 
+  // NUNCA MEZCLAR TENANTS: al cambiar el negocio activo (superadmin usa el
+  // switcher), descartamos clientes y especialistas del tenant anterior para que
+  // el modal recargue los del tenant CORRECTO la próxima vez que se abra. Sin
+  // esto, la lista quedaba cacheada del primer tenant abierto (p.ej. mostraba las
+  // especialistas de CSL estando en Depicenter/La Vega).
+  useEffect(() => {
+    setClientes([])
+    setEspecialistas([])
+  }, [currentBusiness.slug])
+
   // Reset + carga al abrir.
   useEffect(() => {
     if (open) {
@@ -604,7 +614,13 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
   // Masajes usa lista canónica cerrada (DAYHANA / Benita) — ignora
   // csl_operadoras que mezcla operadoras de otros servicios. Para los demás
   // tipos seguimos usando la lista del backend.
-  const especialistasOptions: string[] = isMasajes ? [...MASSAGE_SPECIALISTS] : especialistas
+  // Masajes usa una lista cerrada (no csl_operadoras, que mezcla operadoras de
+  // láser/ficha). Esa lista es de CSL, así que SOLO aplica a CSL; para otros
+  // tenants (Depicenter/La Vega) se deja captura libre para no mostrar nombres de
+  // CSL. Los demás consents usan las operadoras del tenant activo (ya scopeadas).
+  const especialistasOptions: string[] = isMasajes
+    ? (currentBusiness.slug === "csl" ? [...MASSAGE_SPECIALISTS] : [])
+    : especialistas
   // Especialista obligatorio para ficha + masajes; opcional para tatuajes/cejas.
   const especialistaRequerido = isFicha || isMasajes
 

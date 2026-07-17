@@ -18,6 +18,20 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.59.1] — 2026-07-17
+
+### Fixed
+- **Especialistas mezclaban tenant (salían las de Cibao Spa Laser estando en Depicenter/La Vega).**
+  En el diálogo de generar link, `clientes` y `especialistas` se cargaban una sola vez
+  (`if length===0`) y NO se refrescaban al cambiar de negocio activo (superadmin), quedando
+  cacheadas las del primer tenant abierto. Fix: al cambiar `currentBusiness.slug` se descartan
+  ambas listas para recargar las del tenant correcto (el backend ya scopea por `business_id`).
+  Además, la lista cerrada de especialistas de **masajes** (`MASSAGE_SPECIALISTS`, de CSL) ahora
+  SOLO se usa en CSL; en otros tenants se captura el nombre libremente — tanto en el diálogo como
+  en el formulario interno. Regla: **un tenant nunca muestra datos de otro.**
+
+---
+
 ## [0.59.0] — 2026-07-17
 
 ### Added
