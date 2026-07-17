@@ -18,6 +18,17 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.57.1] — 2026-07-17
+
+### Changed
+- **Reparto de recepción: se incluye "LOS JARDINES ENCARGADA 2"** entre LESLIE y YADIBEL
+  (mismas destinatarias que ENCARGADA 1). Ahora LOS JARDINES reparte las dos cuentas
+  ENCARGADA 1 y ENCARGADA 2; cada cuenta se reparte por separado (unidades ÷ 2). Las
+  demás cuentas de recepción de la sucursal ("operaciones") siguen sin repartirse.
+  Tests 154/154.
+
+---
+
 ## [0.57.0] — 2026-07-17
 
 ### Added

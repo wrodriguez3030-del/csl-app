@@ -370,8 +370,10 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
 
   const { receptionSplitsForBranch, isReceptionSplitSale } = await import("../lib/commission/reception-splits.ts")
   t("RAFAEL VIDAL reparte entre 3", receptionSplitsForBranch("RAFAEL VIDAL")[0]?.recipients.length === 3)
+  t("LOS JARDINES tiene 2 cuentas de reparto (ENCARGADA 1 y 2)", receptionSplitsForBranch("LOS JARDINES").length === 2)
   t("ENCARGADA 1 (LJ) es cuenta de reparto", isReceptionSplitSale("LOS JARDINES", "LOS JARDINES  ENCARGADA 1 (Recepcionista)") === true)
-  t("ENCARGADA 2 (LJ) NO es cuenta de reparto", isReceptionSplitSale("LOS JARDINES", "LOS JARDINES  ENCARGADA 2 (Recepcionista)") === false)
+  t("ENCARGADA 2 (LJ) es cuenta de reparto", isReceptionSplitSale("LOS JARDINES", "LOS JARDINES  ENCARGADA 2 (Recepcionista)") === true)
+  t("operaciones (LJ) NO es cuenta de reparto", isReceptionSplitSale("LOS JARDINES", "cibao spa los jadines  operaciones (Recepcionista)") === false)
 
   const rRecep = computeRun({
     branch: "RAFAEL VIDAL",

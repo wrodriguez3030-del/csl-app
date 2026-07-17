@@ -27,6 +27,7 @@ export interface ReceptionSplitRule {
 export const RECEPTION_PRODUCT_SPLITS: ReceptionSplitRule[] = [
   { branch: "RAFAEL VIDAL", account: "PC RECEPCION LAP TOP R VIDAL", recipients: ["LUISA", "YANIBEL", "KARLA"] },
   { branch: "LOS JARDINES", account: "LOS JARDINES ENCARGADA 1", recipients: ["LESLIE", "YADIBEL"] },
+  { branch: "LOS JARDINES", account: "LOS JARDINES ENCARGADA 2", recipients: ["LESLIE", "YADIBEL"] },
   { branch: "VILLA OLGA", account: "VILLA OLGA ENCARGADA", recipients: ["ANGELICA", "GIPSY"] },
 ]
 
