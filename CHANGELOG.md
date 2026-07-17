@@ -18,6 +18,20 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.58.2] — 2026-07-17
+
+### Fixed
+- **Link de WhatsApp de consentimientos salía con el tenant equivocado (Cibao bajo Depicenter).**
+  El diálogo `LinkGeneratorDialog` creaba el link con un `fetch` crudo que **no enviaba
+  `activeBusinessId`**, así que el backend usaba el negocio del *perfil* del usuario (CSL) en vez
+  del tenant activo (Depicenter) — mezclando tenants en el mensaje, la vista previa (OG) y el
+  formulario público. Ahora envía `activeBusinessId: businessIdForSlug(currentBusiness.slug)`
+  (mismo patrón ya usado en RRHH `generateSolicitudLink`). `applyActiveBusiness` ignora el valor
+  para usuarios normales (no pueden saltar de tenant) y scopea al superadmin al tenant activo.
+  Regla: **un tenant nunca afecta al otro.** Test `scripts` de marca por tenant: 11/11 OK.
+
+---
+
 ## [0.58.1] — 2026-07-17
 
 ### Added

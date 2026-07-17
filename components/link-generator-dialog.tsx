@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
+import { businessIdForSlug } from "@/lib/business"
+import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { supabaseBrowser } from "@/lib/supabase-client"
 import { normalizeAddress } from "@/lib/address"
 import type { ClienteCosmiatria } from "@/lib/types"
@@ -169,6 +171,8 @@ function normalizeCliente(raw: Record<string, unknown>): ClienteCosmiatria {
 export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Props) {
   const apiUrl = useAppStore((state) => state.apiUrl)
   const sessionUser = useSessionUser()
+  // Tenant activo — el link se crea para ESTE negocio (superadmin sigue el switcher).
+  const currentBusiness = useCurrentBusiness()
   // Solo admin/superadmin pueden crear clientes desde este modal. Rol Usuario
   // solo puede buscar y seleccionar clientes existentes — el backend además
   // rechaza saveClienteCosmiatria si Usuario lo intenta por DevTools.
@@ -541,6 +545,10 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
         if (servicioFinal) prefillPayload.servicio = servicioFinal
       }
 
+      // Tenant activo del link (mismo patrón que RRHH generateSolicitudLink):
+      // un superadmin viendo Depicenter crea el link — y su marca/logo/correo/OG —
+      // para Depicenter, no para el business de su perfil. A un usuario normal el
+      // backend lo ignora (queda scopeado a su propio tenant). Sin mezclar tenants.
       const response = await fetch("/api/public-form-links", {
         method: "POST",
         headers: {
@@ -552,6 +560,7 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
           clienteNombre: prefill.nombre.trim() || undefined,
           clienteTelefono: prefill.telefono.trim() || undefined,
           prefillPayload: Object.keys(prefillPayload).length > 0 ? prefillPayload : undefined,
+          activeBusinessId: businessIdForSlug(currentBusiness.slug) ?? undefined,
         }),
       })
       const raw = await response.text()
