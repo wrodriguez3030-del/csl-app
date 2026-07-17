@@ -21,7 +21,10 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ## [0.62.3] — 2026-07-17
 
 ### Fixed
-- **Nombre canónico JOHELY (antes se mostraba "JOELY" en unas pantallas).** El alias mapeaba ; se invirtió a  en  para que el motor use **JOHELY** en todo el módulo (misma persona, mismo cálculo). Test de alias actualizado.
+- **Nombre canónico JOHELY (antes se mostraba "JOELY" en algunas pantallas).** El alias mapeaba
+  "JOHELY → JOELY"; se invirtió a "JOELY → JOHELY" en `lib/commission/normalize.ts` para que el motor
+  use **JOHELY** en todo el módulo (misma persona, mismo cálculo). Renombrado también en el roster y el
+  libro de liquidación. Test de alias actualizado.
 
 ---
 
