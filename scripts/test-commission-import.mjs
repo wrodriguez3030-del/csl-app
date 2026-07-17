@@ -151,7 +151,7 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
   t("nombre completo Jardines → LOS JARDINES", normalizeBranch("Cibao Spa Laser Los Jardines") === "LOS JARDINES")
   t("nombre completo Villa Olga → VILLA OLGA", normalizeBranch("CIBAO SPA LASER VILLA OLGA") === "VILLA OLGA")
   t("alias exacto sigue funcionando", normalizeBranch("R VIDAL") === "RAFAEL VIDAL")
-  t("JOHELY → JOELY", canonicalCollaborator("Johely") === "JOELY")
+  t("JOELY → JOHELY", canonicalCollaborator("Joely") === "JOHELY")
   t("KATHERINE → KATHERIN", canonicalCollaborator("KATHERINE") === "KATHERIN")
   t("AHSLEY → ASHLEY", canonicalCollaborator("AHSLEY") === "ASHLEY")
   t("EMELY → EMELI", canonicalCollaborator("emely") === "EMELI")

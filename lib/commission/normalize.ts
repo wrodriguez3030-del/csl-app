@@ -55,7 +55,7 @@ export const COLLABORATOR_ALIASES: Record<string, string> = {
   KATHERINE: "KATHERIN",
   ROQUELMI: "RIQUELMI",
   EMELY: "EMELI",
-  JOHELY: "JOELY",
+  JOELY: "JOHELY",
   MADELIN: "MADELINE",
 }
 
