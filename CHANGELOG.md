@@ -18,6 +18,19 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.59.0] — 2026-07-17
+
+### Added
+- **Firma presencial en tablet para consentimientos.** Además de "Enviar por WhatsApp",
+  el diálogo de generar link (`LinkGeneratorDialog`) ahora ofrece **"Firmar en esta tablet"**,
+  que abre el MISMO formulario público (token de un solo uso, misma validación y guardado) en
+  una pestaña nueva para que el cliente lo complete y firme ahí mismo, sin pasar por WhatsApp.
+  Al ser el diálogo compartido, aplica a **todos** los menús de consentimiento: Masajes, Peeling,
+  Eliminación de Tatuajes y Cejas, Depilación Láser y Ficha Dermatológica. Respeta el tenant
+  activo (Depicenter vs CSL) igual que el envío por WhatsApp.
+
+---
+
 ## [0.58.2] — 2026-07-17
 
 ### Fixed

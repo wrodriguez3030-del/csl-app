@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Check, Copy, Loader2, MessageCircle, RefreshCcw, Save, Search, Send, UserPlus } from "lucide-react"
+import { Check, Copy, Loader2, MessageCircle, RefreshCcw, Save, Search, Send, Tablet, UserPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -908,6 +908,24 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
             <p className="text-[11px] text-muted-foreground">
               El botón abre WhatsApp Web (escritorio) o la app (móvil) — el mensaje empieza con
               "Hola {prefill.nombre.split(/\s+/)[0] || "[nombre]"},…".
+            </p>
+            <div className="flex items-center gap-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <span className="h-px flex-1 bg-border" /> o <span className="h-px flex-1 bg-border" />
+            </div>
+            {/* Firma presencial: abre el MISMO formulario público (un solo uso) en una
+                pestaña nueva para que el cliente lo firme aquí mismo en la tablet, sin
+                pasar por WhatsApp. Se cierra la pestaña al terminar. */}
+            <button
+              type="button"
+              onClick={() => window.open(result.url, "_blank", "noopener,noreferrer")}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:opacity-90"
+            >
+              <Tablet className="h-4 w-4" />
+              Firmar en esta tablet
+            </button>
+            <p className="text-[11px] text-muted-foreground">
+              Abre el consentimiento en una pestaña nueva para que el cliente lo complete y firme aquí
+              mismo. Al terminar, cierra esa pestaña.
             </p>
           </div>
         )}
