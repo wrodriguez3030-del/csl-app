@@ -547,8 +547,10 @@ const KIND_CONFIG = {
  * nombre del tenant activo. Fuente única de marca por tenant. Al aplicarse
  * sobre el HTML/JSX ya renderizado no hace falta editar cada frase legal.
  */
-function applyBrand(text: string, brand: string): string {
-  return String(text ?? "").replace(/Cibao Spa L[aá]ser/g, brand)
+function applyBrand(text: string, brand: string, email?: string): string {
+  let out = String(text ?? "").replace(/Cibao Spa L[aá]ser/g, brand)
+  if (email) out = out.replace(/cibaospalaser@gmail\.com/g, email)
+  return out
 }
 
 function todayIso() {
@@ -1066,7 +1068,7 @@ function printConsent(record: ConsentimientoRecord, kind: ConsentKind, business?
   if (!popup) return
   // Red de seguridad: cualquier "Cibao Spa Laser/Láser" que quede embebido en el
   // texto legal se reemplaza por la marca del tenant activo.
-  popup.document.write(applyBrand(html, brandName))
+  popup.document.write(applyBrand(html, brandName, branding.contactEmail))
   popup.document.close()
 }
 
@@ -1739,7 +1741,8 @@ function ConsentFormDialog({
 }) {
   const config = KIND_CONFIG[kind]
   const business = useCurrentBusiness()
-  const brandName = getBusinessBranding(business?.slug).name
+  const branding = getBusinessBranding(business?.slug)
+  const brandName = branding.name
   const linkedCliente = useMemo(
     () => (form.clienteId ? clientes.find((c) => c.ClienteID === form.clienteId) : null),
     [clientes, form.clienteId],
@@ -1853,7 +1856,7 @@ function ConsentFormDialog({
           ) : null}
 
           {kind === "peeling" ? (
-            <PeelingTemplateSections form={form} onUpdate={onUpdate} brandName={brandName} />
+            <PeelingTemplateSections form={form} onUpdate={onUpdate} brandName={brandName} contactEmail={branding.contactEmail} />
           ) : null}
 
           <section className="rounded-2xl border p-4">
@@ -2455,12 +2458,14 @@ export function PeelingTemplateSections({
   form,
   onUpdate,
   brandName = "Cibao Spa Laser",
+  contactEmail,
 }: {
   form: ConsentimientoRecord
   onUpdate: (patch: Partial<ConsentimientoRecord>) => void
   brandName?: string
+  contactEmail?: string
 }) {
-  const brand = (text: string) => applyBrand(text, brandName)
+  const brand = (text: string) => applyBrand(text, brandName, contactEmail)
   type PeelingArrayKey =
     | "contraindicacionesList"
     | "instruccionesAntes"

@@ -138,10 +138,11 @@ function buildPrintHtml(args: {
   businessName?: string
   logoUrl?: string
   primaryColor?: string
+  contactEmail?: string
 }) {
   const {
     cliente, fechaFirma, firmaDataUrl, recordId,
-    businessName = "CIBAO SPA LASER", logoUrl = "", primaryColor = "#00897b",
+    businessName = "CIBAO SPA LASER", logoUrl = "", primaryColor = "#00897b", contactEmail = "",
   } = args
   const logoSrc = logoUrl ? `${typeof window !== "undefined" ? window.location.origin : ""}${logoUrl}` : ""
   const html = `<!doctype html><html><head><meta charset="utf-8" />
@@ -228,14 +229,17 @@ ${listHtml(POLITICAS)}
 </div>
 
 </body></html>`
-  // Red de seguridad: cualquier "Cibao Spa Láser/Laser" embebido en el cuerpo
-  // legal se reemplaza por la marca del tenant.
-  return html.replace(/Cibao Spa L[aá]ser/g, businessName)
+  // Red de seguridad: cualquier "Cibao Spa Láser/Laser" (y el correo legado) embebido
+  // en el cuerpo legal se reemplaza por la marca/correo del tenant.
+  let out = html.replace(/Cibao Spa L[aá]ser/g, businessName)
+  if (contactEmail) out = out.replace(/cibaospalaser@gmail\.com/g, contactEmail)
+  return out
 }
 
 export function PublicPeelingConsentForm({ prefill = {}, onSubmit, businessSlug = "csl" }: Props) {
   const branding = getBusinessBranding(businessSlug)
   const businessName = branding.name
+  const contactEmail = branding.contactEmail
   const cliente: Required<PublicPeelingPrefill> = {
     clienteId: prefill.clienteId || "",
     nombre: prefill.nombre || "",
@@ -314,6 +318,7 @@ export function PublicPeelingConsentForm({ prefill = {}, onSubmit, businessSlug 
       businessName,
       logoUrl: branding.logoUrl,
       primaryColor: branding.primaryColor,
+      contactEmail,
     })
     const popup = window.open("", "_blank", "width=1000,height=900")
     if (!popup) return
@@ -445,7 +450,7 @@ export function PublicPeelingConsentForm({ prefill = {}, onSubmit, businessSlug 
             <p>
               {businessName} podrá enviar información, respuestas a consultas y contactos relacionados
               con nuestros servicios mientras dure nuestra relación y tengamos su consentimiento como
-              destinatario. No se cederán datos a terceros salvo obligación legal. Correo: cibaospalaser@gmail.com
+              destinatario. No se cederán datos a terceros salvo obligación legal. Correo: {contactEmail}
             </p>
           </Section>
         </CardContent>

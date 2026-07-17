@@ -18,6 +18,16 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.58.1] — 2026-07-17
+
+### Added
+- **Correo de contacto por tenant** en la marca canónica (`getBusinessBranding().contactEmail`):
+  CSL → `cibaospalaser@gmail.com`, Depicenter → `depicenterskinlaser@gmail.com`. Se usa en el
+  texto de "Protección de datos" del consentimiento de peeling (interno + público, pantalla y PDF),
+  reemplazando el correo de CSL que aparecía bajo Depicenter.
+
+---
+
 ## [0.58.0] — 2026-07-17
 
 ### Fixed

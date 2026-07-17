@@ -128,6 +128,8 @@ export interface BusinessBranding {
   primaryColor: string
   /** Texto de footer en reportes. */
   footerText: string
+  /** Correo de contacto del tenant (protección de datos, pie de consentimientos). */
+  contactEmail: string
 }
 
 /**
@@ -135,16 +137,18 @@ export interface BusinessBranding {
  * para display, subtítulo y footer). El logo/color/shortName vienen del
  * catálogo `BUSINESS_FALLBACK` para no duplicar.
  */
-const BRANDING_TEXT: Record<BusinessSlug, { displayName: string; subtitle: string; footerText: string }> = {
+const BRANDING_TEXT: Record<BusinessSlug, { displayName: string; subtitle: string; footerText: string; contactEmail: string }> = {
   csl: {
     displayName: "Cibao Spa Láser",
     subtitle: "Sistema Integral CSL",
     footerText: "Cibao Spa Láser",
+    contactEmail: "cibaospalaser@gmail.com",
   },
   depicenter: {
     displayName: "Depicenter Skin Laser",
     subtitle: "Sistema Integral Depicenter",
     footerText: "Depicenter Skin Laser",
+    contactEmail: "depicenterskinlaser@gmail.com",
   },
 }
 
@@ -173,5 +177,6 @@ export function getBusinessBranding(
     logoUrl: base.logoUrl,
     primaryColor: base.primaryColor,
     footerText: text.footerText,
+    contactEmail: text.contactEmail,
   }
 }
