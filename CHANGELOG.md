@@ -18,6 +18,20 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.63.0] — 2026-07-17
+
+### Added
+- **Número de cuenta bancaria por prestador.** Nueva columna `account_number` en
+  `sales_commission_collaborators` (migración `202607170001`, aplicada a db-cls). Se muestra/edita en el
+  editor "Personal que aplica incentivo láser" (columna "Cuenta") — igual que el resto, se agrega/edita/
+  elimina/mueve de sucursal ahí mismo. Se exporta en la **columna M ("Cuenta")** de la hoja "Liquidación
+  final" del Excel (y "Ventas por Prestador"): `getCommissionDashboard` adjunta la cuenta del roster a
+  cada cálculo por nombre canónico. Sembradas 23 cuentas (25 filas, cubre multi-sucursal); solo ISAURY
+  quedó sin cuenta (no estaba en la lista). El servidor solo toca la cuenta cuando se envía (no se borra
+  al activar/inactivar).
+
+---
+
 ## [0.62.3] — 2026-07-17
 
 ### Fixed

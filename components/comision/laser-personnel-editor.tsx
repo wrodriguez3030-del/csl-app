@@ -20,7 +20,7 @@ import { Users, Loader2, Plus, Trash2, RefreshCcw } from "lucide-react"
 interface Collab {
   id: string; name: string; branch: string; services: string[]
   active: boolean; evaluationPct: number; cleaningContribution: number
-  bonusExtra: number; productUnitAmount: number | null
+  bonusExtra: number; productUnitAmount: number | null; accountNumber: string | null
 }
 
 export function LaserPersonnelEditor() {
@@ -52,7 +52,7 @@ export function LaserPersonnelEditor() {
 
   const applies = (c: Collab) => c.services?.includes("DEPILACION_LASER")
 
-  const saveRow = async (c: Collab, patch: Partial<{ appliesLaser: boolean; active: boolean; evaluationPct: number; cleaningContribution: number; bonusExtra: number; productUnitAmount: number | null; branch: string }>) => {
+  const saveRow = async (c: Collab, patch: Partial<{ appliesLaser: boolean; active: boolean; evaluationPct: number; cleaningContribution: number; bonusExtra: number; productUnitAmount: number | null; branch: string; accountNumber: string }>) => {
     if (!canManage) return
     setBusyId(c.id)
     try {
@@ -65,6 +65,8 @@ export function LaserPersonnelEditor() {
         cleaningContribution: String(patch.cleaningContribution ?? c.cleaningContribution),
         bonusExtra: String(patch.bonusExtra ?? c.bonusExtra ?? 0),
         productUnitAmount: prodRate == null ? "" : String(prodRate),
+        // Solo se envía (y toca) la cuenta cuando se edita esa celda.
+        ...(patch.accountNumber !== undefined ? { accountNumber: patch.accountNumber } : {}),
       })
       if (!res?.ok) throw new Error((res as { error?: string })?.error || "No se pudo guardar")
       invalidateReadCache("getCommissionLaserDetail"); invalidateReadCache("getCommissionRunPreview")
@@ -130,6 +132,7 @@ export function LaserPersonnelEditor() {
             <th className="px-2 py-2 text-right">Eval.%</th><th className="px-2 py-2 text-right">Limpieza</th>
             <th className="px-2 py-2 text-right" title="Bono extra RD$ del mes">Bono</th>
             <th className="px-2 py-2 text-right" title="Tarifa RD$/unidad de producto; vacío = regla general (RD$100)">Prod. RD$/u</th>
+            <th className="px-2 py-2" title="Número de cuenta bancaria (columna M del Excel de liquidación)">Cuenta</th>
             <th className="px-3 py-2 text-right">Acciones</th>
           </tr></thead>
           <tbody>{rows.map((c, i) => (
@@ -166,6 +169,10 @@ export function LaserPersonnelEditor() {
               <td className="px-2 py-2 text-right">
                 <Input className="ml-auto h-7 w-20 text-right" type="number" placeholder="100" defaultValue={c.productUnitAmount ?? ""} disabled={!canManage}
                   onBlur={(e) => { const raw = e.target.value.trim(); const v = raw === "" ? null : Number(raw); if (v !== (c.productUnitAmount ?? null)) void saveRow(c, { productUnitAmount: v }) }} />
+              </td>
+              <td className="px-2 py-2">
+                <Input className="h-7 w-32" type="text" inputMode="numeric" placeholder="—" defaultValue={c.accountNumber ?? ""} disabled={!canManage}
+                  onBlur={(e) => { const v = e.target.value.trim(); if (v !== (c.accountNumber ?? "")) void saveRow(c, { accountNumber: v }) }} />
               </td>
               <td className="px-3 py-2 text-right">
                 {canManage ? <Button size="sm" variant="ghost" className="h-7 text-red-600 hover:bg-red-50" disabled={busyId === c.id} onClick={() => del(c)}><Trash2 className="h-3.5 w-3.5" /></Button> : null}

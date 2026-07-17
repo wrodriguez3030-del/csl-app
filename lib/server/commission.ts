@@ -1526,6 +1526,13 @@ export async function getCommissionDashboard(params: ActionParams) {
   const calcs = calcsRes.records
   const sum = (f: (c: (typeof calcs)[number]) => number) => calcs.reduce((s, c) => s + f(c), 0)
   const round2 = (n: number) => Math.round(n * 100) / 100
+  // Cuenta bancaria (del roster) por prestador → se adjunta a cada cálculo para
+  // el Excel/PDF (columna "Cuenta" = M de "Liquidación final"). Es por persona,
+  // igual en todas sus sucursales.
+  const roster = await readRoster(undefined, true)
+  const acctByName = new Map<string, string>()
+  for (const r of roster) if (r.accountNumber) acctByName.set(canonicalCollaborator(r.name), String(r.accountNumber))
+  const calculations = calcs.map((c) => ({ ...c, accountNumber: acctByName.get(canonicalCollaborator(c.provider)) || null }))
   return {
     ok: true,
     activeRules: rulesRes.count ?? 0,
@@ -1540,7 +1547,7 @@ export async function getCommissionDashboard(params: ActionParams) {
       cleaningContribution: round2(sum((c) => c.cleaningContribution)),
       netTotal: round2(sum((c) => c.netTotal)),
     },
-    calculations: calcs,
+    calculations,
   }
 }
 
@@ -1567,6 +1574,7 @@ function mapCollaborator(r: Row) {
     bonusExtra: Number(r.bonus_extra) || 0,
     evaluationPct: r.evaluation_pct == null ? 100 : Number(r.evaluation_pct),
     productUnitAmount: r.product_unit_amount == null ? null : Number(r.product_unit_amount),
+    accountNumber: r.account_number == null ? null : String(r.account_number),
     notes: r.notes == null ? null : String(r.notes),
   }
 }
@@ -1997,6 +2005,9 @@ export async function saveCommissionCollaborator(params: ActionParams, user: Act
     notes: textValue(params, "notes") || null,
     updated_by: user.id || null, updated_at: new Date().toISOString(),
   }
+  // Número de cuenta: solo se toca si viene en el request (así un guardado que
+  // no lo envía —p.ej. activar/inactivar— NO borra la cuenta existente).
+  if (params.accountNumber !== undefined) fields.account_number = String(params.accountNumber).trim() || null
   const sb = getSupabaseAdmin()
   let cid = id
   if (id) {
