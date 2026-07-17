@@ -18,6 +18,22 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.62.0] — 2026-07-17
+
+### Fixed
+- **Reportes/Liquidación/Comisiones por prestador CUADRAN con Cálculo mensual (láser y bono ya aparecen).**
+  El libro de liquidación (`sales_commission_calculations`, que leen esos 3 menús + el dashboard de
+  Reportes) se llenaba desde el IMPORT con **láser=0 y bono=0**, mientras el motor corregido
+  (Cálculo mensual → `sales_commission_runs`) sí los calcula, en una tabla aparte **desconectada**.
+  Ahora al **guardar el Cálculo mensual** (`saveCommissionRun`) se **materializa** el run corregido
+  en el libro: `materializeRunToLedger` upsertea por (período, prestador, sucursal) los valores del
+  motor (productos, servicio corregido con evaluación/exclusiones, **láser, bono, limpieza**, bruto,
+  neto), **preservando** estado (aprobado/pagado), `fixed_incentive` y `manual_adjustment`. Fuente
+  única = el motor; bono/limpieza se editan en el editor de personal (roster) + compuerta por sucursal.
+  Para materializar un período hay que **guardar su Cálculo mensual por sucursal**. Tests 154/154 + 17/17.
+
+---
+
 ## [0.61.0] — 2026-07-17
 
 ### Fixed

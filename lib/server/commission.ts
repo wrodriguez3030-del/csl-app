@@ -1737,6 +1737,64 @@ export async function getCommissionRunPreview(params: ActionParams) {
 }
 
 /** Guarda (o recalcula) el run como BORRADOR + detalle por colaborador. */
+/**
+ * Materializa el run corregido en el LIBRO DE LIQUIDACIÓN
+ * (`sales_commission_calculations`) que leen Liquidación, Reportes y Comisiones
+ * por prestador. Cada ítem del motor (láser, bono, limpieza, servicio corregido)
+ * se upsertea por (período, prestador, sucursal), PRESERVANDO estado (aprobado/
+ * pagado), id, `fixed_incentive` y `manual_adjustment`. Así los 5 menús cuadran
+ * con Cálculo mensual (fuente única = el motor). Bono/limpieza salen del motor
+ * (roster + compuerta) → se editan en el editor de personal.
+ */
+async function materializeRunToLedger(
+  business_id: string, branch: string, month: number, year: number,
+  items: Awaited<ReturnType<typeof computeRunForPeriod>>["items"], userId: string | null,
+) {
+  const sb = getSupabaseAdmin()
+  const nowIso = new Date().toISOString()
+  const { data: existingRows } = await sb.from("sales_commission_calculations")
+    .select("id,provider_name_snapshot,fixed_incentive,manual_adjustment")
+    .eq("business_id", business_id).eq("branch", branch)
+    .eq("period_month", month).eq("period_year", year)
+  const byProv = new Map<string, Row>()
+  for (const r of (existingRows || []) as Row[]) byProv.set(canonicalCollaborator(String(r.provider_name_snapshot || "")), r)
+
+  for (const it of items) {
+    const prov = canonicalCollaborator(it.name)
+    const existing = byProv.get(prov)
+    // Solo materializamos prestadores con actividad real o ya presentes en el libro
+    // (evita crear filas en cero para miembros del roster sin ventas).
+    if (!existing && it.grossTotal <= 0 && it.bonusExtra <= 0) continue
+    const fixedIncentive = existing ? Number(existing.fixed_incentive) || 0 : 0
+    const manualAdjustment = existing ? Number(existing.manual_adjustment) || 0 : 0
+    const gross = round2(it.grossTotal + fixedIncentive + manualAdjustment)
+    const core = {
+      products_count: it.productUnits,
+      product_incentive: it.productIncentive,
+      service_commission: it.serviceIncentiveAdjusted,
+      laser_incentive: it.laserTotal,
+      bonus_extra: it.bonusExtra,
+      cleaning_contribution: it.cleaningContribution,
+      gross_total: gross,
+      net_total: round2(gross - it.cleaningContribution),
+      updated_at: nowIso,
+    }
+    if (existing) {
+      const { error } = await sb.from("sales_commission_calculations").update(core)
+        .eq("id", existing.id as string).eq("business_id", business_id)
+      if (error) throw new Error(error.message)
+    } else {
+      const { error } = await sb.from("sales_commission_calculations").insert({
+        business_id, period_month: month, period_year: year,
+        provider_name_snapshot: it.name, branch,
+        ...core, fixed_incentive: 0, manual_adjustment: 0,
+        status: "calculado", calculated_by: userId,
+      })
+      if (error) throw new Error(error.message)
+    }
+  }
+}
+
 export async function saveCommissionRun(params: ActionParams, user: ActionUser) {
   requirePermission("sales_commission.calculate")
   const business_id = requireBizId()
@@ -1797,6 +1855,11 @@ export async function saveCommissionRun(params: ActionParams, user: ActionUser) 
     const { error } = await sb.from("sales_commission_run_items").insert(items)
     if (error) throw new Error(error.message)
   }
+
+  // Cuadre: el run corregido se materializa en el libro de liquidación para que
+  // Liquidación / Reportes / Comisiones por prestador muestren los MISMOS
+  // indicadores (láser, bono, limpieza) que el Cálculo mensual.
+  await materializeRunToLedger(business_id, branch, month, year, result.items, user.id || null)
 
   await logAudit(user, "commission_run", runId, existing ? "recalculate" : "create",
     existing ? { status: existing.status } : null, { branch, month, year, netTotal: result.totals.netTotal },
