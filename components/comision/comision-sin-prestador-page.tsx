@@ -24,6 +24,7 @@ import { UserX, UserCheck, Loader2, RefreshCcw, Search, ArrowUp, ArrowDown, Arro
 import { CATEGORY_LABELS } from "@/lib/commission/classification"
 import { normalizeName } from "@/lib/commission/normalize"
 import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
+import { useCommissionBranches } from "@/hooks/use-commission-branches"
 
 const fmtRD = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -60,6 +61,7 @@ function SortableTh({ label, k, sortKey, sortDir, onSort, right }: {
 }
 
 export function ComisionSinPrestadorPage() {
+  const BRANCHES = useCommissionBranches()
   const { apiUrl, showToast } = useAppStore()
   const user = useSessionUser()
   const canAssign = canPerm(user, "sales_commission.adjust")
@@ -209,7 +211,7 @@ export function ComisionSinPrestadorPage() {
 
   return (
     <div className="space-y-5">
-      <CommissionFilterBar branches={["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]} />
+      <CommissionFilterBar branches={BRANCHES} />
 
       <Card className="border-[color:var(--brand-border)]">
         <CardContent className="flex flex-col gap-3 p-4">

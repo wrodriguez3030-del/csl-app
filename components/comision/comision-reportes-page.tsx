@@ -14,11 +14,13 @@ import { FileBarChart2, FileSpreadsheet, FileText, Printer, Loader2, RefreshCcw 
 import { exportCommissionExcel, printCommissionPdf, type CommissionReportData } from "@/lib/commission/commission-export"
 import { CATEGORY_LABELS } from "@/lib/commission/classification"
 import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
+import { useCommissionBranches } from "@/hooks/use-commission-branches"
 
 const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 const fmtRD = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export function ComisionReportesPage() {
+  const BRANCHES = useCommissionBranches()
   const { apiUrl, showToast } = useAppStore()
   const business = useCurrentBusiness()
   const user = useSessionUser()
@@ -84,7 +86,7 @@ export function ComisionReportesPage() {
 
   return (
     <div className="space-y-5">
-      <CommissionFilterBar branches={["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]} />
+      <CommissionFilterBar branches={BRANCHES} />
       <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-col gap-3 p-4">
         <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
           <FileBarChart2 className="h-4 w-4 text-[color:var(--brand-primary)]" /> Reportes de comisión

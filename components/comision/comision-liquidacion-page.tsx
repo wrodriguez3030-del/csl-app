@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { ReceiptText, RefreshCcw, MoreHorizontal, Pencil, Check, DollarSign, Loader2 } from "lucide-react"
 import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
+import { useCommissionBranches } from "@/hooks/use-commission-branches"
 
 interface Calc {
   id: string; provider: string; branch: string; productsCount: number; productIncentive: number
@@ -29,6 +30,7 @@ const STATUS_LABEL: Record<string, string> = { calculado: "Calculado", en_revisi
 const svcTotal = (c: Calc) => c.serviceCommission + c.laserIncentive + c.fixedIncentive + c.manualAdjustment
 
 export function ComisionLiquidacionPage() {
+  const BRANCHES = useCommissionBranches()
   const { apiUrl, showToast } = useAppStore()
   const user = useSessionUser()
   const canApprove = canPerm(user, "sales_commission.approve")
@@ -87,7 +89,7 @@ export function ComisionLiquidacionPage() {
 
   return (
     <div className="space-y-5">
-      <CommissionFilterBar branches={["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]} providers={providerOptions}>
+      <CommissionFilterBar branches={BRANCHES} providers={providerOptions}>
         <div>
           <label className="text-[11px] font-medium">Estado</label>
           <select className="mt-0.5 h-9 w-full rounded-md border border-input bg-white px-2 text-sm" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>

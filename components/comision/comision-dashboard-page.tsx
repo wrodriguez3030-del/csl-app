@@ -28,8 +28,8 @@ import {
 } from "lucide-react"
 import { monthBounds, quickRange, todayInTz } from "@/lib/commission/period"
 import { FILTER_MONTHS, defaultCommissionFilters, useCommissionFilters, type CommissionFilters } from "./comision-filter-bar"
+import { useCommissionBranches } from "@/hooks/use-commission-branches"
 
-const BRANCHES = ["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]
 const TEAL = "#0D9488"
 const DONUT_COLORS = ["#0D9488", "#D97706", "#7C3AED", "#DB2777"]
 
@@ -68,6 +68,7 @@ interface ExecData {
 export function DashboardFilterBar({ providers, onRefresh, loading }: {
   providers: string[]; onRefresh: () => void; loading: boolean
 }) {
+  const BRANCHES = useCommissionBranches()
   const { commissionFilters, setCommissionFilters, setActiveTab } = useAppStore()
   const applied = (commissionFilters as CommissionFilters | null) || defaultCommissionFilters()
   const [moreOpen, setMoreOpen] = useState(applied.quick === "personalizado")

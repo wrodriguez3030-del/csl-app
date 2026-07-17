@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl, invalidateReadCache } from "@/lib/store"
 import { useSessionUser } from "@/hooks/use-session-user"
+import { useCommissionBranches } from "@/hooks/use-commission-branches"
 import { canPerm } from "@/lib/permissions"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -19,8 +20,7 @@ import { LaserPersonnelEditor } from "./laser-personnel-editor"
 export { ComisionDashboardPage } from "./comision-dashboard-page"
 
 const fmtRD = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const BRANCHES = ["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]
-const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+const MONTHS =["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 
 function Shell({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
   return (
@@ -101,6 +101,7 @@ export function ComisionHistorialPage() {
 // ── Scaffolds dedicados (próxima fase) ──────────────────────────────────────
 // Ventas por sucursal (agrega ventas persistidas; filtros backend)
 export function ComisionSucursalesPage() {
+  const BRANCHES = useCommissionBranches()
   const { apiUrl, showToast } = useAppStore()
   const { params } = useCommissionFilters()
   const [payment, setPayment] = useState("")
@@ -156,6 +157,7 @@ export function ComisionSucursalesPage() {
 
 // Incentivos de productos (lee cálculos vivos; período compartido)
 export function ComisionProductosPage() {
+  const BRANCHES = useCommissionBranches()
   const { apiUrl, showToast } = useAppStore()
   const { params } = useCommissionFilters()
   const [items, setItems] = useState<{ id: string; provider: string; branch: string; productsCount: number; productIncentive: number }[]>([])
@@ -220,6 +222,7 @@ function effectivePeriod(filters: { quick: string; month: number; year: number; 
 }
 
 export function ComisionLaserPage() {
+  const BRANCHES = useCommissionBranches()
   const { apiUrl, showToast } = useAppStore()
   const user = useSessionUser()
   const canApply = canPerm(user, "sales_commission.calculate")
@@ -458,12 +461,13 @@ interface CapRow {
   effective: number; source: string; service: string | null; observation: string | null
 }
 export function ComisionClientesPage() {
+  const BRANCHES = useCommissionBranches()
   const { apiUrl, showToast } = useAppStore()
   const user = useSessionUser()
   const canEdit = canPerm(user, "sales_commission.calculate")
   const { filters, label } = useCommissionFilters()
   const eff = effectivePeriod(filters)
-  // month=0 = "Todos los meses" (suma anual, solo consulta); branch="" = las 3 sucursales.
+  // month=0 = "Todos los meses" (suma anual, solo consulta); branch="" = todas las sucursales.
   const month = eff.month
   const year = eff.year
   const branch = filters.branch

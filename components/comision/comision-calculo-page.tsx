@@ -20,9 +20,9 @@ import { Calculator, Loader2, CheckCircle2, AlertTriangle, Save, Lock, Ban, Refr
 import { CATEGORY_LABELS } from "@/lib/commission/classification"
 import type { RunResult } from "@/lib/commission/run-engine"
 import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
+import { useCommissionBranches } from "@/hooks/use-commission-branches"
 
 const fmtRD = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const BRANCHES = ["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]
 const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 
 interface SavedRun {
@@ -153,6 +153,7 @@ function RunView({ result, branch, month, year }: { result: RunResult; branch: s
 
 export function ComisionCalculoPage() {
   const { apiUrl, showToast, setCommissionFilters } = useAppStore()
+  const BRANCHES = useCommissionBranches()
   const user = useSessionUser()
   const canCalc = canPerm(user, "sales_commission.calculate")
 
@@ -256,7 +257,7 @@ export function ComisionCalculoPage() {
       <Card className="border-[color:var(--brand-border)]"><CardContent className="flex flex-wrap items-center gap-2 p-3">
         <Badge variant="outline" className="border-cyan-200 bg-cyan-50 text-cyan-800">{MONTHS[month - 1]} {year} · {branch || "Todas las sucursales"}</Badge>
         {isAllMonths ? <span className="text-[11px] text-amber-700">El cálculo es por mes: mostrando {MONTHS[month - 1]} {year}. Elige un mes específico en Filtros.</span> : null}
-        {multiMode && !isAllMonths ? <span className="text-[11px] text-slate-600">Vista consolidada de las 3 sucursales. Para <b>guardar/finalizar</b> elige una sucursal.</span> : null}
+        {multiMode && !isAllMonths ? <span className="text-[11px] text-slate-600">Vista consolidada de todas las sucursales. Para <b>guardar/finalizar</b> elige una sucursal.</span> : null}
         <Button size="sm" variant="outline" className="h-9" disabled={loading} onClick={() => void load()}>
           {loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}Recalcular
         </Button>

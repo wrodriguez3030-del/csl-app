@@ -9,14 +9,13 @@
 import { useCallback, useEffect, useState } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl, invalidateReadCache } from "@/lib/store"
 import { useSessionUser } from "@/hooks/use-session-user"
+import { useCommissionBranches } from "@/hooks/use-commission-branches"
 import { canPerm } from "@/lib/permissions"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Users, Loader2, Plus, Trash2, RefreshCcw } from "lucide-react"
-
-const BRANCHES = ["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]
 
 interface Collab {
   id: string; name: string; branch: string; services: string[]
@@ -28,12 +27,13 @@ export function LaserPersonnelEditor() {
   const { apiUrl, showToast } = useAppStore()
   const user = useSessionUser()
   const canManage = canPerm(user, "sales_commission.rules.manage")
+  const BRANCHES = useCommissionBranches()
 
   const [rows, setRows] = useState<Collab[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [branchFilter, setBranchFilter] = useState("")
-  const [nuevo, setNuevo] = useState({ name: "", branch: BRANCHES[0], appliesLaser: true, active: true })
+  const [nuevo, setNuevo] = useState({ name: "", branch: "", appliesLaser: true, active: true })
   const [adding, setAdding] = useState(false)
 
   const load = useCallback(async () => {
@@ -45,6 +45,10 @@ export function LaserPersonnelEditor() {
     } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
   }, [apiUrl, showToast, branchFilter])
   useEffect(() => { void load() }, [load])
+
+  useEffect(() => {
+    if (!nuevo.branch && BRANCHES.length) setNuevo((p) => ({ ...p, branch: BRANCHES[0] }))
+  }, [BRANCHES, nuevo.branch])
 
   const applies = (c: Collab) => c.services?.includes("DEPILACION_LASER")
 
@@ -83,6 +87,7 @@ export function LaserPersonnelEditor() {
   const add = async () => {
     if (!canManage) return
     if (!nuevo.name.trim()) { showToast("Escribe el nombre del empleado", "error"); return }
+    if (!nuevo.branch.trim()) { showToast("Selecciona la sucursal", "error"); return }
     setAdding(true)
     try {
       const res = await apiJsonp(normalizeApiUrl(apiUrl), {

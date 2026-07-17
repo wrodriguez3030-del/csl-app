@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { UserCog, RefreshCcw, ArrowUpDown } from "lucide-react"
 import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
+import { useCommissionBranches } from "@/hooks/use-commission-branches"
 
 interface Calc {
   id: string; provider: string; branch: string; periodMonth: number; periodYear: number
@@ -30,6 +31,7 @@ const COLS: Col[] = [
 ]
 
 export function ComisionPrestadoresPage() {
+  const BRANCHES = useCommissionBranches()
   const { apiUrl, showToast } = useAppStore()
   const { params } = useCommissionFilters()
   const [items, setItems] = useState<Calc[]>([])
@@ -63,7 +65,7 @@ export function ComisionPrestadoresPage() {
 
   return (
     <div className="space-y-5">
-      <CommissionFilterBar branches={["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]} providers={providerOptions} />
+      <CommissionFilterBar branches={BRANCHES} providers={providerOptions} />
       <Card className="border-[color:var(--brand-border)]"><CardContent className="flex items-center gap-2 p-3 text-sm font-semibold sm:p-4">
         <UserCog className="h-4 w-4 text-[color:var(--brand-primary)]" /> Comisiones por prestador
         <Badge variant="secondary">{items.length}</Badge>

@@ -18,6 +18,24 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.61.0] — 2026-07-17
+
+### Fixed
+- **Módulo de Incentivos/Comisiones: sucursales por TENANT (independiente), no las 3 de CSL.**
+  Las sucursales estaban hardcodeadas (`["RAFAEL VIDAL","LOS JARDINES","VILLA OLGA"]`) en 8
+  componentes + el servidor, así que cualquier tenant (Depicenter) veía/calculaba con las de CSL.
+  Ahora salen del catálogo del tenant activo:
+  - **Cliente:** hook `useCommissionBranches()` (`db.sucursales` del tenant, MAYÚSCULAS canónicas)
+    reemplaza `BRANCHES` en `laser-personnel-editor`, `comision-calculo/dashboard/pages/liquidacion/
+    prestadores/reportes/sin-prestador`.
+  - **Servidor:** `readTenantBranches()` (lee `csl_sucursales` del `business_id`, MAYÚSCULAS; fallback
+    al roster) reemplaza `LASER_BRANCHES` en los loops de "Todas las sucursales" y dashboards anuales.
+  Para CSL el resultado es idéntico (catálogo Title Case → MAYÚSCULAS = las 3 canónicas). Tests
+  commission 154/154 + smoke mensual 17/17. (Nota: `normalize.ts`/`reception-splits.ts` siguen con
+  reglas de datos propias de CSL, inertes para otros tenants.)
+
+---
+
 ## [0.60.0] — 2026-07-17
 
 ### Added

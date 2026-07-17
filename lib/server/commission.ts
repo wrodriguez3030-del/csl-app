@@ -1159,8 +1159,25 @@ export async function getCommissionLaser(params: ActionParams) {
   return { ok: true, laserTotal, byBranch: branchDetail, cardPct, tramoPct, fund, threshold: 0, distribution, patientsTotal: pat.total }
 }
 
-/** Sucursales de Cibao para el cálculo láser POR SUCURSAL. */
-const LASER_BRANCHES = ["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]
+/**
+ * Sucursales del TENANT activo para el cálculo por sucursal. Cada tenant es
+ * independiente: la lista sale de SU catálogo `csl_sucursales` (en MAYÚSCULAS,
+ * el formato canónico que usan ventas/roster/runs). Si el catálogo estuviera
+ * vacío, cae a las sucursales presentes en el roster de comisión del tenant.
+ * NUNCA hardcodea las de CSL.
+ */
+async function readTenantBranches(): Promise<string[]> {
+  const business_id = requireBizId()
+  const sb = getSupabaseAdmin()
+  const { data } = await sb.from("csl_sucursales").select("nombre").eq("business_id", business_id)
+  let names = (data || []).map((r) => String((r as Row).nombre || "").trim().toUpperCase()).filter(Boolean)
+  if (names.length === 0) {
+    const { data: roster } = await sb.from("sales_commission_collaborators")
+      .select("branch").eq("business_id", business_id).is("deleted_at", null)
+    names = (roster || []).map((r) => String((r as Row).branch || "").trim().toUpperCase()).filter(Boolean)
+  }
+  return [...new Set(names)].sort()
+}
 
 /**
  * Reparto láser CORREGIDO de un mes: corre el motor POR SUCURSAL (tarjeta
@@ -1172,7 +1189,7 @@ async function laserDistributionForMonth(month: number, year: number) {
   const perProvider = new Map<string, number>()
   let fundTotal = 0
   const byBranch: { branch: string; base: number; pct: number; fund: number }[] = []
-  for (const branch of LASER_BRANCHES) {
+  for (const branch of await readTenantBranches()) {
     const r = await computeRunForPeriod(branch, month, year)
     fundTotal = round2(fundTotal + r.laser.fund)
     byBranch.push({ branch, base: r.laser.base, pct: r.laser.pct, fund: r.laser.fund })
@@ -1704,7 +1721,7 @@ export async function getCommissionRunPreview(params: ActionParams) {
   const month = numberValue(params, "month")
   const year = numberValue(params, "year")
   if (!month || !year) throw new Error("Selecciona mes y año para el cálculo")
-  const branches = branch ? [branch] : LASER_BRANCHES
+  const branches = branch ? [branch] : await readTenantBranches()
   const out: { branch: string; result: RunResult; savedRun: ReturnType<typeof mapRun> | null }[] = []
   for (const b of branches) {
     const result = await computeRunForPeriod(b, month, year)
@@ -1967,7 +1984,7 @@ export async function getCommissionLaserDetail(params: ActionParams) {
   const year = numberValue(params, "year")
   if (!month || !year) throw new Error("Selecciona mes y año para el cálculo láser")
   const branchFilter = textValue(params, "branch")
-  const branches = branchFilter ? [branchFilter] : LASER_BRANCHES
+  const branches = branchFilter ? [branchFilter] : await readTenantBranches()
   const rules = await readRunRules()
   // Validaciones globales (spec §11).
   const globalAlerts: string[] = []
@@ -2188,16 +2205,17 @@ export async function getCommissionLaserAnnual(params: ActionParams) {
     base.set(k, round2((base.get(k) || 0) + netAmount(Number(r.gross_amount) || 0, String(r.payment_method || "OTROS"), rules.cardPct)))
   }
   const tramoOf = (v: number) => rules.laserScale.filter((t) => v >= t.threshold).sort((a, b) => b.threshold - a.threshold)[0] || null
+  const laserBranches = await readTenantBranches()
   const months = Array.from({ length: 12 }, (_, i) => {
     const m = i + 1
-    const branches = LASER_BRANCHES.map((b) => {
+    const branches = laserBranches.map((b) => {
       const v = base.get(`${b}|${m}`) || 0
       const t = tramoOf(v)
       return { branch: b, base: v, pct: t?.percentage || 0, threshold: t?.threshold || 0, fund: t ? round2(v * t.percentage) : 0 }
     })
     return { month: m, branches, fundTotal: round2(branches.reduce((s, x) => s + x.fund, 0)) }
   })
-  const byBranch = LASER_BRANCHES.map((b) => ({
+  const byBranch = laserBranches.map((b) => ({
     branch: b,
     base: round2(months.reduce((s, mo) => s + (mo.branches.find((x) => x.branch === b)?.base || 0), 0)),
     fund: round2(months.reduce((s, mo) => s + (mo.branches.find((x) => x.branch === b)?.fund || 0), 0)),
