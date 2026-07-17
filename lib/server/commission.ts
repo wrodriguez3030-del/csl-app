@@ -715,25 +715,40 @@ export async function getCommissionByBranch(params: ActionParams) {
  *  persistidas con la MISMA lógica del importador (classifyProvider sobre el
  *  prestador original, sólo categorías con % configurado; láser va por fondo). */
 export async function getCommissionServiceDetail(params: ActionParams) {
-  const [rows, rules] = await Promise.all([fetchSalesForPeriod(params), readRunRules()])
-  const pctByCat = rules.categoryPct
+  // Detalle por categoría CUADRADO con el motor: se construye desde el
+  // `serviceBreakdown` de cada ítem del run (base NETA = tarjeta neteada −%, con
+  // la misma atribución/exclusiones que la liquidación). Antes usaba la venta
+  // BRUTA y no cuadraba con Cálculo mensual/Liquidación.
+  requireBizId()
+  const monthP = numberValue(params, "month")
+  const year = numberValue(params, "year")
+  if (!year) return { ok: true, rows: [], totals: { base: 0, amount: 0 } }
+  const branchFilter = textValue(params, "branch")
+  const branches = branchFilter ? [branchFilter] : await readTenantBranches()
+  // month = 0 → "Todos los meses" (anual, suma por categoría).
+  const months = monthP ? [monthP] : Array.from({ length: 12 }, (_, i) => i + 1)
   type D = { provider: string; branch: string; category: string; base: number; pct: number; amount: number }
   const map = new Map<string, D>()
-  for (const r of rows) {
-    const cat = String(r.category || "")
-    const pct = pctByCat[cat]
-    if (pct == null || cat === "DEPILACION_LASER" || cat === "PRODUCTO") continue
-    if (isNonIncentiveItem(r.service_name)) continue // insumo sin incentivo
-    const p = effectiveProvider(r)
-    if (!p.commissionable || !p.name) continue
-    const key = `${p.name}||${cat}`
-    let d = map.get(key)
-    if (!d) { d = { provider: p.name, branch: String(r.branch || "(sin sucursal)"), category: cat, base: 0, pct: Number(pct), amount: 0 }; map.set(key, d) }
-    d.base = round2(d.base + (Number(r.gross_amount) || 0))
+  for (const month of months) {
+    const runs = await Promise.all(branches.map((b) => computeRunForPeriod(b, month, year)))
+    runs.forEach((r, i) => {
+      const branch = branches[i]
+      for (const it of r.items) {
+        const bd = (it.serviceBreakdown || {}) as Record<string, { base?: number; pct?: number; amount?: number }>
+        for (const [cat, v] of Object.entries(bd)) {
+          const amt = Number(v?.amount) || 0
+          const base = Number(v?.base) || 0
+          if (amt === 0 && base === 0) continue
+          const key = `${it.name}||${branch}||${cat}`
+          let d = map.get(key)
+          if (!d) { d = { provider: it.name, branch, category: cat, base: 0, pct: Number(v?.pct) || 0, amount: 0 }; map.set(key, d) }
+          d.base = round2(d.base + base)
+          d.amount = round2(d.amount + amt)
+        }
+      }
+    })
   }
-  const detail = [...map.values()]
-    .map((d) => ({ ...d, amount: round2(d.base * d.pct) }))
-    .sort((a, b) => a.provider.localeCompare(b.provider) || a.category.localeCompare(b.category))
+  const detail = [...map.values()].sort((a, b) => a.provider.localeCompare(b.provider) || a.category.localeCompare(b.category))
   return {
     ok: true, rows: detail,
     totals: { base: round2(detail.reduce((s, d) => s + d.base, 0)), amount: round2(detail.reduce((s, d) => s + d.amount, 0)) },

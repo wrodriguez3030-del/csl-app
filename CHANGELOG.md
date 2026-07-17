@@ -18,6 +18,18 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.62.2] — 2026-07-17
+
+### Fixed
+- **"Detalle de comisión por categoría" ahora cuadra con el motor/liquidación (base NETA).**
+  Usaba la venta **BRUTA** (`gross_amount`) × %, mientras el motor netea la **tarjeta −27%** y usa su
+  atribución → no coincidía (ej. EIDYLEE Tatuajes: bruto 5,300 vs neto 4,328). Regla confirmada por el
+  negocio: comisión de servicios sobre **neto de tarjeta**. `getCommissionServiceDetail` se reconstruye
+  desde el `serviceBreakdown` del run (base neta, %, monto por categoría/prestador), corriendo el motor
+  por sucursal del período. Cuadra exacto con Cálculo mensual / Reportes / Liquidación. Tests 154/154 + 17/17.
+
+---
+
 ## [0.62.1] — 2026-07-17
 
 ### Changed
