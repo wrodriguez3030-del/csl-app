@@ -633,9 +633,12 @@ export function BiAlertasPage() {
   const regenerate = useCallback(async () => {
     setBusy(true); setGenMsg(null)
     try {
-      const r = await apiJsonp("", { action: "generateBiFinanceAlerts", month, year }) as unknown as { generated?: number }
+      const r = await apiJsonp("", { action: "generateBiFinanceAlerts", month, year }) as unknown as { generated?: number; skipped?: string }
       const n = Number(r?.generated) || 0
-      setGenMsg(n > 0 ? `Se generaron ${n} alerta${n === 1 ? "" : "s"} para ${MESES_ALERT[month]} ${year}.` : `Sin alertas para ${MESES_ALERT[month]} ${year}: el período luce saludable.`)
+      setGenMsg(r?.skipped === "mes_en_curso"
+        ? `${MESES_ALERT[month]} ${year} es el mes en curso: no se evalúa hasta cerrarlo (datos incompletos).`
+        : n > 0 ? `Se generaron ${n} alerta${n === 1 ? "" : "s"} para ${MESES_ALERT[month]} ${year}.`
+        : `Sin alertas para ${MESES_ALERT[month]} ${year}: el período luce saludable.`)
       // Enfocar el filtro en el mes recién evaluado (Mes = month/year) y ver todas.
       setStatusFilter("todas"); setPeriod(month, year)
     } finally { setBusy(false) }

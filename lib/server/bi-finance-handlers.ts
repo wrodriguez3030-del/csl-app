@@ -220,8 +220,20 @@ export async function generateBiFinanceAlerts(params: ActionParams, user: Action
   requirePermission("bi_finance.alerts")
   const business_id = bizId()
   const { month, year } = periodOf(params)
-  const summary = await getBiFinanceSummary({ month, year })
   const sb = getSupabaseAdmin()
+
+  // REGLA: el mes EN CURSO (incompleto) no se evalúa — sus datos están parciales
+  // y toda comparación/umbral saldría distorsionado. Se limpia cualquier alerta de
+  // sistema vieja del período y no se genera ninguna hasta cerrar el mes.
+  const now = new Date()
+  const isCurrentMonth = year === now.getUTCFullYear() && month === now.getUTCMonth() + 1
+  if (isCurrentMonth) {
+    await sb.from("bi_finance_alerts").delete().eq("business_id", business_id).eq("source", "sistema")
+      .eq("period_month", month).eq("period_year", year)
+    return { ok: true, generated: 0, skipped: "mes_en_curso" }
+  }
+
+  const summary = await getBiFinanceSummary({ month, year })
 
   const alerts: Array<Record<string, unknown>> = []
   const push = (a: Partial<Record<string, unknown>>) => alerts.push({

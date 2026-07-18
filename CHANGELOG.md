@@ -18,6 +18,16 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.66.6] — 2026-07-18
+
+### Added
+- **BI Financiero · Alertas · regla "mes en curso"**: el mes actual (incompleto)
+  ya **no se evalúa** hasta cerrarlo — sus datos están parciales y toda comparación
+  o umbral saldría distorsionado. Al "Recalcular" el mes en curso no genera alertas
+  y avisa: "es el mes en curso: no se evalúa hasta cerrarlo".
+
+---
+
 ## [0.66.5] — 2026-07-18
 
 ### Fixed
