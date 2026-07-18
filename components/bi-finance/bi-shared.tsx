@@ -43,16 +43,17 @@ export const CHART_COLORS = ["#0D9488", "#D97706", "#7C3AED", "#DB2777", "#0EA5E
 // ── Tipos del resumen (espejo de lib/server/bi-finance.ts) ──────────────────
 export interface BranchProfit {
   branch: string; ingresos: number; gastos: number; utilidadNeta: number; margenNeto: number
-  desglose: { facturas: number; gastosGenerales: number; gastosMenores: number; recurrentes: number; nomina: number; materiales: number }
+  desglose: { facturas: number; gastosGenerales: number; gastosMenores: number; recurrentes: number; overheadAsignado: number; materiales: number }
   categorias: { producto: number; servicio: number; laser: number }
 }
 export interface BiSummary {
   business: { slug: string; name: string }
   period: { month: number; year: number; label: string; from: string; to: string }
   branchFilter: string | null
+  allocateOverhead: boolean
   resumen: { ingresos: number; gastos: number; utilidadNeta: number; margenNeto: number; ticketPromedio: number; transacciones: number; pacientes: number; ingresosDeltaPct: number | null }
   ingresos: { total: number; porCategoria: { producto: number; servicio: number; laser: number }; byBranch: Record<string, number> }
-  gastos: { total: number; facturas: number; gastosGenerales: number; gastosMenores: number; recurrentes: number; nomina: number; materiales: number; byBranch: Record<string, Record<string, number>> }
+  gastos: { total: number; facturas: number; gastosGenerales: number; gastosMenores: number; recurrentes: number; nomina: number; materiales: number; overhead: { total: number; nomina: number; sinSucursal: number; prorrateado: boolean }; byBranch: Record<string, Record<string, number>> }
   rentabilidad: BranchProfit[]
   trend: { key: string; label: string; ingresos: number; gastos: number; utilidad: number }[]
   fuentes: Record<string, string>

@@ -13,14 +13,17 @@
  * Este objeto alimenta tanto el Dashboard financiero como el CONTEXTO que se
  * envía al asistente IA (nunca se envían filas crudas ni PII de clientes).
  *
- * Modelo P&L (anti doble-conteo):
- *   ingresos   = Σ ventas brutas (sales_commission_sales.gross_amount)
- *   gastos     = facturas de proveedores + gastos generales + gastos menores
- *                + pagos recurrentes del mes + nómina (neto)
- *   utilidad   = ingresos − gastos ;  margen = utilidad / ingresos
- * `materiales` se reporta de forma INFORMATIVA (compras de materiales por
- *   requisición) y NO se suma al total, porque esas compras normalmente ya
- *   entran como facturas de proveedores (evita inflar el gasto).
+ * Modelo P&L (anti doble-conteo + asignación de gastos):
+ *   ingresos = Σ ventas brutas (sales_commission_sales.gross_amount)
+ *   gastos DIRECTOS  = gastos con sucursal (facturas/generales/menores/recurrentes)
+ *   gastos GENERALES (overhead) = gastos SIN sucursal + NÓMINA (la nómina cubre a
+ *     todos los empleados sin desglose por sucursal en el sistema).
+ *   Si `allocate_overhead` (configurable) está activo, el overhead se PRORRATEA
+ *     entre sucursales según su participación en ingresos; si no, se muestra como
+ *     una línea "(sin sucursal)". En ambos casos el total de gastos es idéntico.
+ *   utilidad = ingresos − gastos ;  margen = utilidad / ingresos
+ * `materiales` se reporta de forma INFORMATIVA y NO se suma al total (esas
+ *   compras normalmente ya entran como facturas de proveedores).
  */
 import { getBusinessContext } from "@/lib/server/business-context"
 import { getSupabaseAdmin } from "@/lib/server/supabase"
@@ -48,7 +51,6 @@ function monthBounds(year: number, month: number): { from: string; to: string } 
   return { from: `${year}-${mm}-01`, to: `${year}-${mm}-${last}` }
 }
 
-/** Lista de meses (year/month) para la tendencia, terminando en el ancla. */
 function trailingMonths(anchorYear: number, anchorMonth: number, count: number) {
   const out: { year: number; month: number; key: string; label: string }[] = []
   let y = anchorYear
@@ -76,12 +78,22 @@ export interface BiFinanceParams {
   month?: number
   year?: number
   branch?: string | null
+  /** Prorratear el overhead (gastos generales + nómina) entre sucursales por
+   *  participación en ingresos. Por defecto se lee de la configuración del tenant. */
+  allocateOverhead?: boolean
+}
+
+async function readAllocateOverhead(business_id: string): Promise<boolean> {
+  try {
+    const { data } = await getSupabaseAdmin().from("bi_finance_settings").select("extra").eq("business_id", business_id).maybeSingle()
+    const extra = (data?.extra || {}) as Record<string, unknown>
+    return extra.allocate_overhead !== false // default true
+  } catch { return true }
 }
 
 /**
  * Foto financiera del período. `month`/`year` por defecto = mes actual.
- * Si `branch` se especifica, los totales se acotan a esa sucursal (los
- * cortes por sucursal siempre reflejan el mismo filtro).
+ * Si `branch` se especifica, los totales se acotan a esa sucursal.
  */
 export async function getBiFinanceSummary(params: BiFinanceParams = {}) {
   const business_id = bizId()
@@ -93,6 +105,7 @@ export async function getBiFinanceSummary(params: BiFinanceParams = {}) {
   const year = params.year || now.getUTCFullYear()
   const month = params.month || now.getUTCMonth() + 1
   const branchFilter = params.branch ? normalizeSucursal(params.branch) : null
+  const allocateOverhead = params.allocateOverhead ?? (await readAllocateOverhead(business_id))
   const { from: mStart, to: mEnd } = monthBounds(year, month)
 
   const sb = getSupabaseAdmin()
@@ -129,17 +142,17 @@ export async function getBiFinanceSummary(params: BiFinanceParams = {}) {
   const ticketPromedio = transacciones ? round2(ingresosTotal / transacciones) : 0
   const exec = execRes as Awaited<ReturnType<typeof getCommissionExecutiveDashboard>> | null
 
-  // ── GASTOS (consultas directas, acotadas por business_id / sucursal) ─────
+  // ── GASTOS DIRECTOS (con sucursal) — consultas directas ──────────────────
   const facturasByBranch: BranchAgg = {}
   const generalesByBranch: BranchAgg = {}
   const menoresByBranch: BranchAgg = {}
   const recurrentesByBranch: BranchAgg = {}
-  const nominaByBranch: BranchAgg = {}
   const materialesByBranch: BranchAgg = {}
+  let nominaTotal = 0
 
   const matchBranch = (raw: unknown) => {
     const b = canonBranch(raw)
-    return !branchFilter || b === normalizeSucursal(branchFilter) || b === branchFilter
+    return !branchFilter || b === normalizeSucursal(branchFilter)
   }
 
   // Facturas de proveedores (total facturado del mes)
@@ -197,26 +210,14 @@ export async function getBiFinanceSummary(params: BiFinanceParams = {}) {
     }
   } catch { /* fuente opcional */ }
 
-  // Nómina (neto) por sucursal del empleado, para runs anclados en el mes
+  // Nómina (neto) del período → overhead (el sistema no desglosa empleado→sucursal)
   try {
     const { data: runs } = await sb.from("hr_payroll_runs")
-      .select("id, period_start")
-      .eq("business_id", business_id).gte("period_start", mStart).lte("period_start", mEnd)
+      .select("id, period_start").eq("business_id", business_id).gte("period_start", mStart).lte("period_start", mEnd)
     const runIds = (runs || []).map((r) => (r as Record<string, unknown>).id).filter(Boolean)
     if (runIds.length) {
-      const { data: items } = await sb.from("hr_payroll_items")
-        .select("employee_id, neto").eq("business_id", business_id).in("run_id", runIds as string[])
-      const empIds = [...new Set((items || []).map((i) => (i as Record<string, unknown>).employee_id).filter(Boolean))]
-      const sucByEmp: Record<string, unknown> = {}
-      if (empIds.length) {
-        const { data: emps } = await sb.from("csl_empleados").select("empleado_id, sucursal").in("empleado_id", empIds as string[])
-        for (const e of (emps || []) as Array<Record<string, unknown>>) sucByEmp[String(e.empleado_id)] = e.sucursal
-      }
-      for (const it of (items || []) as Array<Record<string, unknown>>) {
-        const branchRaw = sucByEmp[String(it.employee_id)]
-        if (!matchBranch(branchRaw)) continue
-        addTo(nominaByBranch, canonBranch(branchRaw), Number(it.neto) || 0)
-      }
+      const { data: items } = await sb.from("hr_payroll_items").select("neto").eq("business_id", business_id).in("run_id", runIds as string[])
+      for (const it of (items || []) as Array<Record<string, unknown>>) nominaTotal = round2(nominaTotal + (Number(it.neto) || 0))
     }
   } catch { /* fuente opcional */ }
 
@@ -240,34 +241,44 @@ export async function getBiFinanceSummary(params: BiFinanceParams = {}) {
   } catch { /* fuente opcional */ }
 
   const sumMap = (m: BranchAgg) => round2(Object.values(m).reduce((s, v) => s + v, 0))
+  // Rubros company-wide (para KPIs de la pantalla Gastos).
   const facturas = sumMap(facturasByBranch)
   const gastosGenerales = sumMap(generalesByBranch)
   const gastosMenores = sumMap(menoresByBranch)
   const recurrentes = sumMap(recurrentesByBranch)
-  const nomina = sumMap(nominaByBranch)
+  const nomina = nominaTotal
   const materiales = sumMap(materialesByBranch)
   const gastosTotal = round2(facturas + gastosGenerales + gastosMenores + recurrentes + nomina)
+
+  // Overhead = gastos SIN sucursal + nómina completa.
+  const overheadFromExpenses = round2(
+    (facturasByBranch[NO_BRANCH] || 0) + (generalesByBranch[NO_BRANCH] || 0) +
+    (menoresByBranch[NO_BRANCH] || 0) + (recurrentesByBranch[NO_BRANCH] || 0),
+  )
+  const overheadTotal = round2(overheadFromExpenses + nomina)
 
   const utilidadNeta = round2(ingresosTotal - gastosTotal)
   const margenNeto = ingresosTotal > 0 ? round2((utilidadNeta / ingresosTotal) * 100) : 0
 
-  // ── Rentabilidad por sucursal ────────────────────────────────────────────
-  const branchSet = new Set<string>([
+  // ── Rentabilidad por sucursal (directos + overhead prorrateado) ──────────
+  const realBranches = new Set<string>([
     ...Object.keys(ingresosByBranch), ...Object.keys(facturasByBranch),
-    ...Object.keys(generalesByBranch), ...Object.keys(menoresByBranch),
-    ...Object.keys(recurrentesByBranch), ...Object.keys(nominaByBranch),
+    ...Object.keys(generalesByBranch), ...Object.keys(menoresByBranch), ...Object.keys(recurrentesByBranch),
   ])
-  branchSet.delete(NO_BRANCH)
-  const orderedBranches = orderCommissionBranches(slug, [...branchSet])
-  if (ingresosByBranch[NO_BRANCH] || facturasByBranch[NO_BRANCH]) orderedBranches.push(NO_BRANCH)
+  realBranches.delete(NO_BRANCH)
+  const orderedBranches = orderCommissionBranches(slug, [...realBranches])
+
+  const directosOf = (branch: string) => round2(
+    (facturasByBranch[branch] || 0) + (generalesByBranch[branch] || 0) +
+    (menoresByBranch[branch] || 0) + (recurrentesByBranch[branch] || 0),
+  )
 
   const rentabilidad = orderedBranches.map((branch) => {
     const ingresos = round2(ingresosByBranch[branch] || 0)
-    const g = round2(
-      (facturasByBranch[branch] || 0) + (generalesByBranch[branch] || 0) +
-      (menoresByBranch[branch] || 0) + (recurrentesByBranch[branch] || 0) +
-      (nominaByBranch[branch] || 0),
-    )
+    const directos = directosOf(branch)
+    const share = ingresosTotal > 0 ? ingresos / ingresosTotal : (orderedBranches.length ? 1 / orderedBranches.length : 0)
+    const overheadAsignado = allocateOverhead ? round2(overheadTotal * share) : 0
+    const g = round2(directos + overheadAsignado)
     const utilidad = round2(ingresos - g)
     const margen = ingresos > 0 ? round2((utilidad / ingresos) * 100) : 0
     return {
@@ -277,23 +288,35 @@ export async function getBiFinanceSummary(params: BiFinanceParams = {}) {
         gastosGenerales: round2(generalesByBranch[branch] || 0),
         gastosMenores: round2(menoresByBranch[branch] || 0),
         recurrentes: round2(recurrentesByBranch[branch] || 0),
-        nomina: round2(nominaByBranch[branch] || 0),
+        overheadAsignado,
         materiales: round2(materialesByBranch[branch] || 0),
       },
       categorias: categoryByBranch[branch] || { producto: 0, servicio: 0, laser: 0 },
     }
   })
+  // Si NO se prorratea, mostrar el overhead como fila "(sin sucursal)".
+  if (!allocateOverhead && overheadTotal > 0) {
+    rentabilidad.push({
+      branch: NO_BRANCH, ingresos: round2(ingresosByBranch[NO_BRANCH] || 0), gastos: overheadTotal,
+      utilidadNeta: round2((ingresosByBranch[NO_BRANCH] || 0) - overheadTotal),
+      margenNeto: 0,
+      desglose: {
+        facturas: round2(facturasByBranch[NO_BRANCH] || 0), gastosGenerales: round2(generalesByBranch[NO_BRANCH] || 0),
+        gastosMenores: round2(menoresByBranch[NO_BRANCH] || 0), recurrentes: round2(recurrentesByBranch[NO_BRANCH] || 0),
+        overheadAsignado: nomina, materiales: round2(materialesByBranch[NO_BRANCH] || 0),
+      },
+      categorias: categoryByBranch[NO_BRANCH] || { producto: 0, servicio: 0, laser: 0 },
+    })
+  }
 
   // ── Tendencia 6 meses (ingresos vs gastos vs utilidad) ───────────────────
   const months = trailingMonths(year, month, 6)
   const trendFrom = monthBounds(months[0].year, months[0].month).from
   const trendTo = mEnd
-  // Ingresos por mes: reusar la tendencia bruta del ejecutivo si está.
   const ingresosByMonth: Record<string, number> = {}
   if (exec?.trend) {
     for (const t of exec.trend) ingresosByMonth[`${t.year}-${String(t.month).padStart(2, "0")}`] = Number(t.sales) || 0
   }
-  // Gastos por mes: una sola pasada por cada fuente en la ventana de 6 meses.
   const gastosByMonth: Record<string, number> = {}
   const bucket = (dateStr: unknown, amount: number) => {
     const key = String(dateStr || "").slice(0, 7)
@@ -320,6 +343,23 @@ export async function getBiFinanceSummary(params: BiFinanceParams = {}) {
       if (["aprobado", "pagado"].includes(String(r.status)) && matchBranch(r.branch)) bucket(r.expense_date, Number(r.amount) || 0)
     }
   } catch { /* opcional */ }
+  try {
+    const { data } = await sb.from("recurring_payment_history").select("amount, paid_date")
+      .eq("business_id", business_id).gte("paid_date", trendFrom).lte("paid_date", trendTo)
+    for (const r of (data || []) as Array<Record<string, unknown>>) bucket(r.paid_date, Number(r.amount) || 0)
+  } catch { /* opcional */ }
+  // Nómina en la tendencia (por mes del run).
+  try {
+    const { data: runs } = await sb.from("hr_payroll_runs").select("id, period_start")
+      .eq("business_id", business_id).gte("period_start", trendFrom).lte("period_start", trendTo)
+    const rlist = (runs || []) as Array<Record<string, unknown>>
+    if (rlist.length) {
+      const { data: items } = await sb.from("hr_payroll_items").select("run_id, neto").eq("business_id", business_id).in("run_id", rlist.map((r) => r.id) as string[])
+      const monthByRun: Record<string, string> = {}
+      for (const r of rlist) monthByRun[String(r.id)] = String(r.period_start || "").slice(0, 7)
+      for (const it of (items || []) as Array<Record<string, unknown>>) bucket(monthByRun[String(it.run_id)], Number(it.neto) || 0)
+    }
+  } catch { /* opcional */ }
 
   const trend = months.map((m) => {
     const ingresos = round2(ingresosByMonth[m.key] || 0)
@@ -327,9 +367,7 @@ export async function getBiFinanceSummary(params: BiFinanceParams = {}) {
     return { key: m.key, label: m.label, ingresos, gastos, utilidad: round2(ingresos - gastos) }
   })
 
-  // ── Deltas mes vs mes (de ingresos, del ejecutivo) ───────────────────────
   const ingresosDeltaPct = exec?.deltas?.salesTotal ?? null
-
   const patients = patientsRes as { total?: number } | null
 
   return {
@@ -337,6 +375,7 @@ export async function getBiFinanceSummary(params: BiFinanceParams = {}) {
     business: { slug, name: branding.name },
     period: { month, year, label: monthLabelEs(month, year), from: mStart, to: mEnd },
     branchFilter: branchFilter || null,
+    allocateOverhead,
     resumen: {
       ingresos: ingresosTotal,
       gastos: gastosTotal,
@@ -356,9 +395,10 @@ export async function getBiFinanceSummary(params: BiFinanceParams = {}) {
       total: gastosTotal,
       facturas, gastosGenerales, gastosMenores, recurrentes, nomina,
       materiales, // informativo (no incluido en total)
+      overhead: { total: overheadTotal, nomina, sinSucursal: overheadFromExpenses, prorrateado: allocateOverhead },
       byBranch: {
         facturas: facturasByBranch, gastosGenerales: generalesByBranch,
-        gastosMenores: menoresByBranch, recurrentes: recurrentesByBranch, nomina: nominaByBranch,
+        gastosMenores: menoresByBranch, recurrentes: recurrentesByBranch,
       },
     },
     rentabilidad,
@@ -366,6 +406,7 @@ export async function getBiFinanceSummary(params: BiFinanceParams = {}) {
     fuentes: {
       ventas: "sales_commission_sales (bruto)",
       gastos: "purchase_invoices + expenses + petty_expenses + recurring_payment_history + hr_payroll_items",
+      nomina: "hr_payroll_items (overhead; el sistema no desglosa empleado→sucursal)",
       materiales: "material_requisition_items.purchased_cost (informativo)",
       pacientes: "sales_commission_patient_counts",
     },

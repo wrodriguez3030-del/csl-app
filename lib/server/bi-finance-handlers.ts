@@ -52,9 +52,11 @@ export async function getBiFinanceSettings() {
   const envModel = (process.env.OPENAI_MODEL || "").trim() || null
   const keyPresent = Boolean((process.env.OPENAI_API_KEY || "").trim())
   const enabledEnv = String(process.env.BI_FINANCE_AI_ENABLED || "").toLowerCase() === "true"
+  const extra = (data?.extra || {}) as Record<string, unknown>
+  const base = data || { enabled: true, provider: "openai", model: null, temperature: 0.2, max_tokens: 1200, monthly_query_limit: 300, system_prompt: null }
   return {
     ok: true,
-    settings: data || { enabled: true, provider: "openai", model: null, temperature: 0.2, max_tokens: 1200, monthly_query_limit: 300, system_prompt: null },
+    settings: { ...base, allocate_overhead: extra.allocate_overhead !== false },
     env: { keyPresent, enabledEnv, envModel, effectiveModel: (data?.model || envModel || "gpt-4o") },
   }
 }
@@ -72,6 +74,7 @@ export async function saveBiFinanceSettings(params: ActionParams, user: ActionUs
     max_tokens: p.max_tokens != null ? Number(p.max_tokens) : 1200,
     system_prompt: p.system_prompt ? String(p.system_prompt) : null,
     monthly_query_limit: p.monthly_query_limit != null ? Number(p.monthly_query_limit) : 300,
+    extra: { allocate_overhead: p.allocate_overhead !== false },
     updated_by: user.id,
     updated_at: new Date().toISOString(),
   }

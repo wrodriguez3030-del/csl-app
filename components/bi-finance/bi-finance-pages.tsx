@@ -9,13 +9,12 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { apiJsonp } from "@/lib/store"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { getBusinessBranding } from "@/lib/business"
-import { useAppStore } from "@/lib/store"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { DashPanel, EmptyChart } from "@/components/dashboard-kit"
+import { DashPanel, EmptyChart, InsightItem } from "@/components/dashboard-kit"
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LabelList,
   PieChart, Pie, Cell, AreaChart, Area, LineChart, Line, Legend,
@@ -24,6 +23,7 @@ import {
   CircleDollarSign, Wallet, TrendingUp, Percent, Users, Receipt, ShoppingBag, Zap,
   Building2, PiggyBank, Bell, FileSpreadsheet, Printer, Sparkles, Plus, Trash2, Loader2,
   ArrowUpRight, ArrowDownRight, LineChart as LineChartIcon, Package, RefreshCcw, Pencil, CheckCircle2,
+  Info, AlertTriangle,
 } from "lucide-react"
 import {
   useBiData, useBiStore, BiPeriodBar, BiKpiGrid, BiHeader, BiLoading, BiError,
@@ -141,6 +141,15 @@ export function BiDashboardPage() {
             </AreaChart>
           </ResponsiveContainer>
         ) : <EmptyChart />}
+      </DashPanel>
+
+      <DashPanel title="Insights automáticos">
+        <ul className="space-y-2.5">
+          {computeInsights(summary).map((it, i) => (
+            <InsightItem key={i} tone={it.tone} title={it.title} detail={it.detail}
+              icon={it.tone === "success" ? <CheckCircle2 className="h-3.5 w-3.5" /> : it.tone === "warning" ? <AlertTriangle className="h-3.5 w-3.5" /> : <Info className="h-3.5 w-3.5" />} />
+          ))}
+        </ul>
       </DashPanel>
 
       <AskAiPanel scope="dashboard" suggestions={[
@@ -327,15 +336,21 @@ export function BiRentabilidadPage() {
         </DashPanel>
       </div>
       <DashPanel title="Estado de resultados por sucursal">
+        <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+          <span className={`rounded-full px-2 py-0.5 font-semibold ${summary.allocateOverhead ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+            {summary.allocateOverhead ? "Overhead prorrateado por ingresos" : "Overhead sin prorratear (fila aparte)"}
+          </span>
+          <span>Gastos generales + nómina ({fmtRD0(summary.gastos.overhead.total)}) — configurable en Configuración IA.</span>
+        </div>
         <SimpleTable
-          head={["Sucursal", "Ingresos", "Facturas", "Generales", "Menores", "Recurrentes", "Nómina", "Gastos", "Utilidad", "Margen"]}
+          head={["Sucursal", "Ingresos", "Facturas", "Generales", "Menores", "Recurrentes", "Overhead", "Gastos", "Utilidad", "Margen"]}
           rows={summary.rentabilidad.map((r) => [
             r.branch, fmtRD0(r.ingresos), fmtRD0(r.desglose.facturas), fmtRD0(r.desglose.gastosGenerales),
-            fmtRD0(r.desglose.gastosMenores), fmtRD0(r.desglose.recurrentes), fmtRD0(r.desglose.nomina),
+            fmtRD0(r.desglose.gastosMenores), fmtRD0(r.desglose.recurrentes), fmtRD0(r.desglose.overheadAsignado),
             fmtRD0(r.gastos), fmtRD0(r.utilidadNeta), fmtPct(r.margenNeto),
           ])}
           alignRight={[1, 2, 3, 4, 5, 6, 7, 8, 9]}
-          footer={["TOTAL", fmtRD0(summary.ingresos.total), "", "", "", "", "", fmtRD0(summary.gastos.total), fmtRD0(summary.resumen.utilidadNeta), fmtPct(summary.resumen.margenNeto)]}
+          footer={["TOTAL", fmtRD0(summary.ingresos.total), "", "", "", "", fmtRD0(summary.gastos.overhead.total), fmtRD0(summary.gastos.total), fmtRD0(summary.resumen.utilidadNeta), fmtPct(summary.resumen.margenNeto)]}
         />
       </DashPanel>
       <AskAiPanel scope="rentabilidad" suggestions={["¿Cuál sucursal es más y menos rentable?", "¿Por qué una sucursal tiene menor margen?", "¿Qué haría para que todas superen 15% de margen?"]} />
@@ -695,4 +710,40 @@ function SimpleTable({ head, rows, alignRight = [], footer }: { head: string[]; 
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="space-y-1"><Label className="text-xs text-muted-foreground">{label}</Label>{children}</div>
+}
+
+/** Insights automáticos por reglas sobre el resumen real (sin IA). */
+function computeInsights(summary: BiSummary): { tone: "success" | "info" | "warning"; title: string; detail: string }[] {
+  const out: { tone: "success" | "info" | "warning"; title: string; detail: string }[] = []
+  const r = summary.resumen
+  // Margen consolidado
+  if (r.ingresos <= 0) {
+    out.push({ tone: "info", title: "Sin ventas registradas en el período", detail: "Importa el archivo de ventas del mes para ver el análisis." })
+  } else if (r.utilidadNeta < 0) {
+    out.push({ tone: "warning", title: "El negocio operó en pérdida", detail: `Utilidad ${fmtRD0(r.utilidadNeta)} · margen ${fmtPct(r.margenNeto)}.` })
+  } else if (r.margenNeto >= 25) {
+    out.push({ tone: "success", title: `Margen saludable (${fmtPct(r.margenNeto)})`, detail: `Utilidad neta de ${fmtRD0(r.utilidadNeta)} en el período.` })
+  } else {
+    out.push({ tone: "warning", title: `Margen a vigilar (${fmtPct(r.margenNeto)})`, detail: `Los gastos representan ${fmtPct((r.gastos / r.ingresos) * 100)} de los ingresos.` })
+  }
+  // Ventas vs mes anterior
+  if (r.ingresosDeltaPct != null) {
+    const up = r.ingresosDeltaPct >= 0
+    out.push({ tone: up ? "success" : "warning", title: `Ventas ${up ? "▲" : "▼"} ${fmtPct(Math.abs(r.ingresosDeltaPct))} vs mes anterior`, detail: `Ingresos del período: ${fmtRD0(r.ingresos)}.` })
+  }
+  // Mejor / peor sucursal por margen
+  const conIngresos = summary.rentabilidad.filter((b) => b.ingresos > 0 && b.branch !== "(sin sucursal)")
+  if (conIngresos.length >= 2) {
+    const best = [...conIngresos].sort((a, b) => b.margenNeto - a.margenNeto)[0]
+    const worst = [...conIngresos].sort((a, b) => a.margenNeto - b.margenNeto)[0]
+    out.push({ tone: "success", title: `${best.branch} es la más rentable`, detail: `Margen ${fmtPct(best.margenNeto)} · utilidad ${fmtRD0(best.utilidadNeta)}.` })
+    if (worst.branch !== best.branch && worst.margenNeto < 15) {
+      out.push({ tone: "warning", title: `${worst.branch} necesita atención`, detail: `Margen ${fmtPct(worst.margenNeto)} — el más bajo del período.` })
+    }
+  }
+  // Compras vacío (contexto real del negocio)
+  if (r.ingresos > 0 && summary.gastos.facturas === 0 && summary.gastos.gastosGenerales === 0 && summary.gastos.gastosMenores === 0) {
+    out.push({ tone: "info", title: "Gastos operativos sin registrar en Compras", detail: "Solo se contabiliza la nómina. Registra facturas y gastos en el módulo Compras para un P&L completo." })
+  }
+  return out
 }

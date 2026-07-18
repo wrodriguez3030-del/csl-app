@@ -25,6 +25,7 @@ import { CheckCircle2, XCircle, Loader2, ShieldCheck, KeyRound, Save, Zap } from
 interface Settings {
   enabled: boolean; provider: string; model: string | null; temperature: number
   max_tokens: number; system_prompt: string | null; monthly_query_limit: number
+  allocate_overhead: boolean
 }
 interface EnvInfo { keyPresent: boolean; enabledEnv: boolean; envModel: string | null; effectiveModel: string }
 
@@ -48,6 +49,7 @@ export function BiConfigPage() {
         model: res.settings.model ?? null, temperature: Number(res.settings.temperature ?? 0.2),
         max_tokens: Number(res.settings.max_tokens ?? 1200), system_prompt: res.settings.system_prompt ?? null,
         monthly_query_limit: Number(res.settings.monthly_query_limit ?? 300),
+        allocate_overhead: res.settings.allocate_overhead ?? true,
       })
       setEnv(res.env)
     } finally { setLoading(false) }
@@ -88,6 +90,10 @@ export function BiConfigPage() {
           <div className="flex items-center justify-between rounded-xl border border-[color:var(--brand-border)] p-3">
             <div><div className="text-sm font-semibold">Asistente activo</div><div className="text-xs text-muted-foreground">Habilita/inhabilita la IA para este negocio</div></div>
             <Switch checked={settings.enabled} onCheckedChange={(v) => setSettings({ ...settings, enabled: v })} disabled={!canEdit} />
+          </div>
+          <div className="flex items-center justify-between rounded-xl border border-[color:var(--brand-border)] p-3">
+            <div><div className="text-sm font-semibold">Prorratear gastos generales</div><div className="text-xs text-muted-foreground">Reparte overhead (generales + nómina) entre sucursales por ingresos</div></div>
+            <Switch checked={settings.allocate_overhead} onCheckedChange={(v) => setSettings({ ...settings, allocate_overhead: v })} disabled={!canEdit} />
           </div>
           <Field label="Proveedor">
             <Select value={settings.provider} onValueChange={(v) => setSettings({ ...settings, provider: v })} disabled={!canEdit}>

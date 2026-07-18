@@ -131,7 +131,8 @@ export async function POST(request: Request) {
 
       // ── Contexto financiero REAL (agregado, sin PII) ───────────────────
       const branch = typeof body.branch === "string" && body.branch ? body.branch : null
-      const summary = await getBiFinanceSummary({ month: pMonth, year: pYear, branch })
+      const extra = (settings.extra || {}) as Record<string, unknown>
+      const summary = await getBiFinanceSummary({ month: pMonth, year: pYear, branch, allocateOverhead: extra.allocate_overhead !== false })
       const scope = String(body.scope || "dashboard")
 
       const userContent = [

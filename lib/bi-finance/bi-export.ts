@@ -99,16 +99,16 @@ export async function exportBiFinanceExcel(summary: BiSummary, branding: Busines
     { header: "Generales", key: "generales", money: true },
     { header: "Menores", key: "menores", money: true },
     { header: "Recurrentes", key: "recurrentes", money: true },
-    { header: "Nómina", key: "nomina", money: true },
+    { header: "Overhead", key: "overhead", money: true },
     { header: "Gastos", key: "gastos", money: true },
     { header: "Utilidad", key: "utilidad", money: true },
     { header: "Margen", key: "margen", pct: true },
   ], summary.rentabilidad.map((b) => ({
     branch: b.branch, ingresos: b.ingresos, facturas: b.desglose.facturas, generales: b.desglose.gastosGenerales,
-    menores: b.desglose.gastosMenores, recurrentes: b.desglose.recurrentes, nomina: b.desglose.nomina,
+    menores: b.desglose.gastosMenores, recurrentes: b.desglose.recurrentes, overhead: b.desglose.overheadAsignado,
     gastos: b.gastos, utilidad: b.utilidadNeta, margen: b.margenNeto,
   })), {
-    branch: "TOTAL", ingresos: r.ingresos, gastos: r.gastos, utilidad: r.utilidadNeta, margen: r.margenNeto,
+    branch: "TOTAL", ingresos: r.ingresos, overhead: summary.gastos.overhead.total, gastos: r.gastos, utilidad: r.utilidadNeta, margen: r.margenNeto,
   })
 
   // Hoja 3 — Ingresos por categoría/sucursal

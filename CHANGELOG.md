@@ -18,6 +18,32 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.64.1] — 2026-07-18
+
+### Added
+- **BI Financiero · Asignación de gastos con prorrateo configurable**: la nómina y
+  los gastos sin sucursal se tratan como *overhead* y se prorratean entre sucursales
+  según su participación en ingresos (toggle "Prorratear gastos generales" en
+  Configuración IA; `bi_finance_settings.extra.allocate_overhead`, default activo).
+  Con el toggle apagado, el overhead se muestra como fila "(sin sucursal)". El total
+  de gastos es idéntico en ambos modos.
+- **Dashboard · Insights automáticos** por reglas sobre datos reales (margen,
+  ventas vs mes anterior, sucursal más/menos rentable, aviso si Compras está vacío).
+- Tendencia de 6 meses ahora incluye nómina y pagos recurrentes (consistente con el P&L).
+
+### Fixed
+- **BI Financiero · nómina**: la agregación intentaba leer `csl_empleados.sucursal`
+  (columna inexistente) y perdía el desglose. El sistema no relaciona empleado→sucursal,
+  así que la nómina se contabiliza como overhead del período (verificado: nómina real
+  RD$238,609 de junio 2026 ahora entra correctamente al P&L).
+
+### Verified
+- Ingresos por sucursal cuadran contra `sales_commission_sales` (jun 2026 CSL:
+  RV+LJ+VO = RD$2,558,505). Endpoint `/api/bi-finance/assistant` en prod responde 401
+  sin token (seguro). Módulo visible en producción.
+
+---
+
 ## [0.64.0] — 2026-07-17
 
 ### Added
