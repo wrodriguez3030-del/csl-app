@@ -22,6 +22,7 @@
  *   - Límite de uso/gasto alcanzado   → reason "limit_reached" (superadmin nunca se bloquea)
  */
 import { NextResponse } from "next/server"
+import crypto from "node:crypto"
 import { requireAuthenticatedUser, getSupabaseAdmin } from "@/lib/server/supabase"
 import { loadBusinessContext } from "@/lib/server/csl-crud"
 import {
@@ -159,13 +160,6 @@ export async function POST(request: Request) {
       const question = String(body.question || "").trim()
       if (!question) return json({ ok: false, error: "Escribe una pregunta para el asistente." }, 400)
 
-      // ── Límites de uso / gasto ─────────────────────────────────────────
-      const limitCheck = await checkLimits(business_id, settings, Boolean(bctx.isSuperadmin))
-      if (limitCheck.blocked) {
-        await logBiAudit("ai_request_blocked_limit", user.id, { reason: limitCheck.reason })
-        return json({ ok: false, error: "limit_reached", reason: `${limitCheck.reason} Ajusta el límite en Configuración IA o espera el próximo período.`, usage: limitCheck.usage }, 200)
-      }
-
       // ── Contexto financiero REAL (agregado, sin PII) ───────────────────
       const now = new Date()
       const pMonth = Number(body.month) || now.getUTCMonth() + 1
@@ -176,6 +170,34 @@ export async function POST(request: Request) {
       const extra = (settings.extra || {}) as Record<string, unknown>
       const summary = await getBiFinanceSummary({ from, to, month: pMonth, year: pYear, branch, allocateOverhead: extra.allocate_overhead !== false })
       const scope = String(body.scope || "dashboard")
+
+      // ── Caché: fingerprint (datos + pregunta + modelo + pantalla) ──────
+      // Si el mismo análisis ya existe y los datos NO cambiaron, se reutiliza
+      // SIN llamar a OpenAI (0 tokens). `force: true` obliga a re-analizar.
+      const questionNorm = question.toLowerCase().replace(/\s+/g, " ").trim()
+      const dataHash = crypto.createHash("sha256")
+        .update(`${business_id}|${scope}|${model}|${questionNorm}|${JSON.stringify(summary)}`).digest("hex")
+      const force = body.force === true
+      if (!force) {
+        const { data: cached } = await sb.from("bi_finance_ai_queries")
+          .select("answer, model, tokens_total, created_at").eq("business_id", business_id)
+          .eq("data_hash", dataHash).eq("ok", true).order("created_at", { ascending: false }).limit(1).maybeSingle()
+        if (cached?.answer) {
+          await logBiAudit("ai_request_cache_hit", user.id, { model, scope })
+          return json({
+            ok: true, cached: true, answer: cached.answer, model: (cached.model as string) || model,
+            tokens: 0, keySource: resolved.source, period: summary.period, business: summary.business,
+            cachedAt: cached.created_at,
+          })
+        }
+      }
+
+      // ── Límites de uso / gasto (solo aplican a una llamada REAL) ───────
+      const limitCheck = await checkLimits(business_id, settings, Boolean(bctx.isSuperadmin))
+      if (limitCheck.blocked) {
+        await logBiAudit("ai_request_blocked_limit", user.id, { reason: limitCheck.reason })
+        return json({ ok: false, error: "limit_reached", reason: `${limitCheck.reason} Ajusta el límite en Configuración IA o espera el próximo período.`, usage: limitCheck.usage }, 200)
+      }
 
       const userContent = [
         `PREGUNTA DEL ADMINISTRADOR (pantalla: ${scope}): ${question}`,
@@ -222,7 +244,7 @@ export async function POST(request: Request) {
         const { data: ins } = await sb.from("bi_finance_ai_queries").insert({
           business_id, user_id: user.id, user_email: user.email, scope, branch,
           period_month: pMonth, period_year: pYear, question, model, provider: "openai",
-          answer, confidence: answer.nivel_confianza || null,
+          answer, confidence: answer.nivel_confianza || null, data_hash: dataHash,
           tokens_prompt: usage.prompt_tokens || null, tokens_completion: usage.completion_tokens || null,
           tokens_total: usage.total_tokens || null, ok: true,
         }).select("id").single()
@@ -233,7 +255,7 @@ export async function POST(request: Request) {
       await logBiAudit("ai_request_success", user.id, { model, tokens: usage.total_tokens || null })
 
       return json({
-        ok: true, queryId, model, keySource: resolved.source, latencyMs: Date.now() - t0,
+        ok: true, cached: false, queryId, model, keySource: resolved.source, latencyMs: Date.now() - t0,
         tokens: usage.total_tokens || null, answer,
         period: summary.period, business: summary.business,
       })

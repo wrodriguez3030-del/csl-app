@@ -18,6 +18,21 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.67.0] — 2026-07-18
+
+### Added
+- **BI Financiero · Caché de análisis IA (ahorro de tokens)**. Cada análisis se
+  guarda con un *fingerprint* (SHA-256) de los datos + pregunta + modelo + pantalla.
+  Si repites la misma consulta para el mismo período/sucursal y **los datos no
+  cambiaron**, el asistente **reutiliza el análisis guardado sin llamar a OpenAI
+  (0 tokens)**. Si los datos cambian, el fingerprint cambia y se re-analiza
+  automáticamente. Los aciertos de caché **no consumen** el límite de uso/gasto.
+  La UI muestra "Análisis reutilizado · 0 tokens" y un botón "Volver a analizar
+  (gasta tokens)" para forzar una respuesta fresca. Migración aditiva
+  `202607180002` (columna `data_hash` + índice).
+
+---
+
 ## [0.66.7] — 2026-07-18
 
 ### Fixed

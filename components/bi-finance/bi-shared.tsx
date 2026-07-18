@@ -141,10 +141,11 @@ export interface AiAnswer {
 export interface AssistantResult {
   ok: boolean; error?: string; reason?: string; model?: string
   answer?: AiAnswer; tokens?: number | null; latencyMs?: number; queryId?: string | null
+  cached?: boolean; cachedAt?: string
 }
 
 export async function callAssistant(payload: {
-  question?: string; scope?: string; month?: number; year?: number; branch?: string | null; mode?: "chat" | "test"; from?: string; to?: string
+  question?: string; scope?: string; month?: number; year?: number; branch?: string | null; mode?: "chat" | "test"; from?: string; to?: string; force?: boolean
 }): Promise<AssistantResult> {
   const activeBusinessId = businessIdForSlug(useAppStore.getState().activeBusinessSlug) || undefined
   const session = (await supabaseBrowser.auth.getSession()).data.session
@@ -418,15 +419,16 @@ export function AiAnswerCard({ answer, model, tokens }: { answer: AiAnswer; mode
 export function AskAiPanel({ scope, suggestions = [], compact }: { scope: string; suggestions?: string[]; compact?: boolean }) {
   const { month, year, branch, from, to, quick } = useBiStore()
   const [q, setQ] = useState("")
+  const [lastQ, setLastQ] = useState("")
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<AssistantResult | null>(null)
 
-  const ask = useCallback(async (question: string) => {
+  const ask = useCallback(async (question: string, force = false) => {
     const text = question.trim()
     if (!text || loading) return
-    setLoading(true); setResult(null)
+    setLoading(true); setResult(null); setLastQ(text)
     const period = quick === "todo" ? { from: "2000-01-01", to: todayStr() } : (from && to ? { from, to } : {})
-    const res = await callAssistant({ question: text, scope, month, year, branch: branch || null, ...period })
+    const res = await callAssistant({ question: text, scope, month, year, branch: branch || null, ...period, force })
     setResult(res); setLoading(false)
   }, [loading, scope, month, year, branch, from, to, quick])
 
@@ -484,7 +486,23 @@ export function AskAiPanel({ scope, suggestions = [], compact }: { scope: string
           </CardContent>
         </Card>
       ) : result?.ok && result.answer ? (
-        <AiAnswerCard answer={result.answer} model={result.model} tokens={result.tokens} />
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+            {result.cached ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                <RefreshCcw className="h-3 w-3" /> Análisis reutilizado · 0 tokens{result.cachedAt ? ` · ${new Date(result.cachedAt).toLocaleDateString("es-DO")}` : ""}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
+                <Sparkles className="h-3 w-3" /> Análisis nuevo{result.tokens ? ` · ${result.tokens} tokens` : ""}
+              </span>
+            )}
+            <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => void ask(lastQ, true)} disabled={loading || !lastQ}>
+              <RefreshCcw className="h-3 w-3" /><span className="ml-1">Volver a analizar (gasta tokens)</span>
+            </Button>
+          </div>
+          <AiAnswerCard answer={result.answer} model={result.model} tokens={result.cached ? 0 : result.tokens} />
+        </div>
       ) : null}
     </div>
   )
