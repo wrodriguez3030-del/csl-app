@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import { DashPanel, EmptyChart } from "@/components/dashboard-kit"
 import { BrainCircuit, History, ChevronDown, ChevronRight, Loader2 } from "lucide-react"
 import {
-  useBiData, BiPeriodBar, BiHeader, AskAiPanel, AiAnswerCard, branchesFromSummary,
+  useBiData, BiFilterBar, BiHeader, AskAiPanel, AiAnswerCard,
   fmtInt, type AiAnswer,
 } from "./bi-shared"
 
@@ -23,8 +23,7 @@ interface HistoryRow {
 }
 
 export function BiAsistentePage() {
-  const { summary, loading, refresh } = useBiData()
-  const branches = branchesFromSummary(summary)
+  const { loading, refresh } = useBiData()
   const [history, setHistory] = useState<HistoryRow[]>([])
   const [histLoading, setHistLoading] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
@@ -39,7 +38,7 @@ export function BiAsistentePage() {
   return (
     <div className="space-y-4">
       <BiHeader title="Asistente Financiero IA" subtitle="Análisis estratégico sobre datos reales · el asistente solo recomienda; decides tú." />
-      <BiPeriodBar branches={branches} onRefresh={refresh} loading={loading} right={
+      <BiFilterBar onRefresh={refresh} loading={loading} right={
         <div className="flex gap-1">
           <Button variant={tab === "chat" ? "default" : "outline"} size="sm" onClick={() => setTab("chat")}><BrainCircuit className="h-4 w-4" /><span className="ml-1 hidden sm:inline">Consultar</span></Button>
           <Button variant={tab === "historial" ? "default" : "outline"} size="sm" onClick={() => setTab("historial")}><History className="h-4 w-4" /><span className="ml-1 hidden sm:inline">Historial</span></Button>

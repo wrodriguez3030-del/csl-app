@@ -26,8 +26,8 @@ import {
   Info, AlertTriangle,
 } from "lucide-react"
 import {
-  useBiData, useBiStore, BiPeriodBar, BiKpiGrid, BiHeader, BiLoading, BiError,
-  AskAiPanel, branchesFromSummary, fmtRD, fmtRD0, fmtInt, fmtPct, fmtCompact, CHART_COLORS,
+  useBiData, useBiStore, BiFilterBar, BiKpiGrid, BiHeader, BiLoading, BiError,
+  AskAiPanel, fmtRD, fmtRD0, fmtInt, fmtPct, fmtCompact, CHART_COLORS,
   type BiSummary,
 } from "./bi-shared"
 import { exportBiFinanceExcel, printBiFinancePdf } from "@/lib/bi-finance/bi-export"
@@ -57,7 +57,6 @@ const MESES_CORTO = ["", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago",
 export function BiDashboardPage() {
   const { summary, loading, error, refresh, data, latestPeriod } = useBiData()
   const { setPeriod } = useBiStore()
-  const branches = branchesFromSummary(summary)
 
   if (loading && !summary) return <div className="space-y-4"><BiHeader title="Dashboard financiero" /><BiLoading /></div>
   if (error) return <div className="space-y-4"><BiHeader title="Dashboard financiero" /><BiError message={error} onRetry={refresh} /></div>
@@ -78,7 +77,7 @@ export function BiDashboardPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <BiHeader title="Dashboard financiero" subtitle={`${summary.business.name} · ${summary.period.label}`} />
       </div>
-      <BiPeriodBar branches={branches} onRefresh={refresh} loading={loading} right={<ExportButtons summary={summary} />} />
+      <BiFilterBar onRefresh={refresh} loading={loading} right={<ExportButtons summary={summary} />} />
 
       {sinDatos && latestPeriod ? (
         <Card className="rounded-2xl border-amber-200 bg-amber-50 shadow-sm">
@@ -177,7 +176,6 @@ export function BiDashboardPage() {
 // ══════════════════════════════════ VENTAS ═════════════════════════════════
 export function BiVentasPage() {
   const { summary, loading, error, refresh } = useBiData()
-  const branches = branchesFromSummary(summary)
   if (loading && !summary) return <div className="space-y-4"><BiHeader title="Ventas e ingresos" /><BiLoading /></div>
   if (error) return <div className="space-y-4"><BiHeader title="Ventas e ingresos" /><BiError message={error} onRetry={refresh} /></div>
   if (!summary) return null
@@ -191,7 +189,7 @@ export function BiVentasPage() {
   return (
     <div className="space-y-4">
       <BiHeader title="Ventas e ingresos" subtitle={`${summary.business.name} · ${summary.period.label}`} />
-      <BiPeriodBar branches={branches} onRefresh={refresh} loading={loading} right={<ExportButtons summary={summary} />} />
+      <BiFilterBar onRefresh={refresh} loading={loading} right={<ExportButtons summary={summary} />} />
       <BiKpiGrid items={[
         { title: "Ingresos totales", value: fmtRD0(summary.ingresos.total), icon: CircleDollarSign, variant: "primary" },
         { title: "Servicios", value: fmtRD0(cat.servicio), icon: Sparkles, variant: "primary" },
@@ -241,7 +239,6 @@ export function BiVentasPage() {
 // ══════════════════════════════════ GASTOS ═════════════════════════════════
 export function BiGastosPage() {
   const { summary, loading, error, refresh } = useBiData()
-  const branches = branchesFromSummary(summary)
   if (loading && !summary) return <div className="space-y-4"><BiHeader title="Gastos y egresos" /><BiLoading /></div>
   if (error) return <div className="space-y-4"><BiHeader title="Gastos y egresos" /><BiError message={error} onRetry={refresh} /></div>
   if (!summary) return null
@@ -257,7 +254,7 @@ export function BiGastosPage() {
   return (
     <div className="space-y-4">
       <BiHeader title="Gastos y egresos" subtitle={`${summary.business.name} · ${summary.period.label}`} />
-      <BiPeriodBar branches={branches} onRefresh={refresh} loading={loading} right={<ExportButtons summary={summary} />} />
+      <BiFilterBar onRefresh={refresh} loading={loading} right={<ExportButtons summary={summary} />} />
       <BiKpiGrid items={[
         { title: "Gastos totales", value: fmtRD0(g.total), icon: Wallet, variant: "warning" },
         { title: "Facturas proveedores", value: fmtRD0(g.facturas), icon: Receipt, variant: "primary" },
@@ -306,7 +303,6 @@ export function BiGastosPage() {
 // ═══════════════════════════════ RENTABILIDAD ══════════════════════════════
 export function BiRentabilidadPage() {
   const { summary, loading, error, refresh } = useBiData()
-  const branches = branchesFromSummary(summary)
   if (loading && !summary) return <div className="space-y-4"><BiHeader title="Rentabilidad por sucursal" /><BiLoading /></div>
   if (error) return <div className="space-y-4"><BiHeader title="Rentabilidad por sucursal" /><BiError message={error} onRetry={refresh} /></div>
   if (!summary) return null
@@ -314,7 +310,7 @@ export function BiRentabilidadPage() {
   return (
     <div className="space-y-4">
       <BiHeader title="Rentabilidad por sucursal" subtitle={`Utilidad neta = ingresos − gastos · ${summary.period.label}`} />
-      <BiPeriodBar branches={branches} onRefresh={refresh} loading={loading} right={<ExportButtons summary={summary} />} />
+      <BiFilterBar onRefresh={refresh} loading={loading} right={<ExportButtons summary={summary} />} />
       <div className="grid gap-3 lg:grid-cols-2">
         <DashPanel title="Utilidad neta por sucursal">
           {summary.rentabilidad.length ? (
@@ -652,7 +648,6 @@ export function BiAlertasPage() {
 export function BiReportesPage() {
   const { summary, loading, error, refresh } = useBiData()
   const { onExcel, onPdf } = useExportHandlers(summary)
-  const branches = branchesFromSummary(summary)
   if (loading && !summary) return <div className="space-y-4"><BiHeader title="Reportes ejecutivos" /><BiLoading /></div>
   if (error) return <div className="space-y-4"><BiHeader title="Reportes ejecutivos" /><BiError message={error} onRetry={refresh} /></div>
   if (!summary) return null
@@ -661,7 +656,7 @@ export function BiReportesPage() {
   return (
     <div className="space-y-4">
       <BiHeader title="Reportes ejecutivos" subtitle={`${summary.business.name} · ${summary.period.label}`} />
-      <BiPeriodBar branches={branches} onRefresh={refresh} loading={loading} />
+      <BiFilterBar onRefresh={refresh} loading={loading} />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <ReportCard icon={FileSpreadsheet} title="Reporte financiero Excel" desc="Resumen, ingresos, gastos y rentabilidad por sucursal en hojas separadas." action="Descargar Excel" onClick={onExcel} />
         <ReportCard icon={Printer} title="Reporte ejecutivo PDF" desc="Documento imprimible con KPIs, P&L por sucursal y tendencia." action="Generar PDF" onClick={onPdf} />

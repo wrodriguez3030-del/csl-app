@@ -129,8 +129,10 @@ export async function POST(request: Request) {
       const pMonth = Number(body.month) || now.getUTCMonth() + 1
       const pYear = Number(body.year) || now.getUTCFullYear()
       const branch = typeof body.branch === "string" && body.branch ? body.branch : null
+      const from = typeof body.from === "string" && body.from ? body.from : undefined
+      const to = typeof body.to === "string" && body.to ? body.to : undefined
       const extra = (settings.extra || {}) as Record<string, unknown>
-      const summary = await getBiFinanceSummary({ month: pMonth, year: pYear, branch, allocateOverhead: extra.allocate_overhead !== false })
+      const summary = await getBiFinanceSummary({ from, to, month: pMonth, year: pYear, branch, allocateOverhead: extra.allocate_overhead !== false })
       const scope = String(body.scope || "dashboard")
 
       const userContent = [

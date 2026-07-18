@@ -18,6 +18,25 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.66.0] — 2026-07-18
+
+### Added
+- **BI Financiero · barra de filtros completa** (misma que "Ventas por sucursal"
+  de Incentivos): **Mes + Año + rango Desde/Hasta + Sucursal**, con chips de
+  filtros activos, auto-aplicar (sin botón buscar) y "Limpiar". Aplicada a los
+  menús que corresponden: Dashboard financiero, Ventas e ingresos, Gastos y
+  egresos, Rentabilidad por sucursal, Reportes ejecutivos y Asistente IA. El
+  filtro es independiente por sesión (no comparte estado con el módulo de comisión).
+
+### Changed
+- El agregador `getBiFinanceSummary` y el asistente ahora trabajan por **rango de
+  fechas** (`from`/`to`), no solo por mes: permite consultar un mes, un año
+  completo, un rango personalizado o todo el historial. La etiqueta del período y
+  la tendencia se anclan al mes final del rango. Proyecciones y Alertas conservan
+  su ancla mensual (aplican por mes).
+
+---
+
 ## [0.65.1] — 2026-07-18
 
 ### Fixed

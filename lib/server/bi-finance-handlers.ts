@@ -36,8 +36,10 @@ function periodOf(params: ActionParams): { month: number; year: number } {
 export async function getBiFinanceData(params: ActionParams) {
   requirePermission("bi_finance.view")
   const { month, year } = periodOf(params)
+  const from = textValue(params, "from") || undefined
+  const to = textValue(params, "to") || undefined
   const branch = textValue(params, "branch") || null
-  const summary = await getBiFinanceSummary({ month, year, branch })
+  const summary = await getBiFinanceSummary({ from, to, month, year, branch })
   const business_id = bizId()
   const sb = getSupabaseAdmin()
   const { count: alertCount } = await sb.from("bi_finance_alerts")

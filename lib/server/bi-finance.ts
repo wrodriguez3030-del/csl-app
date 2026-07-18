@@ -77,10 +77,43 @@ function addTo(map: BranchAgg, branch: string, amount: number) {
 export interface BiFinanceParams {
   month?: number
   year?: number
+  /** Rango explícito (prioritario sobre month/year). Formato YYYY-MM-DD. */
+  from?: string
+  to?: string
   branch?: string | null
   /** Prorratear el overhead (gastos generales + nómina) entre sucursales por
    *  participación en ingresos. Por defecto se lee de la configuración del tenant. */
   allocateOverhead?: boolean
+}
+
+const MESES_LARGO = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+
+/** Resuelve el período efectivo (rango de fechas + ancla + etiqueta) desde los
+ *  parámetros del filtro: prioriza from/to; si no, month/year (month=0 = año);
+ *  por defecto el mes actual. El ANCLA (mes/año del `to`) manda para la
+ *  tendencia y el mes de referencia. */
+function resolvePeriod(params: BiFinanceParams): { from: string; to: string; anchorMonth: number; anchorYear: number; label: string } {
+  const now = new Date()
+  let from: string, to: string
+  if (params.from && params.to) {
+    from = params.from; to = params.to
+  } else if (params.year && params.month && params.month >= 1) {
+    const b = monthBounds(params.year, params.month); from = b.from; to = b.to
+  } else if (params.year && params.month === 0) {
+    from = `${params.year}-01-01`; to = `${params.year}-12-31`
+  } else {
+    const b = monthBounds(now.getUTCFullYear(), now.getUTCMonth() + 1); from = b.from; to = b.to
+  }
+  const anchorYear = Number(to.slice(0, 4))
+  const anchorMonth = Number(to.slice(5, 7))
+  // Etiqueta amistosa
+  const fy = Number(from.slice(0, 4)), fm = Number(from.slice(5, 7))
+  let label: string
+  const monthB = monthBounds(anchorYear, anchorMonth)
+  if (from === monthB.from && to === monthB.to) label = `${MESES_LARGO[anchorMonth]} ${anchorYear}`
+  else if (from === `${fy}-01-01` && to === `${fy}-12-31` && fy === anchorYear) label = `Año ${anchorYear}`
+  else label = `${from} → ${to}`
+  return { from, to, anchorMonth, anchorYear, label }
 }
 
 async function readAllocateOverhead(business_id: string): Promise<boolean> {
@@ -101,17 +134,15 @@ export async function getBiFinanceSummary(params: BiFinanceParams = {}) {
   const slug = ctx?.businessSlug || "csl"
   const branding = getBusinessBranding(slug)
 
-  const now = new Date()
-  const year = params.year || now.getUTCFullYear()
-  const month = params.month || now.getUTCMonth() + 1
   const branchFilter = params.branch ? normalizeSucursal(params.branch) : null
   const allocateOverhead = params.allocateOverhead ?? (await readAllocateOverhead(business_id))
-  const { from: mStart, to: mEnd } = monthBounds(year, month)
+  const { from: mStart, to: mEnd, anchorMonth: month, anchorYear: year, label: periodLabel } = resolvePeriod(params)
 
   const sb = getSupabaseAdmin()
 
   // ── INGRESOS (reutiliza agregación probada del módulo comisión) ──────────
-  const salesParams: Record<string, string | number> = { month, year }
+  // from/to fija el período; month/year es el ancla de la tendencia del ejecutivo.
+  const salesParams: Record<string, string | number> = { from: mStart, to: mEnd, month, year }
   if (branchFilter) salesParams.branch = branchFilter
   const [byBranchRes, execRes, patientsRes] = await Promise.all([
     getCommissionByBranch(salesParams).catch(() => ({ ok: false, branches: [] as Array<Record<string, number | string>> })),
@@ -373,7 +404,7 @@ export async function getBiFinanceSummary(params: BiFinanceParams = {}) {
   return {
     ok: true as const,
     business: { slug, name: branding.name },
-    period: { month, year, label: monthLabelEs(month, year), from: mStart, to: mEnd },
+    period: { month, year, label: periodLabel, from: mStart, to: mEnd },
     branchFilter: branchFilter || null,
     allocateOverhead,
     resumen: {
@@ -414,8 +445,3 @@ export async function getBiFinanceSummary(params: BiFinanceParams = {}) {
 }
 
 export type BiFinanceSummary = Awaited<ReturnType<typeof getBiFinanceSummary>>
-
-function monthLabelEs(month: number, year: number): string {
-  const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-  return `${MESES[month - 1] || ""} ${year}`
-}

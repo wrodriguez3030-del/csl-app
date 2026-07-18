@@ -19,12 +19,15 @@ import { supabaseBrowser } from "@/lib/supabase-client"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { KpiCard } from "@/components/kpi-card"
 import { DashHeader } from "@/components/dashboard-kit"
+import { useCommissionBranches } from "@/hooks/use-commission-branches"
 import {
   BrainCircuit, Sparkles, RefreshCcw, Loader2, AlertTriangle, CheckCircle2,
-  Lightbulb, ShieldAlert, ListChecks, ClipboardList, Info, type LucideIcon,
+  Lightbulb, ShieldAlert, ListChecks, ClipboardList, Info, SlidersHorizontal, type LucideIcon,
 } from "lucide-react"
 
 // ── Formateadores ────────────────────────────────────────────────────────────
@@ -59,23 +62,56 @@ export interface BiSummary {
   fuentes: Record<string, string>
 }
 
-// ── Store de período (persistente entre pantallas del módulo) ───────────────
+// ── Store de filtros (mismo modelo que "Ventas por sucursal": Mes + Año +
+//    rango Desde/Hasta + Sucursal). Persistente e independiente por sesión. ──
+function biMonthBounds(year: number, month: number): { from: string; to: string } {
+  const mm = String(month).padStart(2, "0")
+  const d = new Date(Date.UTC(year, month, 0))
+  return { from: `${year}-${mm}-01`, to: `${year}-${mm}-${String(d.getUTCDate()).padStart(2, "0")}` }
+}
+function todayStr(): string { return new Date().toISOString().slice(0, 10) }
+
 interface BiState {
-  month: number; year: number; branch: string
+  quick: string; month: number; year: number; from: string; to: string; branch: string
   setPeriod: (month: number, year: number) => void
   setBranch: (branch: string) => void
+  setFilters: (patch: Partial<Pick<BiState, "quick" | "month" | "year" | "from" | "to" | "branch">>) => void
+  clear: () => void
 }
 const nowRef = new Date()
+const INIT_M = nowRef.getUTCMonth() + 1
+const INIT_Y = nowRef.getUTCFullYear()
+const INIT_B = biMonthBounds(INIT_Y, INIT_M)
 export const useBiStore = create<BiState>()(persist(
   (set) => ({
-    month: nowRef.getUTCMonth() + 1,
-    year: nowRef.getUTCFullYear(),
-    branch: "",
-    setPeriod: (month, year) => set({ month, year }),
+    quick: "mes", month: INIT_M, year: INIT_Y, from: INIT_B.from, to: INIT_B.to, branch: "",
+    setPeriod: (month, year) => {
+      if (month === 0) set({ quick: "año", month: 0, year, from: `${year}-01-01`, to: `${year}-12-31` })
+      else { const b = biMonthBounds(year, month); set({ quick: "mes", month, year, from: b.from, to: b.to }) }
+    },
     setBranch: (branch) => set({ branch }),
+    setFilters: (patch) => set(patch),
+    clear: () => { const b = biMonthBounds(INIT_Y, INIT_M); set({ quick: "mes", month: INIT_M, year: INIT_Y, from: b.from, to: b.to, branch: "" }) },
   }),
-  { name: "bi-finance-period" },
+  { name: "bi-finance-period", version: 2 },
 ))
+
+/** Params de período listos para el backend (from/to o historial completo). */
+export function biFilterParams(): { from?: string; to?: string; branch?: string } {
+  const s = useBiStore.getState()
+  const p: { from?: string; to?: string; branch?: string } = {}
+  if (s.quick === "todo") { p.from = "2000-01-01"; p.to = todayStr() }
+  else if (s.from && s.to) { p.from = s.from; p.to = s.to }
+  if (s.branch) p.branch = s.branch
+  return p
+}
+const MESES = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+function biFilterLabel(s: BiState): string {
+  if (s.quick === "todo") return "Todo el historial"
+  if (s.quick === "año") return `Año ${s.year}`
+  if (s.quick === "personalizado") return `${s.from} → ${s.to}`
+  return `${MESES[s.month] || ""} ${s.year}`
+}
 
 // ── Cliente seguro del asistente IA ─────────────────────────────────────────
 export interface AiAnswer {
@@ -94,7 +130,7 @@ export interface AssistantResult {
 }
 
 export async function callAssistant(payload: {
-  question?: string; scope?: string; month?: number; year?: number; branch?: string | null; mode?: "chat" | "test"
+  question?: string; scope?: string; month?: number; year?: number; branch?: string | null; mode?: "chat" | "test"; from?: string; to?: string
 }): Promise<AssistantResult> {
   const activeBusinessId = businessIdForSlug(useAppStore.getState().activeBusinessSlug) || undefined
   const session = (await supabaseBrowser.auth.getSession()).data.session
@@ -142,7 +178,7 @@ interface BiData { summary: BiSummary; openAlerts: number; aiConfigured: boolean
 // período por defecto (mes actual) viene vacío — evita el "no aparecen ingresos".
 let autoJumpedSession = false
 export function useBiData() {
-  const { month, year, branch } = useBiStore()
+  const { from, to, quick, branch, month, year } = useBiStore()
   const [data, setData] = useState<BiData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -150,9 +186,13 @@ export function useBiData() {
   const refresh = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const res = await apiJsonp("", { action: "getBiFinanceData", month, year, ...(branch ? { branch } : {}) }) as unknown as BiData
+      const params: Record<string, string> = { action: "getBiFinanceData" }
+      if (quick === "todo") { params.from = "2000-01-01"; params.to = todayStr() }
+      else if (from && to) { params.from = from; params.to = to }
+      if (branch) params.branch = branch
+      const res = await apiJsonp("", params) as unknown as BiData
       setData(res)
-      if (!autoJumpedSession && res.summary?.resumen?.ingresos === 0 && res.latestPeriod &&
+      if (!autoJumpedSession && quick === "mes" && res.summary?.resumen?.ingresos === 0 && res.latestPeriod &&
           (res.latestPeriod.month !== month || res.latestPeriod.year !== year)) {
         autoJumpedSession = true
         useBiStore.getState().setPeriod(res.latestPeriod.month, res.latestPeriod.year)
@@ -162,14 +202,13 @@ export function useBiData() {
     } finally {
       setLoading(false)
     }
-  }, [month, year, branch])
+  }, [from, to, quick, branch, month, year])
 
   useEffect(() => { void refresh() }, [refresh])
   return { data, summary: data?.summary || null, latestPeriod: data?.latestPeriod || null, loading, error, refresh }
 }
 
-// ── Barra de período ────────────────────────────────────────────────────────
-const MESES = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+// ── Barra de período (simple; legacy — reemplazada por BiFilterBar) ─────────
 export function BiPeriodBar({ branches, onRefresh, loading, right }: {
   branches?: string[]; onRefresh?: () => void; loading?: boolean; right?: ReactNode
 }) {
@@ -206,6 +245,93 @@ export function BiPeriodBar({ branches, onRefresh, loading, right }: {
           </Button>
         ) : null}
         <div className="ml-auto flex items-center gap-2">{right}</div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Barra de filtros completa (Mes + Año + rango Desde/Hasta + Sucursal) ─────
+//    Mismo modelo que "Ventas por sucursal" del módulo de comisión. Auto-aplica.
+export function BiFilterBar({ onRefresh, loading, right, showBranch = true }: {
+  onRefresh?: () => void; loading?: boolean; right?: ReactNode; showBranch?: boolean
+}) {
+  const s = useBiStore()
+  const branches = useCommissionBranches()
+  const yearNow = new Date().getUTCFullYear()
+
+  const setMes = (m: number) => s.setPeriod(m, s.year || yearNow)
+  const setAno = (v: string) => {
+    if (v === "todos") { s.setFilters({ quick: "todo", from: "", to: "" }); return }
+    const y = Number(v)
+    if (s.quick === "todo" || s.quick === "año" || !s.month) s.setPeriod(0, y)
+    else s.setPeriod(s.month, y)
+  }
+  const setRange = (patch: { from?: string; to?: string }) => {
+    s.setFilters({ quick: "personalizado", from: patch.from ?? s.from, to: patch.to ?? s.to })
+  }
+  const monthValue = (s.quick === "todo" || s.quick === "año" || s.quick === "personalizado") ? "0" : String(s.month)
+  const yearValue = s.quick === "todo" ? "todos" : String(s.year)
+  const activeCount = (s.branch ? 1 : 0) + 1
+
+  return (
+    <Card className="rounded-2xl border-[color:var(--brand-border)] shadow-sm">
+      <CardContent className="space-y-2 p-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="flex items-center gap-1.5 text-sm font-semibold"><SlidersHorizontal className="h-4 w-4 text-[color:var(--brand-primary)]" />Filtros ({activeCount})</span>
+          <Badge variant="outline" className="border-cyan-200 bg-cyan-50 text-cyan-800">{biFilterLabel(s)}</Badge>
+          {s.branch ? <Badge variant="outline" className="bg-slate-50">{s.branch}</Badge> : null}
+          <div className="ml-auto flex items-center gap-2">
+            {onRefresh ? (
+              <Button variant="ghost" size="sm" className="h-8" onClick={onRefresh} disabled={loading}>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+              </Button>
+            ) : null}
+            {right}
+            <button onClick={() => s.clear()} className="text-[11px] font-medium text-slate-500 underline-offset-2 hover:underline">Limpiar</button>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          <div>
+            <Label className="text-[11px]">Mes</Label>
+            <Select value={monthValue} onValueChange={(v) => setMes(Number(v))}>
+              <SelectTrigger className="mt-0.5 h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">Todos los meses</SelectItem>
+                {MESES.slice(1).map((m, i) => <SelectItem key={i + 1} value={String(i + 1)}>{m}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-[11px]">Año</Label>
+            <Select value={yearValue} onValueChange={setAno}>
+              <SelectTrigger className="mt-0.5 h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos (historial)</SelectItem>
+                {[yearNow + 1, yearNow, yearNow - 1, yearNow - 2].map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-[11px]">Desde <span className="text-muted-foreground">(rango)</span></Label>
+            <Input type="date" className="mt-0.5 h-9" value={s.from} onChange={(e) => setRange({ from: e.target.value })} />
+          </div>
+          <div>
+            <Label className="text-[11px]">Hasta <span className="text-muted-foreground">(rango)</span></Label>
+            <Input type="date" className="mt-0.5 h-9" value={s.to} onChange={(e) => setRange({ to: e.target.value })} />
+          </div>
+          {showBranch ? (
+            <div>
+              <Label className="text-[11px]">Sucursal</Label>
+              <Select value={s.branch || "todas"} onValueChange={(v) => s.setBranch(v === "todas" ? "" : v)}>
+                <SelectTrigger className="mt-0.5 h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas</SelectItem>
+                  {branches.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   )
@@ -272,7 +398,7 @@ export function AiAnswerCard({ answer, model, tokens }: { answer: AiAnswer; mode
 
 // ── Panel "Preguntar a la IA" ────────────────────────────────────────────────
 export function AskAiPanel({ scope, suggestions = [], compact }: { scope: string; suggestions?: string[]; compact?: boolean }) {
-  const { month, year, branch } = useBiStore()
+  const { month, year, branch, from, to, quick } = useBiStore()
   const [q, setQ] = useState("")
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<AssistantResult | null>(null)
@@ -281,9 +407,10 @@ export function AskAiPanel({ scope, suggestions = [], compact }: { scope: string
     const text = question.trim()
     if (!text || loading) return
     setLoading(true); setResult(null)
-    const res = await callAssistant({ question: text, scope, month, year, branch: branch || null })
+    const period = quick === "todo" ? { from: "2000-01-01", to: todayStr() } : (from && to ? { from, to } : {})
+    const res = await callAssistant({ question: text, scope, month, year, branch: branch || null, ...period })
     setResult(res); setLoading(false)
-  }, [loading, scope, month, year, branch])
+  }, [loading, scope, month, year, branch, from, to, quick])
 
   const notReady = result && !result.ok
   return (
