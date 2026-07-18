@@ -18,6 +18,46 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.64.0] — 2026-07-17
+
+### Added
+- **Módulo BI Financiero IA** (asistente financiero estratégico con OpenAI). Nuevo
+  menú "BI Financiero IA" con 10 pantallas: Dashboard financiero, Asistente IA,
+  Ventas e ingresos, Gastos y egresos, Rentabilidad por sucursal, Proyecciones,
+  Inversiones y ROI, Alertas financieras, Reportes ejecutivos y Configuración IA.
+  Respeta permisos y `business_id` (Cibao y Depicenter NUNCA se mezclan).
+- **Asistente IA seguro** (`POST /api/bi-finance/assistant`): OpenAI 100% backend
+  (la API key nunca sale del servidor), valida sesión + permiso `bi_finance.ai_chat`
+  + business_id, arma el contexto financiero REAL agregado (sin PII), responde en
+  formato estructurado (resumen ejecutivo, hallazgos, riesgos, recomendaciones,
+  plan de acción, nivel de confianza, datos faltantes), persiste y audita cada
+  consulta. Reglas: usa solo datos reales; si faltan → "No tengo datos suficientes
+  para confirmar esto."; cada recomendación termina en "Recomendación sujeta a
+  revisión administrativa."; la IA solo recomienda, no decide.
+- **Agregador financiero central** `lib/server/bi-finance.ts` (fuente única):
+  reutiliza la agregación probada de comisión para ingresos y consulta directa de
+  gastos (facturas + gastos generales + menores + recurrentes + nómina) para el
+  P&L por sucursal (utilidad neta = ingresos − gastos, margen neto), tendencia de
+  6 meses y pacientes. No crea tablas paralelas de ingresos/gastos.
+- **12 permisos** `bi_finance.*` (view/dashboard/ai_chat/sales/expenses/
+  profitability/forecasts/investments/alerts/reports/config/export).
+- **5 tablas** (migración aditiva `202607170002`, RLS por tenant + grants a
+  service_role): `bi_finance_ai_queries`, `bi_finance_alerts`,
+  `bi_finance_investments`, `bi_finance_forecasts`, `bi_finance_settings`.
+- **Proyecciones** (promedio móvil + tendencia lineal + escenarios base/optimista/
+  conservador), **Inversiones/ROI** (ROI = (beneficio−inversión)/inversión, payback
+  en meses), **Alertas** por reglas sobre datos reales (margen bajo, sucursal en
+  pérdida, caída de ventas), **Reportes ejecutivos** Excel multihoja + PDF imprimible
+  (branding por tenant), y **Configuración IA** por tenant (modelo/temperatura/
+  tokens/prompt/límite + "Probar conexión") — la key permanece solo en env.
+
+### Security
+- La API key de OpenAI reside únicamente en variable de entorno del servidor
+  (`OPENAI_API_KEY`); nunca se guarda en BD ni se expone al cliente. El asistente
+  usa solo datos agregados del negocio activo y audita cada consulta.
+
+---
+
 ## [0.63.0] — 2026-07-17
 
 ### Added

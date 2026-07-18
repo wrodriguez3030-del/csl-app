@@ -119,6 +119,17 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "cliente-certificados-imprimir", label: "CF de Regalo para imprimir", section: "Atención a cliente" },
   { id: "cliente-certificados-talonario", label: "CF Regalos Talonario Pre-impreso", section: "Atención a cliente" },
   { id: "cliente-certificados-validez", label: "Validar Certificados", section: "Atención a cliente" },
+  // BI Financiero IA (asistente financiero estratégico con OpenAI)
+  { id: "bi-fin-dashboard", label: "Dashboard financiero", section: "BI Financiero IA" },
+  { id: "bi-fin-asistente", label: "Asistente IA", section: "BI Financiero IA" },
+  { id: "bi-fin-ventas", label: "Ventas e ingresos", section: "BI Financiero IA" },
+  { id: "bi-fin-gastos", label: "Gastos y egresos", section: "BI Financiero IA" },
+  { id: "bi-fin-rentabilidad", label: "Rentabilidad por sucursal", section: "BI Financiero IA" },
+  { id: "bi-fin-proyecciones", label: "Proyecciones", section: "BI Financiero IA" },
+  { id: "bi-fin-inversiones", label: "Inversiones y ROI", section: "BI Financiero IA" },
+  { id: "bi-fin-alertas", label: "Alertas financieras", section: "BI Financiero IA" },
+  { id: "bi-fin-reportes", label: "Reportes ejecutivos", section: "BI Financiero IA" },
+  { id: "bi-fin-config", label: "Configuración IA", section: "BI Financiero IA" },
   { id: "config", label: "Configuración", section: "Sistema" },
   { id: "admin-users", label: "Usuarios", section: "Administración" },
 ]

@@ -512,5 +512,16 @@ export type TabId =
   | "cliente-certificados-validez"
   // Mantenimiento — checklist de piezas pendientes/recibidas
   | "piezas-poliza"
+  // Módulo BI Financiero IA (asistente financiero estratégico)
+  | "bi-fin-dashboard"
+  | "bi-fin-asistente"
+  | "bi-fin-ventas"
+  | "bi-fin-gastos"
+  | "bi-fin-rentabilidad"
+  | "bi-fin-proyecciones"
+  | "bi-fin-inversiones"
+  | "bi-fin-alertas"
+  | "bi-fin-reportes"
+  | "bi-fin-config"
   // Módulo Administración (solo superadmin)
   | "admin-users"

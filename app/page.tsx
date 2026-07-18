@@ -87,6 +87,12 @@ import { CertificadosRegaloTalonarioPage } from "@/components/certificados-regal
 import { CertificadosRegaloValidezPage } from "@/components/certificados-regalo-validez-page"
 import { LoginPage } from "@/components/login-page"
 import { AdminUsersPage } from "@/components/admin-users-page"
+import {
+  BiDashboardPage, BiVentasPage, BiGastosPage, BiRentabilidadPage,
+  BiProyeccionesPage, BiInversionesPage, BiAlertasPage, BiReportesPage,
+} from "@/components/bi-finance/bi-finance-pages"
+import { BiAsistentePage } from "@/components/bi-finance/bi-asistente-page"
+import { BiConfigPage } from "@/components/bi-finance/bi-config-page"
 import { canAccessMenu, clearLocalSession, getFirstAllowedMenu, getSessionUser, refreshSessionUser, type SystemUser } from "@/lib/security"
 import { supabaseBrowser } from "@/lib/supabase-client"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
@@ -486,6 +492,26 @@ export default function HomePage() {
         return <CertificadosRegaloTalonarioPage />
       case "cliente-certificados-validez":
         return <CertificadosRegaloValidezPage />
+      case "bi-fin-dashboard":
+        return <BiDashboardPage />
+      case "bi-fin-asistente":
+        return <BiAsistentePage />
+      case "bi-fin-ventas":
+        return <BiVentasPage />
+      case "bi-fin-gastos":
+        return <BiGastosPage />
+      case "bi-fin-rentabilidad":
+        return <BiRentabilidadPage />
+      case "bi-fin-proyecciones":
+        return <BiProyeccionesPage />
+      case "bi-fin-inversiones":
+        return <BiInversionesPage />
+      case "bi-fin-alertas":
+        return <BiAlertasPage />
+      case "bi-fin-reportes":
+        return <BiReportesPage />
+      case "bi-fin-config":
+        return <BiConfigPage />
       case "admin-users":
         return <AdminUsersPage />
       default:

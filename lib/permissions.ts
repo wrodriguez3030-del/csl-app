@@ -49,6 +49,20 @@ export const PERMISSION_OPTIONS: PermissionOption[] = [
   // CF PARA IMPRIMIR · Certificados de regalo (el módulo se controla por MENÚ;
   // solo la ANULACIÓN, destructiva, requiere permiso).
   { id: "gift_certificates.void", label: "Anular certificados de regalo", section: "Certificados de Regalo" },
+  // BI Financiero IA (asistente financiero estratégico). Los menús deciden la
+  // visibilidad; estos permisos gatean acciones sensibles dentro de cada pantalla.
+  { id: "bi_finance.view", label: "Ver BI Financiero IA", section: "BI Financiero IA" },
+  { id: "bi_finance.dashboard", label: "Ver dashboard financiero", section: "BI Financiero IA" },
+  { id: "bi_finance.ai_chat", label: "Consultar al asistente IA", section: "BI Financiero IA" },
+  { id: "bi_finance.sales", label: "Ver ventas e ingresos", section: "BI Financiero IA" },
+  { id: "bi_finance.expenses", label: "Ver gastos y egresos", section: "BI Financiero IA" },
+  { id: "bi_finance.profitability", label: "Ver rentabilidad por sucursal", section: "BI Financiero IA" },
+  { id: "bi_finance.forecasts", label: "Ver / generar proyecciones", section: "BI Financiero IA" },
+  { id: "bi_finance.investments", label: "Gestionar inversiones y ROI", section: "BI Financiero IA" },
+  { id: "bi_finance.alerts", label: "Gestionar alertas financieras", section: "BI Financiero IA" },
+  { id: "bi_finance.reports", label: "Generar reportes ejecutivos", section: "BI Financiero IA" },
+  { id: "bi_finance.config", label: "Configurar el asistente IA", section: "BI Financiero IA" },
+  { id: "bi_finance.export", label: "Exportar PDF/Excel financiero", section: "BI Financiero IA" },
 ]
 
 export const ALL_PERMISSION_IDS: string[] = PERMISSION_OPTIONS.map((p) => p.id)

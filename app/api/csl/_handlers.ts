@@ -49,6 +49,7 @@ import { transitionError, type GiftCertAction } from "@/lib/certificados/cert-st
 import * as materials from "@/lib/server/materials"
 import * as purchases from "@/lib/server/purchases"
 import * as commission from "@/lib/server/commission"
+import * as biFinance from "@/lib/server/bi-finance-handlers"
 
 /**
  * Acciones MANUALES del módulo de Mantenimiento. Solo estas pueden escribir en
@@ -3491,6 +3492,30 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await materials.receiveItem(params, user)
     case "getMaterialDashboard":
       return await materials.getMaterialDashboard(params)
+
+    // ── BI Financiero IA (dashboard, config, alertas, inversiones, proyecciones) ──
+    case "getBiFinanceData":
+      return await biFinance.getBiFinanceData(params)
+    case "getBiFinanceSettings":
+      return await biFinance.getBiFinanceSettings()
+    case "saveBiFinanceSettings":
+      return await biFinance.saveBiFinanceSettings(params, user)
+    case "getBiFinanceHistory":
+      return await biFinance.getBiFinanceHistory(params)
+    case "getBiFinanceAlerts":
+      return await biFinance.getBiFinanceAlerts(params)
+    case "generateBiFinanceAlerts":
+      return await biFinance.generateBiFinanceAlerts(params, user)
+    case "updateBiFinanceAlert":
+      return await biFinance.updateBiFinanceAlert(params, user)
+    case "getBiFinanceInvestments":
+      return await biFinance.getBiFinanceInvestments()
+    case "saveBiFinanceInvestment":
+      return await biFinance.saveBiFinanceInvestment(params, user)
+    case "deleteBiFinanceInvestment":
+      return await biFinance.deleteBiFinanceInvestment(params)
+    case "getBiFinanceForecast":
+      return await biFinance.getBiFinanceForecast(params)
 
     // ── Inventario de materiales por sucursal (conteo físico histórico) ──────
     case "getInventoryDraft":
