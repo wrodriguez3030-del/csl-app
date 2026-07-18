@@ -93,7 +93,21 @@ export const useBiStore = create<BiState>()(persist(
     setFilters: (patch) => set(patch),
     clear: () => { const b = biMonthBounds(INIT_Y, INIT_M); set({ quick: "mes", month: INIT_M, year: INIT_Y, from: b.from, to: b.to, branch: "" }) },
   }),
-  { name: "bi-finance-period", version: 2 },
+  {
+    // Clave nueva (v3): ignora cualquier estado viejo con otra forma.
+    name: "bi-finance-filters-v3",
+    version: 3,
+    // Blindaje: garantiza que quick/from/to siempre queden coherentes tras rehidratar.
+    merge: (persisted, current) => {
+      const p = { ...current, ...(persisted as Partial<BiState>) } as BiState
+      if (!p.quick) p.quick = "mes"
+      if (p.quick !== "todo" && (!p.from || !p.to)) {
+        if (p.quick === "año") { p.from = `${p.year}-01-01`; p.to = `${p.year}-12-31` }
+        else { const b = biMonthBounds(p.year || INIT_Y, p.month || INIT_M); p.from = b.from; p.to = b.to }
+      }
+      return p
+    },
+  },
 ))
 
 /** Params de período listos para el backend (from/to o historial completo). */
@@ -192,7 +206,11 @@ export function useBiData() {
       if (branch) params.branch = branch
       const res = await apiJsonp("", params) as unknown as BiData
       setData(res)
-      if (!autoJumpedSession && quick === "mes" && res.summary?.resumen?.ingresos === 0 && res.latestPeriod &&
+      // Auto-salto SOLO en el mes actual pristino (default sin tocar). Una vez que
+      // el usuario cambia el filtro (otro mes/año/rango/sucursal), NUNCA revierte.
+      const nowD = new Date()
+      const isPristineDefault = quick === "mes" && !branch && month === nowD.getUTCMonth() + 1 && year === nowD.getUTCFullYear()
+      if (!autoJumpedSession && isPristineDefault && res.summary?.resumen?.ingresos === 0 && res.latestPeriod &&
           (res.latestPeriod.month !== month || res.latestPeriod.year !== year)) {
         autoJumpedSession = true
         useBiStore.getState().setPeriod(res.latestPeriod.month, res.latestPeriod.year)

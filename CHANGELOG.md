@@ -18,6 +18,22 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.66.4] — 2026-07-18
+
+### Fixed
+- **BI Financiero · los filtros "no funcionaban"**. Causa raíz: el **auto-salto**
+  al último mes con ventas se disparaba también DESPUÉS de que el usuario cambiaba
+  el filtro — al elegir un período/sucursal sin ventas (ingresos = 0) revertía la
+  selección al mes con datos. Ahora el auto-salto solo ocurre **una vez, en el mes
+  actual pristino** (default sin tocar); cualquier selección manual se respeta.
+- **Rehidratación robusta del store de filtros**: clave nueva + `merge` que
+  garantiza `quick`/`from`/`to` coherentes (usuarios con estado viejo en el
+  navegador ya no quedaban con el rango vacío).
+- **Alertas**: mensaje de estado vacío más claro cuando hay alertas en otros
+  períodos ("Hay N en total — pon Año = Todos").
+
+---
+
 ## [0.66.3] — 2026-07-18
 
 ### Changed

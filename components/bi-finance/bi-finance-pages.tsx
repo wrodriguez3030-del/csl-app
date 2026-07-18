@@ -695,7 +695,9 @@ export function BiAlertasPage() {
               </li>
             ))}
           </ul>
-        ) : <EmptyChart text={`Sin alertas (${periodLabel}${statusFilter !== "todas" ? `, ${statusFilter}` : ""}). Cambia el filtro o pulsa "Recalcular ${MESES_ALERT[month]}".`} />}
+        ) : (counts.total || 0) > 0 ? (
+          <EmptyChart text={`No hay alertas en ${periodLabel}${statusFilter !== "todas" ? ` (${statusFilter})` : ""}. Hay ${counts.total} en total — pon Año = "Todos" para verlas o cambia el filtro de estado.`} />
+        ) : <EmptyChart text={`Sin alertas registradas. Pulsa "Recalcular ${MESES_ALERT[month]}" para evaluar el período.`} />}
       </DashPanel>
       <AskAiPanel scope="alertas" suggestions={["¿Qué alertas debo atender primero?", "¿Cómo resuelvo el margen bajo?", "¿Qué señales de riesgo ves en mis finanzas?"]} />
     </div>
