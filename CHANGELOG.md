@@ -18,6 +18,21 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.66.1] — 2026-07-18
+
+### Added
+- **BI Financiero · Inversiones y ROI**: filtro por **Año** (Todos / 2025 / 2026…)
+  y columna **Sucursal** en la cartera; los KPIs (total invertido, inversiones, ROI,
+  en curso) responden al año seleccionado.
+
+### Migración de datos
+- Cargadas las **inversiones 2025–2026** (26 filas, RD$25,337,833) en
+  `bi_finance_investments` (tenant CSL, marcador `MIG-INVERSION-HIST`, no afectan el
+  P&L): consolidado 2025 (12) + consolidado 2026 ene-may (5) + Villa Olga 2025
+  sept-dic (4) + Villa Olga 2026 ene-may (5). Sumas validadas contra los totales.
+
+---
+
 ## [0.66.0] — 2026-07-18
 
 ### Added

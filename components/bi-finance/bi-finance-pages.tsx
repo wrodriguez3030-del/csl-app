@@ -478,6 +478,7 @@ export function BiInversionesPage() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<Investment | null>(null)
   const [saving, setSaving] = useState(false)
+  const [yearFilter, setYearFilter] = useState<string>("todos")
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -495,21 +496,41 @@ export function BiInversionesPage() {
     await apiJsonp("", { action: "deleteBiFinanceInvestment", id }); await load()
   }, [load])
 
-  const totalInv = rows.reduce((s, r) => s + (Number(r.monto_inversion) || 0), 0)
-  const roiVals = rows.map((r) => r.roi_real ?? r.roi_estimado).filter((x): x is number => x != null)
+  const years = useMemo(() => {
+    const set = new Set<string>()
+    for (const r of rows) { const y = String(r.fecha_inicio || "").slice(0, 4); if (y) set.add(y) }
+    return [...set].sort((a, b) => b.localeCompare(a))
+  }, [rows])
+  const shown = useMemo(
+    () => (yearFilter === "todos" ? rows : rows.filter((r) => String(r.fecha_inicio || "").slice(0, 4) === yearFilter)),
+    [rows, yearFilter],
+  )
+  const totalInv = shown.reduce((s, r) => s + (Number(r.monto_inversion) || 0), 0)
+  const roiVals = shown.map((r) => r.roi_real ?? r.roi_estimado).filter((x): x is number => x != null)
   const roiAvg = roiVals.length ? roiVals.reduce((a, b) => a + b, 0) / roiVals.length : null
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <BiHeader title="Inversiones y ROI" subtitle="ROI = (beneficio − inversión) / inversión · payback en meses" />
-        <Button size="sm" onClick={() => setEditing(emptyInvestment())}><Plus className="h-4 w-4" /><span className="ml-1">Nueva inversión</span></Button>
+        <div className="flex items-center gap-2">
+          {years.length > 0 ? (
+            <Select value={yearFilter} onValueChange={setYearFilter}>
+              <SelectTrigger className="h-9 w-32"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos los años</SelectItem>
+                {years.map((y) => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          ) : null}
+          <Button size="sm" onClick={() => setEditing(emptyInvestment())}><Plus className="h-4 w-4" /><span className="ml-1">Nueva inversión</span></Button>
+        </div>
       </div>
       <BiKpiGrid items={[
-        { title: "Total invertido", value: fmtRD0(totalInv), icon: PiggyBank, variant: "primary" },
-        { title: "Inversiones", value: fmtInt(rows.length), icon: LineChartIcon, variant: "primary" },
+        { title: "Total invertido", value: fmtRD0(totalInv), icon: PiggyBank, variant: "primary", description: yearFilter === "todos" ? undefined : `Año ${yearFilter}` },
+        { title: "Inversiones", value: fmtInt(shown.length), icon: LineChartIcon, variant: "primary" },
         { title: "ROI promedio", value: roiAvg == null ? "—" : fmtPct(roiAvg * 100), icon: Percent, variant: roiAvg != null && roiAvg >= 0 ? "success" : "warning" },
-        { title: "En curso", value: fmtInt(rows.filter((r) => r.estado === "en_curso").length), icon: RefreshCcw, variant: "primary" },
+        { title: "En curso", value: fmtInt(shown.filter((r) => r.estado === "en_curso").length), icon: RefreshCcw, variant: "primary" },
       ]} />
 
       {editing ? (
@@ -543,20 +564,21 @@ export function BiInversionesPage() {
       ) : null}
 
       <DashPanel title="Cartera de inversiones">
-        {loading ? <EmptyChart text="Cargando…" /> : rows.length ? (
+        {loading ? <EmptyChart text="Cargando…" /> : shown.length ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="border-b text-left text-xs uppercase text-muted-foreground">
-                {["Nombre", "Categoría", "Estado", "Inversión", "Beneficio", "ROI", "Payback", ""].map((h, i) => <th key={i} className={`p-2 ${i >= 3 && i <= 6 ? "text-right" : ""}`}>{h}</th>)}
+                {["Nombre", "Categoría", "Sucursal", "Estado", "Inversión", "Beneficio", "ROI", "Payback", ""].map((h, i) => <th key={i} className={`p-2 ${i >= 4 && i <= 7 ? "text-right" : ""}`}>{h}</th>)}
               </tr></thead>
               <tbody>
-                {rows.map((r) => {
+                {shown.map((r) => {
                   const roi = r.roi_real ?? r.roi_estimado
                   const benef = r.beneficio_real ?? r.beneficio_estimado
                   return (
                     <tr key={r.id} className="border-b last:border-0">
                       <td className="p-2 font-medium">{r.nombre}</td>
                       <td className="p-2 text-muted-foreground">{r.categoria}</td>
+                      <td className="p-2 text-muted-foreground">{r.branch || "—"}</td>
                       <td className="p-2"><span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px]">{r.estado}</span></td>
                       <td className="p-2 text-right tabular-nums">{fmtRD0(r.monto_inversion)}</td>
                       <td className="p-2 text-right tabular-nums">{fmtRD0(benef)}</td>
