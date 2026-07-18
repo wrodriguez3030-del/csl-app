@@ -36,6 +36,53 @@ export const dynamic = "force-dynamic"
 
 const json = (data: unknown, status = 200) => NextResponse.json(data, { status })
 
+/**
+ * Llama a OpenAI Chat Completions adaptándose al modelo. Los modelos nuevos
+ * (GPT-5.x, o-series) exigen `max_completion_tokens` en vez de `max_tokens`, y
+ * algunos no aceptan `temperature`/`response_format` custom. Se hace una
+ * suposición por prefijo y, si la API rechaza un parámetro, se reintenta una
+ * vez quitando/renombrando el parámetro ofensivo (robusto a modelos futuros).
+ */
+async function openAiChat(apiKey: string, args: {
+  model: string; messages: unknown[]; maxTokens: number; temperature?: number; jsonObject?: boolean
+}): Promise<{ resp: Response; jr: Record<string, unknown> }> {
+  const newStyle = /^(gpt-5|o1|o3|o4|gpt-4\.1)/i.test(args.model)
+  const reasoning = /^(gpt-5|o1|o3|o4)/i.test(args.model)
+  const noCustomTemp = /^(o1|o3|o4|gpt-5)/i.test(args.model)
+  const body: Record<string, unknown> = { model: args.model, messages: args.messages }
+  if (args.jsonObject) body.response_format = { type: "json_object" }
+  // Los modelos de razonamiento gastan tokens en "pensar": si el límite es bajo,
+  // la respuesta sale vacía. Dejamos un piso holgado (sin subir el de gpt-4o).
+  const effMax = reasoning ? Math.max(args.maxTokens, args.jsonObject ? 4000 : 64) : args.maxTokens
+  if (newStyle) body.max_completion_tokens = effMax
+  else body.max_tokens = effMax
+  if (args.temperature != null && !noCustomTemp) body.temperature = args.temperature
+
+  const send = async () => {
+    const resp = await fetch(`${OPENAI_BASE}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(body),
+    })
+    const jr = (await resp.json().catch(() => ({}))) as Record<string, unknown>
+    return { resp, jr }
+  }
+  let out = await send()
+  if (!out.resp.ok) {
+    const msg = String((out.jr.error as Record<string, unknown> | undefined)?.message || "")
+    let changed = false
+    if (/max_completion_tokens/i.test(msg) && "max_tokens" in body) {
+      body.max_completion_tokens = body.max_tokens; delete body.max_tokens; changed = true
+    }
+    if (/temperature/i.test(msg) && /(unsupported|does not support|only the default|must be|not supported)/i.test(msg) && "temperature" in body) {
+      delete body.temperature; changed = true
+    }
+    if (/response_format/i.test(msg) && "response_format" in body) { delete body.response_format; changed = true }
+    if (changed) out = await send()
+  }
+  return out
+}
+
 interface AiAnswer {
   resumen_ejecutivo: string
   datos_utilizados: string[]
@@ -98,12 +145,7 @@ export async function POST(request: Request) {
       // ── Probar conexión ────────────────────────────────────────────────
       if (mode === "test") {
         const t0 = Date.now()
-        const resp = await fetch(`${OPENAI_BASE}/chat/completions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify({ model, messages: [{ role: "user", content: "Responde solo: OK" }], max_tokens: 5 }),
-        })
-        const jr = (await resp.json().catch(() => ({}))) as Record<string, unknown>
+        const { resp, jr } = await openAiChat(apiKey, { model, messages: [{ role: "user", content: "Responde solo: OK" }], maxTokens: 16 })
         await logBiAudit("openai_test_connection", user.id, { model, ok: resp.ok })
         if (!resp.ok) {
           const err = (jr.error as Record<string, unknown> | undefined)?.message || `HTTP ${resp.status}`
@@ -143,19 +185,13 @@ export async function POST(request: Request) {
       ].join("\n")
 
       const t0 = Date.now()
-      const resp = await fetch(`${OPENAI_BASE}/chat/completions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model, temperature, max_tokens: maxTokens,
-          response_format: { type: "json_object" },
-          messages: [
-            { role: "system", content: systemPrompt(summary.business.name, settings.system_prompt as string | undefined) },
-            { role: "user", content: userContent },
-          ],
-        }),
+      const { resp, jr } = await openAiChat(apiKey, {
+        model, temperature, maxTokens, jsonObject: true,
+        messages: [
+          { role: "system", content: systemPrompt(summary.business.name, settings.system_prompt as string | undefined) },
+          { role: "user", content: userContent },
+        ],
       })
-      const jr = (await resp.json().catch(() => ({}))) as Record<string, unknown>
       if (!resp.ok) {
         const err = (jr.error as Record<string, unknown> | undefined)?.message || `HTTP ${resp.status}`
         void sb.from("bi_finance_ai_queries").insert({

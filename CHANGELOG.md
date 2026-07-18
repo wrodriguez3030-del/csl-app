@@ -18,6 +18,19 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.66.7] — 2026-07-18
+
+### Fixed
+- **BI Financiero · Asistente IA con modelos GPT-5 / o-series**: fallaba con
+  *"Unsupported parameter: 'max_tokens' … Use 'max_completion_tokens'"*. El endpoint
+  ahora envía `max_completion_tokens` (no `max_tokens`) para gpt-5.x/o1/o3/o4/gpt-4.1,
+  omite `temperature` en los modelos de razonamiento (que solo aceptan el valor por
+  defecto), y **reintenta adaptándose** si la API rechaza cualquier parámetro
+  (robusto a modelos futuros). Además aplica un **piso de tokens** en modelos de
+  razonamiento para que la respuesta no salga vacía (consumen tokens "pensando").
+
+---
+
 ## [0.66.6] — 2026-07-18
 
 ### Added
