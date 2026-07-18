@@ -259,18 +259,23 @@ export async function generateBiFinanceAlerts(params: ActionParams, user: Action
         metric: "gastos_totales", metric_value: summary.resumen.gastos, threshold: null })
     }
   }
-  // Caída de ventas vs mes anterior (>15%).
+  // Caída de ventas vs mes anterior (>15%). SOLO si el período tiene ventas:
+  // un mes en RD$0 = sin datos importados aún (no es una caída real → no alertar).
   const delta = summary.resumen.ingresosDeltaPct
-  if (typeof delta === "number" && delta < -15) {
+  if (summary.resumen.ingresos > 0 && typeof delta === "number" && delta < -15) {
+    const prev = summary.trend[summary.trend.length - 2]
+    const prevLbl = prev?.label || "el mes anterior"
+    const prevVal = prev ? `RD$${Math.round(prev.ingresos).toLocaleString()}` : "s/d"
     push({ tipo: "caida_ventas", severidad: delta < -30 ? "critica" : "alta",
-      titulo: `Ventas ${delta.toFixed(1)}% vs mes anterior`,
-      detalle: `Ingresos del período: RD$${summary.resumen.ingresos.toLocaleString()}.`,
+      titulo: `Ventas de ${summary.period.label} bajaron ${Math.abs(delta).toFixed(1)}% vs ${prevLbl}`,
+      detalle: `${summary.period.label}: RD$${Math.round(summary.resumen.ingresos).toLocaleString()} · ${prevLbl}: ${prevVal}. Compara el total facturado del mes contra el mes anterior.`,
       metric: "ingresos", metric_value: summary.resumen.ingresos, threshold: null })
   }
 
-  // Reemplazar las de sistema abiertas del período.
+  // Reemplazar TODAS las alertas de sistema del período (evita duplicados
+  // resuelta+abierta al recalcular): recalcular = foto fresca del período.
   await sb.from("bi_finance_alerts").delete().eq("business_id", business_id).eq("source", "sistema")
-    .eq("status", "abierta").eq("period_month", month).eq("period_year", year)
+    .eq("period_month", month).eq("period_year", year)
   if (alerts.length) {
     const { error } = await sb.from("bi_finance_alerts").insert(alerts)
     if (error) throw new Error(error.message)

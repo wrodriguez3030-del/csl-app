@@ -18,6 +18,19 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.66.5] — 2026-07-18
+
+### Fixed
+- **BI Financiero · Alertas · indicador "caída de ventas" confuso**. (1) Ya **no
+  genera** la alerta cuando el período tiene RD$0 de ventas (mes sin datos
+  importados ≠ caída del 100%). (2) El mensaje ahora es explícito: nombra ambos
+  meses y sus montos ("Ventas de Junio 2026 bajaron 50.1% vs may 2026 · RD$… vs
+  RD$…"). (3) "Recalcular" ahora reemplaza **todas** las alertas de sistema del
+  período (antes solo las abiertas), eliminando el duplicado resuelta+abierta.
+- Datos: eliminada la alerta falsa de julio 2026 (RD$0 → -100%).
+
+---
+
 ## [0.66.4] — 2026-07-18
 
 ### Fixed
