@@ -18,6 +18,23 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.66.2] — 2026-07-18
+
+### Fixed
+- **BI Financiero · Alertas financieras**: el filtro **no actualizaba** la lista.
+  Causa: la carga tenía dependencias vacías y `getBiFinanceAlerts` ignoraba el
+  período/estado. Ahora la lista reacciona a los filtros: **Estado** (Abiertas /
+  Todas / Revisadas / Resueltas / Descartadas, con conteos) y **Vista** (Todos los
+  períodos / Del período con Mes+Año). `getBiFinanceAlerts` filtra por período,
+  estado y severidad server-side y devuelve conteos por estado.
+
+### Changed
+- **Reglas de alertas más completas**: además de sucursal en pérdida y margen
+  consolidado <15%, ahora marca **sucursal con margen bajo (<10%)** y **gasto sobre
+  ingresos >85%**. "Recalcular" muestra cuántas alertas generó y salta a ese período.
+
+---
+
 ## [0.66.1] — 2026-07-18
 
 ### Added

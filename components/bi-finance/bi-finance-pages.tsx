@@ -606,48 +606,94 @@ interface Alert {
   id: string; tipo: string; severidad: string; titulo: string; detalle?: string; branch?: string | null
   status: string; source: string; created_at: string; period_month?: number; period_year?: number
 }
+const MESES_ALERT = ["", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 export function BiAlertasPage() {
   const { month, year } = useBiStore()
   const [rows, setRows] = useState<Alert[]>([])
+  const [counts, setCounts] = useState<Record<string, number>>({ total: 0, abierta: 0, revisada: 0, resuelta: 0, descartada: 0 })
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<string>("abierta")
+  const [scope, setScope] = useState<"todas" | "periodo">("todas")
+  const [genMsg, setGenMsg] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
-    try { const res = await apiJsonp("", { action: "getBiFinanceAlerts" }) as unknown as { rows: Alert[] }; setRows(res.rows || []) } finally { setLoading(false) }
-  }, [])
+    try {
+      const params: Record<string, string | number> = { action: "getBiFinanceAlerts" }
+      if (statusFilter !== "todas") params.status = statusFilter
+      if (scope === "periodo") { params.month = month; params.year = year }
+      const res = await apiJsonp("", params) as unknown as { rows: Alert[]; counts?: Record<string, number> }
+      setRows(res.rows || [])
+      if (res.counts) setCounts(res.counts)
+    } finally { setLoading(false) }
+  }, [statusFilter, scope, month, year])
   useEffect(() => { void load() }, [load])
 
   const regenerate = useCallback(async () => {
-    setBusy(true)
-    try { await apiJsonp("", { action: "generateBiFinanceAlerts", month, year }); await load() } finally { setBusy(false) }
-  }, [month, year, load])
+    setBusy(true); setGenMsg(null)
+    try {
+      const r = await apiJsonp("", { action: "generateBiFinanceAlerts", month, year }) as unknown as { generated?: number }
+      const n = Number(r?.generated) || 0
+      setGenMsg(n > 0 ? `Se generaron ${n} alerta${n === 1 ? "" : "s"} para ${MESES_ALERT[month]} ${year}.` : `Sin alertas para ${MESES_ALERT[month]} ${year}: el período luce saludable.`)
+      // Mostrar directamente el período recién evaluado (todas las de ese mes).
+      setScope("periodo"); setStatusFilter("todas")
+      const res = await apiJsonp("", { action: "getBiFinanceAlerts", month, year }) as unknown as { rows: Alert[]; counts?: Record<string, number> }
+      setRows(res.rows || [])
+      if (res.counts) setCounts(res.counts)
+      setTimeout(() => setGenMsg(null), 6000)
+    } finally { setBusy(false) }
+  }, [month, year])
   const setStatus = useCallback(async (id: string, status: string) => {
     await apiJsonp("", { action: "updateBiFinanceAlert", id, status }); await load()
   }, [load])
 
   const sevChip = (s: string) => s === "critica" ? "bg-rose-100 text-rose-700" : s === "alta" ? "bg-amber-100 text-amber-700" : s === "media" ? "bg-sky-100 text-sky-700" : "bg-slate-100 text-slate-600"
+  const STATUS_OPTS = [
+    { v: "abierta", l: `Abiertas (${counts.abierta || 0})` },
+    { v: "todas", l: `Todas (${counts.total || 0})` },
+    { v: "revisada", l: `Revisadas (${counts.revisada || 0})` },
+    { v: "resuelta", l: `Resueltas (${counts.resuelta || 0})` },
+    { v: "descartada", l: `Descartadas (${counts.descartada || 0})` },
+  ]
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <BiHeader title="Alertas financieras" subtitle="Reglas automáticas sobre datos reales (margen bajo, pérdidas, caídas de ventas)" />
-        <div className="flex items-center gap-2">
-          <BiPeriodBarInline />
-          <Button size="sm" onClick={regenerate} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}<span className="ml-1">Recalcular</span></Button>
-        </div>
-      </div>
-      <DashPanel title="Alertas">
+      <BiHeader title="Alertas financieras" subtitle="Reglas automáticas sobre datos reales (margen bajo, pérdidas, caídas de ventas)" />
+      <Card className="rounded-2xl border-[color:var(--brand-border)] shadow-sm">
+        <CardContent className="flex flex-wrap items-center gap-2 p-3">
+          <span className="text-xs font-semibold text-muted-foreground">Estado</span>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
+            <SelectContent>{STATUS_OPTS.map((o) => <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>)}</SelectContent>
+          </Select>
+          <span className="ml-1 text-xs font-semibold text-muted-foreground">Ver</span>
+          <div className="flex gap-1">
+            <Button variant={scope === "todas" ? "default" : "outline"} size="sm" className="h-9" onClick={() => setScope("todas")}>Todos los períodos</Button>
+            <Button variant={scope === "periodo" ? "default" : "outline"} size="sm" className="h-9" onClick={() => setScope("periodo")}>Del período</Button>
+          </div>
+          {scope === "periodo" ? <BiPeriodBarInline /> : null}
+          <div className="ml-auto flex items-center gap-2">
+            <span className="hidden text-xs text-muted-foreground sm:inline">Recalcular {MESES_ALERT[month]} {year}:</span>
+            <Button size="sm" className="h-9" onClick={regenerate} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}<span className="ml-1">Recalcular</span></Button>
+          </div>
+        </CardContent>
+      </Card>
+      {genMsg ? (
+        <div className="rounded-xl border border-sky-200 bg-sky-50 p-2.5 text-sm text-sky-800">{genMsg}</div>
+      ) : null}
+      <DashPanel title={scope === "periodo" ? `Alertas · ${MESES_ALERT[month]} ${year}` : "Alertas · todos los períodos"}>
         {loading ? <EmptyChart text="Cargando…" /> : rows.length ? (
           <ul className="space-y-2">
             {rows.map((a) => (
               <li key={a.id} className="flex flex-wrap items-start justify-between gap-2 rounded-xl border border-[color:var(--brand-border)] p-3">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${sevChip(a.severidad)}`}>{a.severidad}</span>
                     <span className="text-sm font-semibold">{a.titulo}</span>
                     {a.branch ? <span className="text-xs text-muted-foreground">· {a.branch}</span> : null}
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] ${a.status === "abierta" ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"}`}>{a.status}</span>
+                    {a.period_month ? <span className="text-[11px] text-muted-foreground">· {MESES_ALERT[a.period_month]} {a.period_year}</span> : null}
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] ${a.status === "abierta" ? "bg-rose-50 text-rose-600" : a.status === "descartada" ? "bg-slate-100 text-slate-500" : "bg-emerald-50 text-emerald-600"}`}>{a.status}</span>
                   </div>
                   {a.detalle ? <div className="mt-0.5 text-xs text-muted-foreground">{a.detalle}</div> : null}
                 </div>
@@ -659,7 +705,7 @@ export function BiAlertasPage() {
               </li>
             ))}
           </ul>
-        ) : <EmptyChart text="Sin alertas. Pulsa Recalcular para evaluar el período." />}
+        ) : <EmptyChart text={scope === "periodo" ? `Sin alertas en ${MESES_ALERT[month]} ${year}. Pulsa "Recalcular" para evaluar el período.` : "Sin alertas con ese estado. Cambia el filtro o pulsa “Recalcular” en un período."} />}
       </DashPanel>
       <AskAiPanel scope="alertas" suggestions={["¿Qué alertas debo atender primero?", "¿Cómo resuelvo el margen bajo?", "¿Qué señales de riesgo ves en mis finanzas?"]} />
     </div>

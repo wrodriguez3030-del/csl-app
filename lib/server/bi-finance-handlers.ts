@@ -179,10 +179,20 @@ export async function getBiFinanceAlerts(params: ActionParams) {
   requirePermission("bi_finance.view")
   const business_id = bizId()
   const status = textValue(params, "status")
-  let q = getSupabaseAdmin().from("bi_finance_alerts").select("*").eq("business_id", business_id).order("created_at", { ascending: false }).limit(200)
+  const month = numberValue(params, "month")
+  const year = numberValue(params, "year")
+  const severidad = textValue(params, "severidad")
+  let q = getSupabaseAdmin().from("bi_finance_alerts").select("*").eq("business_id", business_id).order("created_at", { ascending: false }).limit(300)
   if (status) q = q.eq("status", status)
+  if (severidad) q = q.eq("severidad", severidad)
+  if (month && year) q = q.eq("period_month", month).eq("period_year", year)
   const { data } = await q
-  return { ok: true, rows: data || [] }
+  const rows = data || []
+  // Conteos globales (independientes del filtro) para las pestañas de estado.
+  const { data: allForCounts } = await getSupabaseAdmin().from("bi_finance_alerts").select("status").eq("business_id", business_id)
+  const counts = { total: (allForCounts || []).length, abierta: 0, revisada: 0, resuelta: 0, descartada: 0 } as Record<string, number>
+  for (const a of allForCounts || []) counts[String((a as Record<string, unknown>).status)] = (counts[String((a as Record<string, unknown>).status)] || 0) + 1
+  return { ok: true, rows, counts }
 }
 
 /** Recalcula alertas por reglas a partir del resumen real del período. Idempotente:
@@ -206,12 +216,28 @@ export async function generateBiFinanceAlerts(params: ActionParams, user: Action
       detalle: `Ingresos RD$${summary.resumen.ingresos.toLocaleString()} vs gastos RD$${summary.resumen.gastos.toLocaleString()}.`,
       metric: "margen_neto", metric_value: summary.resumen.margenNeto, threshold: 15 })
   }
-  // Sucursales en pérdida o margen muy bajo.
+  // Sucursales en pérdida (crítica) o con margen bajo (<10%).
   for (const r of summary.rentabilidad) {
-    if (r.ingresos > 0 && r.utilidadNeta < 0) {
+    if (r.branch === "(sin sucursal)" || r.ingresos <= 0) continue
+    if (r.utilidadNeta < 0) {
       push({ tipo: "margen_bajo", severidad: "critica", branch: r.branch,
         titulo: `${r.branch} en pérdida`, detalle: `Utilidad RD$${r.utilidadNeta.toLocaleString()} (margen ${r.margenNeto.toFixed(1)}%).`,
         metric: "utilidad_neta", metric_value: r.utilidadNeta, threshold: 0 })
+    } else if (r.margenNeto < 10) {
+      push({ tipo: "margen_bajo", severidad: r.margenNeto < 5 ? "alta" : "media", branch: r.branch,
+        titulo: `${r.branch} con margen bajo (${r.margenNeto.toFixed(1)}%)`,
+        detalle: `Ingresos RD$${r.ingresos.toLocaleString()} · gastos RD$${r.gastos.toLocaleString()} · utilidad RD$${r.utilidadNeta.toLocaleString()}.`,
+        metric: "margen_neto", metric_value: r.margenNeto, threshold: 10 })
+    }
+  }
+  // Gasto elevado sobre ingresos (>85%).
+  if (summary.resumen.ingresos > 0) {
+    const ratio = round2((summary.resumen.gastos / summary.resumen.ingresos) * 100)
+    if (ratio > 85) {
+      push({ tipo: "gasto_alto", severidad: ratio > 100 ? "critica" : "alta",
+        titulo: `Gastos = ${ratio.toFixed(1)}% de los ingresos`,
+        detalle: `Gastos RD$${summary.resumen.gastos.toLocaleString()} sobre ingresos RD$${summary.resumen.ingresos.toLocaleString()}.`,
+        metric: "gastos_totales", metric_value: summary.resumen.gastos, threshold: null })
     }
   }
   // Caída de ventas vs mes anterior (>15%).
