@@ -18,6 +18,18 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.66.3] — 2026-07-18
+
+### Changed
+- **BI Financiero · Alertas financieras** ahora usa la **misma barra de filtros**
+  que las demás pantallas (`BiFilterBar`: Mes + Año + rango Desde/Hasta + Sucursal),
+  con el selector de Estado y el botón "Recalcular" integrados. Las alertas se
+  filtran por rango de período (el período de la alerta dentro del rango) y por
+  sucursal (la seleccionada + las consolidadas); "Año = Todos" muestra todos los
+  períodos. Los conteos por estado siguen siendo globales para orientar.
+
+---
+
 ## [0.66.2] — 2026-07-18
 
 ### Fixed

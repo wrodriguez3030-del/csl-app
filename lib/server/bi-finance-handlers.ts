@@ -182,12 +182,31 @@ export async function getBiFinanceAlerts(params: ActionParams) {
   const month = numberValue(params, "month")
   const year = numberValue(params, "year")
   const severidad = textValue(params, "severidad")
-  let q = getSupabaseAdmin().from("bi_finance_alerts").select("*").eq("business_id", business_id).order("created_at", { ascending: false }).limit(300)
+  const from = textValue(params, "from") // YYYY-MM-DD (rango del filtro)
+  const to = textValue(params, "to")
+  const branch = textValue(params, "branch")
+  let q = getSupabaseAdmin().from("bi_finance_alerts").select("*").eq("business_id", business_id).order("created_at", { ascending: false }).limit(500)
   if (status) q = q.eq("status", status)
   if (severidad) q = q.eq("severidad", severidad)
   if (month && year) q = q.eq("period_month", month).eq("period_year", year)
   const { data } = await q
-  const rows = data || []
+  let rows = (data || []) as Array<Record<string, unknown>>
+  // Filtro por RANGO de período (el período de la alerta dentro de [from,to]).
+  if (from && to) {
+    const fromYM = Number(from.slice(0, 4)) * 100 + Number(from.slice(5, 7))
+    const toYM = Number(to.slice(0, 4)) * 100 + Number(to.slice(5, 7))
+    rows = rows.filter((a) => {
+      const pm = Number(a.period_month), py = Number(a.period_year)
+      if (!pm || !py) return true // alertas sin período: mostrarlas siempre
+      const ym = py * 100 + pm
+      return ym >= fromYM && ym <= toYM
+    })
+  }
+  // Filtro por sucursal: la seleccionada + las consolidadas (sin branch).
+  if (branch) {
+    const nb = branch.trim().toUpperCase()
+    rows = rows.filter((a) => !a.branch || String(a.branch).trim().toUpperCase() === nb)
+  }
   // Conteos globales (independientes del filtro) para las pestañas de estado.
   const { data: allForCounts } = await getSupabaseAdmin().from("bi_finance_alerts").select("status").eq("business_id", business_id)
   const counts = { total: (allForCounts || []).length, abierta: 0, revisada: 0, resuelta: 0, descartada: 0 } as Record<string, number>
