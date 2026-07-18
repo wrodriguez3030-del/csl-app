@@ -3516,6 +3516,16 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await biFinance.deleteBiFinanceInvestment(params)
     case "getBiFinanceForecast":
       return await biFinance.getBiFinanceForecast(params)
+    case "getBiFinanceModels":
+      return await biFinance.getBiFinanceModels()
+    case "refreshBiFinanceModels":
+      return await biFinance.refreshBiFinanceModels(params, user)
+    case "getBiFinancePricing":
+      return await biFinance.getBiFinancePricing()
+    case "saveBiFinancePricing":
+      return await biFinance.saveBiFinancePricing(params, user)
+    case "getBiFinanceUsage":
+      return await biFinance.getBiFinanceUsage()
 
     // ── Inventario de materiales por sucursal (conteo físico histórico) ──────
     case "getInventoryDraft":

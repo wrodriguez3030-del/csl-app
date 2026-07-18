@@ -18,6 +18,51 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.65.0] — 2026-07-18
+
+### Added
+- **BI Financiero · Configuración IA segura y completa.** El admin autorizado ya
+  puede **pegar la API key de OpenAI** desde la pantalla (campo password); viaja por
+  HTTPS y se guarda **cifrada (AES-256-GCM)** en `bi_finance_ai_secrets` — nunca en
+  el frontend, nunca en logs, solo se muestra como `sk-****abcd`. Ruta dedicada
+  `POST /api/bi-finance/openai-key` (guardar/eliminar/estado) con validación de
+  permiso. Nuevo permiso `bi_finance.ai_secrets.manage`.
+- **Selección de modelos**: selector con lista de modelos recientes (gpt-5.2, 5.1,
+  5, 5-mini, 5-nano, 4.1/mini/nano, 4o/mini) + botón **"Actualizar modelos"** que
+  consulta `GET /v1/models` de OpenAI y cachea (`bi_finance_ai_models_cache`);
+  modelos antiguos marcados como *legacy*; recomendados por tier. El modelo se
+  guarda por negocio (`bi_finance_settings.model`).
+- **Control de uso y gasto**: límites de consultas (día/mes), tokens (entrada/salida/
+  totales por mes) y **gasto máximo mensual** con umbrales 70%/90% y bloqueo al 100%
+  (superadmin exento). Bitácora de consumo `bi_finance_ai_usage_logs` (tokens reales
+  de OpenAI + costo estimado). Precios editables por modelo `bi_finance_ai_model_pricing`
+  (sin hardcodear; si falta precio, el costo queda "Pendiente" y no bloquea por gasto).
+- **Tablero de consumo** en Configuración IA: consultas del mes, tokens, costo
+  estimado, modelo más usado, última consulta y barra de progreso del límite.
+- La activación del asistente ya se controla desde la pantalla
+  (`bi_finance_settings.enabled`), sin depender de una variable de entorno.
+- Migración aditiva `202607180001`: 9 columnas de límites en `bi_finance_settings`
+  + 4 tablas (`ai_secrets`, `ai_usage_logs`, `ai_model_pricing`, `ai_models_cache`)
+  con RLS por tenant.
+
+### Changed
+- El asistente resuelve la API key primero del negocio (DB cifrada) y, si no hay,
+  de `OPENAI_API_KEY` (env). Antes de responder valida límites de uso/gasto; después
+  registra el consumo real. Configuración 100% por negocio (Cibao ≠ Depicenter).
+
+### Fixed
+- Configuración IA: el admin **no podía pegar la API key** porque la pantalla anterior
+  no tenía campo para hacerlo (era solo lectura del estado de env). Ahora existe el
+  flujo seguro de configuración.
+
+### Security
+- API key cifrada en reposo (AES-256-GCM), clave de cifrado derivada de un secreto
+  del servidor; nunca expuesta al cliente ni registrada. Auditoría de eventos
+  (`api_key_configured`, `models_refreshed`, `openai_test_connection`,
+  `ai_request_blocked_limit`, `ai_request_success/error`).
+
+---
+
 ## [0.64.1] — 2026-07-18
 
 ### Added

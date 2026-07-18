@@ -62,6 +62,7 @@ export const PERMISSION_OPTIONS: PermissionOption[] = [
   { id: "bi_finance.alerts", label: "Gestionar alertas financieras", section: "BI Financiero IA" },
   { id: "bi_finance.reports", label: "Generar reportes ejecutivos", section: "BI Financiero IA" },
   { id: "bi_finance.config", label: "Configurar el asistente IA", section: "BI Financiero IA" },
+  { id: "bi_finance.ai_secrets.manage", label: "Gestionar credenciales OpenAI (API key)", section: "BI Financiero IA" },
   { id: "bi_finance.export", label: "Exportar PDF/Excel financiero", section: "BI Financiero IA" },
 ]
 

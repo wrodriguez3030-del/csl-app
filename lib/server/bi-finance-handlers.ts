@@ -9,10 +9,13 @@
  * Aislamiento por tenant: todo se filtra por el business_id del contexto.
  */
 import { getSupabaseAdmin } from "@/lib/server/supabase"
-import { getBusinessContext, requirePermission } from "@/lib/server/business-context"
+import { getBusinessContext, requirePermission, hasPermission } from "@/lib/server/business-context"
 import { textValue, numberValue, parsePayload } from "@/lib/server/csl-helpers"
 import type { ActionParams, ActionUser } from "@/lib/server/csl-types"
 import { getBiFinanceSummary } from "@/lib/server/bi-finance"
+import {
+  getKeyStatus, listModels, refreshModels, getPricing, savePricing, computeUsage, logBiAudit, RECOMMENDED,
+} from "@/lib/server/bi-finance-secrets"
 
 function bizId(): string {
   const id = getBusinessContext()?.businessId
@@ -39,8 +42,9 @@ export async function getBiFinanceData(params: ActionParams) {
   const sb = getSupabaseAdmin()
   const { count: alertCount } = await sb.from("bi_finance_alerts")
     .select("id", { count: "exact", head: true }).eq("business_id", business_id).eq("status", "abierta")
-  const { data: settingsRow } = await sb.from("bi_finance_settings").select("enabled, model, provider").eq("business_id", business_id).maybeSingle()
-  const aiConfigured = Boolean(process.env.OPENAI_API_KEY) && String(process.env.BI_FINANCE_AI_ENABLED || "").toLowerCase() === "true" && (settingsRow?.enabled ?? true)
+  const { data: settingsRow } = await sb.from("bi_finance_settings").select("enabled").eq("business_id", business_id).maybeSingle()
+  const keyStatus = await getKeyStatus(business_id)
+  const aiConfigured = keyStatus.configured && (settingsRow?.enabled ?? true)
   return { ok: true, summary, openAlerts: alertCount || 0, aiConfigured }
 }
 
@@ -50,14 +54,31 @@ export async function getBiFinanceSettings() {
   const business_id = bizId()
   const { data } = await getSupabaseAdmin().from("bi_finance_settings").select("*").eq("business_id", business_id).maybeSingle()
   const envModel = (process.env.OPENAI_MODEL || "").trim() || null
-  const keyPresent = Boolean((process.env.OPENAI_API_KEY || "").trim())
-  const enabledEnv = String(process.env.BI_FINANCE_AI_ENABLED || "").toLowerCase() === "true"
   const extra = (data?.extra || {}) as Record<string, unknown>
   const base = data || { enabled: true, provider: "openai", model: null, temperature: 0.2, max_tokens: 1200, monthly_query_limit: 300, system_prompt: null }
+  const keyStatus = await getKeyStatus(business_id)
+  const effectiveModel = (data?.model || envModel || "gpt-4o")
   return {
     ok: true,
-    settings: { ...base, allocate_overhead: extra.allocate_overhead !== false },
-    env: { keyPresent, enabledEnv, envModel, effectiveModel: (data?.model || envModel || "gpt-4o") },
+    settings: {
+      ...base,
+      allocate_overhead: extra.allocate_overhead !== false,
+      // límites (pueden venir null)
+      daily_query_limit: data?.daily_query_limit ?? null,
+      monthly_input_token_limit: data?.monthly_input_token_limit ?? null,
+      monthly_output_token_limit: data?.monthly_output_token_limit ?? null,
+      monthly_total_token_limit: data?.monthly_total_token_limit ?? null,
+      monthly_cost_limit: data?.monthly_cost_limit ?? null,
+      cost_currency: data?.cost_currency ?? "USD",
+      alert_threshold_70: data?.alert_threshold_70 ?? true,
+      alert_threshold_90: data?.alert_threshold_90 ?? true,
+      block_at_100: data?.block_at_100 ?? true,
+    },
+    keyStatus,
+    canManageKey: hasPermission("bi_finance.ai_secrets.manage") || hasPermission("bi_finance.config"),
+    canConfig: hasPermission("bi_finance.config"),
+    env: { keyPresent: keyStatus.configured, envModel, effectiveModel },
+    recommended: RECOMMENDED,
   }
 }
 
@@ -65,6 +86,7 @@ export async function saveBiFinanceSettings(params: ActionParams, user: ActionUs
   requirePermission("bi_finance.config")
   const business_id = bizId()
   const p = parsePayload(params)
+  const numOrNull = (v: unknown) => (v == null || v === "" ? null : Number(v))
   const record: Record<string, unknown> = {
     business_id,
     enabled: p.enabled != null ? Boolean(p.enabled) : true,
@@ -73,14 +95,60 @@ export async function saveBiFinanceSettings(params: ActionParams, user: ActionUs
     temperature: p.temperature != null ? Number(p.temperature) : 0.2,
     max_tokens: p.max_tokens != null ? Number(p.max_tokens) : 1200,
     system_prompt: p.system_prompt ? String(p.system_prompt) : null,
-    monthly_query_limit: p.monthly_query_limit != null ? Number(p.monthly_query_limit) : 300,
+    monthly_query_limit: numOrNull(p.monthly_query_limit),
+    daily_query_limit: numOrNull(p.daily_query_limit),
+    monthly_input_token_limit: numOrNull(p.monthly_input_token_limit),
+    monthly_output_token_limit: numOrNull(p.monthly_output_token_limit),
+    monthly_total_token_limit: numOrNull(p.monthly_total_token_limit),
+    monthly_cost_limit: numOrNull(p.monthly_cost_limit),
+    cost_currency: String(p.cost_currency || "USD"),
+    alert_threshold_70: p.alert_threshold_70 !== false,
+    alert_threshold_90: p.alert_threshold_90 !== false,
+    block_at_100: p.block_at_100 !== false,
     extra: { allocate_overhead: p.allocate_overhead !== false },
     updated_by: user.id,
     updated_at: new Date().toISOString(),
   }
   const { error } = await getSupabaseAdmin().from("bi_finance_settings").upsert(record, { onConflict: "business_id" })
   if (error) throw new Error(error.message)
+  await logBiAudit("ai_settings_changed", user.id, { model: record.model, enabled: record.enabled })
   return { ok: true }
+}
+
+// ── Modelos ──────────────────────────────────────────────────────────────────
+export async function getBiFinanceModels() {
+  requirePermission("bi_finance.view")
+  const business_id = bizId()
+  const { data } = await getSupabaseAdmin().from("bi_finance_settings").select("model").eq("business_id", business_id).maybeSingle()
+  const effective = (data?.model || (process.env.OPENAI_MODEL || "").trim() || "gpt-4o")
+  return { ok: true, ...(await listModels(business_id, effective)), effective }
+}
+
+export async function refreshBiFinanceModels(_params: ActionParams, user: ActionUser) {
+  requirePermission("bi_finance.config")
+  const business_id = bizId()
+  return await refreshModels(business_id, user.id)
+}
+
+// ── Precios por modelo ───────────────────────────────────────────────────────
+export async function getBiFinancePricing() {
+  requirePermission("bi_finance.view")
+  return { ok: true, rows: await getPricing(bizId()) }
+}
+
+export async function saveBiFinancePricing(params: ActionParams, user: ActionUser) {
+  requirePermission("bi_finance.config")
+  const p = parsePayload(params)
+  return await savePricing(bizId(), p, user.id)
+}
+
+// ── Uso / límites ────────────────────────────────────────────────────────────
+export async function getBiFinanceUsage() {
+  requirePermission("bi_finance.view")
+  const business_id = bizId()
+  const { data } = await getSupabaseAdmin().from("bi_finance_settings").select("*").eq("business_id", business_id).maybeSingle()
+  const usage = await computeUsage(business_id, (data || {}) as Record<string, unknown>)
+  return { ok: true, usage }
 }
 
 // ── Historial de consultas a la IA ──────────────────────────────────────────

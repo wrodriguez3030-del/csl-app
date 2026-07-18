@@ -119,6 +119,23 @@ export async function callAssistant(payload: {
   }
 }
 
+/** Cliente seguro de la ruta de credenciales OpenAI (guardar/eliminar/estado). */
+export async function callKeyRoute(payload: { action: "save" | "delete" | "status"; apiKey?: string }): Promise<{ ok: boolean; error?: string; configured?: boolean; last4?: string | null; source?: string | null }> {
+  const activeBusinessId = businessIdForSlug(useAppStore.getState().activeBusinessSlug) || undefined
+  const token = (await supabaseBrowser.auth.getSession()).data.session?.access_token
+  if (!token) return { ok: false, error: "Inicia sesión nuevamente." }
+  try {
+    const resp = await fetch("/api/bi-finance/openai-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ ...payload, activeBusinessId }),
+    })
+    return (await resp.json().catch(() => ({ ok: false, error: "Respuesta inválida" }))) as { ok: boolean }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de conexión" }
+  }
+}
+
 // ── Hook de datos agregados ─────────────────────────────────────────────────
 export function useBiData() {
   const { month, year, branch } = useBiStore()
@@ -306,8 +323,8 @@ export function AskAiPanel({ scope, suggestions = [], compact }: { scope: string
             <div>
               <div className="font-semibold">El asistente no está disponible</div>
               <div>{result?.reason || result?.error}</div>
-              {(result?.error === "no_api_key" || result?.error === "ia_disabled") ? (
-                <div className="mt-1 text-[12px]">Configura <code>OPENAI_API_KEY</code> y <code>BI_FINANCE_AI_ENABLED=true</code> en Vercel para activarlo.</div>
+              {(result?.error === "no_api_key" || result?.error === "ia_disabled_tenant") ? (
+                <div className="mt-1 text-[12px]">Ve a <b>BI Financiero IA → Configuración IA</b> para configurar la API key y activar el asistente.</div>
               ) : null}
             </div>
           </CardContent>
