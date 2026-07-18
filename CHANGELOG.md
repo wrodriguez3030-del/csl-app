@@ -18,6 +18,24 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.65.1] — 2026-07-18
+
+### Fixed
+- **BI Financiero · "no aparecen ingresos"**: el módulo abría por defecto en el mes
+  actual, que puede no tener ventas (las ventas cargadas van hasta jun-2026), por lo
+  que mostraba ingresos en 0. Ahora el BI salta automáticamente (una vez por sesión)
+  al **último mes con ventas** y muestra un aviso con botón "Ver <mes>" cuando el
+  período seleccionado no tiene ventas. `getBiFinanceData` devuelve `latestPeriod`.
+
+### Migración de datos
+- Cargados los **gastos históricos 2025–2026** desde `GASTOS 2025 Y 2026.xlsx`
+  (totales mensuales por sucursal): 42 filas en `expenses` (tenant CSL,
+  `reference='MIG-GASTOS-HIST'`), total RD$33,580,691, cuadrado contra los totales
+  del propio archivo. Cobertura: RAFAEL VIDAL y LOS JARDINES 2025 completo + 2026
+  ene–jun; VILLA OLGA solo 2026 ene–jun.
+
+---
+
 ## [0.65.0] — 2026-07-18
 
 ### Added

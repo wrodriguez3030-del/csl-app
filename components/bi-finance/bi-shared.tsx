@@ -137,17 +137,26 @@ export async function callKeyRoute(payload: { action: "save" | "delete" | "statu
 }
 
 // ── Hook de datos agregados ─────────────────────────────────────────────────
+interface BiData { summary: BiSummary; openAlerts: number; aiConfigured: boolean; latestPeriod: { month: number; year: number } | null }
+// Salto automático (una sola vez por sesión) al último mes con ventas cuando el
+// período por defecto (mes actual) viene vacío — evita el "no aparecen ingresos".
+let autoJumpedSession = false
 export function useBiData() {
   const { month, year, branch } = useBiStore()
-  const [data, setData] = useState<{ summary: BiSummary; openAlerts: number; aiConfigured: boolean } | null>(null)
+  const [data, setData] = useState<BiData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const res = await apiJsonp("", { action: "getBiFinanceData", month, year, ...(branch ? { branch } : {}) }) as unknown as { summary: BiSummary; openAlerts: number; aiConfigured: boolean }
+      const res = await apiJsonp("", { action: "getBiFinanceData", month, year, ...(branch ? { branch } : {}) }) as unknown as BiData
       setData(res)
+      if (!autoJumpedSession && res.summary?.resumen?.ingresos === 0 && res.latestPeriod &&
+          (res.latestPeriod.month !== month || res.latestPeriod.year !== year)) {
+        autoJumpedSession = true
+        useBiStore.getState().setPeriod(res.latestPeriod.month, res.latestPeriod.year)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudieron cargar los datos financieros.")
     } finally {
@@ -156,7 +165,7 @@ export function useBiData() {
   }, [month, year, branch])
 
   useEffect(() => { void refresh() }, [refresh])
-  return { data, summary: data?.summary || null, loading, error, refresh }
+  return { data, summary: data?.summary || null, latestPeriod: data?.latestPeriod || null, loading, error, refresh }
 }
 
 // ── Barra de período ────────────────────────────────────────────────────────

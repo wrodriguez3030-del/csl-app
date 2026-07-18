@@ -53,13 +53,16 @@ function ExportButtons({ summary }: { summary: BiSummary | null }) {
 }
 
 // ══════════════════════════════════ DASHBOARD ══════════════════════════════
+const MESES_CORTO = ["", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 export function BiDashboardPage() {
-  const { summary, loading, error, refresh, data } = useBiData()
+  const { summary, loading, error, refresh, data, latestPeriod } = useBiData()
+  const { setPeriod } = useBiStore()
   const branches = branchesFromSummary(summary)
 
   if (loading && !summary) return <div className="space-y-4"><BiHeader title="Dashboard financiero" /><BiLoading /></div>
   if (error) return <div className="space-y-4"><BiHeader title="Dashboard financiero" /><BiError message={error} onRetry={refresh} /></div>
   if (!summary) return null
+  const sinDatos = summary.resumen.ingresos === 0 && latestPeriod && (latestPeriod.month !== summary.period.month || latestPeriod.year !== summary.period.year)
   const r = summary.resumen
   const gastos = summary.gastos
   const gastoComposicion = [
@@ -76,6 +79,15 @@ export function BiDashboardPage() {
         <BiHeader title="Dashboard financiero" subtitle={`${summary.business.name} · ${summary.period.label}`} />
       </div>
       <BiPeriodBar branches={branches} onRefresh={refresh} loading={loading} right={<ExportButtons summary={summary} />} />
+
+      {sinDatos && latestPeriod ? (
+        <Card className="rounded-2xl border-amber-200 bg-amber-50 shadow-sm">
+          <CardContent className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm text-amber-800">
+            <span className="flex items-center gap-2"><Info className="h-4 w-4" /> No hay ventas registradas en <b>{summary.period.label}</b>. El último mes con datos es {MESES_CORTO[latestPeriod.month]} {latestPeriod.year}.</span>
+            <Button size="sm" variant="outline" onClick={() => setPeriod(latestPeriod.month, latestPeriod.year)}>Ver {MESES_CORTO[latestPeriod.month]} {latestPeriod.year}</Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <BiKpiGrid items={[
         { title: "Ingresos", value: fmtRD0(r.ingresos), icon: CircleDollarSign, variant: "primary", description: r.ingresosDeltaPct != null ? `${r.ingresosDeltaPct >= 0 ? "▲" : "▼"} ${fmtPct(Math.abs(r.ingresosDeltaPct))} vs mes anterior` : undefined },

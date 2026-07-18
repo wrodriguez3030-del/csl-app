@@ -45,7 +45,17 @@ export async function getBiFinanceData(params: ActionParams) {
   const { data: settingsRow } = await sb.from("bi_finance_settings").select("enabled").eq("business_id", business_id).maybeSingle()
   const keyStatus = await getKeyStatus(business_id)
   const aiConfigured = keyStatus.configured && (settingsRow?.enabled ?? true)
-  return { ok: true, summary, openAlerts: alertCount || 0, aiConfigured }
+  // Último mes con ventas (para que el BI no abra en un mes vacío).
+  let latestPeriod: { month: number; year: number } | null = null
+  try {
+    const { data: latest } = await sb.from("sales_commission_sales")
+      .select("sale_date").eq("business_id", business_id).order("sale_date", { ascending: false }).limit(1).maybeSingle()
+    if (latest?.sale_date) {
+      const s = String(latest.sale_date).slice(0, 10)
+      latestPeriod = { month: Number(s.slice(5, 7)), year: Number(s.slice(0, 4)) }
+    }
+  } catch { /* opcional */ }
+  return { ok: true, summary, openAlerts: alertCount || 0, aiConfigured, latestPeriod }
 }
 
 // ── Configuración IA ────────────────────────────────────────────────────────
