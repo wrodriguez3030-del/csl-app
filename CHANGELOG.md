@@ -18,6 +18,19 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.67.1] — 2026-07-19
+
+### Fixed
+- **Auditoría PULSE · editar una lectura no persistía** (guardaba pero al recargar
+  volvía al valor anterior / se duplicaba la fila). Causa: `savePulseReading`
+  actualizaba por la clave compuesta `(business_id, equipo_id, period_start,
+  period_end)`; un desfase de 1 día en las fechas (zona horaria) hacía que el
+  upsert NO matcheara la fila existente y creara una nueva. Ahora, si el payload
+  trae `id` (edición), se actualiza **esa fila por id** (exacto, sin duplicar);
+  el upsert por clave compuesta se reserva para lecturas nuevas del importador.
+
+---
+
 ## [0.67.0] — 2026-07-18
 
 ### Added

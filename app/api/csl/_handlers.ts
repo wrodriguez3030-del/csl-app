@@ -4710,16 +4710,31 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
           ? (textFrom(record, "operadora_correccion_motivo") || "Corrección manual desde Auditoría / IA")
           : null
       }
-      // No forzamos `id`: el conflicto se resuelve por la clave compuesta
-      // (business_id, equipo_id, period_start, period_end). Incluir un id podría
-      // intentar cambiar el PK de la fila existente. En INSERT nuevo, la DB
-      // genera el id por default.
-
-      const { data, error } = await sb
-        .from("csl_pulse_readings")
-        .upsert(row, { onConflict: "business_id,equipo_id,period_start,period_end" })
-        .select()
-        .single()
+      // EDICIÓN vs INSERCIÓN:
+      //  - Si el payload trae `id` (se está EDITANDO una lectura existente),
+      //    actualizamos ESA fila por id. Es exacto y evita el bug de duplicado:
+      //    un desfase de 1 día en period_start/period_end (zona horaria) hacía
+      //    que el upsert por clave compuesta NO matcheara la fila y creara una
+      //    nueva → la edición "no persistía".
+      //  - Si NO trae id (lectura nueva del importador), upsert por la clave
+      //    compuesta (business_id, equipo_id, period_start, period_end).
+      const editId = textFrom(record, "id")
+      let data: Record<string, unknown> | null = null
+      let error: unknown = null
+      if (editId) {
+        const upd = await sb.from("csl_pulse_readings")
+          .update(row).eq("id", editId).eq("business_id", bizId).select().maybeSingle()
+        data = upd.data as Record<string, unknown> | null
+        error = upd.error
+        if (!error && !data) {
+          throw new Error("No se actualizó la lectura: no se encontró la fila (o pertenece a otro negocio). Recarga y reintenta.")
+        }
+      } else {
+        const ups = await sb.from("csl_pulse_readings")
+          .upsert(row, { onConflict: "business_id,equipo_id,period_start,period_end" }).select().maybeSingle()
+        data = ups.data as Record<string, unknown> | null
+        error = ups.error
+      }
       if (error) throw error
       if (!data) throw new Error("La lectura no se actualizó (0 filas afectadas).")
 
