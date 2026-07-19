@@ -77,6 +77,9 @@ export interface OperadoraResolver {
     /** Corrección manual guardada en la lectura (operadora_corregida). */
     operadoraCorregida?: unknown
   }): OperadoraResolucion
+  /** Equipo (EquipoID del catálogo) asignado a una operadora en una sucursal.
+   *  Prefiere la máquina real (con serie) sobre placeholders. "" si no hay. */
+  equipoDeOperadora(sucursal: unknown, operadora: unknown): string
 }
 
 /**
@@ -86,6 +89,9 @@ export interface OperadoraResolver {
 export function buildOperadoraResolver(equipos: Equipo[] | undefined | null): OperadoraResolver {
   const byEquipo = new Map<string, string>()
   const byCabina = new Map<string, string>()
+  // Inverso: operadora → equipo del catálogo (para mostrar el equipo del operador
+  // en Auditoría). Prefiere la máquina REAL (con serie) sobre placeholders C-XX.
+  const equipoByOperadora = new Map<string, { label: string; serie: boolean }>()
 
   for (const e of equipos || []) {
     const oficial = normalizeOperadora(e?.Operadora)
@@ -100,6 +106,14 @@ export function buildOperadoraResolver(equipos: Equipo[] | undefined | null): Op
     if (!CABINA_NO_ASIGNA.has(cab)) {
       const k = `${suc}|${cab}`
       if (!byCabina.has(k)) byCabina.set(k, oficial)
+    }
+    // Operadora → equipo. Prefiere el que tiene serie (máquina real).
+    const label = String(e?.EquipoID ?? "").trim()
+    if (label) {
+      const hasSerie = !!String(e?.Serie ?? "").trim()
+      const k = `${suc}|${oficial}`
+      const prev = equipoByOperadora.get(k)
+      if (!prev || (hasSerie && !prev.serie)) equipoByOperadora.set(k, { label, serie: hasSerie })
     }
   }
 
@@ -155,6 +169,12 @@ export function buildOperadoraResolver(equipos: Equipo[] | undefined | null): Op
         mismatch: false,
         observacion: excel ? "Operadora tomada del archivo por falta de asignación oficial." : "",
       }
+    },
+    equipoDeOperadora(sucursal, operadora) {
+      const suc = normalizeSucursal(sucursal)
+      const op = normalizeOperadora(operadora)
+      if (!suc || !op) return ""
+      return equipoByOperadora.get(`${suc}|${op}`)?.label || ""
     },
   }
 }

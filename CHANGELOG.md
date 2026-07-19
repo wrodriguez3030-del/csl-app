@@ -18,6 +18,18 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.67.2] — 2026-07-19
+
+### Fixed
+- **Auditoría PULSE · columna "Eq."** ahora muestra el equipo que el operador tiene
+  asignado en el catálogo de **Equipos** (`csl_equipos`), no el `equipo_id` crudo de
+  la lectura (que a veces viene mal del archivo). El resolver `operadora-oficial`
+  expone `equipoDeOperadora(sucursal, operadora)` (prefiere la máquina real con
+  serie sobre placeholders). Aplica a la tabla, el orden, el Excel y el modal de
+  edición. Ej.: ASHLEY ahora muestra su equipo 1 (no 4), ROSA el 4 (no 6).
+
+---
+
 ## [0.67.1] — 2026-07-19
 
 ### Fixed

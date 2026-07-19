@@ -289,6 +289,10 @@ export function PulsosAuditoriaPage() {
         operadoraMismatch: opRes.mismatch,
         operadoraObs: opRes.observacion,
         equipo: r.equipo_id || "",
+        // Eq. a MOSTRAR: el equipo que el operador tiene asignado en el catálogo
+        // de Equipos (csl_equipos), no el equipo_id crudo de la lectura (que puede
+        // venir mal del archivo). Fallback al equipo_id si no hay asignación.
+        equipoMostrar: operadoraResolver.equipoDeOperadora(r.sucursal, opRes.operadora) || String(r.equipo_id || ""),
         serial: r.serial || "",
         pulsosInicio,
         pulsosFin,
@@ -413,7 +417,7 @@ export function PulsosAuditoriaPage() {
           case "sucursal": va = a.sucursal; vb = b.sucursal; break
           case "cabina": va = Number(a.cabina); vb = Number(b.cabina); break
           case "operadora": va = a.operadora; vb = b.operadora; break
-          case "equipo": va = a.equipo; vb = b.equipo; break
+          case "equipo": va = a.equipoMostrar ?? a.equipo; vb = b.equipoMostrar ?? b.equipo; break
           case "pulsosInicio": va = a.pulsosInicio; vb = b.pulsosInicio; break
           case "pulsosFin": va = a.pulsosFin; vb = b.pulsosFin; break
           case "dispLaser": va = a.dispLaser; vb = b.dispLaser; break
@@ -475,7 +479,7 @@ export function PulsosAuditoriaPage() {
     filtered.forEach(s => {
       rows.push(["Semana: " + s.fecha])
       s.rows.forEach((r: any) => {
-        rows.push([SUC_MAP[r.sucursal]||r.sucursal, r.cabina, r.operadora, r.equipo, r.serial,
+        rows.push([SUC_MAP[r.sucursal]||r.sucursal, r.cabina, r.operadora, r.equipoMostrar ?? r.equipo, r.serial,
           r.pulsosInicio, r.pulsosFin, r.dispLaser, r.operadora, r.dispOperador, r.diferencia, r.pct + "%"])
       })
       rows.push(["TOTAL","","","","",s.totPulsosInicio,s.totPulsosFin,s.totDispLaser,"",s.totDispOp,s.totDiferencia,""])
@@ -1062,7 +1066,7 @@ export function PulsosAuditoriaPage() {
                         )}
                       </span>
                     </td>
-                    <td className="px-2 py-2 text-center font-mono text-xs">{r.equipo}</td>
+                    <td className="px-2 py-2 text-center font-mono text-xs">{r.equipoMostrar ?? r.equipo}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs text-muted-foreground">{r.faltaInicial ? <span className="text-amber-500" title="No hay lectura anterior para encadenar el inicio">Falta lectura inicial</span> : (r.pulsosInicio > 0 ? fmtN(r.pulsosInicio) : "-")}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs text-muted-foreground">{r.pulsosFin > 0 ? fmtN(r.pulsosFin) : "-"}</td>
                     <td className="px-3 py-2 text-right font-mono text-sm font-bold">{r.faltaInicial ? "-" : (r.faltaFinal ? <span className="text-amber-500 text-xs font-normal" title="La lectura final de la semana no avanzó respecto al inicio; falta capturar la lectura del equipo de esta semana">Falta lectura final</span> : fmtN(r.dispLaser))}</td>
@@ -1134,7 +1138,7 @@ export function PulsosAuditoriaPage() {
             <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
               <p className="font-semibold">{resolveOperadoraNombre(editForm.operadora) || resolveOperadoraNombre(editRow?.operadora) || "-"}</p>
               <p className="text-xs text-muted-foreground">
-                {editRow?.sucursal || "-"} · Cabina {editRow?.cabina || "-"} · Equipo {editRow?.equipo || "-"}
+                {editRow?.sucursal || "-"} · Cabina {editRow?.cabina || "-"} · Equipo {editRow?.equipoMostrar ?? editRow?.equipo ?? "-"}
               </p>
             </div>
             <div className="grid grid-cols-2 gap-3">
