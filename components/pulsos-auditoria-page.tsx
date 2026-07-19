@@ -1,7 +1,7 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
-import { useAppStore } from "@/lib/store"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { useAppStore, invalidateReadCache } from "@/lib/store"
 import { loadXLSX } from "@/lib/load-xlsx"
 import { SeqBadge } from "@/components/seq-badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -99,7 +99,7 @@ function auditManualSessionId(fecha: string, sucursal: string, equipo: string, o
 }
 
 export function PulsosAuditoriaPage() {
-  const { db, dbPulsos, setDbPulsos, apiUrl, showToast, setIsLoading, setLoadingMessage } = useAppStore()
+  const { db, dbPulsos, setDbPulsos, apiUrl, showToast, setIsLoading, setLoadingMessage, incrementFormOpen, decrementFormOpen } = useAppStore()
   // Resolver de operadora OFICIAL (catálogo de equipos, ya filtrado por
   // business_id activo en el backend). La operadora mostrada sale de aquí, no
   // del Excel. Ver lib/operadora-oficial.ts.
@@ -137,6 +137,15 @@ export function PulsosAuditoriaPage() {
   const [sortDir, setSortDir] = useState<"asc"|"desc">("asc")
   const [editRow, setEditRow] = useState<any | null>(null)
   const [editForm, setEditForm] = useState({ operadora: "", pulsosInicio: 0, pulsosFin: 0, dispOperador: 0, observaciones: "" })
+  // Mientras el modal de edición esté abierto, marca "formulario abierto" para
+  // que el auto-refresh (cada 60s) NO recargue y sobrescriba la edición con datos
+  // previos (causa de "dice guardado pero no se guarda"). El guardado ya persiste
+  // en la BD; esto evita que una recarga en vuelo pise el valor en pantalla.
+  useEffect(() => {
+    if (!editRow) return
+    incrementFormOpen()
+    return () => decrementFormOpen()
+  }, [editRow, incrementFormOpen, decrementFormOpen])
   const syncApi = async (params: Record<string, string>) => {
     try {
       const { apiJsonp, normalizeApiUrl } = await import("@/lib/store")
@@ -671,6 +680,7 @@ export function PulsosAuditoriaPage() {
           ...dbPulsos,
           pulseReadings: (dbPulsos.pulseReadings ?? []).filter(p => p.id !== row.lecturaId),
         })
+        invalidateReadCache("getAllPulsosData")
         showToast("Lectura eliminada", "success")
       } catch (err) {
         showToast("Error al eliminar: " + (err instanceof Error ? err.message : String(err)), "error")
@@ -801,6 +811,9 @@ export function PulsosAuditoriaPage() {
               : r,
           ),
         })
+        // Invalida el snapshot cacheado (getAllPulsosData, 30s) para que la
+        // próxima recarga automática NO sobrescriba la edición con datos viejos.
+        invalidateReadCache("getAllPulsosData")
         showToast("Guardado correctamente", "success")
         setEditRow(null)
       } catch (err) {
@@ -879,6 +892,7 @@ export function PulsosAuditoriaPage() {
           manualSesion,
         ],
       })
+      invalidateReadCache("getAllPulsosData")
       showToast("Auditoría actualizada en todo el sistema", "success")
       setEditRow(null)
     } catch (err) {

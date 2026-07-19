@@ -18,6 +18,18 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.67.3] — 2026-07-19
+
+### Fixed
+- **Auditoría PULSE · "dice guardado pero no se guarda"** (el valor volvía al
+  anterior tras guardar, aunque la BD sí persistía). Causa: una recarga automática
+  (cada 60s) que arrancaba ANTES del guardado aterrizaba DESPUÉS y sobrescribía el
+  valor en pantalla con datos previos. Ahora el modal de edición marca "formulario
+  abierto" (el auto-refresh se salta mientras editas) y se invalida el snapshot
+  cacheado tras guardar/eliminar, para que ninguna recarga en vuelo pise la edición.
+
+---
+
 ## [0.67.2] — 2026-07-19
 
 ### Fixed
