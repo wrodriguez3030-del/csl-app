@@ -18,6 +18,19 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.67.4] — 2026-07-19
+
+### Fixed
+- **Auditoría PULSE · guardar robusto**: si el `id` de la lectura que tiene el
+  navegador quedó desactualizado (p.ej. tras un re-import que regeneró la fila), el
+  update por id matcheaba 0 filas y el guardado fallaba. Ahora, si el update por id
+  no encuentra la fila, cae automáticamente a un upsert por la clave natural
+  (business_id, equipo_id, period_start, period_end), de modo que la edición
+  **siempre persiste** sin duplicar. Verificado: el UPDATE a nivel BD funciona; el
+  fallback cubre el caso de id obsoleto.
+
+---
+
 ## [0.67.3] — 2026-07-19
 
 ### Fixed

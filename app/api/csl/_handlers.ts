@@ -4721,15 +4721,18 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const editId = textFrom(record, "id")
       let data: Record<string, unknown> | null = null
       let error: unknown = null
+      // 1) Edición exacta por id (evita duplicar por desfase de fecha).
       if (editId) {
         const upd = await sb.from("csl_pulse_readings")
           .update(row).eq("id", editId).eq("business_id", bizId).select().maybeSingle()
         data = upd.data as Record<string, unknown> | null
         error = upd.error
-        if (!error && !data) {
-          throw new Error("No se actualizó la lectura: no se encontró la fila (o pertenece a otro negocio). Recarga y reintenta.")
-        }
-      } else {
+      }
+      // 2) Fallback: si no hubo id, o el id quedó DESACTUALIZADO (p.ej. tras un
+      //    re-import que regeneró la fila) y matcheó 0 filas, hacemos upsert por
+      //    la clave natural. Así la edición SIEMPRE persiste (nunca falla en
+      //    silencio) y sin duplicar: el período viene sin desfase desde el store.
+      if (!error && !data) {
         const ups = await sb.from("csl_pulse_readings")
           .upsert(row, { onConflict: "business_id,equipo_id,period_start,period_end" }).select().maybeSingle()
         data = ups.data as Record<string, unknown> | null
