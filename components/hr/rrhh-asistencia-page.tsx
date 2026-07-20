@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { EmployeeSelect } from "@/components/hr/employee-select"
 import { CalendarClock, Loader2, RefreshCw, FileSpreadsheet, AlertCircle, Eye, BarChart3, ChevronRight } from "lucide-react"
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts"
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, LabelList } from "recharts"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { exportHrReportExcel } from "@/lib/hr-report-excel"
 import { usePagination } from "@/lib/use-pagination"
@@ -210,14 +210,20 @@ export function RrhhAsistenciaPage() {
             </div>
             <div style={{ width: "100%", height: Math.max(220, porEmpleado.length * 38) }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={porEmpleado} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
+                <BarChart data={porEmpleado} layout="vertical" margin={{ top: 4, right: 36, left: 8, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                   <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
                   <YAxis type="category" dataKey="label" width={120} tick={{ fontSize: 11 }} />
                   <Tooltip />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="asistencias" name="Asistencias" fill="#0891b2" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="tardanzas" name="Tardanzas" fill="#dc2626" radius={[0, 4, 4, 0]} />
+                  {/* Número fijo al final de cada barra: cantidad de asistencias/tardanzas.
+                      Se ocultan los ceros para no ensuciar la gráfica ni pisar el eje. */}
+                  <Bar dataKey="asistencias" name="Asistencias" fill="#0891b2" radius={[0, 4, 4, 0]}>
+                    <LabelList dataKey="asistencias" position="right" formatter={(v: number | string) => (Number(v) > 0 ? v : "")} style={{ fontSize: 11, fontWeight: 700, fill: "#0e7490" }} />
+                  </Bar>
+                  <Bar dataKey="tardanzas" name="Tardanzas" fill="#dc2626" radius={[0, 4, 4, 0]}>
+                    <LabelList dataKey="tardanzas" position="right" formatter={(v: number | string) => (Number(v) > 0 ? v : "")} style={{ fontSize: 11, fontWeight: 700, fill: "#dc2626" }} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>

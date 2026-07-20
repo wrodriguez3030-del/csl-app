@@ -18,6 +18,17 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.68.4] — 2026-07-20
+
+### Added
+- **RR.HH. · Asistencia · números fijos en la gráfica**. La gráfica "Asistencia y
+  tardanza por empleado" ahora muestra la cantidad al final de cada barra (fijo,
+  siempre visible, sin depender del hover): asistencias en cian y tardanzas en rojo.
+  Los ceros se ocultan para no ensuciar la gráfica ni pisar el eje. Se amplió el
+  margen derecho para que no se corten los números.
+
+---
+
 ## [0.68.3] — 2026-07-20
 
 ### Fixed
