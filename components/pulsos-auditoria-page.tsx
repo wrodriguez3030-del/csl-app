@@ -199,19 +199,29 @@ export function PulsosAuditoriaPage() {
     // roto del import, p.ej. Depicenter 08-jun traía 642.194 en vez de 5.280.253).
     // Misma lógica para Cibao y Depicenter; Cibao ya encadena 1:1 así que no
     // cambia. Clave por sucursal+equipo (en modo "Todos" evita cruzar tenants).
+    // Encadenado por OPERADOR (no por equipo_id): la lectura FINAL de la semana
+    // anterior del operador es la INICIAL de la semana actual. Se usa el operador
+    // porque los equipos se reasignan entre operadores (un mismo equipo_id puede
+    // ser de otra persona otra semana), y encadenar por equipo tomaba el fin de
+    // otra máquina/operador → inicio disparatado.
     const prevFinalFor = (() => {
       const byKey = new Map<string, { ps: string; final: number }[]>()
       for (const r of (dbPulsos.pulseReadings ?? [])) {
         const ps = String(r.period_start || "").split("T")[0].trim()
         if (!ps || !/^\d{4}-\d{2}-\d{2}$/.test(ps)) continue
         if ((activeBusinessSlug === "csl" || activeBusinessSlug === "depicenter") && !sucursalAllowedForTenant(r.sucursal, activeBusinessSlug)) continue
-        const k = `${canonicalSucursal(r.sucursal) || r.sucursal}|${r.equipo_id}`
+        const opR = operadoraResolver.resolve({ sucursal: r.sucursal, cabina: r.cabina, equipo: r.equipo_id, operadoraExcel: r.operadora, operadoraCorregida: r.operadora_corregida })
+        const op = String(opR.operadora || "").toUpperCase().trim()
+        if (!op) continue // sin operador no se puede encadenar de forma fiable
+        const k = `${canonicalSucursal(r.sucursal) || r.sucursal}|${op}`
         if (!byKey.has(k)) byKey.set(k, [])
         byKey.get(k)!.push({ ps, final: Number(r.lectura_final) || 0 })
       }
       for (const arr of byKey.values()) arr.sort((a, b) => a.ps.localeCompare(b.ps))
-      return (sucursal: unknown, equipo: unknown, ps: string): number | null => {
-        const k = `${canonicalSucursal(sucursal) || sucursal}|${equipo}`
+      return (sucursal: unknown, operadora: unknown, ps: string): number | null => {
+        const op = String(operadora || "").toUpperCase().trim()
+        if (!op) return null
+        const k = `${canonicalSucursal(sucursal) || sucursal}|${op}`
         const arr = byKey.get(k)
         if (!arr) return null
         let prev: number | null = null
@@ -230,6 +240,14 @@ export function PulsosAuditoriaPage() {
       if ((activeBusinessSlug === "csl" || activeBusinessSlug === "depicenter") && !sucursalAllowedForTenant(r.sucursal, activeBusinessSlug)) {
         console.warn(`cross-tenant row blocked [${activeBusinessSlug}]:`, r.sucursal); continue
       }
+
+      // Operador resuelto (corrección manual > oficial del catálogo > Excel). Se
+      // calcula aquí porque el encadenado de pulsos (inicio = fin de la semana
+      // anterior) es POR OPERADOR.
+      const opRes = operadoraResolver.resolve({
+        sucursal: r.sucursal, cabina: r.cabina, equipo: r.equipo_id, operadoraExcel: r.operadora,
+        operadoraCorregida: r.operadora_corregida,
+      })
 
       // disp_operador con jerarquía de fuentes:
       //   1) reading.disp_operador (lo poblado por Cuadre semanal)
@@ -276,7 +294,7 @@ export function PulsosAuditoriaPage() {
       // Pulsos Inicio: encadenado desde la semana anterior. Si no hay semana
       // anterior, usar el lectura_inicial guardado (primera semana del equipo).
       // Si no hay ninguno → "Falta lectura inicial" y NO se calcula DISP LÁSER.
-      const prevFinal = prevFinalFor(r.sucursal, r.equipo_id, desde)
+      const prevFinal = prevFinalFor(r.sucursal, opRes.operadora, desde)
       const storedInicial = Number(r.lectura_inicial) || 0
       const pulsosFin = Number(r.lectura_final) || 0
       const pulsosInicio = prevFinal != null ? prevFinal : storedInicial
@@ -300,10 +318,6 @@ export function PulsosAuditoriaPage() {
 
       if (!map[desde]) map[desde] = []
       const cabinaRaw = String(r.cabina || "").trim()
-      const opRes = operadoraResolver.resolve({
-        sucursal: r.sucursal, cabina: cabinaRaw, equipo: r.equipo_id, operadoraExcel: r.operadora,
-        operadoraCorregida: r.operadora_corregida,
-      })
       map[desde].push({
         lecturaId: r.id,
         sourceTable: "pulse_readings",

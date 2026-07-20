@@ -18,6 +18,19 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.68.0] — 2026-07-20
+
+### Fixed
+- **Auditoría PULSE · el fin de la semana anterior ahora es el inicio de la actual,
+  encadenado por OPERADOR** (no por equipo_id). Los equipos se reasignan entre
+  operadores, así que encadenar por `equipo_id` tomaba el fin de otra máquina/
+  operador → inicio disparatado (ej. ASHLEY mostraba inicio 8,637,190 de la máquina
+  que antes usaba ROSA). Ahora el inicio de cada semana = la lectura final de la
+  semana anterior **del mismo operador** (ej. ASHLEY: 06-29 fin 733,532 → 07-06
+  inicio 733,532), y DISP LÁSER se recalcula sobre ese inicio correcto.
+
+---
+
 ## [0.67.5] — 2026-07-20
 
 ### Fixed
