@@ -19,9 +19,11 @@ import {
   Trash2,
   Users,
   XCircle,
+  PlugZap,
 } from "lucide-react"
 import type { Database, DatabasePulsos, TabId } from "@/lib/types"
 import { MENU_OPTIONS, getSessionUser, type MenuPermission, type SystemUser } from "@/lib/security"
+import { AgendaProConfigDialog } from "@/components/integrations/agendapro-config-dialog"
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const MIN_PASSWORD = 6
@@ -63,6 +65,7 @@ export function ConfigPage() {
   const [editingId, setEditingId] = useState("")
   const [isSaving, setIsSaving] = useState(false)
   const [deletingId, setDeletingId] = useState("")
+  const [agendaProConfigOpen, setAgendaProConfigOpen] = useState(false)
 
   /**
    * Snapshot de los permisos NO-admin del usuario en el formulario.
@@ -680,6 +683,30 @@ export function ConfigPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <PlugZap className="h-5 w-5 text-primary" />
+            Integración AgendaPro
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Configura el usuario y la clave de la API Pública de AgendaPro <b>por negocio</b> y
+            sincroniza los clientes hacia Clientes y Consentimientos. Cada negocio (Cibao,
+            Depicenter) usa su propia cuenta — los clientes no se mezclan entre negocios.
+          </p>
+          <Button variant="outline" onClick={() => setAgendaProConfigOpen(true)}>
+            <PlugZap className="mr-2 h-4 w-4" />Configurar AgendaPro
+          </Button>
+        </CardContent>
+      </Card>
+
+      <AgendaProConfigDialog
+        open={agendaProConfigOpen}
+        onOpenChange={setAgendaProConfigOpen}
+      />
     </div>
   )
 }

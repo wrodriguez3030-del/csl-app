@@ -18,6 +18,23 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.70.1] — 2026-07-20
+
+### Added
+- **Configurar AgendaPro también en Sistema › Configuración**. Se agregó una
+  tarjeta "Integración AgendaPro" en la página de Configuración con el botón
+  "Configurar AgendaPro" (además del botón en Clientes). El botón en Clientes ahora
+  es visible para cualquier usuario autenticado (la edición de credenciales sigue
+  gateada dentro del diálogo por el servidor) y también aparece en la barra de
+  estado de AgendaPro.
+
+### Fixed
+- Barra de estado de AgendaPro en Clientes: leía nombres de columna viejos
+  (`created_count`/`updated_count`) → mostraba 0. Ahora usa `created`/`updated`/
+  `errors` del endpoint `/status`.
+
+---
+
 ## [0.70.0] — 2026-07-20
 
 ### Added

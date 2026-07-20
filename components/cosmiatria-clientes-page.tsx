@@ -152,7 +152,7 @@ export function CosmiatriaClientesPage() {
   const canEditClientes = canMerge
   const [mergeOpen, setMergeOpen] = useState(false)
   const [agendaProSyncing, setAgendaProSyncing] = useState(false)
-  const [agendaProStatus, setAgendaProStatus] = useState<{ ready?: boolean; pending?: string | null; lastSync?: { finished_at?: string; started_at?: string; status?: string; created_count?: number; updated_count?: number; error_count?: number; error_message?: string } | null } | null>(null)
+  const [agendaProStatus, setAgendaProStatus] = useState<{ ready?: boolean; pending?: string | null; lastSync?: { finished_at?: string; started_at?: string; status?: string; created?: number; updated?: number; errors?: number } | null } | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importParsed, setImportParsed] = useState<{ clients: Record<string, unknown>[]; skipped: number; columnsDetected: string[]; warnings: string[] } | null>(null)
@@ -542,7 +542,7 @@ export function CosmiatriaClientesPage() {
           {canEditClientes ? (
             <Button variant="outline" onClick={exportCsv}><Download className="mr-2 h-4 w-4" />Descargar datos</Button>
           ) : null}
-          {canMerge ? (
+          {sessionUser ? (
             <Button variant="outline" onClick={() => setAgendaProConfigOpen(true)}>
               <PlugZap className="mr-2 h-4 w-4" />Configurar AgendaPro
             </Button>
@@ -574,19 +574,20 @@ export function CosmiatriaClientesPage() {
         </div>
       </div>
 
-      {agendaProStatus && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-xs">
-          <span className="font-semibold">AgendaPro:</span>
-          {agendaProStatus.ready
-            ? <Badge variant="outline" className="bg-green-500/15 text-green-600 border-green-300">Conectado</Badge>
-            : <Badge variant="outline" className="bg-amber-500/15 text-amber-700 border-amber-300">{agendaProStatus.pending || "Sin credenciales"}</Badge>}
-          {agendaProStatus.lastSync ? (
-            <span className="text-muted-foreground">
-              Última sync: {new Date(agendaProStatus.lastSync.finished_at || agendaProStatus.lastSync.started_at || "").toLocaleString("es-DO")} · {agendaProStatus.lastSync.created_count ?? 0} nuevos · {agendaProStatus.lastSync.updated_count ?? 0} actualizados{agendaProStatus.lastSync.error_count ? ` · ${agendaProStatus.lastSync.error_count} errores` : ""}
-            </span>
-          ) : <span className="text-muted-foreground">Sin sincronizaciones todavía</span>}
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-xs">
+        <span className="font-semibold">AgendaPro:</span>
+        {agendaProStatus?.ready
+          ? <Badge variant="outline" className="bg-green-500/15 text-green-600 border-green-300">Conectado</Badge>
+          : <Badge variant="outline" className="bg-amber-500/15 text-amber-700 border-amber-300">{agendaProStatus?.pending || "No configurado para este negocio"}</Badge>}
+        {agendaProStatus?.lastSync ? (
+          <span className="text-muted-foreground">
+            Última sync: {new Date(agendaProStatus.lastSync.finished_at || agendaProStatus.lastSync.started_at || "").toLocaleString("es-DO")} · {agendaProStatus.lastSync.created ?? 0} nuevos · {agendaProStatus.lastSync.updated ?? 0} actualizados{agendaProStatus.lastSync.errors ? ` · ${agendaProStatus.lastSync.errors} errores` : ""}
+          </span>
+        ) : <span className="text-muted-foreground">Sin sincronizaciones todavía</span>}
+        <Button size="sm" variant="ghost" className="ml-auto h-6 px-2 text-xs" onClick={() => setAgendaProConfigOpen(true)}>
+          <PlugZap className="mr-1 h-3.5 w-3.5" />Configurar
+        </Button>
+      </div>
 
       <MergeClientesDialog
         open={mergeOpen}
