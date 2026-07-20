@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AlertTriangle, ChevronLeft, FileSpreadsheet, Loader2, Save, Upload, UploadCloud, CheckCircle2, Trash2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { apiCall, normalizeApiUrl, useAppStore } from "@/lib/store"
+import { apiCall, apiJsonp, invalidateReadCache, normalizeApiUrl, useAppStore } from "@/lib/store"
+import type { DatabasePulsos } from "@/lib/types"
 import { fmtN } from "@/lib/fmt"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { loadXLSX } from "@/lib/load-xlsx"
@@ -94,6 +95,7 @@ export function PulsosCuadreSemanalPage() {
   const [manualPeriodEnd, setManualPeriodEnd] = useState("")
   const [dragOver, setDragOver] = useState(false)
   const [bulkProcessing, setBulkProcessing] = useState(false)
+  const [continuing, setContinuing] = useState(false)
 
   // Step 2 state
   const [reviewRows, setReviewRows] = useState<ReviewRow[]>([])
@@ -110,6 +112,40 @@ export function PulsosCuadreSemanalPage() {
   const dropInputRef = useRef<HTMLInputElement>(null)
 
   const pulseReadings = useMemo(() => dbPulsos.pulseReadings ?? [], [dbPulsos.pulseReadings])
+
+  // Carga lecturas frescas del tenant activo desde la BD (autoritativo) y
+  // actualiza el store. Devuelve el array fresco de pulseReadings para poder
+  // usarlo de inmediato sin esperar el re-render (setDbPulsos es asíncrono).
+  //
+  // CRÍTICO: esta página NO tenía carga propia — dependía del refresh global.
+  // Al entrar directo al Cuadre (o con el store desfasado tras cambiar de
+  // sucursal) `pulseReadings` quedaba vacío y la "lectura anterior" (inicial)
+  // salía en 0: "no me trae la lectura anterior".
+  const loadPulseReadings = useCallback(async (): Promise<PulseReading[] | null> => {
+    try {
+      invalidateReadCache("getAllPulsosData")
+      const p = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getAllPulsosData" }) as Record<string, unknown>
+      if (p && p.ok) {
+        const fresh: DatabasePulsos = {
+          operadoras: (p.operadoras as DatabasePulsos["operadoras"]) || [],
+          lecturasSemanales: (p.lecturasSemanales as DatabasePulsos["lecturasSemanales"]) || [],
+          sesionesCliente: (p.sesionesCliente as DatabasePulsos["sesionesCliente"]) || [],
+          auditoriasSemanales: (p.auditoriasSemanales as DatabasePulsos["auditoriasSemanales"]) || [],
+          pulseReadings: (p.pulseReadings as DatabasePulsos["pulseReadings"]) || [],
+          operatorShots: (p.operatorShots as DatabasePulsos["operatorShots"]) || [],
+        }
+        setDbPulsos(fresh)
+        return fresh.pulseReadings
+      }
+    } catch { /* si falla, se conserva el store actual */ }
+    return null
+  }, [apiUrl, setDbPulsos])
+
+  // Al montar y al cambiar de tenant: traer lecturas frescas para que el
+  // histórico (lectura anterior) esté disponible antes de subir el archivo.
+  useEffect(() => {
+    void loadPulseReadings()
+  }, [loadPulseReadings, business.slug])
 
   const apiCallLocal = (params: Record<string, string | number | boolean>) =>
     apiCall(normalizeApiUrl(apiUrl), params)
@@ -320,11 +356,11 @@ export function PulsosCuadreSemanalPage() {
     await processFiles(files)
   }
 
-  const buildReviewRows = (): ReviewRow[] => {
+  const buildReviewRows = (readings: PulseReading[] = pulseReadings): ReviewRow[] => {
     const { start: periodStart, end: periodEnd } = effectivePeriod
     const rows: ReviewRow[] = (lecturasFile?.result.rows ?? []).map(row => {
       const { value: lectura_inicial, source: lectura_inicial_source } = calculateLecturaInicial(
-        pulseReadings, row.equipo_id, periodStart || new Date().toISOString().slice(0, 10),
+        readings, row.equipo_id, periodStart || new Date().toISOString().slice(0, 10),
       )
       const disp_laser = row.pulsos - lectura_inicial
       return { ...row, lectura_inicial, lectura_inicial_source, disp_laser }
@@ -403,15 +439,24 @@ export function PulsosCuadreSemanalPage() {
     }
   }
 
-  const handleContinuar = () => {
+  const handleContinuar = async () => {
     // Aceptar cualquiera de los dos archivos como entrada válida.
     if (!lecturasFile && !agendaFile) return
     if (!effectivePeriod.start || !effectivePeriod.end) {
       showToast("Indica el período de la semana", "error")
       return
     }
-    setReviewRows(buildReviewRows())
-    setStep(2)
+    // Garantizar histórico fresco del tenant ANTES de calcular la lectura
+    // inicial, para que "Inicio = Fin de la semana anterior" siempre resuelva.
+    // Si la recarga falla, caemos al store en memoria (buildReviewRows default).
+    setContinuing(true)
+    try {
+      const fresh = await loadPulseReadings()
+      setReviewRows(buildReviewRows(fresh ?? undefined))
+      setStep(2)
+    } finally {
+      setContinuing(false)
+    }
   }
 
   // ── Paso 2: Revisar y guardar ───────────────────────────────────────────────
@@ -852,8 +897,9 @@ export function PulsosCuadreSemanalPage() {
             <div className="flex justify-end">
               <Button
                 onClick={handleContinuar}
-                disabled={!lecturasFile && !agendaFile}
+                disabled={(!lecturasFile && !agendaFile) || continuing}
               >
+                {continuing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Continuar →
               </Button>
             </div>

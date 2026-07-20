@@ -18,6 +18,23 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.68.3] — 2026-07-20
+
+### Fixed
+- **Cuadre Semanal · "no me trae la lectura anterior"**. La pantalla de Cuadre no
+  cargaba lecturas propias: dependía del refresh global del store. Al entrar directo
+  al Cuadre —o con el store desfasado tras cambiar de sucursal (Depicenter)— el
+  histórico `pulseReadings` quedaba vacío y la "lectura anterior" (inicial) salía en
+  0, mostrando los pulsos completos como disparos. Ahora la página carga lecturas
+  frescas del tenant activo desde la BD al montar y al cambiar de sucursal, y además
+  `Continuar →` garantiza histórico fresco ANTES de calcular la inicial (regla
+  "Inicio = Fin de la semana anterior"). La lógica `calculateLecturaInicial` ya era
+  correcta; el fallo era de datos no cargados. Verificado de punta a punta con el
+  archivo real `13_18_Julio_2026.xlsx` de Depicenter (eq1 5.443.919, eq2 1.500.922,
+  eq3 1.928.473).
+
+---
+
 ## [0.68.2] — 2026-07-20
 
 ### Fixed
