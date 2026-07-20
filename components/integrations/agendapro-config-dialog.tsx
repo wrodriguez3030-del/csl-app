@@ -10,6 +10,7 @@ import { Loader2, KeyRound, PlugZap, RefreshCw, CheckCircle2, XCircle, ShieldChe
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { businessIdForSlug } from "@/lib/business"
 import { useAppStore } from "@/lib/store"
+import { runFullAgendaProSync } from "@/lib/agendapro-full-sync"
 
 interface CredStatus {
   configured: boolean
@@ -74,6 +75,7 @@ export function AgendaProConfigDialog({
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [syncProgress, setSyncProgress] = useState<{ page: number; read: number; created: number; updated: number } | null>(null)
 
   const loadStatus = useCallback(async () => {
     setLoading(true)
@@ -132,24 +134,30 @@ export function AgendaProConfigDialog({
     } finally { setTesting(false) }
   }
 
+  // Sincroniza TODAS las páginas de AgendaPro en tandas cortas (helper
+  // compartido). Muestra progreso en vivo.
   const sync = async () => {
     setSyncing(true)
+    setSyncProgress({ page: 0, read: 0, created: 0, updated: 0 })
     try {
       const headers = await authHeaders()
-      const r = await fetch("/api/integrations/agendapro/sync-clients", {
-        method: "POST", headers, body: JSON.stringify({ activeBusinessId }),
-      })
-      const j = await r.json() as { ok?: boolean; error?: string; totalAgendaPro?: number; created?: number; updated?: number; duplicates?: number; skipped?: number; errors?: number }
-      if (!j?.ok) { showToast(j?.error || "Error al sincronizar.", "error"); return }
-      showToast(
-        `Clientes sincronizados: ${j.totalAgendaPro || 0} leídos · ${j.created || 0} nuevos · ${j.updated || 0} actualizados · ${j.duplicates || 0} duplicados · ${j.skipped || 0} omitidos · ${j.errors || 0} errores.`,
-        (j.errors || 0) > 0 ? "info" : "success",
-      )
+      const acc = await runFullAgendaProSync({ activeBusinessId, authHeaders: headers, onProgress: setSyncProgress })
+      if (acc.error) {
+        showToast(acc.error, "error")
+      } else {
+        showToast(
+          `Sincronización completa: ${acc.read} leídos · ${acc.created} nuevos · ${acc.updated} actualizados · ${acc.duplicates} duplicados · ${acc.errors} errores.`,
+          acc.errors > 0 ? "info" : "success",
+        )
+      }
       onSynced?.()
       await loadStatus()
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Error al sincronizar", "error")
-    } finally { setSyncing(false) }
+    } finally {
+      setSyncing(false)
+      setSyncProgress(null)
+    }
   }
 
   const busy = saving || testing || syncing
@@ -208,9 +216,21 @@ export function AgendaProConfigDialog({
                 {testing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <PlugZap className="mr-1.5 h-4 w-4" />}Probar conexión
               </Button>
               <Button variant="secondary" onClick={sync} disabled={busy || !cred?.configured}>
-                {syncing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}Sincronizar clientes
+                {syncing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}Sincronizar todos
               </Button>
             </div>
+            {syncProgress && (
+              <div className="rounded-lg border border-teal-200 bg-teal-50/60 px-3 py-2 text-xs text-teal-800">
+                <span className="flex items-center gap-2 font-medium">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Sincronizando… trayendo todas las páginas de AgendaPro
+                </span>
+                <div className="mt-1 text-teal-700">
+                  Página {syncProgress.page} · {syncProgress.read} leídos · {syncProgress.created} nuevos · {syncProgress.updated} actualizados
+                </div>
+                <div className="mt-0.5 text-[10px] text-teal-600">No cierres esta ventana hasta terminar.</div>
+              </div>
+            )}
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">No tienes permiso para configurar las credenciales. Contacta a un administrador.</p>

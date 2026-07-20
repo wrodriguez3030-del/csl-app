@@ -18,6 +18,22 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.71.0] — 2026-07-20
+
+### Fixed
+- **AgendaPro · sincronización completa de TODOS los clientes**. Antes el sync
+  traía solo las primeras páginas (una llamada completa chocaba con el límite de
+  tiempo de la función y el botón siempre empezaba en la página 1 → "0 nuevos ·
+  150 actualizados"), dejando clientes sin migrar (p.ej. Depicenter 1.449 de
+  2.842). Ahora "Sincronizar todos" (diálogo) y "Sincronizar directamente con la
+  API" (barra) recorren **todas las páginas en tandas cortas** con progreso en
+  vivo, avanzando hasta que AgendaPro deja de devolver datos (`reachedEnd`) o de
+  avanzar (guardia por `firstId` repetido). Lógica compartida en
+  `lib/agendapro-full-sync.ts`. El endpoint `sync-clients` ahora devuelve
+  `reachedEnd` y `firstId` para orquestar el recorrido.
+
+---
+
 ## [0.70.1] — 2026-07-20
 
 ### Added

@@ -96,6 +96,7 @@ export async function POST(request: Request) {
       let clients: Array<Record<string, unknown>> = []
       let pagesRead = 0
       let lastPageWithData = 0
+      let reachedEnd = false
       let diagnostic: Record<string, unknown> = {}
 
       if (search) {
@@ -120,12 +121,13 @@ export async function POST(request: Request) {
           pagesRead++
           if (batch.length === 0) {
             // AgendaPro ya no tiene más datos — paramos acá.
+            reachedEnd = true
             break
           }
           lastPageWithData = currentPage
           clients.push(...batch)
         }
-        diagnostic = { startPage: singlePage, pagesPerTick, pagesRead, lastPageWithData }
+        diagnostic = { startPage: singlePage, pagesPerTick, pagesRead, lastPageWithData, reachedEnd }
       } else {
         const pagedResult = await fetchAllAgendaProClients(cfg)
         pagesRead = pagedResult.pagesRead
@@ -162,10 +164,15 @@ export async function POST(request: Request) {
           .eq("sync_id", syncId)
       }
 
+      const firstRaw = clients[0] as Record<string, unknown> | undefined
+      const firstId = firstRaw ? String(firstRaw.id ?? firstRaw.client_id ?? firstRaw.uuid ?? "") : ""
+
       return json({
         ok: true,
         pagesRead,
         lastPageWithData,
+        reachedEnd,
+        firstId,
         diagnostic,
         totalAgendaPro: summary.total,
         created: summary.created,

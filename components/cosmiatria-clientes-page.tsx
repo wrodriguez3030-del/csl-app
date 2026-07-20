@@ -24,6 +24,7 @@ import { useSessionUser } from "@/hooks/use-session-user"
 import { MergeClientesDialog } from "@/components/merge-clientes-dialog"
 import { AgendaProConfigDialog } from "@/components/integrations/agendapro-config-dialog"
 import { businessIdForSlug } from "@/lib/business"
+import { runFullAgendaProSync } from "@/lib/agendapro-full-sync"
 import { PlugZap } from "lucide-react"
 
 interface HistorialPayload {
@@ -152,6 +153,7 @@ export function CosmiatriaClientesPage() {
   const canEditClientes = canMerge
   const [mergeOpen, setMergeOpen] = useState(false)
   const [agendaProSyncing, setAgendaProSyncing] = useState(false)
+  const [agendaProProgress, setAgendaProProgress] = useState<{ read: number; created: number } | null>(null)
   const [agendaProStatus, setAgendaProStatus] = useState<{ ready?: boolean; pending?: string | null; lastSync?: { finished_at?: string; started_at?: string; status?: string; created?: number; updated?: number; errors?: number } | null } | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
@@ -379,48 +381,6 @@ export function CosmiatriaClientesPage() {
   }, [activeBusinessId])
   useEffect(() => { void loadAgendaProStatus() }, [loadAgendaProStatus])
 
-  const runAgendaProSync = async (search: string) => {
-    setAgendaProSyncing(true)
-    try {
-      const { data: { session } } = await import("@/lib/supabase-client").then((m) => m.supabaseBrowser.auth.getSession())
-      if (!session?.access_token) throw new Error("Sesión no válida — vuelve a iniciar sesión")
-      const res = await fetch("/api/integrations/agendapro/sync-clients", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        // Con búsqueda → una página puntual. Sin búsqueda → páginas iniciales
-        // (clientes más nuevos) acotadas para no hacer timeout (la paginación
-        // completa excede el límite de la función). El cron cubre el resto a diario.
-        // activeBusinessId viaja SIEMPRE → el sync usa el tenant seleccionado.
-        body: JSON.stringify(search.trim() ? { search: search.trim(), activeBusinessId } : { page: 1, pagesPerTick: 5, activeBusinessId }),
-      })
-      const data = await res.json() as {
-        ok?: boolean; code?: string; error?: string;
-        pagesRead?: number; diagnostic?: { ignoredPagination?: boolean };
-        totalAgendaPro?: number; created?: number; updated?: number;
-        skipped?: number; duplicates?: number; errors?: number;
-      }
-      if (!data?.ok) {
-        showToast(data?.error || `Error al sincronizar AgendaPro (${res.status})`, "error")
-        return
-      }
-      const pagesMsg = data.pagesRead ? `${data.pagesRead} ${data.pagesRead === 1 ? "página leída" : "páginas leídas"} · ` : ""
-      const warnPag = data.diagnostic?.ignoredPagination ? " ⚠ AgendaPro ignoró ?page — devolvió siempre los mismos clientes." : ""
-      showToast(
-        `Sync OK: ${pagesMsg}${data.totalAgendaPro || 0} leídos · ${data.created || 0} nuevos · ${data.updated || 0} actualizados · ${data.duplicates || 0} duplicados · ${data.skipped || 0} omitidos · ${data.errors || 0} errores.${warnPag}`,
-        data.diagnostic?.ignoredPagination ? "info" : "success",
-      )
-      await loadData()
-    } catch (syncErr) {
-      showToast(syncErr instanceof Error ? syncErr.message : "Error al sincronizar AgendaPro", "error")
-    } finally {
-      setAgendaProSyncing(false)
-      void loadAgendaProStatus()
-    }
-  }
-
   const handleAgendaProSync = () => {
     setImportFile(null)
     setImportParsed(null)
@@ -429,14 +389,37 @@ export function CosmiatriaClientesPage() {
   }
 
   // Sincronización directa contra la API de AgendaPro desde la barra superior.
-  // Si el negocio no tiene credenciales configuradas, avisamos sin llamar.
+  // Recorre TODAS las páginas en tandas (helper compartido) hasta el final —
+  // así sí se migran todos los clientes, no solo las primeras páginas.
   const runApiSyncDirect = async () => {
     if (agendaProSyncing) return
     if (agendaProStatus && agendaProStatus.ready === false) {
       showToast("No hay credenciales AgendaPro configuradas para este negocio.", "error")
       return
     }
-    await runAgendaProSync("")
+    setAgendaProSyncing(true)
+    setAgendaProProgress(null)
+    try {
+      const { data: { session } } = await import("@/lib/supabase-client").then((m) => m.supabaseBrowser.auth.getSession())
+      if (!session?.access_token) throw new Error("Sesión no válida — vuelve a iniciar sesión")
+      const acc = await runFullAgendaProSync({
+        activeBusinessId,
+        authHeaders: { Authorization: `Bearer ${session.access_token}` },
+        onProgress: (p) => setAgendaProProgress({ read: p.read, created: p.created }),
+      })
+      if (acc.error) { showToast(acc.error, "error"); return }
+      showToast(
+        `Sincronización completa: ${acc.read} leídos · ${acc.created} nuevos · ${acc.updated} actualizados · ${acc.duplicates} duplicados · ${acc.errors} errores.`,
+        acc.errors > 0 ? "info" : "success",
+      )
+      await loadData()
+    } catch (syncErr) {
+      showToast(syncErr instanceof Error ? syncErr.message : "Error al sincronizar AgendaPro", "error")
+    } finally {
+      setAgendaProSyncing(false)
+      setAgendaProProgress(null)
+      void loadAgendaProStatus()
+    }
   }
 
   const handleImportFile = async (file: File) => {
@@ -584,6 +567,12 @@ export function CosmiatriaClientesPage() {
             Última sync: {new Date(agendaProStatus.lastSync.finished_at || agendaProStatus.lastSync.started_at || "").toLocaleString("es-DO")} · {agendaProStatus.lastSync.created ?? 0} nuevos · {agendaProStatus.lastSync.updated ?? 0} actualizados{agendaProStatus.lastSync.errors ? ` · ${agendaProStatus.lastSync.errors} errores` : ""}
           </span>
         ) : <span className="text-muted-foreground">Sin sincronizaciones todavía</span>}
+        {agendaProProgress && (
+          <span className="flex items-center gap-1 text-teal-700">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Sincronizando… {agendaProProgress.read} leídos · {agendaProProgress.created} nuevos
+          </span>
+        )}
         <Button size="sm" variant="ghost" className="ml-auto h-6 px-2 text-xs" onClick={() => setAgendaProConfigOpen(true)}>
           <PlugZap className="mr-1 h-3.5 w-3.5" />Configurar
         </Button>
@@ -1072,7 +1061,7 @@ export function CosmiatriaClientesPage() {
                   disabled={agendaProSyncing}
                   onClick={async () => {
                     setImportOpen(false)
-                    await runAgendaProSync("")
+                    await runApiSyncDirect()
                   }}
                 >
                   <RefreshCw className="h-3 w-3" />
