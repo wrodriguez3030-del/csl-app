@@ -74,9 +74,21 @@ export function detectPeriodFromFilename(filename: string): { start: string; end
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function parseEquiposDashboard(XLSX: any, workbook: any, filename: string): EquiposDashboardResult {
   const warnings: string[] = []
-  const sheetName: string | undefined = workbook.SheetNames.find((n: string) => n.toLowerCase() === "equipos")
+  // Hoja por nombre ("Equipos" o "Lecturas"); si no, la primera hoja cuyo header
+  // (filas 1-10) tenga "Equipo" en la columna A (export con la hoja renombrada).
+  let sheetName: string | undefined = workbook.SheetNames.find(
+    (n: string) => { const l = n.trim().toLowerCase(); return l === "equipos" || l === "lecturas" },
+  )
   if (!sheetName) {
-    warnings.push("No se encontró hoja 'Equipos'")
+    for (const n of workbook.SheetNames as string[]) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const m = XLSX.utils.sheet_to_json(workbook.Sheets[n], { header: 1, defval: "" }) as any[][]
+      const hit = m.slice(0, 10).some((row) => ["equipo", "equipo_id", "equipoid"].includes(String((row || [])[0] ?? "").trim().toLowerCase()))
+      if (hit) { sheetName = n; break }
+    }
+  }
+  if (!sheetName) {
+    warnings.push("No se encontró hoja 'Equipos'/'Lecturas' (ni una hoja con 'Equipo' en la columna A)")
     return { period_start: "", period_end: "", period_label: "", rows: [], warnings, period_detected_from: 'manual' }
   }
 

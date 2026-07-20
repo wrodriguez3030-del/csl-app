@@ -203,7 +203,7 @@ export function PulsosCuadreSemanalPage() {
     const XLSX = await loadXLSX() as any
     const buf = await file.arrayBuffer()
     const wb = XLSX.read(buf, { type: "array" })
-    const type = detectPulseFileType(wb)
+    const type = detectPulseFileType(wb, XLSX)
     if (type === "equipos") {
       const result = parseEquiposDashboard(XLSX, wb, file.name)
       if (!result.rows.length) {

@@ -22,11 +22,25 @@ type XlsxUtilsLike = {
 
 /**
  * Detecta el tipo de archivo por las hojas que contiene.
+ *
+ * Lecturas/Equipos: hoja llamada "Equipos" o "Lecturas". Si el nombre de la hoja
+ * es otro, se detecta por COLUMNAS (un header con "Equipo" + "Pulsos") — así un
+ * export con la hoja renombrada ("Lecturas", "Reporte", etc.) igual se reconoce.
  */
-export function detectPulseFileType(wb: WorkbookLike): DetectedFileType {
-  const sheets = wb.SheetNames.map((s) => s.toLowerCase())
+export function detectPulseFileType(wb: WorkbookLike, xlsx?: XlsxUtilsLike): DetectedFileType {
+  const sheets = wb.SheetNames.map((s) => s.trim().toLowerCase())
   if (sheets.some((s) => s.includes("detalle") && s.includes("disparos"))) return "agendapro"
-  if (sheets.includes("equipos")) return "equipos"
+  if (sheets.some((s) => s === "equipos" || s === "lecturas")) return "equipos"
+  // Fallback por columnas: cualquier hoja cuyo encabezado tenga "equipo" + "pulsos".
+  if (xlsx) {
+    for (const name of wb.SheetNames) {
+      const m = xlsx.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: "" })
+      for (let i = 0; i < Math.min(m.length, 10); i++) {
+        const hdr = (m[i] as unknown[] | undefined || []).map((h) => String(h ?? "").trim().toLowerCase())
+        if (hdr.includes("equipo") && hdr.includes("pulsos")) return "equipos"
+      }
+    }
+  }
   return "unknown"
 }
 

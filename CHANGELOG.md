@@ -18,6 +18,20 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.68.2] — 2026-07-20
+
+### Fixed
+- **Cuadre Semanal · "formato no reconocido" con archivos de lecturas válidos**. El
+  detector solo aceptaba una hoja llamada exactamente "Equipos"; los reportes de
+  pulsos vienen con la hoja llamada **"Lecturas"** (mismas columnas: Equipo, Serial,
+  Sucursal, Cabina, Operadora, Pulsos, Estado, Fallas). Ahora `detectPulseFileType`
+  y `parseEquiposDashboard` reconocen la hoja **"Equipos" o "Lecturas"** y, como
+  respaldo, **cualquier hoja cuyo encabezado tenga "Equipo" + "Pulsos"** (aunque esté
+  renombrada). Verificado con el archivo real de Depicenter (13_18_Julio_2026.xlsx):
+  3 equipos parseados correctamente.
+
+---
+
 ## [0.68.1] — 2026-07-20
 
 ### Fixed
