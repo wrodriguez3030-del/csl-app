@@ -18,6 +18,36 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.69.0] — 2026-07-20
+
+### Added
+- **RR.HH. · Asistencia · gráfica profesional "Asistencia y tardanza por empleado"**.
+  Se reemplazó la gráfica básica de Recharts por una visualización premium propia
+  (`components/hr/attendance-delay-chart.tsx`, sin librerías nuevas) con:
+  - **3 KPIs superiores**: Total asistencias (teal), Total tardanzas (coral) y
+    Promedio por empleado (2 decimales, azul) — todos calculados de datos reales del
+    período/sucursal (0 sin romper si no hay datos).
+  - **Filas por empleado**: avatar circular con iniciales, nombre abreviado de forma
+    profesional (Angélica María J., María Xaviera A. — sin cortar feo con "…"), barra
+    teal de asistencias y barra coral de tardanzas, con el número al final de cada
+    barra.
+  - **Orden**: asistencias desc → tardanzas desc → nombre asc.
+  - **Resaltado de alerta**: empleados con ≥3 tardanzas en fondo rojo muy suave y
+    número en rojo fuerte.
+  - **Leyenda** arriba a la derecha, **eje inferior** con escala y etiqueta "Número de
+    días", gridlines punteadas.
+  - **Tooltip** por fila: empleado, asistencias, tardanzas, período y tasa de tardanza.
+  - **Responsive**: filas amplias en desktop; en móvil se apilan como tarjetas sin
+    cortar nombres ni barras y sin scroll horizontal.
+  - **Estado vacío profesional** ("No hay datos de asistencia para este período." +
+    botón Actualizar) en lugar de una gráfica rota.
+  Respeta business_id, rango de fechas, sucursal y permisos (Cibao no ve Depicenter).
+
+### Removed
+- Dependencia de Recharts en la pantalla de Asistencia (la gráfica ahora es CSS puro).
+
+---
+
 ## [0.68.4] — 2026-07-20
 
 ### Added

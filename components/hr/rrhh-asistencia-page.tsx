@@ -11,8 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { EmployeeSelect } from "@/components/hr/employee-select"
-import { CalendarClock, Loader2, RefreshCw, FileSpreadsheet, AlertCircle, Eye, BarChart3, ChevronRight } from "lucide-react"
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, LabelList } from "recharts"
+import { CalendarClock, Loader2, RefreshCw, FileSpreadsheet, AlertCircle, Eye, ChevronRight } from "lucide-react"
+import { AttendanceDelayChart, AttendanceDelayEmpty, type EmployeeAttendance } from "@/components/hr/attendance-delay-chart"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { exportHrReportExcel } from "@/lib/hr-report-excel"
 import { usePagination } from "@/lib/use-pagination"
@@ -77,17 +77,16 @@ export function RrhhAsistenciaPage() {
   }), [filtered, lateRecords])
 
   // Cuadro de barras por empleado: asistencias (días con entrada) vs tardanzas.
-  const porEmpleado = useMemo(() => {
-    const m = new Map<string, { nombre: string; asistencias: number; tardanzas: number }>()
+  // El orden y la abreviación de nombres los resuelve <AttendanceDelayChart>.
+  const porEmpleado = useMemo<EmployeeAttendance[]>(() => {
+    const m = new Map<string, EmployeeAttendance>()
     for (const r of filtered) {
-      const cur = m.get(r.employee_id) || { nombre: r.employee_nombre || r.employee_id, asistencias: 0, tardanzas: 0 }
+      const cur = m.get(r.employee_id) || { employee_id: r.employee_id, nombre: r.employee_nombre || r.employee_id, asistencias: 0, tardanzas: 0 }
       if (r.actual_start) cur.asistencias += 1
       if ((Number(r.late_minutes) || 0) > 0) cur.tardanzas += 1
       m.set(r.employee_id, cur)
     }
     return Array.from(m.values())
-      .map(e => ({ ...e, label: e.nombre.length > 16 ? e.nombre.slice(0, 15) + "…" : e.nombre }))
-      .sort((a, b) => b.tardanzas - a.tardanzas || b.asistencias - a.asistencias)
   }, [filtered])
 
   const exportExcel = () => {
@@ -199,36 +198,11 @@ export function RrhhAsistenciaPage() {
         </CardContent>
       </Card>
 
-      {/* Cuadro de barras: asistencia y tardanza por empleado */}
-      {!loading && porEmpleado.length > 0 && (
-        <Card>
-          <CardContent className="py-4">
-            <div className="flex items-center gap-2 mb-3">
-              <BarChart3 className="w-4 h-4 text-primary" />
-              <h3 className="text-sm font-bold">Asistencia y tardanza por empleado</h3>
-              <span className="text-xs text-muted-foreground">({desde} a {hasta}{sucFilter !== "all" ? ` · ${sucFilter}` : ""})</span>
-            </div>
-            <div style={{ width: "100%", height: Math.max(220, porEmpleado.length * 38) }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={porEmpleado} layout="vertical" margin={{ top: 4, right: 36, left: 8, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
-                  <YAxis type="category" dataKey="label" width={120} tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  {/* Número fijo al final de cada barra: cantidad de asistencias/tardanzas.
-                      Se ocultan los ceros para no ensuciar la gráfica ni pisar el eje. */}
-                  <Bar dataKey="asistencias" name="Asistencias" fill="#0891b2" radius={[0, 4, 4, 0]}>
-                    <LabelList dataKey="asistencias" position="right" formatter={(v: number | string) => (Number(v) > 0 ? v : "")} style={{ fontSize: 11, fontWeight: 700, fill: "#0e7490" }} />
-                  </Bar>
-                  <Bar dataKey="tardanzas" name="Tardanzas" fill="#dc2626" radius={[0, 4, 4, 0]}>
-                    <LabelList dataKey="tardanzas" position="right" formatter={(v: number | string) => (Number(v) > 0 ? v : "")} style={{ fontSize: 11, fontWeight: 700, fill: "#dc2626" }} />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Asistencia y tardanza por empleado (visualización profesional) */}
+      {!loading && (
+        porEmpleado.length > 0
+          ? <AttendanceDelayChart data={porEmpleado} desde={desde} hasta={hasta} sucursalLabel={sucFilter} onReload={reload} loading={loading} />
+          : <AttendanceDelayEmpty desde={desde} hasta={hasta} onReload={reload} loading={loading} />
       )}
 
       {/* Modal: Detalle de tardanzas (misma fuente que el KPI) */}
