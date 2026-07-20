@@ -18,6 +18,19 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.67.5] — 2026-07-20
+
+### Fixed
+- **Auditoría PULSE · "dice guardado pero no se guarda" (causa real)**: el guardado
+  SÍ persistía en la BD, pero la pantalla mostraba datos **viejos/desfasados** (la
+  vista no se re-sincronizaba con la base), por lo que parecía que no guardaba.
+  Ahora, tras guardar (o editar la auditoría), se **recargan los datos frescos**
+  desde la BD (`getAllPulsosData`) y la pantalla refleja siempre lo persistido.
+  Confirmado con datos reales: una lectura mostraba inicio 8,637,190 en pantalla
+  mientras la BD tenía 733,532.
+
+---
+
 ## [0.67.4] — 2026-07-19
 
 ### Fixed

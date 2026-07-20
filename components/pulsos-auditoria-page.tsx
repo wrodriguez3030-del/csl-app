@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAppStore, invalidateReadCache } from "@/lib/store"
+import type { DatabasePulsos } from "@/lib/types"
 import { loadXLSX } from "@/lib/load-xlsx"
 import { SeqBadge } from "@/components/seq-badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -146,6 +147,27 @@ export function PulsosAuditoriaPage() {
     incrementFormOpen()
     return () => decrementFormOpen()
   }, [editRow, incrementFormOpen, decrementFormOpen])
+
+  // Re-sincroniza el store con la BD (autoritativo). Se llama tras guardar/eliminar
+  // para que la pantalla refleje SIEMPRE lo persistido y no muestre datos viejos
+  // (causa real de "dice guardado pero no se guarda": la vista quedaba desfasada).
+  const reloadPulsos = useCallback(async () => {
+    try {
+      const { apiJsonp, normalizeApiUrl, invalidateReadCache: inval } = await import("@/lib/store")
+      inval("getAllPulsosData")
+      const p = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getAllPulsosData" }) as Record<string, unknown>
+      if (p && p.ok) {
+        setDbPulsos({
+          operadoras: (p.operadoras as DatabasePulsos["operadoras"]) || [],
+          lecturasSemanales: (p.lecturasSemanales as DatabasePulsos["lecturasSemanales"]) || [],
+          sesionesCliente: (p.sesionesCliente as DatabasePulsos["sesionesCliente"]) || [],
+          auditoriasSemanales: (p.auditoriasSemanales as DatabasePulsos["auditoriasSemanales"]) || [],
+          pulseReadings: (p.pulseReadings as DatabasePulsos["pulseReadings"]) || [],
+          operatorShots: (p.operatorShots as DatabasePulsos["operatorShots"]) || [],
+        })
+      }
+    } catch { /* si falla, queda el update optimista */ }
+  }, [apiUrl, setDbPulsos])
   const syncApi = async (params: Record<string, string>) => {
     try {
       const { apiJsonp, normalizeApiUrl } = await import("@/lib/store")
@@ -816,6 +838,8 @@ export function PulsosAuditoriaPage() {
         invalidateReadCache("getAllPulsosData")
         showToast("Guardado correctamente", "success")
         setEditRow(null)
+        // Re-sincroniza con la BD para que la pantalla muestre lo persistido.
+        void reloadPulsos()
       } catch (err) {
         showToast(`Error al guardar: ${err instanceof Error ? err.message : String(err)}`, "error")
       }
@@ -893,6 +917,7 @@ export function PulsosAuditoriaPage() {
         ],
       })
       invalidateReadCache("getAllPulsosData")
+      void reloadPulsos()
       showToast("Auditoría actualizada en todo el sistema", "success")
       setEditRow(null)
     } catch (err) {
