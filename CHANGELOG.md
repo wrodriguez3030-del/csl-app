@@ -18,6 +18,19 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.68.1] — 2026-07-20
+
+### Fixed
+- **Auditoría PULSE · editar y guardar Pulsos Inicio y Final** ahora funciona y
+  persiste. El encadenado (inicio = fin de la semana anterior) seguía como valor por
+  defecto, pero impedía que una edición manual del inicio "pegara". Nueva regla: si
+  el inicio guardado es DISTINTO al encadenado, ese **override manual manda** (edición
+  directa / reset de equipo) — así se pueden editar y guardar ambos valores, sin
+  perder el encadenado por defecto. Verificado a nivel BD que inicio+final persisten
+  y recalculan DISP LÁSER.
+
+---
+
 ## [0.68.0] — 2026-07-20
 
 ### Fixed

@@ -297,8 +297,15 @@ export function PulsosAuditoriaPage() {
       const prevFinal = prevFinalFor(r.sucursal, opRes.operadora, desde)
       const storedInicial = Number(r.lectura_inicial) || 0
       const pulsosFin = Number(r.lectura_final) || 0
-      const pulsosInicio = prevFinal != null ? prevFinal : storedInicial
-      const faltaInicial = prevFinal == null && storedInicial <= 0
+      // Inicio = fin de la semana anterior del operador (encadenado). PERO si hay
+      // un inicio GUARDADO distinto al encadenado, es un override manual (edición
+      // directa del inicio / reset de equipo) y ese valor manda. Así editar el
+      // inicio SÍ persiste y se ve, sin perder el encadenado por defecto.
+      const pulsosInicio =
+        storedInicial > 0 && prevFinal != null && storedInicial !== prevFinal ? storedInicial
+        : prevFinal != null ? prevFinal
+        : storedInicial
+      const faltaInicial = storedInicial <= 0 && prevFinal == null
       // DISP LÁSER recalculado desde el inicio encadenado (ignora disp_laser
       // guardado, que podía venir roto/negativo por un inicio incorrecto).
       const dispLaser = faltaInicial ? 0 : Math.max(0, pulsosFin - pulsosInicio)
