@@ -10,8 +10,9 @@
 
 import { NextResponse } from "next/server"
 import { requireAuthenticatedUser, getSupabaseAdmin } from "@/lib/server/supabase"
-import { loadBusinessContext } from "@/lib/server/csl-crud"
-import { fetchAgendaProClients, getAgendaProConfig, safeConfigSummary, validateAgendaProConfig } from "@/lib/server/agendapro"
+import { resolveEffectiveBusinessContext } from "@/lib/server/integration-auth"
+import { resolveAgendaProConfigForBusiness } from "@/lib/server/agendapro-credentials"
+import { fetchAgendaProClients, safeConfigSummary, validateAgendaProConfig } from "@/lib/server/agendapro"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -37,19 +38,22 @@ export async function GET(request: Request) {
   } catch {
     return json({ ok: false, error: "No autenticado" }, 401)
   }
-  const cfg = getAgendaProConfig()
-  const configError = validateAgendaProConfig(cfg)
   const url = new URL(request.url)
+  const activeBusinessId = url.searchParams.get("activeBusinessId")
+  const ctx = await resolveEffectiveBusinessContext(user.id, activeBusinessId)
+  const cfg = ctx
+    ? await resolveAgendaProConfigForBusiness(ctx.businessId, ctx.businessSlug)
+    : { enabled: false, baseUrl: "", user: "", password: "", clientsPath: "", webhookSecret: "", source: "none" as const }
+  const configError = validateAgendaProConfig(cfg)
   const probe = url.searchParams.get("probe") === "1"
 
   // Última sincronización del tenant activo (no expone credenciales).
   let lastSync: Record<string, unknown> | null = null
   try {
-    const ctx = await loadBusinessContext(user.id)
     if (ctx?.businessId) {
       const { data } = await getSupabaseAdmin()
         .from("csl_agendapro_sync_logs")
-        .select("started_at, finished_at, status, total_fetched, created_count, updated_count, skipped_count, error_count, error_message")
+        .select("started_at, finished_at, status, total, created, updated, skipped, duplicates, errors")
         .eq("business_id", ctx.businessId)
         .order("started_at", { ascending: false })
         .limit(1)

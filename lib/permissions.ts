@@ -64,6 +64,11 @@ export const PERMISSION_OPTIONS: PermissionOption[] = [
   { id: "bi_finance.config", label: "Configurar el asistente IA", section: "BI Financiero IA" },
   { id: "bi_finance.ai_secrets.manage", label: "Gestionar credenciales OpenAI (API key)", section: "BI Financiero IA" },
   { id: "bi_finance.export", label: "Exportar PDF/Excel financiero", section: "BI Financiero IA" },
+  // Integraciones · AgendaPro (sincronización de clientes por negocio). El menú
+  // Clientes decide la visibilidad; estos permisos gatean acciones sensibles.
+  { id: "integrations.agendapro.view", label: "Ver estado de AgendaPro", section: "Integraciones · AgendaPro" },
+  { id: "integrations.agendapro.configure", label: "Configurar credenciales de AgendaPro", section: "Integraciones · AgendaPro" },
+  { id: "integrations.agendapro.sync", label: "Sincronizar clientes de AgendaPro", section: "Integraciones · AgendaPro" },
 ]
 
 export const ALL_PERMISSION_IDS: string[] = PERMISSION_OPTIONS.map((p) => p.id)

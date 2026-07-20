@@ -10,12 +10,12 @@
 
 import { NextResponse } from "next/server"
 import { requireAuthenticatedUser, getSupabaseAdmin } from "@/lib/server/supabase"
-import { getProfile, loadBusinessContext } from "@/lib/server/csl-crud"
 import { runWithBusinessContext } from "@/lib/server/business-context"
+import { resolveEffectiveBusinessContext, readActiveBusinessId } from "@/lib/server/integration-auth"
+import { resolveAgendaProConfigForBusiness } from "@/lib/server/agendapro-credentials"
 import {
   fetchAgendaProClients,
   fetchAllAgendaProClients,
-  getAgendaProConfig,
   syncAgendaProClients,
   validateAgendaProConfig,
 } from "@/lib/server/agendapro"
@@ -41,23 +41,23 @@ export async function POST(request: Request) {
     return json({ ok: false, error: "No autenticado" }, 401)
   }
 
-  // Sin gate por rol — cualquier usuario autenticado puede disparar el sync.
-  // La integración AgendaPro es solo-lectura desde la perspectiva de AgendaPro
-  // (no creamos garbage allá) y los clientes traídos quedan en el tenant CSL
-  // (hardcoded — AgendaPro solo está integrado con la cuenta CSL hoy).
-  const profile = await getProfile(user.id)
-  if (!profile) {
-    return json({ ok: false, error: "Perfil no encontrado." }, 403)
-  }
+  // Sin gate por rol — cualquier usuario autenticado puede disparar el sync
+  // (recepción jala clientes recién registrados). Multi-tenant: el negocio de
+  // destino es el ACTIVO del switcher (superadmin) o el propio del usuario. Las
+  // credenciales se resuelven por ese business_id — NUNCA se mezclan tenants.
+  const activeBusinessId = await readActiveBusinessId(request)
+  const ctx = await resolveEffectiveBusinessContext(user.id, activeBusinessId)
+  if (!ctx) return json({ ok: false, error: "Contexto de negocio no encontrado." }, 403)
 
-  const cfg = getAgendaProConfig()
+  const cfg = await resolveAgendaProConfigForBusiness(ctx.businessId, ctx.businessSlug)
   const cfgError = validateAgendaProConfig(cfg)
   if (cfgError) {
-    return json({ ok: false, error: cfgError }, 400)
+    return json({
+      ok: false,
+      error: cfg.source === "none" ? "AgendaPro no está configurado para este negocio." : cfgError,
+    }, 400)
   }
 
-  const ctx = await loadBusinessContext(user.id)
-  if (!ctx) return json({ ok: false, error: "Contexto de negocio no encontrado." }, 403)
   return runWithBusinessContext(ctx, async () => {
     const supabase = getSupabaseAdmin()
     const businessId = ctx.businessId

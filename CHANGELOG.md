@@ -18,6 +18,36 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.70.0] — 2026-07-20
+
+### Added
+- **Clientes · Integración AgendaPro multi-tenant (Depicenter)**. Ahora cada
+  negocio configura su propia cuenta de la API Pública de AgendaPro y sincroniza
+  clientes con separación total por tenant.
+  - **Tabla `csl_agendapro_credentials`** (mig `202607200001`): credenciales por
+    `business_id`, con la clave CIFRADA (AES-256-GCM, reutiliza el motor de BI) —
+    nunca en texto plano; se guarda solo `key_last4` para mostrar `****1234`. RLS
+    por tenant.
+  - **Módulo `lib/server/agendapro-credentials.ts`**: resuelve la config efectiva
+    por negocio (credenciales de BD primero; solo el negocio dueño de las env vars
+    legadas —CSL— cae a `AGENDAPRO_*`). Un tenant JAMÁS usa las credenciales de
+    otro.
+  - **Endpoints**: `POST /credentials` (guardar, gateado por
+    `integrations.agendapro.configure` / admin), `POST /test` (probar conexión),
+    `GET /status` (estado + última sync + historial). `sync-clients`,
+    `import-clients` y `health` ahora resuelven el **negocio ACTIVO** del switcher
+    (`applyActiveBusiness`) — antes usaban el negocio del perfil, lo que habría
+    mezclado tenants con un superadmin.
+  - **UI**: botón **Configurar AgendaPro** en Clientes → diálogo para pegar
+    usuario/clave, probar conexión, guardar, sincronizar y ver historial. Todas
+    las llamadas envían el `activeBusinessId`.
+  - **Permisos**: `integrations.agendapro.view/configure/sync`.
+  - Validado contra db-cls: cifrado round-trip, enmascarado, aislamiento CSL↔
+    Depicenter y dedup por `business_id` (sin mezclar tenants). CSL (16.273
+    clientes) intacto.
+
+---
+
 ## [0.69.0] — 2026-07-20
 
 ### Added

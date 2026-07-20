@@ -22,6 +22,9 @@ import { digitsOnly as onlyDigits, formatPhone, formatCedula, displayPhone, disp
 import { findExistingClienteMatch } from "@/lib/cliente-dedupe"
 import { useSessionUser } from "@/hooks/use-session-user"
 import { MergeClientesDialog } from "@/components/merge-clientes-dialog"
+import { AgendaProConfigDialog } from "@/components/integrations/agendapro-config-dialog"
+import { businessIdForSlug } from "@/lib/business"
+import { PlugZap } from "lucide-react"
 
 interface HistorialPayload {
   fichas: Array<{ id: string; fecha: string; sucursal: string; operadora: string; estado: string; motivoConsulta?: string }>
@@ -125,6 +128,11 @@ function clienteRecord(cliente: ClienteCosmiatria) {
 
 export function CosmiatriaClientesPage() {
   const { apiUrl, db, showToast, setIsLoading, setLoadingMessage, incrementFormOpen, decrementFormOpen } = useAppStore()
+  const activeBusinessSlug = useAppStore((s) => s.activeBusinessSlug)
+  // business_id del negocio activo (superadmin switcher). Viaja en cada request
+  // de integración para que el sync SIEMPRE use el tenant seleccionado.
+  const activeBusinessId = businessIdForSlug(activeBusinessSlug) || undefined
+  const [agendaProConfigOpen, setAgendaProConfigOpen] = useState(false)
   const sessionUser = useSessionUser()
   const canMerge = !!sessionUser && (sessionUser.isAdmin || sessionUser.isSuperadmin)
   // Sincronizar AgendaPro: cualquier usuario autenticado puede dispararlo —
@@ -354,11 +362,21 @@ export function CosmiatriaClientesPage() {
 
   const loadAgendaProStatus = useCallback(async () => {
     try {
-      const r = await fetch("/api/integrations/agendapro/health")
+      const { supabaseBrowser } = await import("@/lib/supabase-client")
+      const { data: { session } } = await supabaseBrowser.auth.getSession()
+      const headers: Record<string, string> = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}
+      const qs = activeBusinessId ? `?activeBusinessId=${encodeURIComponent(activeBusinessId)}` : ""
+      const r = await fetch(`/api/integrations/agendapro/status${qs}`, { headers })
       const j = await r.json()
-      if (j?.ok) setAgendaProStatus({ ready: j.ready, pending: j.pending, lastSync: j.lastSync })
+      if (j?.ok) {
+        setAgendaProStatus({
+          ready: Boolean(j.credentials?.configured),
+          pending: j.credentials?.configured ? null : "AgendaPro no está configurado para este negocio.",
+          lastSync: j.lastSync,
+        })
+      }
     } catch { /* ignore */ }
-  }, [])
+  }, [activeBusinessId])
   useEffect(() => { void loadAgendaProStatus() }, [loadAgendaProStatus])
 
   const runAgendaProSync = async (search: string) => {
@@ -375,7 +393,8 @@ export function CosmiatriaClientesPage() {
         // Con búsqueda → una página puntual. Sin búsqueda → páginas iniciales
         // (clientes más nuevos) acotadas para no hacer timeout (la paginación
         // completa excede el límite de la función). El cron cubre el resto a diario.
-        body: JSON.stringify(search.trim() ? { search: search.trim() } : { page: 1, pagesPerTick: 5 }),
+        // activeBusinessId viaja SIEMPRE → el sync usa el tenant seleccionado.
+        body: JSON.stringify(search.trim() ? { search: search.trim(), activeBusinessId } : { page: 1, pagesPerTick: 5, activeBusinessId }),
       })
       const data = await res.json() as {
         ok?: boolean; code?: string; error?: string;
@@ -443,7 +462,7 @@ export function CosmiatriaClientesPage() {
       const res = await fetch("/api/integrations/agendapro/import-clients", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ clients: importParsed.clients }),
+        body: JSON.stringify({ clients: importParsed.clients, activeBusinessId }),
       })
       const data = await res.json() as { ok?: boolean; created?: number; updated?: number; duplicates?: number; errors?: number; error?: string }
       setImportResult({ ok: data.ok === true, created: data.created, updated: data.updated, duplicates: data.duplicates, errors: data.errors, error: data.error })
@@ -523,6 +542,11 @@ export function CosmiatriaClientesPage() {
           {canEditClientes ? (
             <Button variant="outline" onClick={exportCsv}><Download className="mr-2 h-4 w-4" />Descargar datos</Button>
           ) : null}
+          {canMerge ? (
+            <Button variant="outline" onClick={() => setAgendaProConfigOpen(true)}>
+              <PlugZap className="mr-2 h-4 w-4" />Configurar AgendaPro
+            </Button>
+          ) : null}
           {canSyncAgendaPro ? (
             <Button variant="outline" onClick={handleAgendaProSync} disabled={agendaProSyncing}>
               {agendaProSyncing
@@ -569,6 +593,12 @@ export function CosmiatriaClientesPage() {
         onOpenChange={setMergeOpen}
         clientes={clientes}
         onMerged={() => { void loadData() }}
+      />
+
+      <AgendaProConfigDialog
+        open={agendaProConfigOpen}
+        onOpenChange={setAgendaProConfigOpen}
+        onSynced={() => { void loadData(); void loadAgendaProStatus() }}
       />
 
       {errorMsg ? (

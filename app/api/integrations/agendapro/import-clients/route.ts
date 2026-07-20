@@ -11,8 +11,8 @@
 
 import { NextResponse } from "next/server"
 import { requireAuthenticatedUser, getSupabaseAdmin } from "@/lib/server/supabase"
-import { loadBusinessContext } from "@/lib/server/csl-crud"
 import { runWithBusinessContext } from "@/lib/server/business-context"
+import { resolveEffectiveBusinessContext, readActiveBusinessId } from "@/lib/server/integration-auth"
 import { syncAgendaProClients, type AgendaProClientRaw } from "@/lib/server/agendapro"
 
 export const dynamic = "force-dynamic"
@@ -32,7 +32,9 @@ export async function POST(request: Request) {
     return json({ ok: false, error: "No autenticado" }, 401)
   }
 
-  const ctx = await loadBusinessContext(user.id)
+  // Negocio de destino = negocio ACTIVO del switcher (aislamiento por tenant).
+  const activeBusinessId = await readActiveBusinessId(request)
+  const ctx = await resolveEffectiveBusinessContext(user.id, activeBusinessId)
   if (!ctx) return json({ ok: false, error: "Contexto de negocio no encontrado." }, 403)
 
   return runWithBusinessContext(ctx, async () => {
