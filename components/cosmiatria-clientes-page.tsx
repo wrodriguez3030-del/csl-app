@@ -24,7 +24,7 @@ import { useSessionUser } from "@/hooks/use-session-user"
 import { MergeClientesDialog } from "@/components/merge-clientes-dialog"
 import { AgendaProConfigDialog } from "@/components/integrations/agendapro-config-dialog"
 import { businessIdForSlug } from "@/lib/business"
-import { runFullAgendaProSync } from "@/lib/agendapro-full-sync"
+import { runIncrementalAgendaProSync } from "@/lib/agendapro-full-sync"
 import { PlugZap } from "lucide-react"
 
 interface HistorialPayload {
@@ -126,6 +126,11 @@ function clienteRecord(cliente: ClienteCosmiatria) {
   delete record.PuedeAgendar
   return record as Record<string, unknown>
 }
+
+// Throttle del auto-sync incremental al entrar al menú (por negocio). Persiste
+// entre montajes dentro de la sesión para no golpear AgendaPro en cada navegación.
+const lastAutoAgendaProSyncAt = new Map<string, number>()
+const AUTO_AGENDAPRO_SYNC_THROTTLE_MS = 3 * 60 * 1000
 
 export function CosmiatriaClientesPage() {
   const { apiUrl, db, showToast, setIsLoading, setLoadingMessage, incrementFormOpen, decrementFormOpen } = useAppStore()
@@ -381,6 +386,42 @@ export function CosmiatriaClientesPage() {
   }, [activeBusinessId])
   useEffect(() => { void loadAgendaProStatus() }, [loadAgendaProStatus])
 
+  // Auto-sync INCREMENTAL al entrar al menú: trae en segundo plano los clientes
+  // nuevos de AgendaPro (se detiene al llegar a los ya sincronizados). Con
+  // throttle por negocio para no golpear AgendaPro en cada navegación. Silencioso.
+  const autoSyncOnEnter = useCallback(async () => {
+    if (!activeBusinessId || agendaProSyncing) return
+    const last = lastAutoAgendaProSyncAt.get(activeBusinessId) || 0
+    if (Date.now() - last < AUTO_AGENDAPRO_SYNC_THROTTLE_MS) return
+    lastAutoAgendaProSyncAt.set(activeBusinessId, Date.now())
+    setAgendaProSyncing(true)
+    setAgendaProProgress(null)
+    try {
+      const { data: { session } } = await import("@/lib/supabase-client").then((m) => m.supabaseBrowser.auth.getSession())
+      if (!session?.access_token) return
+      const acc = await runIncrementalAgendaProSync({
+        activeBusinessId,
+        authHeaders: { Authorization: `Bearer ${session.access_token}` },
+        onProgress: (p) => setAgendaProProgress({ read: p.read, created: p.created }),
+      })
+      if ((acc.created || 0) > 0) {
+        await loadData()
+        showToast(`AgendaPro: ${acc.created} cliente(s) nuevo(s) importado(s).`, "success")
+      }
+    } catch { /* silencioso: es una actualización en segundo plano */ } finally {
+      setAgendaProSyncing(false)
+      setAgendaProProgress(null)
+      void loadAgendaProStatus()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeBusinessId])
+
+  // Dispara el auto-sync cuando ya sabemos que AgendaPro está configurado.
+  useEffect(() => {
+    if (agendaProStatus?.ready) void autoSyncOnEnter()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agendaProStatus?.ready, activeBusinessId])
+
   const handleAgendaProSync = () => {
     setImportFile(null)
     setImportParsed(null)
@@ -388,9 +429,10 @@ export function CosmiatriaClientesPage() {
     setImportOpen(true)
   }
 
-  // Sincronización directa contra la API de AgendaPro desde la barra superior.
-  // Recorre TODAS las páginas en tandas (helper compartido) hasta el final —
-  // así sí se migran todos los clientes, no solo las primeras páginas.
+  // Sincronización INCREMENTAL contra la API de AgendaPro desde la barra superior.
+  // Trae solo los clientes NUEVOS desde la última sincronización (se detiene al
+  // llegar a los ya sincronizados) — no relee todos los clientes cada vez. Para
+  // la migración inicial completa está "Sincronizar todos" en Configurar AgendaPro.
   const runApiSyncDirect = async () => {
     if (agendaProSyncing) return
     if (agendaProStatus && agendaProStatus.ready === false) {
@@ -402,17 +444,19 @@ export function CosmiatriaClientesPage() {
     try {
       const { data: { session } } = await import("@/lib/supabase-client").then((m) => m.supabaseBrowser.auth.getSession())
       if (!session?.access_token) throw new Error("Sesión no válida — vuelve a iniciar sesión")
-      const acc = await runFullAgendaProSync({
+      const acc = await runIncrementalAgendaProSync({
         activeBusinessId,
         authHeaders: { Authorization: `Bearer ${session.access_token}` },
         onProgress: (p) => setAgendaProProgress({ read: p.read, created: p.created }),
       })
       if (acc.error) { showToast(acc.error, "error"); return }
       showToast(
-        `Sincronización completa: ${acc.read} leídos · ${acc.created} nuevos · ${acc.updated} actualizados · ${acc.duplicates} duplicados · ${acc.errors} errores.`,
+        acc.created > 0
+          ? `Sincronización: ${acc.created} clientes nuevos · ${acc.updated} actualizados.`
+          : "AgendaPro al día — no hay clientes nuevos.",
         acc.errors > 0 ? "info" : "success",
       )
-      await loadData()
+      if (acc.created > 0 || acc.updated > 0) await loadData()
     } catch (syncErr) {
       showToast(syncErr instanceof Error ? syncErr.message : "Error al sincronizar AgendaPro", "error")
     } finally {

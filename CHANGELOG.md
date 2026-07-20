@@ -18,6 +18,22 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.72.0] — 2026-07-20
+
+### Added
+- **AgendaPro · sincronización incremental + auto-sync al entrar**. El botón
+  "Sincronizar directamente con la API" ahora es **incremental**: trae solo los
+  clientes NUEVOS desde la última sincronización (se detiene al llegar a los ya
+  sincronizados, aprovechando que AgendaPro devuelve los más nuevos primero) — ya
+  no relee toda la base cada vez. Al **entrar al menú Clientes Cosmiatría** se
+  dispara un **auto-sync incremental en segundo plano** (con throttle de 3 min por
+  negocio) que importa lo nuevo sin intervención. En "Configurar AgendaPro" ahora
+  hay dos botones: **Sincronizar nuevos** (incremental, día a día) y **Sincronizar
+  todos** (completo, para la migración inicial). Lógica en
+  `lib/agendapro-full-sync.ts` (`runIncrementalAgendaProSync` / `runFullAgendaProSync`).
+
+---
+
 ## [0.71.0] — 2026-07-20
 
 ### Fixed

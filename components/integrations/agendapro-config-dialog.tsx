@@ -10,7 +10,7 @@ import { Loader2, KeyRound, PlugZap, RefreshCw, CheckCircle2, XCircle, ShieldChe
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { businessIdForSlug } from "@/lib/business"
 import { useAppStore } from "@/lib/store"
-import { runFullAgendaProSync } from "@/lib/agendapro-full-sync"
+import { runFullAgendaProSync, runIncrementalAgendaProSync } from "@/lib/agendapro-full-sync"
 
 interface CredStatus {
   configured: boolean
@@ -134,16 +134,23 @@ export function AgendaProConfigDialog({
     } finally { setTesting(false) }
   }
 
-  // Sincroniza TODAS las páginas de AgendaPro en tandas cortas (helper
-  // compartido). Muestra progreso en vivo.
-  const sync = async () => {
+  // Sincroniza en tandas cortas (helper compartido) con progreso en vivo.
+  //   mode "nuevos" → incremental (solo lo nuevo desde la última sync)
+  //   mode "todos"  → completo (migración inicial)
+  const doSync = async (mode: "nuevos" | "todos") => {
     setSyncing(true)
     setSyncProgress({ page: 0, read: 0, created: 0, updated: 0 })
     try {
       const headers = await authHeaders()
-      const acc = await runFullAgendaProSync({ activeBusinessId, authHeaders: headers, onProgress: setSyncProgress })
+      const run = mode === "todos" ? runFullAgendaProSync : runIncrementalAgendaProSync
+      const acc = await run({ activeBusinessId, authHeaders: headers, onProgress: setSyncProgress })
       if (acc.error) {
         showToast(acc.error, "error")
+      } else if (mode === "nuevos") {
+        showToast(
+          acc.created > 0 ? `${acc.created} cliente(s) nuevo(s) · ${acc.updated} actualizado(s).` : "AgendaPro al día — no hay clientes nuevos.",
+          acc.errors > 0 ? "info" : "success",
+        )
       } else {
         showToast(
           `Sincronización completa: ${acc.read} leídos · ${acc.created} nuevos · ${acc.updated} actualizados · ${acc.duplicates} duplicados · ${acc.errors} errores.`,
@@ -215,10 +222,17 @@ export function AgendaProConfigDialog({
               <Button variant="outline" onClick={test} disabled={busy || !cred?.configured}>
                 {testing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <PlugZap className="mr-1.5 h-4 w-4" />}Probar conexión
               </Button>
-              <Button variant="secondary" onClick={sync} disabled={busy || !cred?.configured}>
+              <Button variant="secondary" onClick={() => doSync("nuevos")} disabled={busy || !cred?.configured}>
+                {syncing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}Sincronizar nuevos
+              </Button>
+              <Button variant="outline" onClick={() => doSync("todos")} disabled={busy || !cred?.configured} title="Recorre todas las páginas — úsalo una vez para la migración inicial">
                 {syncing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}Sincronizar todos
               </Button>
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              <b>Sincronizar nuevos</b>: trae solo lo nuevo desde la última sincronización (rápido, el día a día).{" "}
+              <b>Sincronizar todos</b>: recorre toda la base de AgendaPro — úsalo una vez para la migración inicial.
+            </p>
             {syncProgress && (
               <div className="rounded-lg border border-teal-200 bg-teal-50/60 px-3 py-2 text-xs text-teal-800">
                 <span className="flex items-center gap-2 font-medium">
