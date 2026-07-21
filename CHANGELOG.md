@@ -18,6 +18,25 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.72.1] — 2026-07-21
+
+### Fixed
+- **Aislamiento por tenant · diálogo de Consentimientos (fuga de clientes entre
+  negocios)**. Al generar un consentimiento en Depicenter, la búsqueda de clientes
+  mostraba clientes de **Cibao** (p.ej. WILLIAN RODRIGUEZ con sucursal Villa Olga).
+  Causa: el diálogo cargaba `getClientesCosmiatria` sin `activeBusinessId`; con un
+  superadmin en modo "Todos" el backend devolvía clientes de TODOS los tenants
+  (19.111 filas). Ahora el diálogo scopea la búsqueda de clientes, especialistas y
+  el guardado **al negocio del que se genera el link** (`currentBusiness`) — mismo
+  business que la generación. Reproducido y verificado contra db-cls: con
+  `activeBusinessId=Depicenter` devuelve 2.828 (solo Depicenter), sin la fila de
+  Cibao.
+- **Filtro de sucursal en Clientes**: ya no une una lista hardcodeada con TODAS las
+  sucursales (en Depicenter aparecían las de Cibao). Usa solo las del tenant activo;
+  el hardcode queda como respaldo únicamente si la BD no trae ninguna.
+
+---
+
 ## [0.72.0] — 2026-07-20
 
 ### Added

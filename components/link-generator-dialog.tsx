@@ -221,7 +221,14 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
   const loadClientes = useCallback(async () => {
     setLoadingClientes(true)
     try {
-      const result = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getClientesCosmiatria" })
+      // AISLAMIENTO POR TENANT: scopear SIEMPRE al negocio del que se genera el
+      // link (mismo business que la generación). Sin esto, un superadmin en modo
+      // "Todos" veía clientes de TODOS los tenants (p.ej. WILLIAN de Cibao
+      // apareciendo en Depicenter). No se mezclan clientes entre negocios.
+      const activeBusinessId = businessIdForSlug(currentBusiness.slug) ?? undefined
+      const result = await apiJsonp(normalizeApiUrl(apiUrl), activeBusinessId
+        ? { action: "getClientesCosmiatria", activeBusinessId }
+        : { action: "getClientesCosmiatria" })
       const items = Array.isArray(result.records) ? (result.records as Record<string, unknown>[]) : []
       setClientes(items.map(normalizeCliente))
     } catch {
@@ -229,14 +236,19 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
     } finally {
       setLoadingClientes(false)
     }
-  }, [apiUrl])
+  }, [apiUrl, currentBusiness.slug])
 
   // Carga inicial de especialistas — misma fuente que usa Cosmiatría:
   // getAllPulsosData devuelve el array operadoras (activas). Multi-tenant
   // resuelto en el backend.
   const loadEspecialistas = useCallback(async () => {
     try {
-      const result = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getAllPulsosData" })
+      // Mismo aislamiento por tenant que loadClientes: especialistas del negocio
+      // del link, no de todos los tenants.
+      const activeBusinessId = businessIdForSlug(currentBusiness.slug) ?? undefined
+      const result = await apiJsonp(normalizeApiUrl(apiUrl), activeBusinessId
+        ? { action: "getAllPulsosData", activeBusinessId }
+        : { action: "getAllPulsosData" })
       const ops = (result as { operadoras?: Record<string, unknown>[] }).operadoras || []
       // Normaliza/deduplica por nombre canónico (ver lib/especialistas.ts) para
       // que no aparezcan variantes de la misma persona ("Eidylee"/"EIDYLEE").
@@ -245,7 +257,7 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
     } catch {
       // sin lista: el operador puede dejarlo vacío y rellenar después en interno
     }
-  }, [apiUrl])
+  }, [apiUrl, currentBusiness.slug])
 
   // NUNCA MEZCLAR TENANTS: al cambiar el negocio activo (superadmin usa el
   // switcher), descartamos clientes y especialistas del tenant anterior para que
@@ -388,9 +400,11 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       Sucursal: prefill.sucursal.trim(),
       Estado: "Activo",
     }
+    const activeBusinessId = businessIdForSlug(currentBusiness.slug) ?? undefined
     const apiResult = await apiJsonp(normalizeApiUrl(apiUrl), {
       action: "saveClienteCosmiatria",
       data: JSON.stringify(data),
+      ...(activeBusinessId ? { activeBusinessId } : {}),
     })
     const typed = apiResult as { ok?: boolean; code?: string; error?: string; record?: Record<string, unknown> }
     // Caso "duplicate" del backend: mismo cli_doc_/cli_tel_ que un cliente

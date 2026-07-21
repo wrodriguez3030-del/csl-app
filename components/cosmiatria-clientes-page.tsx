@@ -193,8 +193,12 @@ export function CosmiatriaClientesPage() {
   }, [query])
 
   const sucursales = useMemo(() => {
-    const fromDb = db.sucursales.map((item) => item.Nombre).filter(Boolean)
-    return Array.from(new Set([...fromDb, "Rafael Vidal", "Los Jardines", "Villa Olga", "La Vega"]))
+    // Solo las sucursales del tenant activo (vienen scopeadas por business_id).
+    // Antes se unía una lista hardcodeada con TODAS las sucursales → en Depicenter
+    // aparecían las de Cibao (Villa Olga, etc.). El hardcode queda solo como
+    // respaldo si la BD no trajo ninguna.
+    const fromDb = Array.from(new Set(db.sucursales.map((item) => item.Nombre).filter(Boolean)))
+    return fromDb.length ? fromDb : ["Rafael Vidal", "Los Jardines", "Villa Olga", "La Vega"]
   }, [db.sucursales])
 
   // Carga de la PÁGINA actual (server-side). La tabla creció a ~16k filas por el
