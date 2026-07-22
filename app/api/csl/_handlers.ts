@@ -4057,7 +4057,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       await syncFichasCliente(cliente)
       // Notificación por email (Resend) — el guardado nunca se pierde si
       // el correo falla; reportamos el warning al frontend.
-      const email = await sendConsentMasajeEmail(row).catch((error: unknown) => ({
+      const email = await sendConsentMasajeEmail(row, String(getBusinessContext()?.businessId || "")).catch((error: unknown) => ({
         sent: false,
         warning: error instanceof Error ? error.message : "No se pudo enviar el correo",
       }))
@@ -4080,7 +4080,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       await upsertRow("csl_consent_tatuajes_cejas", row)
       await syncFichasCliente(cliente)
       // Notificación por email — patrón idéntico al de masajes / ficha derma.
-      const email = await sendConsentTatuajeCejaEmail(row).catch((error: unknown) => ({
+      const email = await sendConsentTatuajeCejaEmail(row, String(getBusinessContext()?.businessId || "")).catch((error: unknown) => ({
         sent: false,
         warning: error instanceof Error ? error.message : "No se pudo enviar el correo",
       }))
@@ -4103,7 +4103,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       await upsertRow("csl_consent_peeling", row)
       await syncFichasCliente(cliente)
       // Notificación por email — patrón idéntico a masajes / tatuajes / ficha.
-      const email = await sendConsentPeelingEmail(row).catch((error: unknown) => ({
+      const email = await sendConsentPeelingEmail(row, String(getBusinessContext()?.businessId || "")).catch((error: unknown) => ({
         sent: false,
         warning: error instanceof Error ? error.message : "No se pudo enviar el correo",
       }))

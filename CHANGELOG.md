@@ -18,6 +18,22 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.73.3] — 2026-07-22
+
+### Fixed
+- **Los consentimientos NO enviaban desde el Gmail del negocio** (ni al cliente ni
+  a la copia interna). Causa raíz: `upsertRow` estampa `business_id` en una copia
+  interna, así que el objeto en memoria que se pasaba a `sendConsent*Email` tenía
+  `business_id` vacío → `resolveGmailCredentialsForBusiness("")` = null → se saltaba
+  el Gmail del negocio y caía a Resend con el buzón por defecto. Ahora los handlers
+  pasan `getBusinessContext()?.businessId` a las funciones de envío (igual que ya
+  hacía la Ficha Dermatológica), y se estampa en `row` para que destinatarios,
+  remitente y HTML usen el negocio correcto.
+- Log de observabilidad (sin secretos) en `sendBusinessEmail`: registra negocio,
+  nº de destinatarios y vía (gmail/resend) + error, visible en los logs de Vercel.
+
+---
+
 ## [0.73.2] — 2026-07-22
 
 ### Changed

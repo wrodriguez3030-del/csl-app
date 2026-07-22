@@ -35,17 +35,27 @@ export async function sendBusinessEmail(
   msg: { to: string[]; subject: string; html: string; attachments?: GmailAttachment[]; replyTo?: string },
   resendFallback: () => Promise<{ sent: boolean; warning?: string }>,
 ): Promise<{ sent: boolean; warning?: string }> {
+  // Observabilidad (sin secretos): qué negocio, cuántos destinatarios y por dónde
+  // salió. Aparece en los logs de Vercel para diagnosticar entregas.
+  const tag = `[email] biz=${businessId || "NONE"} to=${msg.to.length}`
   const creds = await resolveGmailCredentialsForBusiness(businessId, BUSINESS_SLUG_BY_ID[businessId]).catch(() => null)
   if (creds) {
     const res = await sendGmail(msg, creds)
-    if (res.ok) return { sent: true }
+    if (res.ok) {
+      console.warn(`${tag} via=gmail ok id=${res.id}`)
+      return { sent: true }
+    }
     // Gmail configurado pero falló → intentar Resend como red de seguridad.
+    console.warn(`${tag} via=gmail FAIL: ${res.error} — probando Resend`)
     const fb = await resendFallback()
-    if (fb.sent) return { sent: true }
+    if (fb.sent) { console.warn(`${tag} via=resend ok (respaldo)`); return { sent: true } }
+    console.warn(`${tag} FAIL total — Gmail: ${res.error} · Resend: ${fb.warning || "?"}`)
     return { sent: false, warning: `Gmail: ${res.error}${fb.warning ? ` · Resend: ${fb.warning}` : ""}` }
   }
   // Sin Gmail para este negocio → comportamiento actual (Resend).
-  return resendFallback()
+  const fb = await resendFallback()
+  console.warn(`${tag} via=resend(${fb.sent ? "ok" : "FAIL"}) sinGmail${fb.warning ? ` — ${fb.warning}` : ""}`)
+  return fb
 }
 
 /** POST a Resend reutilizable (respaldo). `attachments.content` va en base64. */
@@ -310,7 +320,12 @@ function consentMasajeEmailHtml(row: Row) {
   </body></html>`
 }
 
-export async function sendConsentMasajeEmail(row: Row) {
+export async function sendConsentMasajeEmail(row: Row, businessId?: string) {
+  // `row.business_id` NO viene poblado (upsertRow lo estampa en una copia), así
+  // que el negocio se recibe del handler (getBusinessContext). Sin esto el envío
+  // se salta el Gmail del negocio y cae a Resend con el buzón por defecto.
+  const bid = String(businessId || row.business_id || "")
+  if (bid) row.business_id = bid
   const recipients = await consentRecipients(row)
   if (!recipients.length) return { sent: false, warning: "Sin destinatarios configurados" }
 
@@ -414,7 +429,9 @@ function consentTatuajeCejaEmailHtml(row: Row) {
   </body></html>`
 }
 
-export async function sendConsentTatuajeCejaEmail(row: Row) {
+export async function sendConsentTatuajeCejaEmail(row: Row, businessId?: string) {
+  const bid = String(businessId || row.business_id || "")
+  if (bid) row.business_id = bid
   const recipients = await consentRecipients(row)
   if (!recipients.length) return { sent: false, warning: "Sin destinatarios configurados" }
 
@@ -494,7 +511,9 @@ function consentPeelingEmailHtml(row: Row) {
   </body></html>`
 }
 
-export async function sendConsentPeelingEmail(row: Row) {
+export async function sendConsentPeelingEmail(row: Row, businessId?: string) {
+  const bid = String(businessId || row.business_id || "")
+  if (bid) row.business_id = bid
   const recipients = await consentRecipients(row)
   if (!recipients.length) return { sent: false, warning: "Sin destinatarios configurados" }
 
