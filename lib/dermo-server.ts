@@ -1,6 +1,7 @@
 ﻿import type { FichaDermoCosmiatrica } from "./dermo-cosmiatria"
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib"
 import { getNotifyEmails } from "./notify-emails"
+import { sendBusinessEmail, postResend } from "./server/csl-email"
 
 type Row = Record<string, unknown>
 
@@ -496,9 +497,7 @@ export function fichaDermoEmailHtml(row: Row, businessName = "Cibao Spa Laser") 
     ${ficha.firmaEspecialista ? `<h2>Firma especialista</h2><img src="${htmlEscape(ficha.firmaEspecialista)}" alt="Firma especialista" style="max-width:360px;border:1px solid #d1d5db;background:white" />` : ""}
   </body></html>`
 }
-export async function sendFichaDermoEmail(row: Row, businessName = "Cibao Spa Laser") {
-  const apiKey = (process.env.RESEND_API_KEY || "").replace(/\\r\\n|\\n|\\r/g, "").trim()
-  if (!apiKey) return { sent: false, warning: "Falta RESEND_API_KEY" }
+export async function sendFichaDermoEmail(row: Row, businessName = "Cibao Spa Laser", businessId?: string) {
   const from = (process.env.EMAIL_FROM || `${businessName} <onboarding@resend.dev>`).replace(/\\r\\n|\\n|\\r/g, "").trim()
   const pdf = await buildFichaDermoPdf(row, businessName)
   const clientEmail = clean(row.email)
@@ -516,27 +515,23 @@ export async function sendFichaDermoEmail(row: Row, businessName = "Cibao Spa La
       return true
     })
   if (!recipients.length) return { sent: false, warning: "Sin destinatarios configurados (CSL_NOTIFY_EMAILS_FICHAS)" }
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
+
+  const subject = `CONSENTIMIENTO INFORMADO ${businessName.toUpperCase()}`
+  const html = fichaDermoEmailHtml(row, businessName)
+  const filename = `ficha-dermatologia-${pdfText(row.ficha_id || "cliente")}.pdf`
+
+  // PRIMERO desde el Gmail del negocio (si está configurado); RESPALDO Resend.
+  return sendBusinessEmail(
+    String(businessId || row.business_id || ""),
+    { to: recipients, subject, html, attachments: [{ filename, content: pdf }] },
+    () => postResend({
       from,
       to: recipients,
-      subject: `CONSENTIMIENTO INFORMADO ${businessName.toUpperCase()}`,
-      html: fichaDermoEmailHtml(row, businessName),
-      attachments: [{ filename: `ficha-dermatologia-${pdfText(row.ficha_id || "cliente")}.pdf`, content: pdf.toString("base64") }],
+      subject,
+      html,
+      attachments: [{ filename, content: pdf.toString("base64") }],
     }),
-  })
-  if (!response.ok) {
-    const details = await response.text().catch(() => "")
-    let message = details
-    try {
-      const parsed = JSON.parse(details) as { message?: string }
-      message = parsed.message || details
-    } catch {}
-    throw new Error(`Resend ${response.status}: ${message || "No se pudo enviar el correo"}`)
-  }
-  return { sent: true }
+  )
 }
 
 

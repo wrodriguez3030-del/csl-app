@@ -20,10 +20,12 @@ import {
   Users,
   XCircle,
   PlugZap,
+  Mail,
 } from "lucide-react"
 import type { Database, DatabasePulsos, TabId } from "@/lib/types"
 import { MENU_OPTIONS, getSessionUser, type MenuPermission, type SystemUser } from "@/lib/security"
 import { AgendaProConfigDialog } from "@/components/integrations/agendapro-config-dialog"
+import { EmailConfigDialog } from "@/components/integrations/email-config-dialog"
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const MIN_PASSWORD = 6
@@ -66,6 +68,7 @@ export function ConfigPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [deletingId, setDeletingId] = useState("")
   const [agendaProConfigOpen, setAgendaProConfigOpen] = useState(false)
+  const [emailConfigOpen, setEmailConfigOpen] = useState(false)
 
   /**
    * Snapshot de los permisos NO-admin del usuario en el formulario.
@@ -703,9 +706,33 @@ export function ConfigPage() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Mail className="h-5 w-5 text-primary" />
+            Correo (envío a clientes y consentimientos)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Configura la cuenta de <b>Gmail</b> desde la que cada negocio envía las fichas
+            dermatológicas y los consentimientos a sus clientes. Cada negocio (Cibao, Depicenter)
+            usa su propia cuenta — los correos no se mezclan. Mientras no lo configures, se usa el
+            envío actual como respaldo.
+          </p>
+          <Button variant="outline" onClick={() => setEmailConfigOpen(true)}>
+            <Mail className="mr-2 h-4 w-4" />Configurar correo
+          </Button>
+        </CardContent>
+      </Card>
+
       <AgendaProConfigDialog
         open={agendaProConfigOpen}
         onOpenChange={setAgendaProConfigOpen}
+      />
+      <EmailConfigDialog
+        open={emailConfigOpen}
+        onOpenChange={setEmailConfigOpen}
       />
     </div>
   )

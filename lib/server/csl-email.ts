@@ -10,9 +10,77 @@ import { getNotifyEmails } from "@/lib/notify-emails"
 import { emailEscape, formatCedula, formatHeightFeet, formatMoney, formatPhone, parseJsonArray } from "./csl-helpers"
 import { buildReportePdf, buildSolicitudPdf, pdfText } from "./csl-pdf"
 import type { Row } from "./csl-types"
+import { resolveGmailCredentialsForBusiness } from "@/lib/server/email-settings"
+import { sendGmail, type GmailAttachment } from "@/lib/server/gmail-transport"
 
 function cleanEnv(value: unknown) {
   return String(value || "").replace(/\\r\\n|\\n|\\r/g, "").trim()
+}
+
+/** business_id real → slug (para el nombre visible del remitente por defecto). */
+const BUSINESS_SLUG_BY_ID: Record<string, string> = {
+  "66b0cf3e-4cd7-4cfb-a7cf-0674b77fc4e6": "csl",
+  "03b96698-c5df-4b4b-84df-1160a7ad56b9": "depicenter",
+}
+
+/**
+ * Envío cara al cliente: PRIMERO desde el Gmail del negocio (si está
+ * configurado, aislado por tenant), y como RESPALDO el envío Resend actual. Así
+ * cada negocio manda desde su propia cuenta sin romper nada mientras no lo
+ * configure. Nunca lanza: reporta warning para que el guardado no se pierda.
+ */
+export async function sendBusinessEmail(
+  businessId: string,
+  msg: { to: string[]; subject: string; html: string; attachments?: GmailAttachment[]; replyTo?: string },
+  resendFallback: () => Promise<{ sent: boolean; warning?: string }>,
+): Promise<{ sent: boolean; warning?: string }> {
+  const creds = await resolveGmailCredentialsForBusiness(businessId, BUSINESS_SLUG_BY_ID[businessId]).catch(() => null)
+  if (creds) {
+    const res = await sendGmail(msg, creds)
+    if (res.ok) return { sent: true }
+    // Gmail configurado pero falló → intentar Resend como red de seguridad.
+    const fb = await resendFallback()
+    if (fb.sent) return { sent: true }
+    return { sent: false, warning: `Gmail: ${res.error}${fb.warning ? ` · Resend: ${fb.warning}` : ""}` }
+  }
+  // Sin Gmail para este negocio → comportamiento actual (Resend).
+  return resendFallback()
+}
+
+/** POST a Resend reutilizable (respaldo). `attachments.content` va en base64. */
+export async function postResend(opts: {
+  from: string
+  to: string[]
+  subject: string
+  html: string
+  attachments?: { filename: string; content: string }[]
+}): Promise<{ sent: boolean; warning?: string }> {
+  const apiKey = cleanEnv(process.env.RESEND_API_KEY)
+  if (!apiKey) return { sent: false, warning: "Falta RESEND_API_KEY" }
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify(opts),
+  })
+  if (!response.ok) return { sent: false, warning: await resendWarning(response) }
+  return { sent: true }
+}
+
+/** Destinatarios de un consentimiento: lista interna (fichas) + correo del cliente. */
+function consentRecipients(row: Row): string[] {
+  const internal = getNotifyEmails("fichas")
+  const clientEmail = String(row.correo || "").trim()
+  const candidates = [...internal, /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail) ? clientEmail : ""]
+  const seen = new Set<string>()
+  return candidates
+    .map((value) => value.trim())
+    .filter((value): value is string => {
+      if (!value) return false
+      const key = value.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
 }
 
 // Resolver business_id del row → nombre legible para usar en el header
@@ -221,42 +289,21 @@ function consentMasajeEmailHtml(row: Row) {
 }
 
 export async function sendConsentMasajeEmail(row: Row) {
-  const apiKey = cleanEnv(process.env.RESEND_API_KEY)
-  if (!apiKey) return { sent: false, warning: "Falta RESEND_API_KEY" }
-
-  // Reutiliza la misma lista de destinatarios que la ficha dermatológica.
-  const internal = getNotifyEmails("fichas")
-  const clientEmail = String(row.correo || "").trim()
-  const candidates = [...internal, /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail) ? clientEmail : ""]
-  const seen = new Set<string>()
-  const recipients = candidates
-    .map((value) => value.trim())
-    .filter((value): value is string => {
-      if (!value) return false
-      const key = value.toLowerCase()
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
+  const recipients = consentRecipients(row)
   if (!recipients.length) return { sent: false, warning: "Sin destinatarios configurados" }
 
   const businessName = resolveBusinessNameForEmail(row)
-  const from = cleanEnv(process.env.EMAIL_FROM) || `${businessName} <onboarding@resend.dev>`
   const subject = `Consentimiento Masajes · ${String(row.cliente_nombre || row.consent_id || "").trim()}`.trim()
+  const html = consentMasajeEmailHtml(row)
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from,
-      to: recipients,
-      subject,
-      html: consentMasajeEmailHtml(row),
+  return sendBusinessEmail(
+    String(row.business_id || ""),
+    { to: recipients, subject, html },
+    () => postResend({
+      from: cleanEnv(process.env.EMAIL_FROM) || `${businessName} <onboarding@resend.dev>`,
+      to: recipients, subject, html,
     }),
-  })
-
-  if (!response.ok) return { sent: false, warning: await resendWarning(response) }
-  return { sent: true }
+  )
 }
 
 /**
@@ -346,41 +393,21 @@ function consentTatuajeCejaEmailHtml(row: Row) {
 }
 
 export async function sendConsentTatuajeCejaEmail(row: Row) {
-  const apiKey = cleanEnv(process.env.RESEND_API_KEY)
-  if (!apiKey) return { sent: false, warning: "Falta RESEND_API_KEY" }
-
-  const internal = getNotifyEmails("fichas")
-  const clientEmail = String(row.correo || "").trim()
-  const candidates = [...internal, /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail) ? clientEmail : ""]
-  const seen = new Set<string>()
-  const recipients = candidates
-    .map((value) => value.trim())
-    .filter((value): value is string => {
-      if (!value) return false
-      const key = value.toLowerCase()
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
+  const recipients = consentRecipients(row)
   if (!recipients.length) return { sent: false, warning: "Sin destinatarios configurados" }
 
   const businessName = resolveBusinessNameForEmail(row)
-  const from = cleanEnv(process.env.EMAIL_FROM) || `${businessName} <onboarding@resend.dev>`
   const subject = `Consentimiento Tatuajes/Cejas · ${String(row.cliente_nombre || row.consent_id || "").trim()}`.trim()
+  const html = consentTatuajeCejaEmailHtml(row)
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from,
-      to: recipients,
-      subject,
-      html: consentTatuajeCejaEmailHtml(row),
+  return sendBusinessEmail(
+    String(row.business_id || ""),
+    { to: recipients, subject, html },
+    () => postResend({
+      from: cleanEnv(process.env.EMAIL_FROM) || `${businessName} <onboarding@resend.dev>`,
+      to: recipients, subject, html,
     }),
-  })
-
-  if (!response.ok) return { sent: false, warning: await resendWarning(response) }
-  return { sent: true }
+  )
 }
 
 /**
@@ -446,41 +473,21 @@ function consentPeelingEmailHtml(row: Row) {
 }
 
 export async function sendConsentPeelingEmail(row: Row) {
-  const apiKey = cleanEnv(process.env.RESEND_API_KEY)
-  if (!apiKey) return { sent: false, warning: "Falta RESEND_API_KEY" }
-
-  const internal = getNotifyEmails("fichas")
-  const clientEmail = String(row.correo || "").trim()
-  const candidates = [...internal, /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail) ? clientEmail : ""]
-  const seen = new Set<string>()
-  const recipients = candidates
-    .map((value) => value.trim())
-    .filter((value): value is string => {
-      if (!value) return false
-      const key = value.toLowerCase()
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
+  const recipients = consentRecipients(row)
   if (!recipients.length) return { sent: false, warning: "Sin destinatarios configurados" }
 
   const businessName = resolveBusinessNameForEmail(row)
-  const from = cleanEnv(process.env.EMAIL_FROM) || `${businessName} <onboarding@resend.dev>`
   const subject = `Consentimiento Peeling · ${String(row.cliente_nombre || row.consent_id || "").trim()}`.trim()
+  const html = consentPeelingEmailHtml(row)
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from,
-      to: recipients,
-      subject,
-      html: consentPeelingEmailHtml(row),
+  return sendBusinessEmail(
+    String(row.business_id || ""),
+    { to: recipients, subject, html },
+    () => postResend({
+      from: cleanEnv(process.env.EMAIL_FROM) || `${businessName} <onboarding@resend.dev>`,
+      to: recipients, subject, html,
     }),
-  })
-
-  if (!response.ok) return { sent: false, warning: await resendWarning(response) }
-  return { sent: true }
+  )
 }
 
 export async function sendReporteEmail(row: Row) {

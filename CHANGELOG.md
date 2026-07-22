@@ -18,6 +18,32 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.73.0] — 2026-07-22
+
+### Added
+- **Envío de correos desde el Gmail de cada negocio** (Clientes + Consentimientos).
+  Los correos cara al cliente — **Ficha Dermatológica** y los **3 consentimientos**
+  (masaje, tatuaje/cejas, peeling) — ahora salen **desde la cuenta de Gmail del
+  negocio** (vía SMTP + "contraseña de aplicación"), de modo que el cliente ve el
+  correo del negocio y sus respuestas llegan a ese buzón.
+  - Nueva pantalla **Sistema → Configuración → Correo** (`EmailConfigDialog`):
+    cuenta Gmail remitente + contraseña de aplicación (se guarda **cifrada
+    AES-256-GCM**, nunca se muestra luego, solo `••••1234`) + **enviar correo de
+    prueba**. Enlace a `myaccount.google.com/apppasswords`.
+  - **Separación total por tenant:** cada negocio (Cibao, Depicenter) configura su
+    propia cuenta; el resolver de credenciales solo devuelve el Gmail del
+    `business_id` pedido — **nunca se cruzan**. Si el superadmin está en "Todos",
+    la pantalla pide seleccionar un negocio concreto.
+  - **Respaldo sin interrupción:** mientras un negocio no configure su Gmail, el
+    envío cae al **Resend** actual (comportamiento previo intacto).
+  - Nueva tabla `csl_email_settings` (RLS por `business_id`, migración
+    `202607220001`). Nuevos módulos server-only `lib/server/email-settings.ts` y
+    `lib/server/gmail-transport.ts` (nodemailer). Rutas
+    `GET/PUT /api/settings/email` y `POST /api/settings/email/test`
+    (solo admin/superadmin, la UI siempre manda `activeBusinessId`).
+
+---
+
 ## [0.72.1] — 2026-07-21
 
 ### Fixed

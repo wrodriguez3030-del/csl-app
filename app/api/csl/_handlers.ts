@@ -4031,7 +4031,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       await upsertRow("ficha_dermatologica", row)
       await syncFichasCliente(cliente)
       const emailBrand = getBusinessBranding(getBusinessContext()?.businessSlug).name
-      const email = await sendFichaDermoEmail(row, emailBrand).catch((error: unknown) => ({
+      const emailBusinessId = String(row.business_id || getBusinessContext()?.businessId || "")
+      const email = await sendFichaDermoEmail(row, emailBrand, emailBusinessId).catch((error: unknown) => ({
         sent: false,
         warning: error instanceof Error ? error.message : "No se pudo enviar el correo",
       }))
