@@ -18,6 +18,22 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.73.2] — 2026-07-22
+
+### Changed
+- **Al firmar un consentimiento, el correo del cliente se toma del SISTEMA**
+  (registro del cliente `csl_cosmiatria_clientes.email`), no de lo tecleado en el
+  formulario. Así el consentimiento (masaje/tatuaje-cejas/peeling) llega al correo
+  real del cliente + copia al buzón interno del negocio (para Cibao,
+  `cibaospa.consentimientos@gmail.com`). La Ficha Dermatológica aplica el mismo
+  criterio (email del sistema primero). Respaldo: si el registro no tiene email,
+  se usa el del formulario.
+- Los consentimientos ahora **guardan el email en el registro del cliente**
+  (`clienteCosmiatriaToDb` lee también `correo`/`Correo`), para que "el sistema"
+  quede con el correo del cliente para próximos envíos.
+
+---
+
 ## [0.73.1] — 2026-07-22
 
 ### Changed

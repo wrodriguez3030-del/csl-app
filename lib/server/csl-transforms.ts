@@ -469,7 +469,9 @@ export function clienteCosmiatriaToDb(payload: Row) {
     cliente_id: id,
     numero_cliente: String(payload.NumeroCliente ?? payload.numeroCliente ?? id.replace(/^cli_(doc|tel)_/, "")),
     documento_identidad: String(payload.DocumentoIdentidad ?? payload.documentoIdentidad ?? payload.cedula ?? payload.Cedula ?? ""),
-    email: String(payload.Email ?? payload.email ?? ""),
+    // Incluye `correo`/`Correo` (los consentimientos mandan el email bajo esa
+    // clave) para que el correo del cliente quede guardado EN EL SISTEMA.
+    email: String(payload.Email ?? payload.email ?? payload.Correo ?? payload.correo ?? ""),
     nombre,
     apellido,
     telefono: String(payload.Telefono ?? payload.telefono ?? ""),

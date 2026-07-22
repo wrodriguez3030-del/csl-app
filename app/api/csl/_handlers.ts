@@ -4025,7 +4025,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const row: Row = {
         ...fichaDermoToDb({ ...payload, clienteId: cliente.cliente_id }),
         cliente_id: cliente.cliente_id,
-        email: String(payload.email || payload.Email || cliente.email || ""),
+        // Correo del cliente tomado del SISTEMA (registro del cliente) primero.
+        email: String(cliente.email || payload.email || payload.Email || ""),
       }
       row.payload_json = { ...((row.payload_json as unknown as Row) || {}), email: row.email, Email: row.email }
       await upsertRow("ficha_dermatologica", row)
@@ -4045,7 +4046,13 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const payload = parsePayload(params)
       const clienteId = await resolveClienteId(payload)
       const cliente = await upsertClienteCosmiatriaPreserving(clienteCosmiatriaToDb({ ...payload, ClienteID: clienteId }))
-      const row = consentToDb({ ...payload, clienteId: cliente.cliente_id }, "masajes")
+      // El correo del cliente para la notificación se toma del SISTEMA (registro
+      // del cliente); si el registro no tiene, consentToDb usa el del formulario.
+      const clienteEmailMasaje = String(cliente.email || "").trim()
+      const row = consentToDb(
+        { ...payload, clienteId: cliente.cliente_id, ...(clienteEmailMasaje ? { correo: clienteEmailMasaje } : {}) },
+        "masajes",
+      )
       await upsertRow("csl_consent_masajes", row)
       await syncFichasCliente(cliente)
       // Notificación por email (Resend) — el guardado nunca se pierde si
@@ -4063,7 +4070,13 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const payload = parsePayload(params)
       const clienteId = await resolveClienteId(payload)
       const cliente = await upsertClienteCosmiatriaPreserving(clienteCosmiatriaToDb({ ...payload, ClienteID: clienteId }))
-      const row = consentToDb({ ...payload, clienteId: cliente.cliente_id }, "tatuajes")
+      // El correo del cliente para la notificación se toma del SISTEMA (registro
+      // del cliente); si el registro no tiene, consentToDb usa el del formulario.
+      const clienteEmailTatuaje = String(cliente.email || "").trim()
+      const row = consentToDb(
+        { ...payload, clienteId: cliente.cliente_id, ...(clienteEmailTatuaje ? { correo: clienteEmailTatuaje } : {}) },
+        "tatuajes",
+      )
       await upsertRow("csl_consent_tatuajes_cejas", row)
       await syncFichasCliente(cliente)
       // Notificación por email — patrón idéntico al de masajes / ficha derma.
@@ -4080,7 +4093,13 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const payload = parsePayload(params)
       const clienteId = await resolveClienteId(payload)
       const cliente = await upsertClienteCosmiatriaPreserving(clienteCosmiatriaToDb({ ...payload, ClienteID: clienteId }))
-      const row = consentToDb({ ...payload, clienteId: cliente.cliente_id }, "peeling")
+      // El correo del cliente para la notificación se toma del SISTEMA (registro
+      // del cliente); si el registro no tiene, consentToDb usa el del formulario.
+      const clienteEmailPeeling = String(cliente.email || "").trim()
+      const row = consentToDb(
+        { ...payload, clienteId: cliente.cliente_id, ...(clienteEmailPeeling ? { correo: clienteEmailPeeling } : {}) },
+        "peeling",
+      )
       await upsertRow("csl_consent_peeling", row)
       await syncFichasCliente(cliente)
       // Notificación por email — patrón idéntico a masajes / tatuajes / ficha.
