@@ -1,7 +1,6 @@
 ﻿import type { FichaDermoCosmiatrica } from "./dermo-cosmiatria"
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib"
-import { getNotifyEmails } from "./notify-emails"
-import { sendBusinessEmail, postResend } from "./server/csl-email"
+import { sendBusinessEmail, postResend, internalNotifyRecipients } from "./server/csl-email"
 
 type Row = Record<string, unknown>
 
@@ -498,11 +497,12 @@ export function fichaDermoEmailHtml(row: Row, businessName = "Cibao Spa Laser") 
   </body></html>`
 }
 export async function sendFichaDermoEmail(row: Row, businessName = "Cibao Spa Laser", businessId?: string) {
+  const bid = String(businessId || row.business_id || "")
   const from = (process.env.EMAIL_FROM || `${businessName} <onboarding@resend.dev>`).replace(/\\r\\n|\\n|\\r/g, "").trim()
   const pdf = await buildFichaDermoPdf(row, businessName)
   const clientEmail = clean(row.email)
-  // Destinatarios internos (env CSL_NOTIFY_EMAILS_FICHAS) + cliente si dejó email válido.
-  const internal = getNotifyEmails("fichas")
+  // Buzón interno POR TENANT (Gmail configurado del negocio) + cliente si dio email.
+  const internal = await internalNotifyRecipients(bid)
   const candidates = [...internal, /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail) ? clientEmail : ""]
   const seen = new Set<string>()
   const recipients = candidates
@@ -514,7 +514,7 @@ export async function sendFichaDermoEmail(row: Row, businessName = "Cibao Spa La
       seen.add(key)
       return true
     })
-  if (!recipients.length) return { sent: false, warning: "Sin destinatarios configurados (CSL_NOTIFY_EMAILS_FICHAS)" }
+  if (!recipients.length) return { sent: false, warning: "Sin destinatarios configurados" }
 
   const subject = `CONSENTIMIENTO INFORMADO ${businessName.toUpperCase()}`
   const html = fichaDermoEmailHtml(row, businessName)
@@ -522,7 +522,7 @@ export async function sendFichaDermoEmail(row: Row, businessName = "Cibao Spa La
 
   // PRIMERO desde el Gmail del negocio (si está configurado); RESPALDO Resend.
   return sendBusinessEmail(
-    String(businessId || row.business_id || ""),
+    bid,
     { to: recipients, subject, html, attachments: [{ filename, content: pdf }] },
     () => postResend({
       from,

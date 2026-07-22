@@ -18,6 +18,21 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.73.1] — 2026-07-22
+
+### Changed
+- **Separación por tenant también en el buzón interno** (Ficha Dermatológica +
+  Consentimientos). Antes la copia interna usaba una lista global (env), que caía
+  a `cibaospalaser@gmail.com` para **todos** los negocios (incluido Depicenter).
+  Ahora la copia interna se resuelve **por negocio**: (1) la cuenta de Gmail
+  configurada del negocio (`csl_email_settings.gmail_user`) o, si no está
+  configurada, (2) el correo de contacto de marca del tenant
+  (`cibaospalaser@` / `depicenterskinlaser@`). Así la copia de Depicenter llega
+  a su propio buzón, no al de Cibao. Nuevo helper `internalNotifyRecipients`. Los
+  correos de RR.HH./Reportes (internos) siguen usando la lista env sin cambios.
+
+---
+
 ## [0.73.0] — 2026-07-22
 
 ### Added

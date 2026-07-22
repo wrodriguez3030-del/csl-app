@@ -10,8 +10,9 @@ import { getNotifyEmails } from "@/lib/notify-emails"
 import { emailEscape, formatCedula, formatHeightFeet, formatMoney, formatPhone, parseJsonArray } from "./csl-helpers"
 import { buildReportePdf, buildSolicitudPdf, pdfText } from "./csl-pdf"
 import type { Row } from "./csl-types"
-import { resolveGmailCredentialsForBusiness } from "@/lib/server/email-settings"
+import { resolveGmailCredentialsForBusiness, getEmailSettingsStatus } from "@/lib/server/email-settings"
 import { sendGmail, type GmailAttachment } from "@/lib/server/gmail-transport"
+import { getBusinessBranding } from "@/lib/business"
 
 function cleanEnv(value: unknown) {
   return String(value || "").replace(/\\r\\n|\\n|\\r/g, "").trim()
@@ -66,9 +67,30 @@ export async function postResend(opts: {
   return { sent: true }
 }
 
-/** Destinatarios de un consentimiento: lista interna (fichas) + correo del cliente. */
-function consentRecipients(row: Row): string[] {
-  const internal = getNotifyEmails("fichas")
+/**
+ * Buzón interno de notificación POR TENANT (Cibao ≠ Depicenter). Prioridad:
+ *   1. La cuenta de Gmail configurada del negocio (`csl_email_settings.gmail_user`)
+ *      — la copia interna llega al MISMO buzón desde el que se envía/responde.
+ *   2. Respaldo: el correo de contacto de marca del tenant (cibaospalaser@ /
+ *      depicenterskinlaser@).
+ * NUNCA usa la lista global env (que era Cibao para todos): eso rompía la
+ * separación por negocio.
+ */
+export async function internalNotifyRecipients(businessId: string): Promise<string[]> {
+  const slug = BUSINESS_SLUG_BY_ID[businessId]
+  try {
+    const st = await getEmailSettingsStatus(businessId, slug)
+    if (st.configured && st.gmailUser) return [st.gmailUser]
+  } catch {
+    // Si falla la lectura, cae al correo de marca del tenant.
+  }
+  const contact = getBusinessBranding(slug).contactEmail
+  return contact ? [contact] : []
+}
+
+/** Destinatarios de un consentimiento: buzón interno del negocio + correo del cliente. */
+async function consentRecipients(row: Row): Promise<string[]> {
+  const internal = await internalNotifyRecipients(String(row.business_id || ""))
   const clientEmail = String(row.correo || "").trim()
   const candidates = [...internal, /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail) ? clientEmail : ""]
   const seen = new Set<string>()
@@ -289,7 +311,7 @@ function consentMasajeEmailHtml(row: Row) {
 }
 
 export async function sendConsentMasajeEmail(row: Row) {
-  const recipients = consentRecipients(row)
+  const recipients = await consentRecipients(row)
   if (!recipients.length) return { sent: false, warning: "Sin destinatarios configurados" }
 
   const businessName = resolveBusinessNameForEmail(row)
@@ -393,7 +415,7 @@ function consentTatuajeCejaEmailHtml(row: Row) {
 }
 
 export async function sendConsentTatuajeCejaEmail(row: Row) {
-  const recipients = consentRecipients(row)
+  const recipients = await consentRecipients(row)
   if (!recipients.length) return { sent: false, warning: "Sin destinatarios configurados" }
 
   const businessName = resolveBusinessNameForEmail(row)
@@ -473,7 +495,7 @@ function consentPeelingEmailHtml(row: Row) {
 }
 
 export async function sendConsentPeelingEmail(row: Row) {
-  const recipients = consentRecipients(row)
+  const recipients = await consentRecipients(row)
   if (!recipients.length) return { sent: false, warning: "Sin destinatarios configurados" }
 
   const businessName = resolveBusinessNameForEmail(row)
