@@ -23,6 +23,12 @@ import { NextResponse } from "next/server"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { fichaDermoToDb } from "@/lib/dermo-server"
 import { consentToDb } from "@/lib/server/csl-transforms"
+import {
+  sendConsentMasajeEmail,
+  sendConsentPeelingEmail,
+  sendConsentTatuajeCejaEmail,
+  sendConsentDepilacionLaserEmail,
+} from "@/lib/server/csl-email"
 import { getSupabaseAdmin } from "@/lib/server/supabase"
 import { claimPublicFormLink, verifyPublicFormLink } from "@/lib/server/public-form-links"
 import { clientIp, rateLimit } from "@/lib/rate-limit-server"
@@ -476,6 +482,28 @@ export async function POST(
         token_id: verified.link.id,
         record_id: recordId,
       })
+    }
+
+    // 6) Notificación por email al firmar (cliente + copia interna del negocio).
+    //    No bloquea la confirmación al cliente si el correo falla.
+    if (formType.startsWith("consentimiento_")) {
+      const sendConsentEmail =
+        formType === "consentimiento_masajes"
+          ? sendConsentMasajeEmail
+          : formType === "consentimiento_peeling"
+          ? sendConsentPeelingEmail
+          : formType === "consentimiento_depilacion_laser"
+          ? sendConsentDepilacionLaserEmail
+          : sendConsentTatuajeCejaEmail
+      try {
+        await sendConsentEmail(row as Record<string, unknown>, businessId)
+      } catch (emailError) {
+        console.warn("[public-form-link/submit] email consentimiento falló", {
+          form_type: formType,
+          record_id: recordId,
+          error: emailError instanceof Error ? emailError.message : String(emailError),
+        })
+      }
     }
 
     return json({ ok: true, recordId, formType })

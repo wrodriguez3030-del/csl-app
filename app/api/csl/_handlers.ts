@@ -145,6 +145,7 @@ import {
   sendConsentMasajeEmail,
   sendConsentPeelingEmail,
   sendConsentTatuajeCejaEmail,
+  sendConsentDepilacionLaserEmail,
   sendReporteEmail,
 } from "@/lib/server/csl-email"
 import type { ActionParams, ActionUser, Row } from "@/lib/server/csl-types"
@@ -4116,10 +4117,21 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const payload = parsePayload(params)
       const clienteId = await resolveClienteId(payload)
       const cliente = await upsertClienteCosmiatriaPreserving(clienteCosmiatriaToDb({ ...payload, ClienteID: clienteId }))
-      const row = consentToDb({ ...payload, clienteId: cliente.cliente_id }, "depilacion-laser")
+      // El correo del cliente para la notificación se toma del SISTEMA (registro
+      // del cliente); si el registro no tiene, consentToDb usa el del formulario.
+      const clienteEmailDepilacion = String(cliente.email || "").trim()
+      const row = consentToDb(
+        { ...payload, clienteId: cliente.cliente_id, ...(clienteEmailDepilacion ? { correo: clienteEmailDepilacion } : {}) },
+        "depilacion-laser",
+      )
       await upsertRow("csl_consent_depilacion_laser", row)
       await syncFichasCliente(cliente)
-      return { ok: true, record: fromDb("csl_consent_depilacion_laser", row) }
+      // Notificación por email — mismo patrón que masajes/tatuajes/peeling.
+      const email = await sendConsentDepilacionLaserEmail(row, String(getBusinessContext()?.businessId || "")).catch((error: unknown) => ({
+        sent: false,
+        warning: error instanceof Error ? error.message : "No se pudo enviar el correo",
+      }))
+      return { ok: true, record: fromDb("csl_consent_depilacion_laser", row), email }
     }
     case "deleteConsentDepilacionLaser":
       await deleteRow("csl_consent_depilacion_laser", textValue(params, "id") || textValue(params, "consentId"))

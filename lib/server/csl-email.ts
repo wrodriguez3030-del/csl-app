@@ -531,6 +531,88 @@ export async function sendConsentPeelingEmail(row: Row, businessId?: string) {
   )
 }
 
+/**
+ * Resumen HTML del consentimiento de depilación láser. Mismo patrón que peeling:
+ * columnas dedicadas + listas/campos que viajan en payload_json.
+ */
+function consentDepilacionLaserEmailHtml(row: Row) {
+  const payload = (row.payload_json && typeof row.payload_json === "object" ? row.payload_json : {}) as Row
+  const field = (label: string, value: unknown) =>
+    `<tr><td style="font-weight:700;border-top:1px solid #e5e7eb;padding:7px;width:200px;color:#0B3442">${emailEscape(label)}</td><td style="border-top:1px solid #e5e7eb;padding:7px;color:#102A3A">${emailEscape(value)}</td></tr>`
+  const checklist = (label: string, marked: unknown) => {
+    const list = Array.isArray(marked) ? (marked as unknown[]).map((v) => String(v)) : []
+    if (list.length === 0) return field(label, "—")
+    const items = list.map((item) => `<li style="margin:2px 0">${emailEscape(item)}</li>`).join("")
+    return `<tr><td style="font-weight:700;border-top:1px solid #e5e7eb;padding:7px;vertical-align:top;color:#0B3442">${emailEscape(label)}</td><td style="border-top:1px solid #e5e7eb;padding:7px;color:#102A3A"><ul style="margin:0;padding-left:18px">${items}</ul></td></tr>`
+  }
+
+  const tipo = String(payload.tipoDepilacion || row.tipo_depilacion || "")
+  const zona = String(row.zona_tratar || payload.zonaTratar || "")
+  const zonaOtro = String(payload.zonaTratarOtro || row.zona_tratar_otro || "")
+  const zonaTexto = (zona === "Otra zona" || zona === "Otro") && zonaOtro ? `Otra · ${zonaOtro}` : zona
+
+  return `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#102A3A;background:#F7FAFC;padding:24px">
+    <div style="max-width:760px;margin:0 auto;background:#FFFFFF;border:1px solid #E1ECF2;border-radius:14px;overflow:hidden">
+      <div style="background:linear-gradient(90deg,#14B7B0,#22C7C9);padding:18px 22px;color:#FFFFFF">
+        <div style="font-size:11px;letter-spacing:0.18em;text-transform:uppercase;opacity:0.9">${emailEscape(resolveBusinessNameForEmail(row))}</div>
+        <h1 style="margin:4px 0 0 0;font-size:22px">Consentimiento Informado para Depilación Láser</h1>
+      </div>
+      <div style="padding:18px 22px">
+        <table cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%">
+          ${field("ID", row.consent_id)}
+          ${field("Fecha", row.fecha)}
+          ${field("Sucursal", row.sucursal)}
+          ${field("Estado", row.estado)}
+          ${field("Cliente", row.cliente_nombre)}
+          ${field("Documento", row.documento)}
+          ${field("Teléfono", row.telefono)}
+          ${field("Correo", row.correo)}
+          ${field("Especialista", row.especialista_nombre)}
+          ${field("Tipo de depilación", tipo)}
+          ${field("Zona a tratar", zonaTexto)}
+          ${field("Fototipo", payload.fototipo || row.fototipo)}
+          ${field("Tipo de vello", payload.tipoVello || row.tipo_vello)}
+          ${field("Observaciones médicas", row.observaciones_medicas)}
+          ${field("Observaciones del especialista", row.observaciones)}
+          ${checklist("Contraindicaciones declaradas", payload.contraindicacionesList)}
+          ${checklist("Cuidados antes confirmados", payload.instruccionesAntes)}
+          ${checklist("Cuidados después confirmados", payload.cuidadosDespuesList)}
+          ${checklist("Riesgos aceptados", payload.riesgosAceptadosList)}
+          ${checklist("Políticas aceptadas", payload.politicasAceptadas)}
+          ${field("Acepta el procedimiento", payload.aceptaProcedimiento ? "Sí" : "No")}
+          ${field("Acepta los riesgos", payload.aceptaRiesgos ? "Sí" : "No")}
+          ${field("Acepta las políticas", payload.aceptaPoliticas ? "Sí" : "No")}
+          ${field("Acepta protección de datos", payload.aceptaProteccionDatos ? "Sí" : "No")}
+        </table>
+        ${row.firma_cliente ? `<div style="margin-top:18px"><div style="font-size:11px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:0.14em;margin-bottom:6px">Firma del cliente</div><img src="${emailEscape(row.firma_cliente)}" alt="Firma cliente" style="max-width:320px;border:1px solid #E1ECF2;background:white;padding:6px;border-radius:8px" /></div>` : ""}
+      </div>
+      <div style="padding:14px 22px;background:#F7FAFC;border-top:1px solid #E1ECF2;font-size:11px;color:#64748B">
+        Notificación generada automáticamente por el Sistema Integral CSL.
+      </div>
+    </div>
+  </body></html>`
+}
+
+export async function sendConsentDepilacionLaserEmail(row: Row, businessId?: string) {
+  const bid = String(businessId || row.business_id || "")
+  if (bid) row.business_id = bid
+  const recipients = await consentRecipients(row)
+  if (!recipients.length) return { sent: false, warning: "Sin destinatarios configurados" }
+
+  const businessName = resolveBusinessNameForEmail(row)
+  const subject = `Consentimiento Depilación Láser · ${String(row.cliente_nombre || row.consent_id || "").trim()}`.trim()
+  const html = consentDepilacionLaserEmailHtml(row)
+
+  return sendBusinessEmail(
+    String(row.business_id || ""),
+    { to: recipients, subject, html },
+    () => postResend({
+      from: cleanEnv(process.env.EMAIL_FROM) || `${businessName} <onboarding@resend.dev>`,
+      to: recipients, subject, html,
+    }),
+  )
+}
+
 export async function sendReporteEmail(row: Row) {
   const apiKey = cleanEnv(process.env.RESEND_API_KEY)
   if (!apiKey) return { sent: false, warning: "Falta RESEND_API_KEY" }

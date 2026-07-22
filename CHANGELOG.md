@@ -18,6 +18,21 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.73.4] — 2026-07-22
+
+### Added
+- **Consentimiento de Depilación Láser ahora envía correo al firmar** (antes NO
+  enviaba correo por ninguna vía). Al firmar: llega al **cliente** (correo tomado
+  del sistema) + copia al **buzón interno del negocio** (Cibao:
+  `cibaospa.consentimientos@gmail.com`), desde el Gmail del negocio. Nueva plantilla
+  `consentDepilacionLaserEmailHtml` + `sendConsentDepilacionLaserEmail`.
+- **Los consentimientos firmados por enlace público ahora también envían correo**
+  (masaje, peeling, tatuajes/cejas y depilación láser). La ruta pública de firma
+  guardaba pero nunca notificaba; ahora envía con el mismo flujo por-tenant. El
+  fallo de correo no bloquea la confirmación al cliente.
+
+---
+
 ## [0.73.3] — 2026-07-22
 
 ### Fixed
