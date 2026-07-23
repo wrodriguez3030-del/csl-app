@@ -18,6 +18,19 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.76.0] — 2026-07-23
+
+### Added
+- **Aviso "el cliente ya firmó este consentimiento"**. Como el consentimiento se
+  firma una sola vez (la primera vez que el cliente recibe el servicio), al
+  seleccionar un cliente en "Nuevo consentimiento" el sistema verifica si **ya
+  firmó ese mismo tipo** y muestra un aviso (fecha + sucursal). Solo informa; no
+  bloquea. **Verificación independiente por tenant**: nueva acción
+  `checkConsentFirmado` filtra por `business_id` efectivo, así Cibao y Depicenter
+  se cuentan por separado.
+
+---
+
 ## [0.75.0] — 2026-07-22
 
 ### Added

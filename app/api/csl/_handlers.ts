@@ -4205,6 +4205,46 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         sesionesPulse: sesionesPulse.map((row) => fromDb("sesiones_cliente", row)),
       }
     }
+    case "checkConsentFirmado": {
+      // ¿El cliente YA firmó este tipo de consentimiento EN EL NEGOCIO ACTIVO?
+      // El consentimiento se firma una sola vez (la primera vez que recibe el
+      // servicio). Verificación AISLADA POR TENANT: filtramos por business_id
+      // efectivo, así Cibao y Depicenter se cuentan por separado.
+      const clienteId = textValue(params, "clienteId")
+      const kind = textValue(params, "kind")
+      const excludeId = textValue(params, "excludeId")
+      const TABLE: Record<string, string> = {
+        masajes: "csl_consent_masajes",
+        peeling: "csl_consent_peeling",
+        tatuajes: "csl_consent_tatuajes_cejas",
+        "tatuajes-cejas": "csl_consent_tatuajes_cejas",
+        "depilacion-laser": "csl_consent_depilacion_laser",
+      }
+      const table = TABLE[kind]
+      if (!clienteId || !table) return { ok: true, firmado: false }
+      const businessId = effectiveBusinessId()
+      const { data, error } = await getSupabaseAdmin()
+        .from(table)
+        .select("consent_id, fecha, fecha_registro, sucursal, firma_cliente, estado, business_id")
+        .eq("cliente_id", clienteId)
+        .order("fecha_registro", { ascending: false })
+        .limit(50)
+      if (error) return { ok: true, firmado: false }
+      const rows = ((data as Row[] | null) || [])
+        .filter((r) => !businessId || String(r.business_id || "") === businessId)
+        .filter((r) => !excludeId || String(r.consent_id) !== excludeId)
+        .filter((r) => String(r.estado || "") !== "Anulado")
+      if (!rows.length) return { ok: true, firmado: false }
+      const signed = rows.find((r) => String(r.firma_cliente || "").trim()) || rows[0]
+      return {
+        ok: true,
+        firmado: true,
+        total: rows.length,
+        consentId: String(signed.consent_id || ""),
+        fecha: String(signed.fecha_registro || signed.fecha || ""),
+        sucursal: String(signed.sucursal || ""),
+      }
+    }
     case "saveCertificadoRegalo": {
       const record = parsePayload(params)
       const row = {

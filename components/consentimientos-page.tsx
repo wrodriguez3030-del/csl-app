@@ -1093,6 +1093,8 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
   const initialSucursal = ""
   const [form, setForm] = useState<ConsentimientoRecord>(() => emptyRecord(kind, initialSucursal))
   const [fichasCliente, setFichasCliente] = useState<FichaResumen[]>([])
+  // Aviso "el cliente ya firmó este consentimiento" (por tipo, por tenant).
+  const [consentPrevio, setConsentPrevio] = useState<{ fecha: string; sucursal: string; total: number } | null>(null)
   // Mensaje de validación visible dentro del dialog (no sólo toast).
   const [saveError, setSaveError] = useState("")
   const [isSaving, setIsSaving] = useState(false)
@@ -1261,6 +1263,30 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
     }
   }, [apiUrl])
 
+  /** Verifica si el cliente YA firmó este tipo de consentimiento en el negocio
+   *  activo (independiente por tenant). El backend scopea por business_id. */
+  const checkConsentPrevio = useCallback(async (clienteId: string, excludeId = "") => {
+    if (!clienteId) {
+      setConsentPrevio(null)
+      return
+    }
+    try {
+      const result = await apiJsonp(normalizeApiUrl(apiUrl), {
+        action: "checkConsentFirmado",
+        clienteId,
+        kind,
+        excludeId,
+      }) as { ok?: boolean; firmado?: boolean; fecha?: string; sucursal?: string; total?: number }
+      if (result?.ok && result.firmado) {
+        setConsentPrevio({ fecha: String(result.fecha || ""), sucursal: String(result.sucursal || ""), total: Number(result.total || 1) })
+      } else {
+        setConsentPrevio(null)
+      }
+    } catch {
+      setConsentPrevio(null)
+    }
+  }, [apiUrl, kind])
+
   /** Aplicar datos de un cliente al formulario (autocompletado).
    *
    *  Sucursal: solo se llena si la del formulario está vacía, así nunca
@@ -1292,6 +1318,7 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
       }
     })
     void loadHistorialCliente(cliente.ClienteID)
+    void checkConsentPrevio(cliente.ClienteID)
   }
 
   /** Vincular una ficha dermatológica del cliente y traer datos de salud. */
@@ -1319,12 +1346,14 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
   /** Limpiar el cliente vinculado (volver a captura manual). */
   const clearCliente = () => {
     setFichasCliente([])
+    setConsentPrevio(null)
     setForm((current) => ({ ...current, clienteId: "", fichaId: "" }))
   }
 
   const startCreate = () => {
     setSaveError("")
     setFichasCliente([])
+    setConsentPrevio(null)
     setForm(emptyRecord(kind, ""))
     setFormOpen(true)
   }
@@ -1335,8 +1364,13 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
     const normalized = normalizeRecord(full, kind)
     setForm(normalized)
     setFormOpen(true)
-    if (normalized.clienteId) void loadHistorialCliente(normalized.clienteId)
-    else setFichasCliente([])
+    if (normalized.clienteId) {
+      void loadHistorialCliente(normalized.clienteId)
+      void checkConsentPrevio(normalized.clienteId, normalized.id)
+    } else {
+      setFichasCliente([])
+      setConsentPrevio(null)
+    }
   }
 
   const handleSave = async () => {
@@ -1643,6 +1677,7 @@ export function ConsentimientosPage({ kind }: { kind: ConsentKind }) {
         sucursales={sucursales}
         clientes={clientes}
         fichasCliente={fichasCliente}
+        consentPrevio={consentPrevio}
         saveError={saveError}
         isSaving={isSaving}
         onOpenChange={(value) => { if (!value) setSaveError(""); setFormOpen(value) }}
@@ -1715,6 +1750,7 @@ function ConsentFormDialog({
   sucursales,
   clientes,
   fichasCliente,
+  consentPrevio,
   saveError,
   isSaving,
   onOpenChange,
@@ -1730,6 +1766,7 @@ function ConsentFormDialog({
   sucursales: string[]
   clientes: ClienteCosmiatria[]
   fichasCliente: FichaResumen[]
+  consentPrevio: { fecha: string; sucursal: string; total: number } | null
   saveError: string
   isSaving: boolean
   onOpenChange: (open: boolean) => void
@@ -1775,6 +1812,31 @@ function ConsentFormDialog({
             >
               <CheckCircle2 className="h-4 w-4" /> Marcar como firmado
             </Button>
+          </div>
+        ) : null}
+
+        {consentPrevio ? (
+          <div className="flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+            <div>
+              <p className="text-sm font-bold text-amber-900">
+                Este cliente ya firmó el consentimiento de {config.title}
+              </p>
+              <p className="mt-0.5 text-xs text-amber-800">
+                {(() => {
+                  const raw = consentPrevio.fecha
+                  const d = raw ? new Date(raw) : null
+                  const fecha = d && !isNaN(d.getTime())
+                    ? d.toLocaleDateString("es-DO", { day: "2-digit", month: "2-digit", year: "numeric" })
+                    : raw
+                  return [
+                    fecha ? `Firmado el ${fecha}` : "Ya firmado",
+                    consentPrevio.sucursal ? `en ${consentPrevio.sucursal}` : "",
+                    consentPrevio.total > 1 ? `· ${consentPrevio.total} en total` : "",
+                  ].filter(Boolean).join(" ")
+                })()}. El consentimiento se firma una sola vez; normalmente no necesita firmarlo de nuevo (verificación por negocio).
+              </p>
+            </div>
           </div>
         ) : null}
 
