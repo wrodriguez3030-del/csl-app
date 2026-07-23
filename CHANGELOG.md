@@ -18,6 +18,25 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.75.0] — 2026-07-22
+
+### Added
+- **Los correos de Masajes, Peeling y Eliminación de Tatuajes/Cejas ahora adjuntan
+  su PDF legal formal** (antes solo Depilación Láser). Cada documento reproduce
+  1:1 el texto legal que genera el navegador (datos del cliente, procedimiento,
+  declaraciones, instrucciones, contraindicaciones, riesgos, políticas, protección
+  de datos, autorización y firma). Motor genérico `buildConsentPdf` +
+  `lib/server/consent-legal-forms.ts`. Aplica tanto al firmar in-app como por
+  enlace público, y por Gmail o el respaldo Resend. Si la generación fallara, el
+  correo se envía igual.
+
+### Fixed
+- Renderizado de PDF: los párrafos se dibujan por segmentos (una sola cadena por
+  tramo del mismo peso), corrigiendo espacios que ocasionalmente se perdían entre
+  palabras (p.ej. "Todas las" / "Yo entiendo").
+
+---
+
 ## [0.74.0] — 2026-07-22
 
 ### Added

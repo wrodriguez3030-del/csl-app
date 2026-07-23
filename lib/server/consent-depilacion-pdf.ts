@@ -21,18 +21,37 @@ const TEXT = rgb(0.07, 0.09, 0.11)
 const MUTED = rgb(0.4, 0.45, 0.5)
 const WHITE = rgb(1, 1, 1)
 
-type Run = { s: string; b?: boolean }
+export type Run = { s: string; b?: boolean }
 /** Item con introducción en negrita opcional (`<b>Label:</b> resto`). */
-function lead(bold: string, rest: string): Run[] {
+export function lead(bold: string, rest: string): Run[] {
   return [{ s: bold, b: true }, { s: rest }]
 }
-function plain(s: string): Run[] {
+export function plain(s: string): Run[] {
   return [{ s }]
 }
+/** Lista de items de texto plano (para portar `<ul>` de texto legal). */
+export function bullets(items: string[]): Run[][] {
+  return items.map((s) => [{ s }])
+}
 
-interface Section {
+export interface Section {
   title: string
   blocks: Array<{ kind: "p"; runs: Run[] } | { kind: "list"; ordered?: boolean; items: Run[][] }>
+}
+
+/** Config de un documento de consentimiento para el motor de PDF. */
+export interface ConsentPdfConfig {
+  /** Título grande (h1). */
+  title: string
+  /** Subtítulo teal opcional (una línea). */
+  subtitle?: string
+  /** Etiqueta del especialista en los datos del cliente. */
+  especialistaLabel?: string
+  /** Nombre corto del documento para el pie de página. */
+  footerLabel: string
+  sections: Section[]
+  /** Caja de aceptación opcional (p.ej. depilación láser). */
+  acceptBox?: string
 }
 
 // ── Texto (WinAnsi-safe): normaliza tipografía y descarta lo no codificable ──
@@ -130,13 +149,17 @@ class ConsentPdf {
       if (first && bullet) {
         this.page.drawText(this.safe(bullet), { x: x - 12, y: this.y, size, font: this.bold, color: TEAL })
       }
-      for (let j = 0; j < line.length; j++) {
-        const tok = line[j]
-        // El espacio va DENTRO del drawText para que nunca se pierda.
-        const str = (j > 0 ? " " : "") + this.safe(tok.s)
-        const f = tok.b ? this.bold : this.font
-        this.page.drawText(str, { x: cx, y: this.y, size, font: f, color: TEXT })
-        cx += f.widthOfTextAtSize(str, size)
+      // Agrupa la línea en segmentos del mismo peso y dibuja cada uno como UN
+      // solo string (los espacios van dentro del texto -> siempre se renderizan).
+      let segStart = 0
+      while (segStart < line.length) {
+        let segEnd = segStart + 1
+        while (segEnd < line.length && Boolean(line[segEnd].b) === Boolean(line[segStart].b)) segEnd++
+        const text = (segStart > 0 ? " " : "") + line.slice(segStart, segEnd).map((t) => this.safe(t.s)).join(" ")
+        const f = line[segStart].b ? this.bold : this.font
+        this.page.drawText(text, { x: cx, y: this.y, size, font: f, color: TEXT })
+        cx += f.widthOfTextAtSize(text, size)
+        segStart = segEnd
       }
       this.y -= leading
       first = false
@@ -318,7 +341,7 @@ const SECTIONS: Section[] = [
 ]
 
 /** Datos del cliente a partir de la fila del consentimiento. */
-function clientFields(row: Row): Array<[string, string]> {
+function clientFields(row: Row, especialistaLabel = "Especialista"): Array<[string, string]> {
   const g = (k: string) => String(row[k] ?? "").trim()
   return [
     ["Nombre", g("cliente_nombre") || g("nombre_cliente")],
@@ -327,25 +350,28 @@ function clientFields(row: Row): Array<[string, string]> {
     ["Correo", g("correo")],
     ["Dirección", g("direccion")],
     ["Sucursal", g("sucursal")],
-    ["Especialista", g("especialista_nombre") || g("especialista")],
+    [especialistaLabel, g("especialista_nombre") || g("especialista")],
   ]
 }
 
-export async function buildConsentDepilacionLaserPdf(row: Row, businessName = "Cibao Spa Laser"): Promise<Buffer> {
+/** Motor genérico: arma el PDF de cualquier consentimiento a partir de su config. */
+export async function buildConsentPdf(row: Row, businessName: string, cfg: ConsentPdfConfig): Promise<Buffer> {
   const safe = makeSafe(businessName)
   const pdf = new ConsentPdf(safe)
   const ref = String(row.consent_id ?? "").trim()
   const fechaFirma = String(row.fecha_registro || row.fecha || "").trim()
-  pdf.footerText = safe(`${businessName} - Consentimiento Depilación Láser${ref ? ` - Ref ${ref}` : ""}`)
+  pdf.footerText = safe(`${businessName} - ${cfg.footerLabel}${ref ? ` - Ref ${ref}` : ""}`)
   await pdf.init()
 
   // Encabezado
   pdf.centered(businessName.toUpperCase(), 16, pdf.bold, TEAL)
   pdf.y -= 18
-  pdf.centered("CONSENTIMIENTO INFORMADO", 11, pdf.bold, TEXT)
+  pdf.centered(cfg.title, 12, pdf.bold, TEXT)
   pdf.y -= 13
-  pdf.centered("PROCEDIMIENTO: ELIMINACIÓN DEL VELLO NO DESEADO", 9, pdf.bold, TEAL)
-  pdf.y -= 12
+  if (cfg.subtitle) {
+    pdf.centered(cfg.subtitle, 9, pdf.bold, TEAL)
+    pdf.y -= 12
+  }
   pdf.centered(`Fecha de firma: ${fechaFirma || "-"}${ref ? ` - Ref: ${ref}` : ""}`, 8, pdf.font, MUTED)
   pdf.y -= 6
   pdf.page.drawRectangle({ x: MARGIN, y: pdf.y, width: CONTENT_W, height: 2, color: TEAL })
@@ -353,7 +379,7 @@ export async function buildConsentDepilacionLaserPdf(row: Row, businessName = "C
 
   // Datos del cliente (2 columnas; Dirección ocupa fila completa)
   pdf.h2("Datos del cliente")
-  const fields = clientFields(row)
+  const fields = clientFields(row, cfg.especialistaLabel)
   const colW = CONTENT_W / 2
   const drawField = (pair: [string, string], x: number) => {
     const [label, value] = pair
@@ -383,7 +409,7 @@ export async function buildConsentDepilacionLaserPdf(row: Row, businessName = "C
   pdf.y -= 4
 
   // Secciones legales
-  for (const sec of SECTIONS) {
+  for (const sec of cfg.sections) {
     pdf.h2(sec.title)
     for (const block of sec.blocks) {
       if (block.kind === "p") {
@@ -398,16 +424,28 @@ export async function buildConsentDepilacionLaserPdf(row: Row, businessName = "C
     }
   }
 
-  // Aceptación de políticas
-  pdf.ensure(24)
-  pdf.y -= 2
-  pdf.page.drawRectangle({ x: MARGIN, y: pdf.y - 14, width: CONTENT_W, height: 20, color: rgb(0.94, 0.99, 0.98), borderColor: rgb(0.6, 0.96, 0.9), borderWidth: 1 })
-  pdf.page.drawText(safe("[X] ACEPTO LAS POLÍTICAS DE LA EMPRESA"), { x: MARGIN + 8, y: pdf.y - 8, size: 9.5, font: pdf.bold, color: rgb(0.06, 0.46, 0.43) })
-  pdf.y -= 26
+  // Caja de aceptación opcional
+  if (cfg.acceptBox) {
+    pdf.ensure(24)
+    pdf.y -= 2
+    pdf.page.drawRectangle({ x: MARGIN, y: pdf.y - 14, width: CONTENT_W, height: 20, color: rgb(0.94, 0.99, 0.98), borderColor: rgb(0.6, 0.96, 0.9), borderWidth: 1 })
+    pdf.page.drawText(safe(cfg.acceptBox), { x: MARGIN + 8, y: pdf.y - 8, size: 9.5, font: pdf.bold, color: rgb(0.06, 0.46, 0.43) })
+    pdf.y -= 26
+  }
 
   // Firma
   await pdf.signature(String(row.firma_cliente || ""), String(row.cliente_nombre || row.nombre_cliente || ""))
 
   const bytes = await pdf.doc.save()
   return Buffer.from(bytes)
+}
+
+export async function buildConsentDepilacionLaserPdf(row: Row, businessName = "Cibao Spa Laser"): Promise<Buffer> {
+  return buildConsentPdf(row, businessName, {
+    title: "CONSENTIMIENTO INFORMADO",
+    subtitle: "PROCEDIMIENTO: ELIMINACIÓN DEL VELLO NO DESEADO",
+    footerLabel: "Consentimiento Depilación Láser",
+    acceptBox: "[X] ACEPTO LAS POLÍTICAS DE LA EMPRESA",
+    sections: SECTIONS,
+  })
 }

@@ -14,6 +14,7 @@ import { resolveGmailCredentialsForBusiness, getEmailSettingsStatus } from "@/li
 import { sendGmail, type GmailAttachment } from "@/lib/server/gmail-transport"
 import { getBusinessBranding } from "@/lib/business"
 import { buildConsentDepilacionLaserPdf } from "@/lib/server/consent-depilacion-pdf"
+import { buildConsentMasajePdf, buildConsentPeelingPdf, buildConsentTatuajeCejaPdf } from "@/lib/server/consent-legal-forms"
 
 function cleanEnv(value: unknown) {
   return String(value || "").replace(/\\r\\n|\\n|\\r/g, "").trim()
@@ -321,6 +322,21 @@ function consentMasajeEmailHtml(row: Row) {
   </body></html>`
 }
 
+/** Nombre de archivo del PDF a partir del nombre del cliente (slug). */
+function pdfFilename(row: Row, prefix: string): string {
+  const slug = String(row.cliente_nombre || "cliente").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "cliente"
+  return `${prefix}-${slug}.pdf`
+}
+
+/** Genera un PDF sin lanzar; devuelve null si falla (el correo se envía igual). */
+async function tryBuildPdf(fn: () => Promise<Buffer>): Promise<Buffer | null> {
+  try {
+    return await fn()
+  } catch {
+    return null
+  }
+}
+
 export async function sendConsentMasajeEmail(row: Row, businessId?: string) {
   // `row.business_id` NO viene poblado (upsertRow lo estampa en una copia), así
   // que el negocio se recibe del handler (getBusinessContext). Sin esto el envío
@@ -333,13 +349,15 @@ export async function sendConsentMasajeEmail(row: Row, businessId?: string) {
   const businessName = resolveBusinessNameForEmail(row)
   const subject = `Consentimiento Masajes · ${String(row.cliente_nombre || row.consent_id || "").trim()}`.trim()
   const html = consentMasajeEmailHtml(row)
+  const pdf = await tryBuildPdf(() => buildConsentMasajePdf(row, businessName))
+  const filename = pdfFilename(row, "consentimiento-masajes")
 
   return sendBusinessEmail(
     String(row.business_id || ""),
-    { to: recipients, subject, html },
+    { to: recipients, subject, html, attachments: pdf ? [{ filename, content: pdf }] : undefined },
     () => postResend({
       from: cleanEnv(process.env.EMAIL_FROM) || `${businessName} <onboarding@resend.dev>`,
-      to: recipients, subject, html,
+      to: recipients, subject, html, attachments: pdf ? [{ filename, content: pdf.toString("base64") }] : undefined,
     }),
   )
 }
@@ -439,13 +457,15 @@ export async function sendConsentTatuajeCejaEmail(row: Row, businessId?: string)
   const businessName = resolveBusinessNameForEmail(row)
   const subject = `Consentimiento Tatuajes/Cejas · ${String(row.cliente_nombre || row.consent_id || "").trim()}`.trim()
   const html = consentTatuajeCejaEmailHtml(row)
+  const pdf = await tryBuildPdf(() => buildConsentTatuajeCejaPdf(row, businessName))
+  const filename = pdfFilename(row, "consentimiento-tatuajes-cejas")
 
   return sendBusinessEmail(
     String(row.business_id || ""),
-    { to: recipients, subject, html },
+    { to: recipients, subject, html, attachments: pdf ? [{ filename, content: pdf }] : undefined },
     () => postResend({
       from: cleanEnv(process.env.EMAIL_FROM) || `${businessName} <onboarding@resend.dev>`,
-      to: recipients, subject, html,
+      to: recipients, subject, html, attachments: pdf ? [{ filename, content: pdf.toString("base64") }] : undefined,
     }),
   )
 }
@@ -521,13 +541,15 @@ export async function sendConsentPeelingEmail(row: Row, businessId?: string) {
   const businessName = resolveBusinessNameForEmail(row)
   const subject = `Consentimiento Peeling · ${String(row.cliente_nombre || row.consent_id || "").trim()}`.trim()
   const html = consentPeelingEmailHtml(row)
+  const pdf = await tryBuildPdf(() => buildConsentPeelingPdf(row, businessName))
+  const filename = pdfFilename(row, "consentimiento-peeling")
 
   return sendBusinessEmail(
     String(row.business_id || ""),
-    { to: recipients, subject, html },
+    { to: recipients, subject, html, attachments: pdf ? [{ filename, content: pdf }] : undefined },
     () => postResend({
       from: cleanEnv(process.env.EMAIL_FROM) || `${businessName} <onboarding@resend.dev>`,
-      to: recipients, subject, html,
+      to: recipients, subject, html, attachments: pdf ? [{ filename, content: pdf.toString("base64") }] : undefined,
     }),
   )
 }
