@@ -18,6 +18,31 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.77.0] — 2026-07-23
+
+### Security
+- **Endurecimiento del módulo Credenciales (bóveda de secretos).** Una auditoría
+  encontró que el 2FA (TOTP) y el enmascarado eran solo del lado cliente: cualquier
+  usuario logueado podía leer/escribir todos los secretos llamando la API directo.
+  Correcciones:
+  - **C‑1/L‑1 — Gate TOTP server‑side, ligado al usuario.** Las acciones
+    `getCredenciales`/`saveCredencial`/`deleteCredencial` ahora exigen la cookie de
+    acceso TOTP, y la cookie va **firmada con el `user_id`** (no reutilizable por otra
+    cuenta). Sin cookie válida → acceso denegado.
+  - **C‑2 — Autorización (RBAC).** Nuevos permisos `credenciales.view` (leer) y
+    `credenciales.manage` (crear/editar/borrar). Admin/superadmin los bpasan; el resto
+    debe tenerlos asignados. Antes cualquier rol accedía.
+  - **C‑3 — Cifrado en reposo.** `contrasena` y `pin` se guardan **cifrados
+    (AES‑256‑GCM)** y solo se descifran server‑side tras pasar el gate. Compatible con
+    filas legadas (se cifran al re‑guardar; migración de existentes incluida).
+  - **H‑1 — Endpoint TOTP endurecido.** `verify-credentials-token` ahora exige sesión,
+    aplica **rate‑limit** y **anti‑replay** (no se puede reusar el mismo código).
+  - **H‑2 — Fuga entre negocios.** Índice único `(business_id, credencial_id)` +
+    `onConflict` compuesto: un tenant ya no puede sobrescribir credenciales de otro.
+  - **M‑2 — Inyección de fórmulas CSV** en el export neutralizada.
+
+---
+
 ## [0.76.1] — 2026-07-23
 
 ### Added

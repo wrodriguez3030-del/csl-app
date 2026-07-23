@@ -424,10 +424,17 @@ export function CredencialesPage() {
   }
 
   function exportCSV() {
+    // (M-2) Neutraliza inyección de fórmulas: un valor que empiece con = + - @
+    // (o tab/CR) se ejecutaría al abrir el CSV en Excel/Sheets. Le anteponemos "'".
+    const csvSafe = (value: unknown) => {
+      const s = String(value ?? "")
+      const guarded = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s
+      return `"${guarded.replaceAll('"', '""')}"`
+    }
     const headers = ["Sucursal", "Área", "Equipo", "Sistema", "Usuario", "Contraseña", "PIN", "URL", "Correo"]
     const rows = filtered.map((r) => [r.sucursal, r.area, r.equipo, r.sistema, r.usuario, r.contrasena, r.pin, r.url, r.correo])
     const csv = [headers, ...rows]
-      .map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(","))
+      .map((row) => row.map((cell) => csvSafe(cell)).join(","))
       .join("\n")
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
@@ -814,9 +821,15 @@ function CredentialsTotpGate({ onUnlock }: { onUnlock: (expiresAt?: number) => v
       setVerifying(true)
       setError(null)
       try {
+        // El endpoint exige sesión (la cookie de acceso se liga a este usuario).
+        const { supabaseBrowser } = await import("@/lib/supabase-client")
+        const { data: { session } } = await supabaseBrowser.auth.getSession()
         const res = await fetch("/api/security/verify-credentials-token", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+          },
           body: JSON.stringify({ token: clean }),
         })
         const data = (await res.json()) as { ok?: boolean; error?: string; expiresAt?: number }

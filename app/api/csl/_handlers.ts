@@ -43,6 +43,9 @@ import {
   CONSENT_LIST_COLS,
 } from "@/lib/server/csl-crud"
 import { runWithBusinessContext, applyActiveBusiness, getBusinessContext, isKnownBusinessId, scopeByBranch, getBranchScope, requirePermission } from "@/lib/server/business-context"
+import { cookies } from "next/headers"
+import { CREDENTIALS_ACCESS_COOKIE, verifyAccessCookieValue } from "@/lib/credentials-access"
+import { encCredField, decCredField } from "@/lib/server/credenciales-crypto"
 import { runWithMaintenanceWriteScope, recordMaintenanceAudit, type MaintenanceChangeSource } from "@/lib/server/maintenance-guard"
 import { validateGiftCert } from "@/lib/certificados/cert-layout"
 import { transitionError, type GiftCertAction } from "@/lib/certificados/cert-state"
@@ -639,7 +642,28 @@ export async function handleAction(params: ActionParams, user: ActionUser) {
   })
 }
 
+// ── Gate de seguridad del módulo Credenciales (bóveda de secretos) ───────────
+// El menú se presenta con TOTP, pero antes el gate vivía SOLO en la UI: cualquier
+// usuario logueado podía leer/escribir los secretos llamando la API directo. Aquí
+// se exige, SERVER-SIDE, para cada acción de credenciales:
+//   (C-2) permiso `credenciales.view`/`.manage` (admin/superadmin lo bpasan), y
+//   (C-1) la cookie de acceso TOTP LIGADA a este usuario (verificación 2FA real).
+const CREDENCIAL_READ_ACTIONS = new Set(["getCredenciales"])
+const CREDENCIAL_WRITE_ACTIONS = new Set(["saveCredencial", "deleteCredencial"])
+async function enforceCredentialsGate(action: string, user: ActionUser): Promise<void> {
+  const isRead = CREDENCIAL_READ_ACTIONS.has(action)
+  const isWrite = CREDENCIAL_WRITE_ACTIONS.has(action)
+  if (!isRead && !isWrite) return
+  requirePermission(isWrite ? "credenciales.manage" : "credenciales.view")
+  const jar = await cookies()
+  const access = verifyAccessCookieValue(jar.get(CREDENTIALS_ACCESS_COOKIE)?.value, user.id)
+  if (!access.active) {
+    throw new Error("Verificación TOTP requerida para acceder a Credenciales.")
+  }
+}
+
 async function dispatchAction(action: string, params: ActionParams, user: ActionUser) {
+  await enforceCredentialsGate(action, user)
   switch (action) {
     case "health": {
       const { error } = await getSupabaseAdmin().from("csl_sucursales").select("codigo").limit(1)
@@ -2720,8 +2744,19 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true, aprobadas: sols.length, creados, actualizados, omitidos, errores }
     }
 
-    case "getCredenciales":
-      return { ok: true, records: await getRows("credenciales") }
+    case "getCredenciales": {
+      // (C-3) Los secretos están cifrados en reposo; se descifran SOLO aquí,
+      // ya pasado el gate TOTP+permiso. Filas legadas en claro pasan sin cambio.
+      const records = await getRows("credenciales")
+      return {
+        ok: true,
+        records: (records as Row[]).map((r) => ({
+          ...r,
+          Contrasena: decCredField(r.Contrasena),
+          PIN: decCredField(r.PIN),
+        })),
+      }
+    }
     case "getSolicitudesEmpleo":
       // Listado liviano — sin firma_digital, documentos_adjuntos,
       // experiencia JSON, payload_json (que contiene foto cédula base64).
@@ -3801,9 +3836,13 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return { ok: true }
     case "saveCredencial": {
       const record = parsePayload(params)
-      const row = { credencial_id: String(record.CredencialID ?? record.id ?? `CRD-${Date.now()}`), sucursal: record.Sucursal ?? record.sucursal ?? "", area: record.Area ?? record.area ?? "", equipo: record.Equipo ?? record.equipo ?? "", sistema: record.Sistema ?? record.sistema ?? "", usuario: record.Usuario ?? record.usuario ?? "", contrasena: record.Contrasena ?? record.contrasena ?? "", pin: record.PIN ?? record.pin ?? "", url: record.URL ?? record.url ?? "", correo: record.Correo ?? record.correo ?? "" }
+      const contrasenaClara = String(record.Contrasena ?? record.contrasena ?? "")
+      const pinClaro = String(record.PIN ?? record.pin ?? "")
+      const row = { credencial_id: String(record.CredencialID ?? record.id ?? `CRD-${Date.now()}`), sucursal: record.Sucursal ?? record.sucursal ?? "", area: record.Area ?? record.area ?? "", equipo: record.Equipo ?? record.equipo ?? "", sistema: record.Sistema ?? record.sistema ?? "", usuario: record.Usuario ?? record.usuario ?? "", contrasena: encCredField(contrasenaClara), pin: encCredField(pinClaro), url: record.URL ?? record.url ?? "", correo: record.Correo ?? record.correo ?? "" }
       await upsertRow("credenciales", row)
-      return { ok: true, record: fromDb("credenciales", row) }
+      // Devolvemos el registro con los secretos EN CLARO (los que acaba de
+      // escribir el usuario) para que la UI los muestre; en la BD quedan cifrados.
+      return { ok: true, record: { ...fromDb("credenciales", row), Contrasena: contrasenaClara, PIN: pinClaro } }
     }
     case "deleteCredencial":
       await deleteRow("credenciales", textValue(params, "id"))

@@ -49,6 +49,12 @@ export const PERMISSION_OPTIONS: PermissionOption[] = [
   // CF PARA IMPRIMIR · Certificados de regalo (el módulo se controla por MENÚ;
   // solo la ANULACIÓN, destructiva, requiere permiso).
   { id: "gift_certificates.void", label: "Anular certificados de regalo", section: "Certificados de Regalo" },
+
+  // Bóveda de credenciales (secretos de equipos/sistemas). Además del permiso,
+  // el acceso exige verificación TOTP server-side. Admin/superadmin lo bpasan.
+  { id: "credenciales.view", label: "Ver credenciales (bóveda)", section: "Credenciales" },
+  { id: "credenciales.manage", label: "Crear/editar/borrar credenciales", section: "Credenciales" },
+
   // BI Financiero IA (asistente financiero estratégico). Los menús deciden la
   // visibilidad; estos permisos gatean acciones sensibles dentro de cada pantalla.
   { id: "bi_finance.view", label: "Ver BI Financiero IA", section: "BI Financiero IA" },
