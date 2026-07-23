@@ -13,6 +13,7 @@ import type { Row } from "./csl-types"
 import { resolveGmailCredentialsForBusiness, getEmailSettingsStatus } from "@/lib/server/email-settings"
 import { sendGmail, type GmailAttachment } from "@/lib/server/gmail-transport"
 import { getBusinessBranding } from "@/lib/business"
+import { buildConsentDepilacionLaserPdf } from "@/lib/server/consent-depilacion-pdf"
 
 function cleanEnv(value: unknown) {
   return String(value || "").replace(/\\r\\n|\\n|\\r/g, "").trim()
@@ -603,12 +604,24 @@ export async function sendConsentDepilacionLaserEmail(row: Row, businessId?: str
   const subject = `Consentimiento Depilación Láser · ${String(row.cliente_nombre || row.consent_id || "").trim()}`.trim()
   const html = consentDepilacionLaserEmailHtml(row)
 
+  // Adjunta el PDF formal del consentimiento (mismo documento que descarga el
+  // navegador). Si por algún motivo falla la generación, el correo se envía igual.
+  const slug = String(row.cliente_nombre || "cliente").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "cliente"
+  const filename = `consentimiento-depilacion-laser-${slug}.pdf`
+  let pdf: Buffer | null = null
+  try {
+    pdf = await buildConsentDepilacionLaserPdf(row, businessName)
+  } catch {
+    pdf = null
+  }
+
   return sendBusinessEmail(
     String(row.business_id || ""),
-    { to: recipients, subject, html },
+    { to: recipients, subject, html, attachments: pdf ? [{ filename, content: pdf }] : undefined },
     () => postResend({
       from: cleanEnv(process.env.EMAIL_FROM) || `${businessName} <onboarding@resend.dev>`,
       to: recipients, subject, html,
+      attachments: pdf ? [{ filename, content: pdf.toString("base64") }] : undefined,
     }),
   )
 }

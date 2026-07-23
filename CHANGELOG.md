@@ -18,6 +18,18 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.74.0] — 2026-07-22
+
+### Added
+- **El correo del Consentimiento de Depilación Láser adjunta el PDF formal** del
+  consentimiento (el mismo documento de 4 páginas que descarga el navegador:
+  datos del cliente, texto legal completo, aceptación de políticas y firma).
+  Se genera en el servidor con `pdf-lib` (nuevo `lib/server/consent-depilacion-pdf.ts`,
+  sin navegador headless) y se adjunta tanto por Gmail como por el respaldo Resend.
+  Si la generación del PDF fallara, el correo se envía igual (sin adjunto).
+
+---
+
 ## [0.73.4] — 2026-07-22
 
 ### Added
