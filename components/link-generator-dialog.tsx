@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Check, Copy, Loader2, MessageCircle, RefreshCcw, Save, Search, Send, Tablet, UserPlus } from "lucide-react"
+import { Check, CheckCircle2, Copy, Loader2, MessageCircle, RefreshCcw, Save, Search, Send, Tablet, UserPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -87,6 +87,14 @@ type FormType =
   | "consentimiento_peeling"
   | "consentimiento_tatuajes_cejas"
   | "consentimiento_depilacion_laser"
+
+/** formType del enlace → kind del consentimiento (para verificar "ya firmó"). */
+const FORMTYPE_TO_KIND: Record<string, string> = {
+  consentimiento_masajes: "masajes",
+  consentimiento_peeling: "peeling",
+  consentimiento_tatuajes_cejas: "tatuajes",
+  consentimiento_depilacion_laser: "depilacion-laser",
+}
 
 interface Props {
   open: boolean
@@ -195,6 +203,9 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
   // ─── Estado del prefill (después de seleccionar o captura manual) ────────
   const [prefill, setPrefill] = useState<PrefillState>(emptyPrefill)
   const [manualMode, setManualMode] = useState(false) // true = se acepta editar sin cliente seleccionado
+  // Aviso "el cliente ya firmó este consentimiento" (solo consents, por tenant).
+  // NO aplica a Ficha Dermatológica: es un seguimiento que se repite.
+  const [consentPrevio, setConsentPrevio] = useState<{ fecha: string; sucursal: string; total: number } | null>(null)
 
   // Motivo de consulta (solo ficha_dermatologica): dropdown con 10 motivos
   // canónicos + opción "Otro motivo" que muestra input libre.
@@ -276,6 +287,7 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       setClientSearch("")
       setDropdownOpen(false)
       setManualMode(false)
+      setConsentPrevio(null)
       setMotivoSelected("")
       setMotivoOtroText("")
       setServicioSelected("")
@@ -322,6 +334,30 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
     [clientes, clientSearch],
   )
 
+  /** ¿El cliente ya firmó este consentimiento en el negocio activo? (por tenant)
+   *  Solo aplica a consents; la Ficha Dermatológica siempre se permite. */
+  const checkConsentPrevio = useCallback(async (clienteId: string) => {
+    const kind = FORMTYPE_TO_KIND[formType]
+    if (!clienteId || !kind) {
+      setConsentPrevio(null)
+      return
+    }
+    try {
+      const r = await apiJsonp(normalizeApiUrl(apiUrl), {
+        action: "checkConsentFirmado",
+        clienteId,
+        kind,
+      }) as { ok?: boolean; firmado?: boolean; fecha?: string; sucursal?: string; total?: number }
+      if (r?.ok && r.firmado) {
+        setConsentPrevio({ fecha: String(r.fecha || ""), sucursal: String(r.sucursal || ""), total: Number(r.total || 1) })
+      } else {
+        setConsentPrevio(null)
+      }
+    } catch {
+      setConsentPrevio(null)
+    }
+  }, [apiUrl, formType])
+
   const selectCliente = (cliente: ClienteCosmiatria) => {
     setPrefill((current) => ({
       ...current,
@@ -336,6 +372,7 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
     setManualMode(false)
     setClientSearch("")
     setDropdownOpen(false)
+    void checkConsentPrevio(cliente.ClienteID)
   }
 
   const cambiarCliente = () => {
@@ -343,12 +380,14 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
     setManualMode(false)
     setClientSearch("")
     setDropdownOpen(true)
+    setConsentPrevio(null)
   }
 
   const enterManualMode = () => {
     setPrefill({ ...emptyPrefill, nombre: clientSearch.trim() })
     setManualMode(true)
     setDropdownOpen(false)
+    setConsentPrevio(null)
   }
 
   // "+ Crear cliente nuevo" — limpia el prefill y entra en modo captura
@@ -360,6 +399,7 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
     setClientSearch("")
     setClienteNotice("")
     setError("")
+    setConsentPrevio(null)
   }
 
   // Persiste el cliente actual a csl_cosmiatria_clientes (via
@@ -768,6 +808,29 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                     <RefreshCcw className="h-3 w-3" /> Cambiar cliente
                   </Button>
                 </div>
+
+                {consentPrevio ? (
+                  <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                    <div>
+                      <p className="text-sm font-bold text-amber-900">Este cliente ya firmó este consentimiento</p>
+                      <p className="mt-0.5 text-xs text-amber-800">
+                        {(() => {
+                          const raw = consentPrevio.fecha
+                          const d = raw ? new Date(raw) : null
+                          const fecha = d && !isNaN(d.getTime())
+                            ? d.toLocaleDateString("es-DO", { day: "2-digit", month: "2-digit", year: "numeric" })
+                            : raw
+                          return [
+                            fecha ? `Firmado el ${fecha}` : "Ya firmado",
+                            consentPrevio.sucursal ? `en ${consentPrevio.sucursal}` : "",
+                            consentPrevio.total > 1 ? `· ${consentPrevio.total} en total` : "",
+                          ].filter(Boolean).join(" ")
+                        })()}. El consentimiento se firma una sola vez; normalmente no necesitas enviar el enlace de nuevo (verificación por negocio).
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
 
                 {/* Editables (recepción puede corregir antes de enviar).
                     3 columnas en desktop para aprovechar el modal ancho. */}

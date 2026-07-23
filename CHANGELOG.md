@@ -18,6 +18,17 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.76.1] — 2026-07-23
+
+### Added
+- El aviso **"el cliente ya firmó este consentimiento"** ahora también aparece en
+  el **generador de enlaces públicos** (al seleccionar un cliente para enviarle el
+  link de firma). Igual que en el formulario: por tipo, independiente por tenant,
+  solo informa. **NO aplica a Ficha Dermatológica** (es un seguimiento del
+  procedimiento que se repite; siempre se permite).
+
+---
+
 ## [0.76.0] — 2026-07-23
 
 ### Added
