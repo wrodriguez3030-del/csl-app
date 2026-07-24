@@ -18,6 +18,18 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.77.1] — 2026-07-24
+
+### Changed
+- **Credenciales — campos obligatorios visibles.** En el diálogo "Nuevo/Editar
+  registro" los campos que la validación (`saveRecord`) exige ahora se marcan con
+  un asterisco rojo (`*`): **Sucursal, Área, Equipo, Sistema, Usuario**. Los
+  campos opcionales (Contraseña, PIN, URL, Correo) quedan sin marca. Se agregó la
+  leyenda "Los campos marcados con * son obligatorios" en el aviso del diálogo.
+  Solo UI; no cambia la lógica de validación.
+
+---
+
 ## [0.77.0] — 2026-07-23
 
 ### Security
