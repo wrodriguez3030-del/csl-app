@@ -18,6 +18,17 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.77.2] — 2026-07-24
+
+### Changed
+- **Credenciales — la Contraseña es el único campo obligatorio.** A pedido, la
+  validación de `saveRecord` ahora solo exige **Contraseña** (antes exigía
+  Sucursal, Área, Equipo, Sistema y Usuario). El asterisco rojo (`*`) se movió a
+  Contraseña y se quitó de los demás; el resto de campos quedan opcionales. El
+  mensaje de error pasó a "La contraseña es obligatoria".
+
+---
+
 ## [0.77.1] — 2026-07-24
 
 ### Changed

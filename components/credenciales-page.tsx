@@ -298,8 +298,8 @@ export function CredencialesPage() {
   }
 
   async function saveRecord() {
-    if (!form.sucursal || !form.area || !form.equipo || !form.sistema || !form.usuario) {
-      showToast("Completa los campos obligatorios", "error")
+    if (!form.contrasena) {
+      showToast("La contraseña es obligatoria", "error")
       return
     }
 
@@ -736,7 +736,7 @@ export function CredencialesPage() {
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div>
-              <Label>Sucursal <span className="text-red-500">*</span></Label>
+              <Label>Sucursal</Label>
               <Select value={form.sucursal} onValueChange={(v) => setForm({ ...form, sucursal: v })}>
                 <SelectTrigger className="mt-2 rounded-xl border-slate-200 bg-slate-50 text-slate-950"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -746,11 +746,11 @@ export function CredencialesPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div><Label>Área <span className="text-red-500">*</span></Label><Input className="mt-2 rounded-xl border-slate-200 bg-slate-50 text-slate-950" value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })} /></div>
-            <div><Label>Equipo <span className="text-red-500">*</span></Label><Input className="mt-2 rounded-xl border-slate-200 bg-slate-50 text-slate-950" value={form.equipo} onChange={(e) => setForm({ ...form, equipo: e.target.value })} /></div>
-            <div><Label>Sistema <span className="text-red-500">*</span></Label><Input className="mt-2 rounded-xl border-slate-200 bg-slate-50 text-slate-950" value={form.sistema} onChange={(e) => setForm({ ...form, sistema: e.target.value })} /></div>
-            <div><Label>Usuario <span className="text-red-500">*</span></Label><Input className="mt-2 rounded-xl border-slate-200 bg-slate-50 text-slate-950" value={form.usuario} onChange={(e) => setForm({ ...form, usuario: e.target.value })} /></div>
-            <div><Label>Contraseña</Label><Input className="mt-2 rounded-xl border-slate-200 bg-slate-50 text-slate-950" value={form.contrasena} onChange={(e) => setForm({ ...form, contrasena: e.target.value })} /></div>
+            <div><Label>Área</Label><Input className="mt-2 rounded-xl border-slate-200 bg-slate-50 text-slate-950" value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })} /></div>
+            <div><Label>Equipo</Label><Input className="mt-2 rounded-xl border-slate-200 bg-slate-50 text-slate-950" value={form.equipo} onChange={(e) => setForm({ ...form, equipo: e.target.value })} /></div>
+            <div><Label>Sistema</Label><Input className="mt-2 rounded-xl border-slate-200 bg-slate-50 text-slate-950" value={form.sistema} onChange={(e) => setForm({ ...form, sistema: e.target.value })} /></div>
+            <div><Label>Usuario</Label><Input className="mt-2 rounded-xl border-slate-200 bg-slate-50 text-slate-950" value={form.usuario} onChange={(e) => setForm({ ...form, usuario: e.target.value })} /></div>
+            <div><Label>Contraseña <span className="text-red-500">*</span></Label><Input className="mt-2 rounded-xl border-slate-200 bg-slate-50 text-slate-950" value={form.contrasena} onChange={(e) => setForm({ ...form, contrasena: e.target.value })} /></div>
             <div><Label>PIN</Label><Input className="mt-2 rounded-xl border-slate-200 bg-slate-50 text-slate-950" value={form.pin} onChange={(e) => setForm({ ...form, pin: e.target.value })} /></div>
             <div className="xl:col-span-2"><Label>URL</Label><Input className="mt-2 rounded-xl border-slate-200 bg-slate-50 text-slate-950" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} /></div>
             <div><Label>Correo</Label><Input className="mt-2 rounded-xl border-slate-200 bg-slate-50 text-slate-950" value={form.correo} onChange={(e) => setForm({ ...form, correo: e.target.value })} /></div>
