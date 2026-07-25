@@ -18,6 +18,33 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.79.1] — 2026-07-24
+
+Etapa 4 de la auditoría — **migraciones de BD preparadas** para db-cls. Requieren
+aplicarse por SSH+psql (o Studio) por quien tenga acceso; esta sesión no tiene
+llave a db-cls, así que quedan versionadas y listas.
+
+### Security / Fixed
+- **Migración `202607240001_maintenance_audit_rls_and_indexes.sql` (aditiva, segura):**
+  - Habilita **RLS en `csl_maintenance_audit`** (era la única tabla multi-tenant
+    con `business_id` sin RLS → la bitácora de auditoría era legible/manipulable
+    cross-tenant vía PostgREST directo). SELECT por tenant; escritura solo
+    service_role (append-only).
+  - **Índices compuestos**: `csl_sesiones_cliente (business_id, fecha)` e
+    `(business_id, import_hash)`; `csl_pulse_readings (business_id, period_start)`.
+
+### Pendiente (requiere ventana de mantenimiento + verificación de login)
+- **[ALTO] REVOKE de DML directo a `authenticated`/`anon`.** El rol `authenticated`
+  tiene GRANT de DML sobre tablas sensibles (salarios, cuentas bancarias, nómina,
+  finanzas) y RLS solo aísla por tenant, no por rol → un usuario de bajo privilegio
+  podía leer/escribir vía PostgREST con su JWT, saltándose el RBAC de la app. El
+  fix (revocar DML de authenticated/anon + arreglar ALTER DEFAULT PRIVILEGES,
+  preservando el SELECT de `csl_user_profiles`/`businesses` que usa el login) se
+  entrega como SQL documentado para aplicar con verificación de login (no se
+  auto-aplica por ser un cambio sensible de privilegios en producción).
+
+---
+
 ## [0.79.0] — 2026-07-24
 
 Etapa 3 de la auditoría — **correctitud de datos** (tope de 1000 filas de
