@@ -18,6 +18,32 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.79.0] — 2026-07-24
+
+Etapa 3 de la auditoría — **correctitud de datos** (tope de 1000 filas de
+PostgREST). Nuevo helper `fetchAllPages` en `lib/server/csl-crud.ts` que pagina
+cualquier consulta de 1000 en 1000 hasta agotar la tabla.
+
+### Fixed
+- **DISP OPERADOR falso/cero corregido (`recalculateDispOperador`).** Leía
+  `csl_pulse_readings`, `csl_operator_shots` y sobre todo `csl_sesiones_cliente`
+  (~24.6k filas) **sin paginar** → el read se truncaba en 1000 en silencio → la
+  suma de disparos por operadora quedaba incompleta. Ahora los tres reads paginan.
+- **Continuidad de PulseControl corregida (`recalculatePulseContinuity`).** Leía
+  todas las lecturas sin paginar; con > 1000 recalculaba la continuidad MAL.
+- **Horas de asistencia/nómina completas (`getHrAttendanceHours`, `getHrAttendance`).**
+  Los ponches de un rango de fechas superan 1000 y se truncaban → horas
+  incompletas. Ahora paginan.
+- **Lecturas de PulseControl completas en la UI (`getPulseReadings`,
+  `getAllPulsosData`).** Ya no se truncan en 1000 al listar/consolidar.
+
+### Notas
+- Pendientes de menor prioridad (documentados, no bloquean): selector de clientes
+  que trae ~16k filas al navegador (migrar a typeahead server-side), paginación
+  latente en Compras/Requisiciones (< 1000 hoy). Índices compuestos van en 0.79.1.
+
+---
+
 ## [0.78.1] — 2026-07-24
 
 Etapa 2 de la auditoría — parche de dependencias.

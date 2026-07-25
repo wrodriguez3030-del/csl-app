@@ -22,6 +22,7 @@ import {
 } from "@/lib/server/csl-helpers"
 import {
   deleteRow,
+  fetchAllPages,
   getAllData,
   getAllPulsosData,
   getProfile,
@@ -1481,13 +1482,22 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const desde = textValue(params, "desde"); const hasta = textValue(params, "hasta")
       const empF = textValue(params, "employee_id"); const sucF = textValue(params, "sucursal")
       const sb = getSupabaseAdmin()
-      let pq = sb.from("hr_punches").select("employee_id,type,punched_at,sucursal,status").eq("status", "approved").order("punched_at", { ascending: true })
-      if (scope && bid) pq = pq.eq("business_id", bid)
-      if (desde) pq = pq.gte("punched_at", desde)
-      if (hasta) pq = pq.lte("punched_at", `${hasta}T23:59:59`)
-      if (empF) pq = pq.eq("employee_id", empF)
-      const { data: punches, error } = await pq
-      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      // PAGINADO: sobre un rango de fechas los ponches superan 1000 (varios por
+      // empleado/día) y se truncaban → horas de asistencia/nómina INCOMPLETAS.
+      let punches: any[] = []
+      try {
+        punches = await fetchAllPages((from, to) => {
+          let pq = sb.from("hr_punches").select("employee_id,type,punched_at,sucursal,status").eq("status", "approved").order("punched_at", { ascending: true })
+          if (scope && bid) pq = pq.eq("business_id", bid)
+          if (desde) pq = pq.gte("punched_at", desde)
+          if (hasta) pq = pq.lte("punched_at", `${hasta}T23:59:59`)
+          if (empF) pq = pq.eq("employee_id", empF)
+          return pq.range(from, to)
+        })
+      } catch (e) {
+        if (/42P01|does not exist|Could not find the table|schema cache/i.test(e instanceof Error ? e.message : String(e))) return { ok: true, records: [], tableMissing: true }
+        throw e
+      }
       const empRows = await getRows("empleados").catch(() => [] as Row[])
       const nameMap = new Map<string, { nombre: string; cedula: string; sucursal: string }>()
       for (const r of (empRows as Row[])) { const eid = String(r.SolicitudID || r.empleado_id || ""); if (eid) nameMap.set(eid, { nombre: `${r.Nombre || ""} ${r.Apellido || ""}`.trim() || eid, cedula: String(r.Cedula || ""), sucursal: String(r.Sucursal || "") }) }
@@ -1540,13 +1550,21 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const desde = textValue(params, "desde")
       const hasta = textValue(params, "hasta")
       const empF = textValue(params, "employee_id")
-      let pq = sb.from("hr_punches").select("employee_id,type,punched_at,sucursal").order("punched_at", { ascending: true })
-      if (scope && bid) pq = pq.eq("business_id", bid)
-      if (desde) pq = pq.gte("punched_at", desde)
-      if (hasta) pq = pq.lte("punched_at", `${hasta}T23:59:59`)
-      if (empF) pq = pq.eq("employee_id", empF)
-      const { data: punches, error } = await pq
-      if (error) { if (isMissingTable(error)) return { ok: true, records: [], tableMissing: true }; throw error }
+      // PAGINADO: mismo motivo que getHrAttendanceHours (evita truncar ponches).
+      let punches: any[] = []
+      try {
+        punches = await fetchAllPages((from, to) => {
+          let pq = sb.from("hr_punches").select("employee_id,type,punched_at,sucursal").order("punched_at", { ascending: true })
+          if (scope && bid) pq = pq.eq("business_id", bid)
+          if (desde) pq = pq.gte("punched_at", desde)
+          if (hasta) pq = pq.lte("punched_at", `${hasta}T23:59:59`)
+          if (empF) pq = pq.eq("employee_id", empF)
+          return pq.range(from, to)
+        })
+      } catch (e) {
+        if (/42P01|does not exist|Could not find the table|schema cache/i.test(e instanceof Error ? e.message : String(e))) return { ok: true, records: [], tableMissing: true }
+        throw e
+      }
 
       let aq = sb.from("hr_schedule_assignments").select("employee_id,schedule_id").is("end_date", null)
       if (scope && bid) aq = aq.eq("business_id", bid)
@@ -4757,13 +4775,13 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       // usuario. Para un superadmin viendo Depicenter, debe leer Depicenter.
       const bizId = effectiveBusinessId()
       if (!bizId) throw new Error("business_id no encontrado")
-      const { data, error } = await sb
-        .from("csl_pulse_readings")
-        .select("*")
-        .eq("business_id", bizId)
-        .order("period_start", { ascending: false })
-      if (error) throw error
-      return { ok: true, records: data || [] }
+      // PAGINADO: la tabla de lecturas crece semanalmente y > 1000 filas se
+      // truncaba EN SILENCIO, ocultando lecturas en la UI.
+      const records = await fetchAllPages((from, to) =>
+        sb.from("csl_pulse_readings").select("*").eq("business_id", bizId)
+          .order("period_start", { ascending: false }).range(from, to),
+      )
+      return { ok: true, records }
     }
 
     case "savePulseReading": {
@@ -4912,15 +4930,17 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const bizId = effectiveBusinessId()
       if (!bizId) throw new Error("business_id no encontrado")
 
-      const { data: all, error: fetchErr } = await sb
-        .from("csl_pulse_readings")
-        .select("*")
-        .eq("business_id", bizId)
-        .order("period_start", { ascending: true })
-      if (fetchErr) throw fetchErr
+      // PAGINADO: recalcular sobre TODAS las lecturas. Con > 1000 filas el read
+      // se truncaba EN SILENCIO y la continuidad se recalculaba MAL (bug de
+      // correctitud, no solo lentitud).
+      type PulseRow = { id: string; equipo_id: string; lectura_inicial: unknown; lectura_final: unknown; period_start: unknown }
+      const all = (await fetchAllPages((from, to) =>
+        sb.from("csl_pulse_readings").select("*").eq("business_id", bizId)
+          .order("period_start", { ascending: true }).range(from, to),
+      )) as unknown as PulseRow[]
 
-      const byEquipo = new Map<string, typeof all>()
-      for (const r of (all || [])) {
+      const byEquipo = new Map<string, PulseRow[]>()
+      for (const r of all) {
         if (!byEquipo.has(r.equipo_id)) byEquipo.set(r.equipo_id, [])
         byEquipo.get(r.equipo_id)!.push(r)
       }
@@ -5086,14 +5106,14 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const filterPeriodEnd = textValue(params, "periodEnd") || null
       const filterSucursal = textValue(params, "sucursal") || null
 
-      let readingsQuery = sb
-        .from("csl_pulse_readings")
-        .select("*")
-        .eq("business_id", profile.business_id)
-      if (filterPeriodStart) readingsQuery = readingsQuery.gte("period_start", filterPeriodStart)
-      if (filterPeriodEnd) readingsQuery = readingsQuery.lte("period_end", filterPeriodEnd)
-      const { data: readings, error: rErr } = await readingsQuery
-      if (rErr) throw rErr
+      // PAGINADO: sobre el histórico completo estas lecturas superan 1000 y se
+      // truncaban EN SILENCIO → DISP OPERADOR se recalculaba mal.
+      const readings = (await fetchAllPages((from, to) => {
+        let q = sb.from("csl_pulse_readings").select("*").eq("business_id", profile.business_id)
+        if (filterPeriodStart) q = q.gte("period_start", filterPeriodStart)
+        if (filterPeriodEnd) q = q.lte("period_end", filterPeriodEnd)
+        return q.range(from, to)
+      })) as unknown as any[]
 
       // Fuente PRIMARIA: csl_operator_shots (resumen semanal por sucursal+op).
       // Fuente FALLBACK: csl_sesiones_cliente (filas individuales) cuando el
@@ -5108,17 +5128,23 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const shotsByExactKey = new Map<string, number>()
       const shotsByWeekKey = new Map<string, { disparos: number; updated: string }>()
       {
-        const { data: shots, error: shErr } = await sb
-          .from("csl_operator_shots")
-          .select("period_start, period_end, sucursal_normalizada, operadora_normalizada, disparos, updated_at")
-          .eq("business_id", profile.business_id)
-        if (shErr) {
-          if (!isMissingTable(shErr)) {
-            console.error("recalculateDispOperador: csl_operator_shots falló:", shErr.message)
-            warnings.push(`csl_operator_shots: ${shErr.message}`)
+        // PAGINADO + tolerante a tabla faltante (migración pendiente).
+        let shots: any[] = []
+        try {
+          shots = (await fetchAllPages((from, to) =>
+            sb.from("csl_operator_shots")
+              .select("period_start, period_end, sucursal_normalizada, operadora_normalizada, disparos, updated_at")
+              .eq("business_id", profile.business_id).range(from, to),
+          )) as unknown as any[]
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          if (!/42P01|does not exist|Could not find the table|schema cache/i.test(msg)) {
+            console.error("recalculateDispOperador: csl_operator_shots falló:", msg)
+            warnings.push(`csl_operator_shots: ${msg}`)
           }
-        } else {
-          for (const s of shots || []) {
+        }
+        {
+          for (const s of shots) {
             const start = String(s.period_start).slice(0, 10)
             const suc = String(s.sucursal_normalizada || "").toUpperCase()
             const op = String(s.operadora_normalizada || "").toUpperCase()
@@ -5140,14 +5166,18 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const minDate = periodStarts.length ? periodStarts.reduce((a, b) => (a < b ? a : b)) : null
       const maxDate = periodEnds.length ? periodEnds.reduce((a, b) => (a > b ? a : b)) : null
 
-      let sesionesQuery = sb
-        .from("csl_sesiones_cliente")
-        .select("fecha, sucursal, operadora_id, disparos_reportados")
-        .eq("business_id", profile.business_id)
-      if (minDate) sesionesQuery = sesionesQuery.gte("fecha", minDate)
-      if (maxDate) sesionesQuery = sesionesQuery.lte("fecha", maxDate)
-      const { data: sesiones, error: sErr } = await sesionesQuery
-      if (sErr) throw sErr
+      // PAGINADO: csl_sesiones_cliente ~24.6k filas. Sin paginar, el read se
+      // truncaba a 1000 → la suma de disparos por operadora quedaba INCOMPLETA
+      // → DISP OPERADOR falso/cero (el incidente ya vivido). Este es el fix
+      // central de correctitud de este handler.
+      const sesiones = (await fetchAllPages((from, to) => {
+        let q = sb.from("csl_sesiones_cliente")
+          .select("fecha, sucursal, operadora_id, disparos_reportados")
+          .eq("business_id", profile.business_id)
+        if (minDate) q = q.gte("fecha", minDate)
+        if (maxDate) q = q.lte("fecha", maxDate)
+        return q.range(from, to)
+      })) as unknown as any[]
 
       type Sesion = { fecha: string; sucursal: string; operadora_id: string; disparos_reportados: number }
       const sesionList: Sesion[] = (sesiones || []).map(s => ({

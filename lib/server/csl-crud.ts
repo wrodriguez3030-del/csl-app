@@ -207,6 +207,38 @@ export async function getRowsPaged(
   }
 }
 
+/**
+ * Pagina CUALQUIER consulta PostgREST de 1000 en 1000 hasta agotar la tabla,
+ * evitando la truncación SILENCIOSA del cap `db-max-rows` (1000) de PostgREST.
+ *
+ * `buildPage(from, to)` debe construir una consulta NUEVA en cada llamada con
+ * `.range(from, to)` aplicado al final (los builders son de un solo uso). No
+ * aplica scope de tenant ni `fromDb` — el caller decide filtros y mapeo, porque
+ * estos usos (recálculos de PulseControl, horas de nómina) trabajan con filas
+ * crudas y filtros de fecha propios.
+ *
+ * Úsalo en toda lectura sobre tablas que un tenant puede llevar > 1000 filas
+ * (csl_pulse_readings, csl_sesiones_cliente, hr_punches por rango, etc.).
+ */
+export async function fetchAllPages(
+  buildPage: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+): Promise<Row[]> {
+  const PAGE = 1000
+  const all: Row[] = []
+  let from = 0
+  // Cota defensiva: 1000 páginas = 1,000,000 filas. Muy por encima de cualquier
+  // tabla real; evita un bucle infinito si el backend devolviera siempre lleno.
+  for (let guard = 0; guard < 1000; guard += 1) {
+    const { data, error } = await buildPage(from, from + PAGE - 1)
+    if (error) throw new Error(error.message)
+    const batch = (Array.isArray(data) ? data : []) as Row[]
+    all.push(...batch)
+    if (batch.length < PAGE) break
+    from += PAGE
+  }
+  return all
+}
+
 export async function upsertRow(entity: string, row: Row, opts?: { targetBusinessId?: string }) {
   const supabase = getSupabaseAdmin()
   const config = tableConfig(entity)
@@ -543,36 +575,48 @@ export async function getAllPulsosData(opts?: { extendedDays?: number }) {
     getRows("lecturas_semanales"),
     getRows("sesiones_cliente", { sinceColumn: "fecha", sinceDays }),
     getRows("auditorias_semanales"),
-    // csl_pulse_readings: filtrar por tenant (service_role bypasa RLS)
-    (() => {
+    // csl_pulse_readings: filtrar por tenant (service_role bypasa RLS) + PAGINAR.
+    // Sin paginar, una tabla > 1000 lecturas se truncaba EN SILENCIO y ocultaba
+    // lecturas en la UI y en los cálculos de PulseControl.
+    (async () => {
       const ctx = getBusinessContext()
-      let q = getSupabaseAdmin()
-        .from("csl_pulse_readings")
-        .select("*")
-        .order("period_start", { ascending: false })
-      if (ctx && !ctx.bypassTenantFilter) q = q.eq("business_id", ctx.businessId)
-      return q.then(({ data, error }) => {
-        if (error) { console.warn("csl_pulse_readings not available:", error.message); return [] }
-        return data || []
-      })
+      const bid = ctx && !ctx.bypassTenantFilter ? ctx.businessId : null
+      try {
+        return await fetchAllPages((from, to) => {
+          let q = getSupabaseAdmin()
+            .from("csl_pulse_readings")
+            .select("*")
+            .order("period_start", { ascending: false })
+          if (bid) q = q.eq("business_id", bid)
+          return q.range(from, to)
+        })
+      } catch (e) {
+        console.warn("csl_pulse_readings not available:", e instanceof Error ? e.message : String(e))
+        return []
+      }
     })(),
-    // csl_operator_shots: resumen semanal AgendaPro. Si la tabla aún no
-    // existe (migración pendiente), devuelve [] sin romper.
-    (() => {
+    // csl_operator_shots: resumen semanal AgendaPro. Paginado por la misma razón.
+    // Si la tabla aún no existe (migración pendiente), devuelve [] sin romper.
+    (async () => {
       const ctx = getBusinessContext()
-      let q = getSupabaseAdmin()
-        .from("csl_operator_shots")
-        .select("*")
-        .order("period_start", { ascending: false })
-      if (ctx && !ctx.bypassTenantFilter) q = q.eq("business_id", ctx.businessId)
-      return q.then(({ data, error }) => {
-        if (error) {
-          const code = (error as { code?: string }).code
-          if (code !== "42P01") console.warn("csl_operator_shots not available:", error.message)
-          return []
+      const bid = ctx && !ctx.bypassTenantFilter ? ctx.businessId : null
+      try {
+        return await fetchAllPages((from, to) => {
+          let q = getSupabaseAdmin()
+            .from("csl_operator_shots")
+            .select("*")
+            .order("period_start", { ascending: false })
+          if (bid) q = q.eq("business_id", bid)
+          return q.range(from, to)
+        })
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        // Silencio cuando la tabla aún no existe (migración pendiente).
+        if (!/42P01|does not exist|Could not find the table|schema cache/i.test(msg)) {
+          console.warn("csl_operator_shots not available:", msg)
         }
-        return data || []
-      })
+        return []
+      }
     })(),
   ])
   // GUARDIA anti-fuga por tenant: además del filtro por business_id, descarta
