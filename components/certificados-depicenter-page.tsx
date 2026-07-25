@@ -32,8 +32,10 @@ import {
   X,
   XCircle,
 } from "lucide-react"
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib"
-import QRCode from "qrcode"
+// pdf-lib (~1 MB) y qrcode se importan de forma diferida dentro de buildPdf /
+// generateQrDataUrl (fuera del bundle inicial). Los tipos se mantienen (se borran
+// en compilación, sin costo de runtime).
+import type { PDFFont, PDFPage } from "pdf-lib"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -261,6 +263,7 @@ function certValidationUrl(cert: CertificadoDepicenter): string {
  */
 async function generateQrDataUrl(cert: CertificadoDepicenter): Promise<string> {
   const url = certValidationUrl(cert)
+  const QRCode = (await import("qrcode")).default
   return QRCode.toDataURL(url, {
     errorCorrectionLevel: "H",
     margin: 1,
@@ -615,6 +618,7 @@ export function CertificadosDepicenterPage() {
   }
 
   const buildPdf = async (cert: CertificadoDepicenter): Promise<Uint8Array> => {
+    const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib")
     const doc = await PDFDocument.create()
     const page = doc.addPage([PAGE_W, PAGE_H])
     const { width, height } = page.getSize()

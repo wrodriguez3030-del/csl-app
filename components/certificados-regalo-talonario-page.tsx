@@ -1,7 +1,8 @@
 ﻿"use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib"
+// pdf-lib (~1 MB) se importa de forma diferida dentro de las funciones que
+// generan el PDF (createPrintPdf / createCalibrationPdf), fuera del bundle inicial.
 import { Gift, Printer, RotateCcw, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,7 +24,6 @@ const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "
 const fallbackSucursales = ["Rafael Vidal", "Los Jardines", "Villa Olga", "La Vega"]
 const printPage = { width: 936, height: 612 }
 const certificateArea = { width: 581.1, height: 368.5, x: 0, y: 612 - 368.5 }
-const printBlack = rgb(0, 0, 0)
 const CALIBRATION_KEY = "csl_cf_regalo_print_calibration_v1"
 
 type PrintCalibration = {
@@ -131,6 +131,8 @@ export function CertificadosRegaloTalonarioPage() {
   }
 
   const createPrintPdf = async () => {
+    const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib")
+    const printBlack = rgb(0, 0, 0)
     const pdf = await PDFDocument.create()
     const page = pdf.addPage([printPage.width, printPage.height])
     const font = await pdf.embedFont(StandardFonts.HelveticaBold)
@@ -164,6 +166,8 @@ export function CertificadosRegaloTalonarioPage() {
   }
 
   const createCalibrationPdf = async () => {
+    const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib")
+    const printBlack = rgb(0, 0, 0)
     const pdf = await PDFDocument.create()
     const page = pdf.addPage([printPage.width, printPage.height])
     const font = await pdf.embedFont(StandardFonts.HelveticaBold)

@@ -18,6 +18,32 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.80.0] — 2026-07-24
+
+Etapa 5 de la auditoría — **optimización de bundle** (rendimiento frontend).
+
+### Changed
+- **`pdf-lib` (~1 MB), `qrcode` y `@zxing/browser` (~200 KB) salen del bundle
+  inicial.** Se importan de forma diferida (`await import(...)`) dentro de los
+  handlers que los usan (export de certificados, generación/escaneo de QR), no
+  al cargar la app. Se convirtieron TODOS sus importadores para que las librerías
+  realmente dejen el chunk de entrada:
+  - `pdf-lib`: `certificados-regalo-page`, `certificados-regalo-talonario-page`,
+    `certificados-depicenter-page`.
+  - `qrcode`: `empleados-page`, `certificados-depicenter-page`, `hr/rrhh-ponche-page`.
+  - `@zxing/browser`: `hr/rrhh-ponche-page` (los tipos se mantienen como `import type`).
+- **`next.config.mjs`: `experimental.optimizePackageImports: ['recharts','date-fns']`**
+  para tree-shaking por-símbolo (solo build; sin cambio de runtime).
+
+### Notas
+- Pendiente de mayor impacto (documentado, requiere prueba en runtime/preview): el
+  `switch` de ~40 vistas en `app/page.tsx` no hace code-splitting → convertirlo a
+  `next/dynamic` por vista recortaría el chunk de entrada de `/` drásticamente.
+  No se hizo en esta tanda por ser un refactor amplio que conviene validar en un
+  deploy de preview antes de producción.
+
+---
+
 ## [0.79.1] — 2026-07-24
 
 Etapa 4 de la auditoría — **migraciones de BD preparadas** para db-cls. Requieren

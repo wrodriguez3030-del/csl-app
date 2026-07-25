@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import QRCode from "qrcode"
+// qrcode se importa de forma diferida dentro del handler de generación de QR
+// (no se necesita en la carga inicial de la pantalla de empleados).
 import { composeQrPng, downloadDataUrl } from "@/lib/qr-compose"
 import { EmployeeScheduleDialog } from "@/components/hr/employee-schedule-dialog"
 import { Clock, AlertTriangle } from "lucide-react"
@@ -93,6 +94,7 @@ export function EmpleadosPage() {
       if (res?.tableMissing) { showToast("Falta aplicar la migración del ponche QR en db-cls", "error"); return }
       if (!res?.ok || !res.token) { showToast(res?.error || "No se pudo generar el QR", "error"); return }
       setQrToken(res.token)
+      const QRCode = (await import("qrcode")).default
       setQrUrl(await QRCode.toDataURL(res.token, { width: 320, margin: 1 }))
       if (regenerate) showToast("QR regenerado. El anterior quedó inválido.", "success")
     } catch (e) { showToast(e instanceof Error ? e.message : "Error generando QR", "error") } finally { setQrBusy(false) }

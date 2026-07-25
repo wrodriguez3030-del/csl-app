@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib"
+// pdf-lib (~1 MB) se importa de forma diferida DENTRO de createPdf para no
+// cargarlo en el bundle inicial — solo se necesita al exportar el certificado.
 import { ArrowUpDown, Download, FileSpreadsheet, FileText, Gift, RotateCcw, Search, ShieldCheck, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -185,6 +186,7 @@ export function CertificadosRegaloPage() {
   }
 
   const createPdf = async (data: CertificadoRegaloData) => {
+    const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib")
     const bytes = await fetch("/certificados/certificado-regalo-digital.pdf", { cache: "no-store" }).then((response) => response.arrayBuffer())
     const pdf = await PDFDocument.load(bytes)
     const page = pdf.getPages()[0]

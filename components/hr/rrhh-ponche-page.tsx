@@ -16,8 +16,10 @@ import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { useSessionUser } from "@/hooks/use-session-user"
 import { exportHrReportExcel } from "@/lib/hr-report-excel"
 import { haversineMeters } from "@/lib/hr-geo"
-import QRCode from "qrcode"
-import { BrowserQRCodeReader, type IScannerControls } from "@zxing/browser"
+// qrcode se importa de forma diferida dentro del handler que genera el QR.
+// @zxing/browser (~200 KB) se carga de forma diferida solo al iniciar el
+// escáner de cámara del kiosco. El tipo se mantiene (se borra en compilación).
+import type { IScannerControls } from "@zxing/browser"
 import { composeQrPng, downloadDataUrl } from "@/lib/qr-compose"
 import { usePagination } from "@/lib/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
@@ -178,6 +180,7 @@ export function RrhhPonchePage() {
       if (res?.tableMissing) { showToast("Falta aplicar la migración del ponche QR en db-cls", "error"); return }
       if (!res?.ok || !res.token) { showToast(res?.error || "No se pudo generar el QR", "error"); return }
       setQrToken(res.token)
+      const QRCode = (await import("qrcode")).default
       setQrUrl(await QRCode.toDataURL(res.token, { width: 320, margin: 1 }))
       if (regenerate) showToast("QR regenerado. El anterior quedó inválido.", "success")
     } catch (e) { showToast(e instanceof Error ? e.message : "Error generando QR", "error") } finally { setQrBusy(false) }
@@ -806,6 +809,7 @@ export function KioskView({ onExit, showExit = false }: { onExit: () => void; sh
         }
       }
       // Fallback universal (iOS Safari/Chrome, Android): @zxing/browser.
+      const { BrowserQRCodeReader } = await import("@zxing/browser")
       const reader = new BrowserQRCodeReader()
       readerRef.current = await reader.decodeFromConstraints(
         { video: { facingMode: { ideal: "environment" } } },
