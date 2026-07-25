@@ -25,6 +25,10 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 - **Pantalla "Control Digital de Tratamientos"** (`control-tratamientos`): ficha por
   cliente con 5 KPIs reales, pestañas (Resumen/Sesiones/Actividad/Historial), paquetes,
   cesiones, actividad y firmas pendientes. Ver `docs/CONTROL_TRATAMIENTOS_UI.md`.
+- **Administración → Integración AgendaPro** (`admin-agendapro`): estado del webhook,
+  contadores de eventos, CRUD de mapeos de sucursal (`location_id`) y servicio
+  (→consentimiento), monitor de eventos y reproceso. Gateado a admin/superadmin;
+  el payload completo (PII) solo lo ve superadmin.
 - Pruebas: `pnpm test:agendapro` (52 casos) + `scripts/_e2e-agendapro-webhook-live.mjs`
   (12 E2E en vivo contra db-cls con limpieza).
 
@@ -39,8 +43,8 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
   otro negocio que comparta la clave global `cliente_id` (se sufija con el tenant).
 
 ### Pendiente (no en este lote)
-- Panel Administración → Integración AgendaPro (mapas, monitor de eventos, reprocesar).
 - Sidebar navy (§4.1) — requiere previsualización visual en dev.
+- Verificación visual de las pantallas en `pnpm dev`.
 - Activar en producción: `AGENDAPRO_WEBHOOK_SECRET` en Vercel + registrar webhook en AgendaPro.
 
 ---

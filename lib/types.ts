@@ -526,3 +526,4 @@ export type TabId =
   | "bi-fin-config"
   // Módulo Administración (solo superadmin)
   | "admin-users"
+  | "admin-agendapro"

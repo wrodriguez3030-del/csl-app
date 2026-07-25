@@ -11,6 +11,8 @@ import { ALL_MENU_IDS } from "@/lib/menus"
 import { lunchMinutesForShift, dominicanDayStart } from "@/lib/work-hours"
 import { sendFichaDermoEmail } from "@/lib/dermo-server"
 import { getSupabaseAdmin } from "@/lib/server/supabase"
+import { normalizeServiceName } from "@/lib/server/agendapro-payments-core"
+import { processAgendaProPayment, createSupabaseRepo } from "@/lib/server/agendapro-payments"
 import {
   dateValue,
   numberFrom,
@@ -4361,6 +4363,151 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         firmasPendientes,
         actividadReciente: actividad.map((row) => fromDb("sesiones_cliente", row)),
       }
+    }
+    // ── Administración → Integración AgendaPro (§20) ─────────────────────────
+    case "getAgendaProIntegracion": {
+      const ctx = getBusinessContext()
+      if (!ctx?.isAdmin && !ctx?.isSuperadmin) throw new Error("Solo administradores.")
+      const sb = getSupabaseAdmin()
+      const bid = effectiveBusinessId()
+
+      let lmQ = sb.from("csl_agendapro_location_map").select("*")
+      if (bid) lmQ = lmQ.eq("business_id", bid)
+      const locationMaps = ((await lmQ.order("agendapro_location_id", { ascending: true })).data || []) as Row[]
+
+      let smQ = sb.from("csl_agendapro_service_map").select("*")
+      if (bid) smQ = smQ.eq("business_id", bid)
+      const serviceMaps = ((await smQ.order("agendapro_service_name", { ascending: true })).data || []) as Row[]
+
+      // Eventos recientes. El payload completo (PII) SOLO para superadmin.
+      const evCols = ctx.isSuperadmin
+        ? "*"
+        : "id, business_id, agendapro_payment_id, event_type, status, attempts, agendapro_location_id, agendapro_client_id, error_code, error_message, received_at, processed_at, result_summary"
+      let evQ = sb.from("csl_agendapro_webhook_events").select(evCols)
+      if (bid) evQ = evQ.eq("business_id", bid)
+      const events = (((await evQ.order("received_at", { ascending: false }).limit(100)).data as unknown) || []) as Row[]
+
+      const countBy = async (status: string | null) => {
+        let q = sb.from("csl_agendapro_webhook_events").select("*", { count: "exact", head: true })
+        if (bid) q = q.eq("business_id", bid)
+        if (status) q = q.eq("status", status)
+        return (await q).count || 0
+      }
+      const counts = {
+        total: await countBy(null),
+        processed: await countBy("processed"),
+        requires_mapping: await countBy("requires_mapping"),
+        failed: await countBy("failed"),
+        duplicate: await countBy("duplicate"),
+      }
+
+      const webhookSecret = process.env.AGENDAPRO_WEBHOOK_SECRET || ""
+      const config = {
+        webhookConfigured: webhookSecret.length >= 16,
+        enabled: (process.env.AGENDAPRO_WEBHOOK_ENABLED ?? "true").toLowerCase() !== "false",
+        logPayloads: (process.env.AGENDAPRO_LOG_PAYLOADS ?? "false").toLowerCase() === "true",
+        endpoint: "/api/integrations/agendapro/payments",
+      }
+      const lastReceived = events[0]?.received_at ?? null
+      const lastProcessed = events.find((e) => e.status === "processed")?.processed_at ?? null
+
+      return { ok: true, config, counts, locationMaps, serviceMaps, events, lastReceived, lastProcessed }
+    }
+    case "saveAgendaProLocationMap": {
+      const ctx = getBusinessContext()
+      if (!ctx?.isAdmin && !ctx?.isSuperadmin) throw new Error("Solo administradores.")
+      const sb = getSupabaseAdmin()
+      const bid = effectiveBusinessId()
+      const d = JSON.parse(textValue(params, "data") || "{}") as Row
+      const locId = Number(d.agendapro_location_id)
+      if (!locId || !d.internal_sucursal) throw new Error("location_id y sucursal interna son obligatorios.")
+      const row: Row = {
+        business_id: bid,
+        agendapro_location_id: locId,
+        agendapro_location_name: d.agendapro_location_name || null,
+        internal_sucursal: d.internal_sucursal,
+        active: d.active !== false,
+        updated_at: new Date().toISOString(),
+      }
+      if (d.id) {
+        let q = sb.from("csl_agendapro_location_map").update(row).eq("id", String(d.id))
+        if (bid) q = q.eq("business_id", bid)
+        const { error } = await q
+        if (error) throw error
+      } else {
+        const { error } = await sb.from("csl_agendapro_location_map").insert(row)
+        if (error) throw new Error(/duplicate|unique/i.test(error.message) ? `La location ${locId} ya está mapeada.` : error.message)
+      }
+      return { ok: true }
+    }
+    case "deleteAgendaProLocationMap": {
+      const ctx = getBusinessContext()
+      if (!ctx?.isAdmin && !ctx?.isSuperadmin) throw new Error("Solo administradores.")
+      const sb = getSupabaseAdmin()
+      const bid = effectiveBusinessId()
+      let q = sb.from("csl_agendapro_location_map").delete().eq("id", textValue(params, "id"))
+      if (bid) q = q.eq("business_id", bid)
+      const { error } = await q
+      if (error) throw error
+      return { ok: true }
+    }
+    case "saveAgendaProServiceMap": {
+      const ctx = getBusinessContext()
+      if (!ctx?.isAdmin && !ctx?.isSuperadmin) throw new Error("Solo administradores.")
+      const sb = getSupabaseAdmin()
+      const bid = effectiveBusinessId()
+      const d = JSON.parse(textValue(params, "data") || "{}") as Row
+      const svcName = String(d.agendapro_service_name || "").trim()
+      if (!svcName) throw new Error("El nombre del servicio de AgendaPro es obligatorio.")
+      const row: Row = {
+        business_id: bid,
+        agendapro_service_name: svcName,
+        normalized_service_name: normalizeServiceName(svcName),
+        internal_service_name: d.internal_service_name || null,
+        categoria: d.categoria || null,
+        consent_type: d.consent_type || null,
+        sessions_quantity: Number(d.sessions_quantity) || 1,
+        active: d.active !== false,
+        updated_at: new Date().toISOString(),
+      }
+      if (d.id) {
+        let q = sb.from("csl_agendapro_service_map").update(row).eq("id", String(d.id))
+        if (bid) q = q.eq("business_id", bid)
+        const { error } = await q
+        if (error) throw error
+      } else {
+        const { error } = await sb.from("csl_agendapro_service_map").insert(row)
+        if (error) throw new Error(/duplicate|unique/i.test(error.message) ? "Ese servicio ya está mapeado." : error.message)
+      }
+      return { ok: true }
+    }
+    case "deleteAgendaProServiceMap": {
+      const ctx = getBusinessContext()
+      if (!ctx?.isAdmin && !ctx?.isSuperadmin) throw new Error("Solo administradores.")
+      const sb = getSupabaseAdmin()
+      const bid = effectiveBusinessId()
+      let q = sb.from("csl_agendapro_service_map").delete().eq("id", textValue(params, "id"))
+      if (bid) q = q.eq("business_id", bid)
+      const { error } = await q
+      if (error) throw error
+      return { ok: true }
+    }
+    case "reprocessAgendaProEvent": {
+      const ctx = getBusinessContext()
+      if (!ctx?.isAdmin && !ctx?.isSuperadmin) throw new Error("Solo administradores.")
+      const sb = getSupabaseAdmin()
+      const bid = effectiveBusinessId()
+      let q = sb.from("csl_agendapro_webhook_events").select("*").eq("id", textValue(params, "id"))
+      if (bid) q = q.eq("business_id", bid)
+      const ev = (await q.maybeSingle()).data as Row | null
+      if (!ev) return { ok: false, error: "Evento no encontrado." }
+      if (!ev.payload_json) {
+        return { ok: false, error: "No hay payload guardado para este evento (AGENDAPRO_LOG_PAYLOADS estaba desactivado). No se puede reprocesar." }
+      }
+      // Liberar el candado de idempotencia para forzar el reproceso.
+      await sb.from("csl_agendapro_webhook_events").update({ status: "queued", updated_at: new Date().toISOString() }).eq("id", String(ev.id))
+      const result = await processAgendaProPayment(ev.payload_json, createSupabaseRepo(sb), { storePayload: true })
+      return { ok: result.status !== "invalid" && result.status !== "error", status: result.status, result }
     }
     case "checkConsentFirmado": {
       // ¿El cliente YA firmó este tipo de consentimiento EN EL NEGOCIO ACTIVO?

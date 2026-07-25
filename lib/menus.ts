@@ -133,6 +133,7 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "bi-fin-config", label: "Configuración IA", section: "BI Financiero IA" },
   { id: "config", label: "Configuración", section: "Sistema" },
   { id: "admin-users", label: "Usuarios", section: "Administración" },
+  { id: "admin-agendapro", label: "Integración AgendaPro", section: "Administración" },
 ]
 
 /** Lista plana de IDs — útil para resolver permisos de admin (todos los menús). */

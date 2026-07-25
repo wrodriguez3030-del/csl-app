@@ -77,6 +77,7 @@ import { PulseControlDashboardPage } from "@/components/pulse-control-dashboard-
 import { PulsosEquiposPage } from "@/components/pulsos-equipos-page"
 import { PulsosMantenimientoPage } from "@/components/pulsos-mantenimiento-page"
 import { ControlTratamientosPage } from "@/components/control-tratamientos-page"
+import { AgendaProIntegracionPage } from "@/components/agendapro-integracion-page"
 import { CosmiatriaClientesPage } from "@/components/cosmiatria-clientes-page"
 import { CosmiatriaFichaPage } from "@/components/cosmiatria-ficha-page"
 import { ConsentimientosPage } from "@/components/consentimientos-page"
@@ -517,6 +518,8 @@ export default function HomePage() {
         return <BiConfigPage />
       case "admin-users":
         return <AdminUsersPage />
+      case "admin-agendapro":
+        return <AgendaProIntegracionPage />
       default:
         return <ConfigPage />
     }
