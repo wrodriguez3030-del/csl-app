@@ -11,6 +11,18 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+### Changed
+### Fixed
+### Removed
+### Security
+
+---
+
+## [0.81.0] — 2026-07-25
+
+Integración de **pagos de AgendaPro** + dominio **Control Digital de Tratamientos**.
+
+### Added
 - **Webhook de PAGOS de AgendaPro** (`POST /api/integrations/agendapro/payments`) —
   distinto del webhook de clientes (intacto). Procesa el payload real de pagos
   (`bookings/mock_bookings/memberships/products/giftcards/receipts/down_payments`),
@@ -35,6 +47,9 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Changed
 - `csl_consent_depilacion_laser`: columnas `origen`, `paquete_id`, `agendapro_payment_id`,
   `service_identifier` para ligar el consentimiento pendiente creado por el webhook.
+- **Sidebar en azul oscuro (navy)** (§4.1): tema oscuro contenido y reversible
+  (`app/globals.css`), con texto claro y acentos turquesa. Requiere confirmación
+  visual en `pnpm dev`; revertir = borrar el bloque de CSS.
 
 ### Fixed
 ### Removed
@@ -43,8 +58,7 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
   otro negocio que comparta la clave global `cliente_id` (se sufija con el tenant).
 
 ### Pendiente (no en este lote)
-- Sidebar navy (§4.1) — requiere previsualización visual en dev.
-- Verificación visual de las pantallas en `pnpm dev`.
+- Verificación visual de las pantallas y del sidebar navy en `pnpm dev`.
 - Activar en producción: `AGENDAPRO_WEBHOOK_SECRET` en Vercel + registrar webhook en AgendaPro.
 
 ---

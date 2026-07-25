@@ -369,3 +369,33 @@ input:focus, textarea:focus,
     display: none !important;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Sidebar navy (§4.1) — tema oscuro CONTENIDO y REVERSIBLE.
+ * Estrategia: redefinir los tokens de marca SOLO dentro del sidebar. Así todas
+ * las utilidades text-[var(--brand-primary-dark)] / bg-[var(--brand-bg-subtle)]
+ * / bg-[var(--brand-primary-soft)] se vuelven claras automáticamente (correcto
+ * por construcción). Solo se ajustan aparte los grises `slate` y las pastillas
+ * blancas activas (para que su texto quede oscuro y legible).
+ * Los acentos turquesa (--brand-primary) se conservan intactos.
+ * Revertir el navy = borrar este bloque.
+ * ───────────────────────────────────────────────────────────────────────── */
+[data-csl-sidebar] {
+  background: linear-gradient(180deg, #063B4A 0%, #0B2E3A 100%) !important;
+  --brand-primary-dark: #EAF7F8;      /* texto/títulos → claro */
+  --brand-primary-soft: rgba(255, 255, 255, 0.10); /* fondo activo → translúcido */
+  --brand-bg-subtle:    rgba(255, 255, 255, 0.08); /* hover / fondo iconos */
+  --brand-bg-card:      rgba(255, 255, 255, 0.06);
+  --brand-border:       rgba(255, 255, 255, 0.12); /* divisores sutiles */
+}
+/* Grises de Tailwind (no son tokens) → claros y legibles sobre navy */
+[data-csl-sidebar] .text-slate-600,
+[data-csl-sidebar] .text-slate-500,
+[data-csl-sidebar] .text-slate-400 {
+  color: #9FBAC4 !important;
+}
+/* Pastillas totalmente blancas (estado activo de PulseControl / subitems):
+ * texto oscuro para que se lea. No afecta a bg-white/70 (icono del logo/chip). */
+[data-csl-sidebar] .bg-white {
+  color: #063B4A !important;
+}
