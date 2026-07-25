@@ -10,8 +10,11 @@ y **aislada por tenant**. NO reemplaza al webhook de **clientes** existente
 
 ## Endpoint
 
+Dos variantes equivalentes (para pegar cómodo en AgendaPro):
+
 ```
-POST /api/integrations/agendapro/payments?token=<AGENDAPRO_WEBHOOK_SECRET>
+POST /api/integrations/agendapro/payments/<AGENDAPRO_WEBHOOK_SECRET>   (token en la RUTA — recomendado)
+POST /api/integrations/agendapro/payments?token=<AGENDAPRO_WEBHOOK_SECRET>   (token en query-string)
 GET  /api/integrations/agendapro/payments        (health-check, sin secretos)
 ```
 
@@ -92,9 +95,10 @@ node --import tsx scripts/_e2e-agendapro-webhook-live.mjs   # 12 E2E en vivo (co
 ## Configurar el webhook en AgendaPro (§29.14)
 
 1. Definir `AGENDAPRO_WEBHOOK_SECRET` (≥16 chars) en Vercel (Production) y `.env.local`.
-2. En AgendaPro, apuntar el webhook de **pagos** a:
-   `https://<dominio-csl>/api/integrations/agendapro/payments?token=<AGENDAPRO_WEBHOOK_SECRET>`
-3. Verificar con `GET` al mismo endpoint (`webhookConfigured: true`).
+2. En AgendaPro → API Pública → Webhooks → "Crear Webhook" → "Nueva url" (el campo ya
+   trae `https://`, se pega SIN `https://`):
+   `<dominio-csl>/api/integrations/agendapro/payments/<AGENDAPRO_WEBHOOK_SECRET>`
+3. Verificar con `GET` a `/api/integrations/agendapro/payments` (`webhookConfigured: true`).
 4. Registrar los mapeos de sucursal (`location_id`) y servicio en Administración →
    Integración AgendaPro (pendiente de UI; hoy se siembran vía migración/SQL).
 
