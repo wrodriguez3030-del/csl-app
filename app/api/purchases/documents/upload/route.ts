@@ -30,6 +30,12 @@ export async function POST(request: Request) {
   }
   const ctx = await loadBusinessContext(user.id)
   if (!ctx?.businessId) return json({ ok: false, error: "Contexto de negocio no encontrado" }, 403)
+  // SEGURIDAD (authz de función): subir adjuntos de compras/gastos requiere el
+  // permiso del módulo. Antes cualquier usuario autenticado podía escribir en el
+  // bucket privado. Admin/superadmin bypasan (misma convención que hasPermission).
+  if (!(ctx.isAdmin || ctx.isSuperadmin || ctx.permissions?.includes("compras.crear"))) {
+    return json({ ok: false, error: "No tienes permiso para subir adjuntos de compras." }, 403)
+  }
   const businessId = ctx.businessId
 
   let form: FormData

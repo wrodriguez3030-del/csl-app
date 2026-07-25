@@ -7,12 +7,16 @@
 import { NextResponse } from "next/server"
 import { generateAuthenticationOptions } from "@simplewebauthn/server"
 import { rpFromRequest, resolveQrEmployee, saveChallenge, getCredentials } from "@/lib/server/webauthn"
+import { clientIp, rateLimit } from "@/lib/rate-limit-server"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
 const json = (d: Record<string, unknown>, s = 200) => NextResponse.json(d, { status: s, headers: { "Cache-Control": "no-store" } })
 
 export async function POST(request: Request) {
+  // Rate limit: cada llamada escribe una fila de challenge; frena el flooding.
+  const rl = rateLimit({ key: `webauthn-auth:${clientIp(request)}`, max: 30, windowMs: 10 * 60 * 1000 })
+  if (!rl.ok) return json({ ok: false, error: "Demasiados intentos. Espera unos minutos e intenta de nuevo." }, 429)
   let body: Record<string, unknown> = {}
   try { body = await request.json() } catch { return json({ ok: false, error: "Cuerpo inválido" }, 400) }
   const emp = await resolveQrEmployee(String(body.qr_token || ""))

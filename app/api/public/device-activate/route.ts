@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server"
 import { getSupabaseAdmin } from "@/lib/server/supabase"
 import { createHash } from "node:crypto"
+import { clientIp, rateLimit } from "@/lib/rate-limit-server"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -17,6 +18,9 @@ const sha = (v: string) => createHash("sha256").update(v, "utf8").digest("hex")
 const json = (d: Record<string, unknown>, status = 200) => NextResponse.json(d, { status, headers: { "Cache-Control": "no-store" } })
 
 export async function GET(request: Request) {
+  // Rate limit: frena el sondeo de tokens de activación (aunque son de alta entropía).
+  const rl = rateLimit({ key: `device-activate:${clientIp(request)}`, max: 30, windowMs: 5 * 60 * 1000 })
+  if (!rl.ok) return json({ ok: false, code: "rate_limited", error: "Demasiados intentos. Espera un momento." }, 429)
   const token = new URL(request.url).searchParams.get("token") || ""
   if (!token) return json({ ok: false, code: "no_token", error: "Falta el token de activación" }, 400)
   try {

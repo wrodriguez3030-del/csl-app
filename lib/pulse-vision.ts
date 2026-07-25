@@ -11,6 +11,8 @@
  *   - Lecturas semanales (captura individual)
  */
 
+import { supabaseBrowser } from "@/lib/supabase-client"
+
 export interface PulseScreenReading {
   /** true si se obtuvo lectura legible. false con error/reason cuando falla. */
   ok: boolean
@@ -82,9 +84,21 @@ export async function scanPulseScreen(file: File): Promise<PulseScreenReading> {
   const form = new FormData()
   form.append("image", file)
 
+  // El endpoint OCR ahora exige sesión (evita abuso anónimo de la API key).
+  // Adjuntamos el token Bearer vigente; NO fijamos Content-Type para que el
+  // navegador ponga el boundary del multipart automáticamente.
+  const token = (await supabaseBrowser.auth.getSession()).data.session?.access_token
+  if (!token) {
+    return makeFailure("unauthorized", "Tu sesión expiró. Vuelve a iniciar sesión para usar el lector.")
+  }
+
   let resp: Response
   try {
-    resp = await fetch("/api/pulse/ocr", { method: "POST", body: form })
+    resp = await fetch("/api/pulse/ocr", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    })
   } catch (err) {
     return makeFailure(
       "network",

@@ -25,8 +25,11 @@ export async function POST(request: Request) {
   let form: FormData
   try { form = await request.formData() } catch { return json({ ok: false, error: "Formato inválido (se esperaba multipart/form-data)" }, 400) }
   const file = form.get("file")
-  const employee_id = String(form.get("employee_id") || "").trim()
-  const document_type = String(form.get("document_type") || "otros").trim()
+  // SEGURIDAD: sanear los segmentos que van al object key del bucket (evita
+  // path traversal / colisión de key fuera del prefijo del tenant). Los UUID
+  // válidos solo contienen [A-Za-z0-9-], así que no se pierden valores legítimos.
+  const employee_id = String(form.get("employee_id") || "").trim().replace(/[^\w-]/g, "").slice(0, 64)
+  const document_type = (String(form.get("document_type") || "otros").trim().replace(/[^\w-]/g, "") || "otros").slice(0, 40)
   const title = String(form.get("title") || "").trim()
   const visibility = String(form.get("visibility") || "rrhh").trim()
   const expires_at = String(form.get("expires_at") || "").trim()

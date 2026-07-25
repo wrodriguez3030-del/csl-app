@@ -25,6 +25,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+import { requireAuthenticatedUser } from "@/lib/server/supabase"
+import { clientIp, rateLimit } from "@/lib/rate-limit-server"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -77,6 +79,20 @@ function errorResponse(error: string, reason: string, status = 400, extra: Parti
 }
 
 export async function POST(req: NextRequest) {
+  // SEGURIDAD: este proxy consume la API key de OpenAI del servidor. Sin auth,
+  // cualquier anónimo podía agotar la cuota (DoS de costo) y usarlo como proxy
+  // de visión. Exigimos sesión válida + rate limit por usuario/IP.
+  let user
+  try {
+    user = await requireAuthenticatedUser(req)
+  } catch {
+    return errorResponse("unauthorized", "Debes iniciar sesión para usar el lector OCR.", 401)
+  }
+  const rl = rateLimit({ key: `pulse-ocr:${user.id}:${clientIp(req)}`, max: 30, windowMs: 5 * 60 * 1000 })
+  if (!rl.ok) {
+    return errorResponse("rate_limited", "Demasiadas lecturas seguidas. Espera unos segundos e intenta de nuevo.", 429)
+  }
+
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
     return errorResponse(

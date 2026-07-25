@@ -88,8 +88,10 @@ export async function GET(request: Request) {
     if (error) throw error
     const sucursales = (data || []).map((row) => text((row as { nombre?: unknown }).nombre)).filter(Boolean)
     return json({ ok: true, sucursales })
-  } catch (error) {
-    return json({ ok: false, sucursales: [], error: error instanceof Error ? error.message : "Error desconocido" }, 500)
+  } catch {
+    // No se divulga el error crudo de BD a un cliente anónimo (evita
+    // reconocimiento de esquema). El detalle queda en los logs del servidor.
+    return json({ ok: false, sucursales: [], error: "No se pudieron cargar las sucursales." }, 500)
   }
 }
 
@@ -165,7 +167,8 @@ export async function POST(request: Request) {
 
     if (error) throw error
     return json({ ok: true, solicitudId: row.solicitud_id }, 200, limitHeaders)
-  } catch (error) {
-    return json({ ok: false, error: error instanceof Error ? error.message : "Error desconocido" }, 500)
+  } catch {
+    // Mensaje genérico al cliente anónimo; el detalle queda en logs del servidor.
+    return json({ ok: false, error: "No se pudo enviar la solicitud. Intenta nuevamente en unos minutos." }, 500)
   }
 }

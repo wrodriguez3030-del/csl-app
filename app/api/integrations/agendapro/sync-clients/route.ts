@@ -41,13 +41,18 @@ export async function POST(request: Request) {
     return json({ ok: false, error: "No autenticado" }, 401)
   }
 
-  // Sin gate por rol — cualquier usuario autenticado puede disparar el sync
-  // (recepción jala clientes recién registrados). Multi-tenant: el negocio de
-  // destino es el ACTIVO del switcher (superadmin) o el propio del usuario. Las
-  // credenciales se resuelven por ese business_id — NUNCA se mezclan tenants.
+  // Multi-tenant: el negocio de destino es el ACTIVO del switcher (superadmin)
+  // o el propio del usuario. Las credenciales se resuelven por ese business_id
+  // — NUNCA se mezclan tenants.
   const activeBusinessId = await readActiveBusinessId(request)
   const ctx = await resolveEffectiveBusinessContext(user.id, activeBusinessId)
   if (!ctx) return json({ ok: false, error: "Contexto de negocio no encontrado." }, 403)
+  // SEGURIDAD (authz de función): sincronizar clientes de AgendaPro es una
+  // operación pesada contra la API externa y la BD. Requiere el permiso del
+  // módulo (o admin/superadmin), coherente con import-clients/credentials.
+  if (!(ctx.isAdmin || ctx.isSuperadmin || ctx.permissions?.includes("integrations.agendapro.sync"))) {
+    return json({ ok: false, error: "No tienes permiso para sincronizar clientes de AgendaPro." }, 403)
+  }
 
   const cfg = await resolveAgendaProConfigForBusiness(ctx.businessId, ctx.businessSlug)
   const cfgError = validateAgendaProConfig(cfg)

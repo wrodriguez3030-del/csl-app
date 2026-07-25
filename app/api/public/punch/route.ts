@@ -19,6 +19,7 @@ import { getSupabaseAdmin } from "@/lib/server/supabase"
 import { haversineMeters } from "@/lib/hr-geo"
 import { lunchMinutesForShift, dominicanDayStart } from "@/lib/work-hours"
 import { createHash } from "node:crypto"
+import { clientIp, rateLimit } from "@/lib/rate-limit-server"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -75,6 +76,11 @@ async function schedDay(sb: SB, businessId: string, employeeId: string, dateStr:
 }
 
 export async function POST(request: Request) {
+  // Rate limit (defensa en profundidad): los tokens son de 192 bits — no es
+  // fuerza bruta — pero esto frena flooding/replay del pipeline de ponche.
+  // Un kiosco real hace pocas marcas por minuto; 60/5min es holgado.
+  const rl = rateLimit({ key: `punch:${clientIp(request)}`, max: 60, windowMs: 5 * 60 * 1000 })
+  if (!rl.ok) return json({ ok: false, code: "rate_limited", error: "Demasiados intentos seguidos. Espera un momento e intenta de nuevo." }, 429)
   let body: Record<string, unknown> = {}
   try { body = await request.json() } catch { return json({ ok: false, code: "bad_request", error: "Cuerpo inválido" }, 400) }
   const mode = String(body.mode || "punch")

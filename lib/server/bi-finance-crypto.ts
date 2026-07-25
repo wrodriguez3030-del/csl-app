@@ -13,7 +13,15 @@
 import crypto from "node:crypto"
 
 function encKey(): Buffer {
-  const base = (process.env.BI_FINANCE_ENC_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "csl-bi-finance-fallback-key").trim()
+  const base = (process.env.BI_FINANCE_ENC_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim()
+  // SEGURIDAD: falla cerrado. Antes caía a una CONSTANTE PÚBLICA hardcodeada si
+  // faltaban ambas env vars → los secretos quedaban trivialmente descifrables.
+  // Se conserva la derivación desde SUPABASE_SERVICE_ROLE_KEY (siempre presente
+  // en el entorno) para NO romper el texto ya cifrado; se puede endurecer aún
+  // más definiendo BI_FINANCE_ENC_KEY.
+  if (!base) {
+    throw new Error("Falta BI_FINANCE_ENC_KEY o SUPABASE_SERVICE_ROLE_KEY: no se pueden cifrar/descifrar secretos.")
+  }
   // Deriva 32 bytes determinísticos a partir del secreto del servidor.
   return crypto.createHash("sha256").update(`bi-finance:${base}`).digest()
 }

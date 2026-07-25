@@ -40,6 +40,10 @@ export async function GET(request: Request) {
   const url = new URL(request.url)
   const codigo = String(url.searchParams.get("codigo") || "").trim().toUpperCase()
   if (!codigo) return json({ ok: false, error: "Falta el código del certificado." }, 400)
+  // SEGURIDAD: escapar metacaracteres LIKE (%, _, \) antes de `.ilike`. Sin esto,
+  // un atacante podía usar comodines para enumerar certificados y su titular (PII).
+  // Se conserva `.ilike` (case-insensitive) para no fallar con códigos legacy.
+  const codigoLike = codigo.replace(/([\\%_])/g, "\\$1")
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -52,7 +56,7 @@ export async function GET(request: Request) {
   const { data, error } = await supabase
     .from("csl_certificados_depicenter")
     .select("codigo, fecha, fecha_vencimiento, otorgado_a, cortesia_de, valido_por, estado, sucursal, emitido_en")
-    .ilike("codigo", codigo)
+    .ilike("codigo", codigoLike)
     .maybeSingle()
 
   if (error) {

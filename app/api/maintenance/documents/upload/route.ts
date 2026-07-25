@@ -38,7 +38,9 @@ export async function POST(request: Request) {
     return json({ ok: false, error: "Formato inválido (se esperaba multipart/form-data)" }, 400)
   }
   const file = form.get("file")
-  const piezaId = String(form.get("pieza_id") || "").trim()
+  // SEGURIDAD: sanear el segmento que va al object key (evita path traversal /
+  // escritura fuera del prefijo del tenant). Los ids válidos son [A-Za-z0-9-].
+  const piezaId = String(form.get("pieza_id") || "").trim().replace(/[^\w-]/g, "").slice(0, 64)
 
   if (!piezaId) return json({ ok: false, error: "Falta la pieza" }, 400)
   if (!(file instanceof File)) return json({ ok: false, error: "Adjunta un archivo" }, 400)

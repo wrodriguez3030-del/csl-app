@@ -18,6 +18,51 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.78.0] — 2026-07-24
+
+Auditoría integral de seguridad (5 auditorías en paralelo). Etapa 1 — corrección
+de hallazgos **críticos y altos** en el código (sin cambios de esquema).
+
+### Security
+- **[CRÍTICO] Fuga masiva de PII cerrada en `GET /api/public/ficha-dermatologia`.**
+  El endpoint público (sin sesión) devolvía el **padrón completo de clientes de
+  ambos negocios** (cédula, email, teléfono, dirección, fecha de nacimiento) con
+  un solo `curl`, usando `service_role` (bypass de RLS) y sin filtro de tenant.
+  Ahora **nunca** devuelve clientes (`clientes: []`); un formulario público no
+  autocompleta clientes existentes. Solo expone la lista de operadoras.
+- **[ALTO] Tampering anónimo de clientes cerrado en `POST /api/public/ficha-dermatologia`.**
+  El POST fusionaba y **sobrescribía** el registro maestro de cualquier cliente
+  (email/teléfono/dirección) vía `cliente_id` determinístico global. Ahora fuerza
+  `business_id` (CSL) y **solo crea el cliente si no existe** — nunca reescribe
+  uno existente. Se eliminó la función vulnerable `mergeClienteRows`.
+- **[ALTO] IDOR cross-tenant cerrado en `getClienteHistorial`.** Leía ficha,
+  consentimientos y sesiones de un cliente por `cliente_id` **sin filtro de
+  tenant** (cualquier usuario podía ver el historial clínico de otro negocio).
+  Ahora todas las lecturas se scopeán por `business_id` efectivo.
+- **[ALTO] `POST /api/pulse/ocr` ahora exige sesión + rate limit.** Era un proxy
+  anónimo de la API key de OpenAI (DoS de costo / proxy de visión gratis). El
+  cliente (`pulse-vision.ts`) adjunta el token Bearer vigente.
+- **[MEDIO] Inyección de comodines `ilike` cerrada en `validar-depicenter`.** Se
+  escapan los metacaracteres LIKE (`%`, `_`, `\`) para impedir enumeración de
+  certificados y su titular (PII).
+- **[MEDIO] Saneo de segmentos de ruta en uploads de HR y Mantenimiento** (evita
+  path traversal / escritura fuera del prefijo del tenant en el bucket).
+- **[MEDIO] Gate de permiso `compras.crear` en el upload de compras** (authz de
+  función; antes cualquier autenticado escribía en el bucket privado).
+- **[MEDIO] Gate `integrations.agendapro.sync` en `sync-clients`** (su docstring
+  ya prometía "solo admin/superadmin"; ahora se cumple).
+- **[MEDIO] Rate limiting en endpoints públicos de ponche/WebAuthn**
+  (`punch`, `mobile-punch`, `device-activate`, `webauthn/*-options`) + **tope de
+  5 passkeys por empleado** en el registro biométrico.
+- **[BAJO] Cifrado AES-256-GCM: falla cerrado.** Se quitó el fallback a una
+  constante pública hardcodeada (`bi-finance-crypto`); se conserva la derivación
+  desde `SUPABASE_SERVICE_ROLE_KEY` para no romper datos ya cifrados.
+- **[BAJO] Comparación timing-safe** de los secretos de webhook y cron de AgendaPro.
+- **[BAJO] Mensajes de error de BD ya no se divulgan** a clientes anónimos en
+  `ficha-dermatologia` y `solicitud-empleo` (evita reconocimiento de esquema).
+
+---
+
 ## [0.77.2] — 2026-07-24
 
 ### Changed

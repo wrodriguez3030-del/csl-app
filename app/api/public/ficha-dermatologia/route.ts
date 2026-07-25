@@ -2,6 +2,12 @@
 import { createClient } from "@supabase/supabase-js"
 import { fichaDermoToDb, sendFichaDermoEmail } from "@/lib/dermo-server"
 import { clientIp, rateLimit, type RateLimitResult } from "@/lib/rate-limit-server"
+import { REAL_BUSINESS_ID_BY_SLUG } from "@/lib/business"
+
+// Este formulario público es de "Cibao Spa Laser" (CSL). Fijamos el tenant de
+// forma explícita para no depender del default de columna y evitar que fichas
+// anónimas queden mal etiquetadas entre negocios.
+const CSL_BUSINESS_ID = REAL_BUSINESS_ID_BY_SLUG.csl
 
 type Payload = Record<string, unknown>
 
@@ -78,21 +84,6 @@ function clienteFromFicha(row: Record<string, unknown>) {
   }
 }
 
-function mergeClienteRows(existing: Record<string, unknown> | null | undefined, incoming: Record<string, unknown>) {
-  if (!existing) return incoming
-  const merged = { ...existing, ...incoming }
-  for (const key of ["telefono2", "direccion", "localidad", "region", "fecha_nacimiento", "genero", "notas"] as const) {
-    if ((incoming[key] === "" || incoming[key] === null || incoming[key] === undefined) && existing[key]) {
-      merged[key] = existing[key]
-    }
-  }
-  merged.payload_json = {
-    ...((existing.payload_json as Record<string, unknown>) || {}),
-    ...((incoming.payload_json as Record<string, unknown>) || {}),
-  }
-  return merged
-}
-
 function getSupabaseAdmin() {
   const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim()
   const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim()
@@ -116,6 +107,11 @@ async function upsertFichaWithSchemaFallback(supabase: ReturnType<typeof getSupa
 
 export async function GET() {
   try {
+    // SEGURIDAD: este endpoint es PÚBLICO (sin sesión). NUNCA debe devolver el
+    // padrón de clientes — hacerlo era una fuga masiva de PII cross-tenant
+    // (cédula/email/teléfono/dirección) explotable con un solo GET anónimo.
+    // Un formulario público de captura no autocompleta clientes existentes.
+    // Solo se expone la lista de operadoras (nombres) para poblar el selector.
     const supabase = getSupabaseAdmin()
     const { data, error } = await supabase
       .from("csl_operadoras")
@@ -124,43 +120,17 @@ export async function GET() {
       .order("nombre", { ascending: true })
     if (error) throw error
 
-    const { data: clientes, error: clientesError } = await supabase
-      .from("csl_cosmiatria_clientes")
-      .select("cliente_id,numero_cliente,documento_identidad,email,nombre,apellido,telefono,telefono2,direccion,localidad,ciudad,region,fecha_nacimiento,edad,genero,sucursal,puede_agendar,cliente_desde,estado,notas")
-      .neq("estado", "Inactivo")
-      .order("nombre", { ascending: true })
-    if (clientesError) throw clientesError
-
     return json({
       ok: true,
       operadoras: (data || [])
         .map((row) => String(row.nombre || "").trim())
         .filter(Boolean),
-      clientes: (clientes || []).map((row) => ({
-        ClienteID: row.cliente_id,
-        NumeroCliente: row.numero_cliente,
-        DocumentoIdentidad: row.documento_identidad,
-        Email: row.email,
-        Nombre: row.nombre,
-        Apellido: row.apellido,
-        Telefono: row.telefono,
-        Telefono2: row.telefono2,
-        Direccion: row.direccion,
-        Localidad: row.localidad,
-        Ciudad: row.ciudad,
-        Region: row.region,
-        FechaNacimiento: row.fecha_nacimiento,
-        Edad: row.edad,
-        Genero: row.genero,
-        Sucursal: row.sucursal,
-        PuedeAgendar: row.puede_agendar,
-        ClienteDesde: row.cliente_desde,
-        Estado: row.estado,
-        Notas: row.notas,
-      })),
+      clientes: [],
     })
-  } catch (error) {
-    return json({ ok: false, error: error instanceof Error ? error.message : "Error cargando datos" }, 500)
+  } catch {
+    // No se devuelve el detalle del error de BD a un cliente anónimo (evita
+    // divulgación de esquema). El detalle queda en los logs del servidor.
+    return json({ ok: false, error: "Error cargando datos" }, 500)
   }
 }
 
@@ -192,22 +162,34 @@ export async function POST(request: Request) {
 
     const cliente = clienteFromFicha(row)
     row.cliente_id = cliente.cliente_id
+    row.business_id = CSL_BUSINESS_ID
 
     const supabase = getSupabaseAdmin()
     const { data: existingCliente, error: existingClienteError } = await supabase
       .from("csl_cosmiatria_clientes")
-      .select("*")
+      .select("cliente_id,email")
       .eq("cliente_id", cliente.cliente_id)
       .maybeSingle()
     if (existingClienteError) throw existingClienteError
-    const clienteMerged = mergeClienteRows(existingCliente, cliente)
-    row.email = text(row.email || clienteMerged.email)
-    row.payload_json = { ...((row.payload_json as unknown as Record<string, unknown>) || {}), email: row.email, Email: row.email }
 
-    const { error: clienteError } = await supabase
-      .from("csl_cosmiatria_clientes")
-      .upsert(clienteMerged, { onConflict: "cliente_id" })
-    if (clienteError) throw clienteError
+    // SEGURIDAD: un envío anónimo NUNCA sobrescribe el registro maestro de un
+    // cliente ya existente (evita tampering de PII: email/teléfono/dirección/
+    // nombre). Solo se crea el cliente cuando no existe; si ya existe, se deja
+    // intacto y solo se adjunta la ficha nueva.
+    if (!existingCliente) {
+      const { error: clienteError } = await supabase
+        .from("csl_cosmiatria_clientes")
+        .insert({ ...cliente, business_id: CSL_BUSINESS_ID })
+      // Carrera: si otro request lo creó primero (violación de unique) lo
+      // tratamos como "ya existe" y continuamos con la ficha.
+      if (clienteError && !/duplicate key|already exists|23505/i.test(clienteError.message || "")) {
+        throw clienteError
+      }
+    }
+
+    const existingEmail = existingCliente && typeof existingCliente.email === "string" ? existingCliente.email : ""
+    row.email = text(row.email || existingEmail)
+    row.payload_json = { ...((row.payload_json as unknown as Record<string, unknown>) || {}), email: row.email, Email: row.email }
 
     await upsertFichaWithSchemaFallback(supabase, row)
 
@@ -219,11 +201,13 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error desconocido"
     const missingTable = /csl_ficha_dermatologica|csl_cosmiatria_clientes|schema cache|PGRST205/i.test(message)
+    // No divulgamos el detalle del error de BD a un cliente anónimo (evita
+    // reconocimiento de esquema). Salvo el mensaje operativo de "tabla faltante".
     return json({
       ok: false,
       error: missingTable
         ? "Falta crear o refrescar las tablas de Cosmiatria en Supabase. Ejecuta supabase/csl_consentimientos.sql y vuelve a intentar."
-        : message,
+        : "No se pudo guardar la ficha. Intenta nuevamente en unos minutos.",
     }, 500)
   }
 }

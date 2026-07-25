@@ -17,6 +17,7 @@ import { getSupabaseAdmin } from "@/lib/server/supabase"
 import { haversineMeters } from "@/lib/hr-geo"
 import { lunchMinutesForShift, dominicanDayStart } from "@/lib/work-hours"
 import { resolveQrEmployee } from "@/lib/server/webauthn"
+import { clientIp, rateLimit } from "@/lib/rate-limit-server"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -79,6 +80,9 @@ async function schedDay(sb: SB, businessId: string, employeeId: string, dateStr:
 }
 
 export async function POST(request: Request) {
+  // Rate limit (defensa en profundidad) contra flooding/replay del ponche móvil.
+  const rl = rateLimit({ key: `mobile-punch:${clientIp(request)}`, max: 40, windowMs: 5 * 60 * 1000 })
+  if (!rl.ok) return json({ ok: false, code: "rate_limited", error: "Demasiados intentos seguidos. Espera un momento e intenta de nuevo." }, 429)
   let body: Record<string, unknown> = {}
   try { body = await request.json() } catch { return json({ ok: false, code: "bad_request", error: "Cuerpo inválido" }, 400) }
   const emp = await resolveQrEmployee(String(body.qr_token || ""))

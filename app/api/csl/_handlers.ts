@@ -4188,15 +4188,27 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const clienteId = textValue(params, "clienteId") || textValue(params, "id")
       if (!clienteId) throw new Error("Falta clienteId")
       const supabase = getSupabaseAdmin()
+      // SEGURIDAD (aislamiento multi-tenant): scopear TODAS las lecturas por el
+      // business_id efectivo. Sin esto, cualquier usuario autenticado podía leer
+      // el historial clínico completo (ficha + consentimientos + sesiones) de un
+      // cliente de OTRO negocio conociendo solo su cliente_id (IDOR cross-tenant).
+      // Superadmin en modo "Todos" (businessId vacío) sigue viendo todo.
+      const histBusinessId = effectiveBusinessId()
+      let clienteQ = supabase.from("csl_cosmiatria_clientes").select("*").eq("cliente_id", clienteId)
+      if (histBusinessId) clienteQ = clienteQ.eq("business_id", histBusinessId)
+      let fichasQ = supabase.from("csl_ficha_dermatologica").select("*").eq("cliente_id", clienteId)
+      if (histBusinessId) fichasQ = fichasQ.eq("business_id", histBusinessId)
       const [cliente, fichas] = await Promise.all([
-        supabase.from("csl_cosmiatria_clientes").select("*").eq("cliente_id", clienteId).maybeSingle(),
-        supabase.from("csl_ficha_dermatologica").select("*").eq("cliente_id", clienteId).order("fecha", { ascending: false }),
+        clienteQ.maybeSingle(),
+        fichasQ.order("fecha", { ascending: false }),
       ])
       if (cliente.error) throw cliente.error
       if (fichas.error) throw fichas.error
 
       const safeQueryConsents = async (table: string) => {
-        const res = await supabase.from(table).select("*").eq("cliente_id", clienteId).order("fecha", { ascending: false })
+        let consQ = supabase.from(table).select("*").eq("cliente_id", clienteId)
+        if (histBusinessId) consQ = consQ.eq("business_id", histBusinessId)
+        const res = await consQ.order("fecha", { ascending: false })
         if (res.error) {
           // 42703 = undefined_column. Pre-migración: sin vínculos posibles.
           if (/cliente_id|column.*does not exist|42703/i.test(res.error.message || "")) return []
@@ -4221,10 +4233,9 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         const apellido = String(clienteRow.apellido || "").trim()
         const full = [nombre, apellido].filter(Boolean).join(" ")
         if (full.length >= 3) {
-          const { data: ses, error: sesError } = await supabase
-            .from("csl_sesiones_cliente")
-            .select("*")
-            .ilike("cliente", `%${full}%`)
+          let sesQ = supabase.from("csl_sesiones_cliente").select("*").ilike("cliente", `%${full}%`)
+          if (histBusinessId) sesQ = sesQ.eq("business_id", histBusinessId)
+          const { data: ses, error: sesError } = await sesQ
             .order("fecha", { ascending: false })
             .limit(200)
           if (!sesError && Array.isArray(ses)) {

@@ -12,6 +12,7 @@
  * Multi-tenant: por ahora SIEMPRE asigna al business CSL (slug 'csl').
  */
 
+import crypto from "node:crypto"
 import { NextResponse } from "next/server"
 import { getSupabaseAdmin } from "@/lib/server/supabase"
 import {
@@ -28,6 +29,14 @@ function json(data: Record<string, unknown>, status = 200) {
   return NextResponse.json(data, { status })
 }
 
+/** Comparación de secreto en tiempo constante (evita timing attacks). */
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a)
+  const bb = Buffer.from(b)
+  if (ab.length !== bb.length) return false
+  return crypto.timingSafeEqual(ab, bb)
+}
+
 export async function POST(request: Request) {
   const cfg = getAgendaProConfig()
   // Para webhook exigimos el secret aunque sync esté deshabilitado — si llega
@@ -37,7 +46,7 @@ export async function POST(request: Request) {
   }
   const url = new URL(request.url)
   const token = url.searchParams.get("token") || ""
-  if (token !== cfg.webhookSecret) {
+  if (!safeEqual(token, cfg.webhookSecret)) {
     return json({ ok: false, error: "Token inválido" }, 401)
   }
 
