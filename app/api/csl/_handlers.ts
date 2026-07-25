@@ -4273,6 +4273,95 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         sesionesPulse: sesionesPulse.map((row) => fromDb("sesiones_cliente", row)),
       }
     }
+    case "getControlTratamientos": {
+      // Pantalla "Control Digital de Tratamientos": todo lo de un cliente en una
+      // sola respuesta — KPIs, paquetes (sesiones adquiridas/disponibles),
+      // cesiones, consentimientos pendientes y actividad reciente (tratamientos
+      // realizados). AISLADO POR TENANT: toda lectura filtra por business_id
+      // efectivo (mismo blindaje IDOR que getClienteHistorial).
+      const clienteId = textValue(params, "clienteId") || textValue(params, "id")
+      if (!clienteId) throw new Error("Falta clienteId")
+      const sb = getSupabaseAdmin()
+      const bid = effectiveBusinessId()
+      const num = (v: unknown) => Number(v) || 0
+
+      let cq = sb.from("csl_cosmiatria_clientes").select("*").eq("cliente_id", clienteId)
+      if (bid) cq = cq.eq("business_id", bid)
+      const clienteRow = (await cq.maybeSingle()).data as Row | null
+      if (!clienteRow) return { ok: false, error: "Cliente no encontrado en este negocio" }
+
+      let pq = sb.from("csl_paquetes").select("*").eq("cliente_id", clienteId)
+      if (bid) pq = pq.eq("business_id", bid)
+      const paquetes = ((await pq.order("fecha_compra", { ascending: false })).data || []) as Row[]
+
+      let cesQ = sb.from("csl_cesiones").select("*").or(`cliente_cede_id.eq.${clienteId},cliente_recibe_id.eq.${clienteId}`)
+      if (bid) cesQ = cesQ.eq("business_id", bid)
+      const cesiones = ((await cesQ.order("fecha", { ascending: false })).data || []) as Row[]
+
+      // Consentimientos pendientes (todas las tablas). Tolerante a columnas que
+      // aún no existan (pre-migración) → array vacío en vez de romper.
+      const PENDING = ["Pendiente", "Pendiente de revisión"]
+      const pendingFrom = async (table: string, tipo: string) => {
+        let q = sb.from(table).select("*").eq("cliente_id", clienteId).in("estado", PENDING)
+        if (bid) q = q.eq("business_id", bid)
+        const res = await q.order("fecha", { ascending: false })
+        if (res.error) {
+          if (/42703|cliente_id|does not exist/i.test(res.error.message || "")) return []
+          return []
+        }
+        return ((res.data || []) as Row[]).map((r) => ({
+          tipo,
+          consent_id: r.consent_id,
+          fecha: r.fecha,
+          sucursal: r.sucursal,
+          estado: r.estado,
+          servicio: r.zona_tratar || r.zona || r.tipo_servicio || tipo,
+          origen: r.origen || "Registro manual",
+          paquete_id: r.paquete_id || null,
+        }))
+      }
+      const firmasPendientes = (
+        await Promise.all([
+          pendingFrom("csl_consent_depilacion_laser", "Depilación Láser"),
+          pendingFrom("csl_consent_masajes", "Masajes"),
+          pendingFrom("csl_consent_peeling", "Peeling"),
+          pendingFrom("csl_consent_tatuajes_cejas", "Tatuajes/Cejas"),
+        ])
+      ).flat()
+
+      // Actividad reciente = tratamientos realizados (csl_sesiones_cliente, texto
+      // libre por nombre — mismo criterio que getClienteHistorial).
+      const nombre = String(clienteRow.nombre || "").trim()
+      const apellido = String(clienteRow.apellido || "").trim()
+      const full = [nombre, apellido].filter(Boolean).join(" ")
+      let actividad: Row[] = []
+      if (full.length >= 3) {
+        let sq = sb.from("csl_sesiones_cliente").select("*").ilike("cliente", `%${full}%`)
+        if (bid) sq = sq.eq("business_id", bid)
+        const { data: ses, error: sesErr } = await sq.order("fecha", { ascending: false }).limit(200)
+        if (!sesErr && Array.isArray(ses)) actividad = ses as Row[]
+      }
+
+      const kpis = {
+        sesiones_disponibles: paquetes.reduce((s, p) => s + num(p.sesiones_disponibles), 0),
+        sesiones_adquiridas: paquetes.reduce((s, p) => s + num(p.sesiones_adquiridas), 0),
+        tratamientos_realizados: actividad.length,
+        sesiones_cedidas: cesiones
+          .filter((c) => c.cliente_cede_id === clienteId)
+          .reduce((s, c) => s + num(c.sesiones_cedidas), 0),
+        firmas_pendientes: firmasPendientes.length,
+      }
+
+      return {
+        ok: true,
+        cliente: fromDb("cosmiatria_clientes", clienteRow),
+        kpis,
+        paquetes, // snake_case directo (tabla nueva)
+        cesiones,
+        firmasPendientes,
+        actividadReciente: actividad.map((row) => fromDb("sesiones_cliente", row)),
+      }
+    }
     case "checkConsentFirmado": {
       // ¿El cliente YA firmó este tipo de consentimiento EN EL NEGOCIO ACTIVO?
       // El consentimiento se firma una sola vez (la primera vez que recibe el

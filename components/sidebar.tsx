@@ -213,6 +213,7 @@ const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Clientes y Consentimientos",
     items: [
+      { id: "control-tratamientos", label: "Control Digital de Tratamientos", icon: <ClipboardList className="h-4 w-4" /> },
       { id: "cosmiatria-clientes", label: "Clientes", icon: <ContactRound className="h-4 w-4" /> },
       { id: "cosmiatria-ficha", label: "Ficha Dermatologia", icon: <Sparkles className="h-4 w-4" /> },
       { id: "consent-masajes", label: "Consentimiento Masajes", icon: <FileSignature className="h-4 w-4" /> },

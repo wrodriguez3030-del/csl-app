@@ -11,10 +11,37 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Webhook de PAGOS de AgendaPro** (`POST /api/integrations/agendapro/payments`) —
+  distinto del webhook de clientes (intacto). Procesa el payload real de pagos
+  (`bookings/mock_bookings/memberships/products/giftcards/receipts/down_payments`),
+  crea/actualiza cliente (dedup por agendapro_id/correo/teléfono/cédula, tenant-safe),
+  registra la compra y crea el consentimiento **Pendiente**. Idempotente por `payment.id`;
+  **nunca consume** la sesión al pagar. Seguridad: token + HMAC opcional, tamaño,
+  content-type, rate-limit, PII enmascarada. Ver `docs/AGENDAPRO_WEBHOOK.md`.
+- **Dominio "Control Digital de Tratamientos"** (nuevo): migración
+  `202607250001_agendapro_treatments_domain.sql` (aplicada a db-cls) con
+  `csl_agendapro_location_map`, `csl_agendapro_service_map`, `csl_agendapro_webhook_events`,
+  `csl_paquetes`, `csl_cesiones` (RLS + índices + UNIQUE de idempotencia).
+- **Pantalla "Control Digital de Tratamientos"** (`control-tratamientos`): ficha por
+  cliente con 5 KPIs reales, pestañas (Resumen/Sesiones/Actividad/Historial), paquetes,
+  cesiones, actividad y firmas pendientes. Ver `docs/CONTROL_TRATAMIENTOS_UI.md`.
+- Pruebas: `pnpm test:agendapro` (52 casos) + `scripts/_e2e-agendapro-webhook-live.mjs`
+  (12 E2E en vivo contra db-cls con limpieza).
+
 ### Changed
+- `csl_consent_depilacion_laser`: columnas `origen`, `paquete_id`, `agendapro_payment_id`,
+  `service_identifier` para ligar el consentimiento pendiente creado por el webhook.
+
 ### Fixed
 ### Removed
 ### Security
+- Dedup de cliente del webhook **aislado por tenant**: nunca sobrescribe un cliente de
+  otro negocio que comparta la clave global `cliente_id` (se sufija con el tenant).
+
+### Pendiente (no en este lote)
+- Panel Administración → Integración AgendaPro (mapas, monitor de eventos, reprocesar).
+- Sidebar navy (§4.1) — requiere previsualización visual en dev.
+- Activar en producción: `AGENDAPRO_WEBHOOK_SECRET` en Vercel + registrar webhook en AgendaPro.
 
 ---
 

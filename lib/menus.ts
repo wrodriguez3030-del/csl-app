@@ -104,6 +104,7 @@ export const MENU_OPTIONS: MenuOption[] = [
   // RR.HH. — Reportes
   { id: "rrhh-reportes", label: "Reportes RR.HH.", section: "RR.HH. · Reportes" },
   { id: "rrhh-auditoria", label: "Auditoría RR.HH.", section: "RR.HH. · Reportes" },
+  { id: "control-tratamientos", label: "Control Digital de Tratamientos", section: "Clientes y Consentimientos" },
   { id: "cosmiatria-clientes", label: "Clientes", section: "Clientes y Consentimientos" },
   { id: "cosmiatria-ficha", label: "Ficha Dermatología", section: "Clientes y Consentimientos" },
   { id: "consent-masajes", label: "Consentimiento Masajes", section: "Clientes y Consentimientos" },

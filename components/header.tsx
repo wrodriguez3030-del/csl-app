@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils"
 
 const pageMeta: Partial<Record<TabId, { title: string; description: string; eyebrow: string }>> = {
   config: { title: "Configuración", description: "Conexión, seguridad y parámetros del sistema", eyebrow: "Sistema" },
+  "control-tratamientos": { title: "Control Digital de Tratamientos", description: "Paquetes, sesiones, cesiones y firmas por cliente", eyebrow: "Clientes y Consentimientos" },
   panel: { title: "Dashboard Ejecutivo", description: "Resumen general de mantenimiento, equipos, inventario y reportes", eyebrow: "Mantenimiento" },
   sucursales: { title: "Sucursales", description: "Gestión de sedes, estado operativo y datos base", eyebrow: "Gestión" },
   equipos: { title: "Equipos", description: "Inventario técnico, pulsos, estado e historial", eyebrow: "Mantenimiento" },

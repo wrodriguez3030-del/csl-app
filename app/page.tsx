@@ -76,6 +76,7 @@ import { PulsosCuadreSemanalPage } from "@/components/pulsos-cuadre-semanal-page
 import { PulseControlDashboardPage } from "@/components/pulse-control-dashboard-page"
 import { PulsosEquiposPage } from "@/components/pulsos-equipos-page"
 import { PulsosMantenimientoPage } from "@/components/pulsos-mantenimiento-page"
+import { ControlTratamientosPage } from "@/components/control-tratamientos-page"
 import { CosmiatriaClientesPage } from "@/components/cosmiatria-clientes-page"
 import { CosmiatriaFichaPage } from "@/components/cosmiatria-ficha-page"
 import { ConsentimientosPage } from "@/components/consentimientos-page"
@@ -468,6 +469,8 @@ export default function HomePage() {
         return <PulsosAuditoriaPage />
       case "pulsos-cuadre":
         return <PulsosCuadreSemanalPage />
+      case "control-tratamientos":
+        return <ControlTratamientosPage />
       case "cosmiatria-clientes":
         return <CosmiatriaClientesPage />
       case "cosmiatria-ficha":

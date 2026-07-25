@@ -495,6 +495,7 @@ export type TabId =
   // RR.HH. — Reportes
   | "rrhh-reportes"
   | "rrhh-auditoria"
+  | "control-tratamientos"
   | "cosmiatria-clientes"
   | "cosmiatria-ficha"
   | "consent-masajes"
