@@ -18,6 +18,24 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.78.1] — 2026-07-24
+
+Etapa 2 de la auditoría — parche de dependencias.
+
+### Security
+- **Next.js `16.2.0` → `16.2.11`.** Cierra los 17 CVEs de severidad alta del
+  framework: **SSRF vía WebSocket upgrades** (GHSA-c4j6-fc7j-m34r), **bypass de
+  Middleware/Proxy en App Router** (GHSA-26hh-7cqf-hhc6) y varios DoS de Server/
+  Cache Components. `pnpm audit --prod` pasó de **31 vulnerabilidades (17 high)**
+  a **8 (5 high)**. `tsc --noEmit` sigue en 0 errores.
+- **Residual documentado (bajo riesgo real, deps transitivas, no Next.js):** `ws`
+  (Supabase realtime — la app usa REST con service_role, no realtime), `postcss`/
+  `sharp` internos de Next (build-time; imágenes con `unoptimized:true` → sharp
+  no se usa) y `brace-expansion` (vía `exceljs>archiver`, uso interno de globbing).
+  No se forzaron `overrides` para no arriesgar la resolución del build de Vercel.
+
+---
+
 ## [0.78.0] — 2026-07-24
 
 Auditoría integral de seguridad (5 auditorías en paralelo). Etapa 1 — corrección
