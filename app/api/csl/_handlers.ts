@@ -2836,7 +2836,11 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const sortReq = textValue(params, "sort")
       const sortCol = ["nombre", "apellido", "telefono", "sucursal", "estado", "email", "documento_identidad", "numero_cliente", "cliente_desde"].includes(sortReq) ? sortReq : "nombre"
       const ascending = textValue(params, "dir") !== "desc"
-      const search = textValue(params, "search").replace(/[%,()*]/g, " ").trim().replace(/\s+/g, "%")
+      // R2: `search` va a un filtro .or() de PostgREST. Ya se quitan los
+      // caracteres estructurales (% , ( ) *) que permitirían inyección; además
+      // acotamos la longitud (defensa contra entradas gigantes) — un nombre/
+      // teléfono/correo/cédula cabe de sobra en 80 caracteres.
+      const search = textValue(params, "search").slice(0, 80).replace(/[%,()*]/g, " ").trim().replace(/\s+/g, "%")
       const LEAN = "cliente_id,numero_cliente,documento_identidad,email,nombre,apellido,telefono,telefono2,direccion,localidad,ciudad,region,fecha_nacimiento,edad,genero,sucursal,puede_agendar,cliente_desde,estado,notas,agendapro_client_id,origen"
       let q = sb.from("csl_cosmiatria_clientes").select(LEAN, { count: "exact" })
       if (applyTenant) q = q.eq("business_id", ctx!.businessId)

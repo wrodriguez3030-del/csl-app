@@ -18,6 +18,16 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.81.2] — 2026-07-26
+
+### Security
+- **Búsqueda de clientes (`getClientesCosmiatriaPaged`): tope de longitud** en
+  `search` (80 chars) antes del filtro `.or()`. La inyección ya estaba prevista
+  (se quitan `% , ( ) *`); esto completa la Regla 2 (validar longitud) como
+  defensa ante entradas gigantes.
+
+---
+
 ## [0.81.1] — 2026-07-26
 
 ### Security
