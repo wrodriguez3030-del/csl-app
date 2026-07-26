@@ -4283,6 +4283,11 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       // efectivo (mismo blindaje IDOR que getClienteHistorial).
       const clienteId = textValue(params, "clienteId") || textValue(params, "id")
       if (!clienteId) throw new Error("Falta clienteId")
+      // R2 (validación server-side): cliente_id se interpola más abajo en un filtro
+      // .or() de PostgREST. Validamos charset seguro (así son TODOS los cliente_id:
+      // cli_doc_/cli_tel_/cli_apro_/cli_n_…) para impedir que comas, puntos o
+      // paréntesis del texto del usuario alteren la consulta (filter injection).
+      if (!/^[A-Za-z0-9_-]+$/.test(clienteId)) throw new Error("clienteId con formato inválido")
       const sb = getSupabaseAdmin()
       const bid = effectiveBusinessId()
       const num = (v: unknown) => Number(v) || 0

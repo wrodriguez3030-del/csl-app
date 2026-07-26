@@ -18,6 +18,19 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.81.1] — 2026-07-26
+
+### Security
+- **Revisión de seguridad (3 reglas: secretos / SQL / RLS).** Corregido en
+  `getControlTratamientos` un filtro `.or()` de PostgREST que interpolaba el
+  `clienteId` del usuario (riesgo de *filter injection*): ahora se valida el
+  charset server-side (`^[A-Za-z0-9_-]+$`) antes de usarlo. El resto del código
+  del webhook/pantallas ya cumplía: secretos solo server-side (sin `NEXT_PUBLIC`,
+  fuera de Git), consultas parametrizadas vía supabase-js, y RLS por tenant en
+  las 5 tablas nuevas.
+
+---
+
 ## [0.81.0] — 2026-07-25
 
 Integración de **pagos de AgendaPro** + dominio **Control Digital de Tratamientos**.
