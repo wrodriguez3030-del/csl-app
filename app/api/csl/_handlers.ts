@@ -13,6 +13,7 @@ import { sendFichaDermoEmail } from "@/lib/dermo-server"
 import { getSupabaseAdmin } from "@/lib/server/supabase"
 import { normalizeServiceName } from "@/lib/server/agendapro-payments-core"
 import { processAgendaProPayment, createSupabaseRepo } from "@/lib/server/agendapro-payments"
+import { syncAgendaProPayments } from "@/lib/server/agendapro-payments-sync"
 import {
   dateValue,
   numberFrom,
@@ -4517,6 +4518,22 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       await sb.from("csl_agendapro_webhook_events").update({ status: "queued", updated_at: new Date().toISOString() }).eq("id", String(ev.id))
       const result = await processAgendaProPayment(ev.payload_json, createSupabaseRepo(sb), { storePayload: true })
       return { ok: result.status !== "invalid" && result.status !== "error", status: result.status, result }
+    }
+    case "syncAgendaProPayments": {
+      // Camino B: trae los pagos desde la API pública de AgendaPro (no depende
+      // del webhook) y los procesa. Solo admin/superadmin.
+      const ctx = getBusinessContext()
+      if (!ctx?.isAdmin && !ctx?.isSuperadmin) throw new Error("Solo administradores.")
+      const bid = effectiveBusinessId()
+      if (!bid) throw new Error("business_id no encontrado")
+      const startDate = textValue(params, "startDate")
+      const endDate = textValue(params, "endDate")
+      // R2: validación server-side de formato de fecha antes de usarlo.
+      const dateOk = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d)
+      if (!dateOk(startDate) || !dateOk(endDate)) throw new Error("Fechas inválidas (usa YYYY-MM-DD)")
+      const locationId = numberValue(params, "locationId") || undefined
+      const result = await syncAgendaProPayments({ businessId: bid, startDate, endDate, locationId })
+      return { ok: result.ok, result }
     }
     case "checkConsentFirmado": {
       // ¿El cliente YA firmó este tipo de consentimiento EN EL NEGOCIO ACTIVO?

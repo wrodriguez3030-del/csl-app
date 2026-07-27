@@ -70,6 +70,10 @@ export function AgendaProIntegracionPage() {
   const [svcForm, setSvcForm] = useState<Row | null>(null)
   const [detail, setDetail] = useState<Row | null>(null)
   const [busy, setBusy] = useState(false)
+  const [syncFrom, setSyncFrom] = useState("")
+  const [syncTo, setSyncTo] = useState("")
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<Row | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -82,6 +86,27 @@ export function AgendaProIntegracionPage() {
   }, [apiUrl, showToast])
 
   useEffect(() => { load() }, [load])
+
+  // Rango por defecto: últimos 3 días (hora local del navegador).
+  useEffect(() => {
+    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+    const now = new Date(); const past = new Date(); past.setDate(past.getDate() - 3)
+    setSyncTo(fmt(now)); setSyncFrom(fmt(past))
+  }, [])
+
+  const runSync = async () => {
+    if (!syncFrom || !syncTo) return
+    setSyncing(true); setSyncResult(null)
+    try {
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "syncAgendaProPayments", startDate: syncFrom, endDate: syncTo }) as Row
+      const r = ((res as { result?: Row }).result || res) as Row
+      setSyncResult(r)
+      if ((res as { ok?: boolean }).ok === false || r.error) showToast(s(r.error) || "Error en la sincronización", "error")
+      else showToast(`Sincronización: ${n(r.processed)} nuevos, ${n(r.already)} ya estaban`, "success")
+      await load()
+    } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") }
+    finally { setSyncing(false) }
+  }
 
   const call = async (action: string, extra: Row, okMsg: string) => {
     setBusy(true)
@@ -124,6 +149,45 @@ export function AgendaProIntegracionPage() {
 
         {/* ESTADO */}
         <TabsContent value="estado" className="mt-4 space-y-4">
+          {/* Sincronizar pagos desde la API (no depende del webhook) */}
+          <Card className="rounded-2xl border-[color:var(--brand-primary,#14B7B0)]/30 shadow-sm">
+            <CardContent className="p-5">
+              <h3 className="font-semibold text-[color:var(--brand-primary-dark,#063B4A)]">Sincronizar pagos desde AgendaPro</h3>
+              <p className="mb-3 mt-0.5 text-xs text-slate-500">
+                Trae los pagos directamente de la API de AgendaPro (no depende del webhook). Idempotente: no duplica lo ya procesado.
+              </p>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-500">Desde</Label>
+                  <Input type="date" value={syncFrom} onChange={(e) => setSyncFrom(e.target.value)} className="w-40" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-500">Hasta</Label>
+                  <Input type="date" value={syncTo} onChange={(e) => setSyncTo(e.target.value)} className="w-40" />
+                </div>
+                <Button onClick={runSync} disabled={syncing}>
+                  {syncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                  Sincronizar pagos ahora
+                </Button>
+              </div>
+              {syncResult ? (
+                <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm">
+                  {syncResult.error ? (
+                    <p className="text-rose-600">{s(syncResult.error)}</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-x-5 gap-y-1">
+                      <span>Encontrados: <b>{n(syncResult.fetched)}</b></span>
+                      <span className="text-emerald-700">Nuevos procesados: <b>{n(syncResult.processed)}</b></span>
+                      <span className="text-slate-500">Ya estaban: <b>{n(syncResult.already)}</b></span>
+                      <span className="text-amber-700">Requieren mapeo: <b>{n(syncResult.requiresMapping)}</b></span>
+                      <span className="text-rose-600">Errores: <b>{n(syncResult.errors)}</b></span>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Card className="rounded-2xl shadow-sm"><CardContent className="space-y-2 p-5">
               <h3 className="font-semibold text-[color:var(--brand-primary-dark,#063B4A)]">Configuración</h3>

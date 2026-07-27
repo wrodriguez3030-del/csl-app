@@ -18,6 +18,23 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.82.0] — 2026-07-27
+
+### Added
+- **Sincronización de pagos por API (Camino B) — no depende del webhook.**
+  AgendaPro no estaba disparando el webhook de pagos a nuestra URL (verificado:
+  0 solicitudes en logs con muchos pagos reales). Se agrega `syncAgendaProPayments`
+  que **consulta la API pública de AgendaPro** (`GET /api/public/v1/payments` +
+  `/payments/{id}`, Basic Auth) por rango de fecha y procesa cada pago con la
+  lógica ya existente (`processAgendaProPayment`): idempotente, tenant por
+  `location_id`, crea paquete + consentimiento pendiente, no consume sesión.
+  Nuevo botón **"Sincronizar pagos ahora"** (con rango de fechas) en
+  Administración → Integración AgendaPro → Estado. Servicio en
+  `lib/server/agendapro-payments-sync.ts`; base configurable con
+  `AGENDAPRO_API_PUBLIC_BASE_URL` (default `https://agendapro.com/api/public/v1`).
+
+---
+
 ## [0.81.2] — 2026-07-26
 
 ### Security
