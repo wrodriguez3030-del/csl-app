@@ -247,6 +247,32 @@ export function buildServiceIdentifier(item: ServiceItem): string {
   return `${base}#${item.normalizedName}`
 }
 
+/**
+ * Inferencia automática para "Depilación Láser N sesiones": toma el número del
+ * nombre como cantidad de sesiones y lo trata como depilación láser (categoría +
+ * consentimiento), SIN necesidad de mapear cada variante (1, 2, 4, 5, 10, 20…).
+ * Devuelve null si el nombre no encaja en ese patrón (entonces sí requiere mapeo).
+ */
+export interface InferredService {
+  internal_service_name: string
+  categoria: string
+  consent_type: string
+  sessions_quantity: number
+}
+export function inferDepilacionLaserService(rawName: string): InferredService | null {
+  const norm = normalizeServiceName(rawName) // p.ej. "depilacion laser 10 sesiones"
+  if (!/depilacion\s+laser/.test(norm)) return null
+  const m = norm.match(/(\d+)\s*sesion/)
+  const n = m ? Number(m[1]) : NaN
+  if (!Number.isFinite(n) || n <= 0) return null
+  return {
+    internal_service_name: "Depilación láser",
+    categoria: "Depilación",
+    consent_type: "depilacion-laser",
+    sessions_quantity: n,
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Transacciones de pago (§14) y recibos (§15)
 // ─────────────────────────────────────────────────────────────────────────────

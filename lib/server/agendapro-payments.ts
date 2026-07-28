@@ -21,6 +21,7 @@ import {
   extractServiceItems,
   httpStatusForResult,
   indexReceipts,
+  inferDepilacionLaserService,
   maskCedula,
   maskEmail,
   maskPhone,
@@ -294,7 +295,9 @@ export async function processAgendaProPayment(
 
     for (const item of items) {
       const serviceIdentifier = buildServiceIdentifier(item)
-      const map = await repo.getServiceMap(businessId, item.normalizedName)
+      // Mapeo explícito (admin) tiene prioridad; si no hay, se infiere el patrón
+      // "Depilación Láser N sesiones" (N = sesiones) para no mapear cada variante.
+      const map = (await repo.getServiceMap(businessId, item.normalizedName)) ?? inferDepilacionLaserService(item.rawName)
       if (!map) anyUnmapped = true
       const receipt = item.receiptId != null ? receipts.get(item.receiptId) : undefined
       const sesiones = map?.sessions_quantity ?? sessionsFromName(item.rawName)

@@ -18,6 +18,19 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.83.0] — 2026-07-27
+
+### Added
+- **Inferencia automática de "Depilación Láser N sesiones".** Cuando entra un pago
+  de un servicio con ese patrón, el sistema toma el número del nombre como
+  cantidad de sesiones (1, 2, 4, 5, 6, 10, 15, 20, 25, 30, 50, 100…) y lo trata
+  como depilación láser (categoría + consentimiento pendiente) **sin necesidad de
+  mapear cada variante**. El mapeo explícito del admin sigue teniendo prioridad;
+  otros servicios (masajes, productos) siguen requiriendo mapeo.
+  `inferDepilacionLaserService()` en `agendapro-payments-core.ts`. +5 tests.
+
+---
+
 ## [0.82.0] — 2026-07-27
 
 ### Added
