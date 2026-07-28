@@ -18,6 +18,22 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.84.0] — 2026-07-27
+
+### Added
+- **Sincronización automática de pagos cada 3 minutos (cron).** Nuevo cron
+  `/api/integrations/agendapro/payments-cron` (en `vercel.json`, `*/3 * * * *`,
+  auth `CRON_SECRET`) que sincroniza los pagos de AgendaPro (ventana ayer+hoy en
+  hora RD) sin depender del webhook ni de clics. **Requiere plan Vercel Pro** para
+  correr a esa frecuencia (en Hobby corre 1 vez/día).
+
+### Changed
+- **`syncAgendaProPayments` optimizado para crons frecuentes:** pre-chequea en DB
+  si un pago ya está `processed` y lo salta **sin** traer el detalle → no gasta
+  cuota de la API de AgendaPro al repetir.
+
+---
+
 ## [0.83.0] — 2026-07-27
 
 ### Added

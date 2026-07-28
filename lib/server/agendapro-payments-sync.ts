@@ -130,7 +130,8 @@ export async function syncAgendaProPayments(opts: SyncPaymentsOptions): Promise<
     return result
   }
 
-  const repo = createSupabaseRepo(getSupabaseAdmin())
+  const sb = getSupabaseAdmin()
+  const repo = createSupabaseRepo(sb)
   const perPage = 100
   const maxPages = opts.maxPages ?? 20
 
@@ -152,6 +153,18 @@ export async function syncAgendaProPayments(opts: SyncPaymentsOptions): Promise<
     for (const row of rows) {
       result.fetched++
       const id = row.id
+      // Optimización para crons frecuentes: si el pago YA está procesado, saltar
+      // sin gastar cuota de la API trayendo el detalle.
+      if (id != null && Number.isFinite(Number(id))) {
+        const done = await sb
+          .from("csl_agendapro_webhook_events")
+          .select("id")
+          .eq("agendapro_payment_id", Number(id))
+          .eq("status", "processed")
+          .limit(1)
+          .maybeSingle()
+        if (done.data) { result.already++; continue }
+      }
       // Traer el detalle completo (misma forma que el webhook). Si el listado ya
       // trae la forma completa, igual el detalle es la fuente autoritativa.
       let payload: Record<string, unknown> | null = row

@@ -5,6 +5,10 @@
     {
       "path": "/api/integrations/agendapro/cron",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/integrations/agendapro/payments-cron",
+      "schedule": "*/3 * * * *"
     }
   ],
   "headers": [
