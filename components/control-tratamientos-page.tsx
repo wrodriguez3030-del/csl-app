@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Activity, CalendarCheck2, Download, FileText, Gift, Loader2, PenLine,
-  Search, ShoppingBag, UserRound, Users, X,
+  RefreshCw, Search, ShoppingBag, UserRound, Users, X,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -109,6 +109,7 @@ export function ControlTratamientosPage() {
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState("resumen")
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [syncing, setSyncing] = useState(false)
 
   useEffect(() => {
     const saved = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : ""
@@ -133,6 +134,22 @@ export function ControlTratamientosPage() {
   const selectCliente = (id: string) => {
     setClienteId(id); setPickerOpen(false); setTab("resumen")
     try { window.localStorage.setItem(STORAGE_KEY, id) } catch { /* ignore */ }
+  }
+
+  // Trae los pagos de AgendaPro (últimos 7 días) de un solo clic. Solo admin
+  // (el backend rechaza a no-admins). Útil en plan Vercel free (sin cron).
+  const runSyncPayments = async () => {
+    setSyncing(true)
+    try {
+      const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+      const now = new Date(); const past = new Date(); past.setDate(past.getDate() - 7)
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "syncAgendaProPayments", startDate: fmt(past), endDate: fmt(now) }) as Row
+      const r = ((res as { result?: Row }).result || res) as Row
+      if ((res as { ok?: boolean }).ok === false || r.error) showToast(s(r.error) || "No se pudo sincronizar", "error")
+      else showToast(`Pagos: ${n(r.processed)} nuevos · ${n(r.already)} ya estaban · ${n(r.requiresMapping)} req. mapeo`, "success")
+      if (clienteId) await load(clienteId)
+    } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") }
+    finally { setSyncing(false) }
   }
 
   const cliente = data?.cliente
@@ -163,7 +180,12 @@ export function ControlTratamientosPage() {
         </div>
         <h2 className="text-lg font-semibold text-slate-700">Selecciona un cliente</h2>
         <p className="mt-1 text-sm text-slate-500">Busca un cliente para ver su control digital de tratamientos.</p>
-        <Button className="mt-5" onClick={() => setPickerOpen(true)}><Search className="mr-2 h-4 w-4" />Buscar cliente</Button>
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
+          <Button onClick={() => setPickerOpen(true)}><Search className="mr-2 h-4 w-4" />Buscar cliente</Button>
+          <Button variant="outline" onClick={runSyncPayments} disabled={syncing} title="Trae los pagos de AgendaPro (últimos 7 días)">
+            {syncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}Sincronizar pagos de AgendaPro
+          </Button>
+        </div>
         <ClientePicker open={pickerOpen} onOpenChange={setPickerOpen} onSelect={selectCliente} apiUrl={apiUrl} />
       </div>
     )
@@ -194,6 +216,9 @@ export function ControlTratamientosPage() {
             <Button variant="outline" onClick={() => setPickerOpen(true)}><Users className="mr-2 h-4 w-4" />Cambiar cliente</Button>
             <Button onClick={() => setActiveTab("cosmiatria-clientes")}><PenLine className="mr-2 h-4 w-4" />Registrar sesión</Button>
             <Button variant="outline" onClick={exportCsv}><Download className="mr-2 h-4 w-4" />Exportar</Button>
+            <Button variant="outline" onClick={runSyncPayments} disabled={syncing} title="Trae los pagos de AgendaPro (últimos 7 días)">
+              {syncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}Sincronizar pagos
+            </Button>
           </div>
         </CardContent>
       </Card>

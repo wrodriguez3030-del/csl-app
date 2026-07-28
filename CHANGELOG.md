@@ -18,6 +18,16 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.85.0] — 2026-07-27
+
+### Added
+- **Botón "Sincronizar pagos" en la pantalla Control Digital de Tratamientos**
+  (barra del cliente y estado vacío): un clic trae los pagos de AgendaPro de los
+  últimos 7 días, sin entrar a Administración. Pensado para plan Vercel **free**
+  (donde el cron de 3 min corre solo 1 vez/día). Gateado a admin en el backend.
+
+---
+
 ## [0.84.0] — 2026-07-27
 
 ### Added
