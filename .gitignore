@@ -30,3 +30,5 @@ supabase/.temp/
 *.csv
 !public/**/*.csv
 .env.agendapro.tmp
+.env*
+!.env.example
