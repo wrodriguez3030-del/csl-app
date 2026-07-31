@@ -18,6 +18,36 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.86.2] — 2026-07-31
+
+### Added
+- **Documentación de integración** (`docs/`), para replicar funciones de CSL en
+  otro sistema y para la operación diaria:
+  - `CSL_KIT_INTEGRACION.md` — kit completo de integración (índice general).
+  - `AGENDAPRO_API_REFERENCE.md` — API pública de AgendaPro (pagos, clientes,
+    reservas, servicios), verificada con datos reales.
+  - `ENVIO_CORREO_REFERENCE.md` — envío de correo desde el Gmail del negocio
+    vía SMTP + contraseña de aplicación.
+  - `CONSENTIMIENTOS_CORREO_REFERENCE.md` — correos de consentimiento: disparo,
+    destinatario, asunto/adjunto y estructura HTML.
+  - `PDF_CONSENTIMIENTOS_REFERENCE.md` — generación de PDF de consentimientos
+    con firma embebida, en servidor y sin navegador headless.
+  - `ENLACES_FIRMA_PUBLICA_REFERENCE.md` — enlaces temporales de un solo uso
+    para firmar desde el teléfono sin login.
+  - `GUIA_OPERACION_AGENDAPRO.md` — guía no técnica del día a día (admin).
+- `scripts/_reprocess-agendapro-pending.mjs` — reprocesa eventos de pago en
+  `requires_mapping`/`failed`/`queued` usando el payload guardado, tras agregar
+  los mapas de sucursal/servicio. Lee credenciales de `.env.local` en tiempo de
+  ejecución (no contiene secretos).
+
+### Fixed
+- **Producción quedó sin desplegar tras v0.86.1.** El push del arreglo del cron
+  no generó build nuevo en Vercel: el último deploy Ready de Production seguía
+  siendo del 2026-07-27. Se fuerza el deploy manual para que v0.86.1 (crons
+  diarios, compatibles con plan Hobby) y v0.86.2 lleguen a producción.
+
+---
+
 ## [0.86.1] — 2026-07-31
 
 ### Fixed
