@@ -68,6 +68,24 @@ toda fila importada.
 5. **Divergencia visible entre pantallas.** *Cuadre Semanal*
    (`pulsos-cuadre-semanal-page.tsx:362-366`) ya encadena correctamente. Auditoría
    no. Las dos muestran hoy cifras distintas de la misma semana.
+6. **Auditoría encadena por la persona, no por la máquina.**
+   `prevFinalFor` (`pulsos-auditoria-page.tsx:207-231`) construye su índice con la
+   clave `sucursal|operadora` y descarta las filas sin operadora ("sin operador no
+   se puede encadenar de forma fiable"). Pero el contador de pulsos pertenece al
+   equipo: las operadoras rotan de cabina, así que la serie se parte o se mezcla
+   cuando alguien cambia de puesto.
+7. **`equipo_id` no identifica una máquina de forma única.** Verificado contra
+   `csl_pulse_readings` (142 filas, 15 equipos, 129 con serial):
+   - El `equipo_id` **9** existe en **Los Jardines y en Rafael Vidal** — dos
+     sucursales reales. Encadenar solo por `equipo_id`, que es justo lo que hace
+     `findPrevLecturaFinal` en el motor, mezclaría dos máquinas distintas.
+   - Los demás "multi-sucursal" son la misma sucursal escrita de varias formas
+     (`JARDINES` / `Los Jardines`; `R VIDAL` / `R. VIDAL` / `Rafael Vidal`), y las
+     cabinas igual (`1` / `CABINA 1`). Sin normalizar, la serie de una misma
+     máquina se parte en varias.
+   - El `equipo_id` **7** tiene dos seriales en la misma cabina, uno en una sola
+     semana (`9914-0950-1383` el 2026-05-25 frente a `9914-0950-2627` el resto):
+     con toda probabilidad un error de digitación, no un cambio de máquina.
 
 ## Decisiones tomadas
 
@@ -80,6 +98,11 @@ Confirmadas con el usuario en esta sesión:
 3. **El histórico sí se ve corregido**: el valor mostrado se deriva, no se lee.
    Los "Crítico" falsos desaparecen de todas las semanas sin tocar la base.
 4. **Enfoque A**: una sola función compartida, más los arreglos de higiene.
+5. **La serie se encadena por `sucursal normalizada + equipo_id`**, no por
+   operadora, no por `equipo_id` suelto y no por serial. Cubre las 142 filas sin
+   excepciones y es tolerante con los seriales mal digitados. La normalización de
+   `sucursal` y `cabina` forma parte de la clave, si no la serie de una misma
+   máquina se parte por diferencias de escritura.
 
 Consecuencia aceptada de (3): las cifras de semanas pasadas en pantalla ya no
 coincidirán con PDFs exportados antes de este cambio. El usuario lo aceptó
@@ -92,31 +115,38 @@ explícitamente.
 Nueva función pura en `lib/pulse-engine.ts`:
 
 ```ts
+/** Clave de serie: sucursal normalizada + equipo_id. Ver decisión 5. */
+export function seriesKey(sucursal: unknown, equipoId: unknown): string
+
 export interface ReadingResuelta {
   id: string
-  equipoId: string
+  seriesKey: string
   periodStart: string
   periodEnd: string
-  inicio: number        // derivado: fin de la lectura anterior del MISMO equipo
+  inicio: number        // derivado: fin de la lectura anterior de la MISMA serie
   fin: number
   dispLaser: number     // max(0, fin - inicio)
-  esPrimeraLectura: boolean  // no hay lectura previa de este equipo
+  esPrimeraLectura: boolean  // no hay lectura previa en esta serie
   faltaFinal: boolean        // fin <= inicio (la lectura final no avanzó)
 }
 
-export function resolveEquipoSeries(
-  readings: PulseReading[],
-  equipoId: string,
-): ReadingResuelta[]
+/** Resuelve TODAS las lecturas, agrupando por seriesKey. Map id → resuelta. */
+export function resolveSeries(readings: PulseReading[]): Map<string, ReadingResuelta>
 ```
 
 Reglas:
 
-- Ordena las lecturas del equipo por `period_start` ascendente.
-- `inicio` de la fila *n* = `lectura_final` de la fila *n−1*. **El
-  `lectura_inicial` guardado se ignora** para el cálculo siempre que exista una
-  lectura anterior; queda como dato de captura.
-- Primera lectura del equipo (no hay anterior): `inicio` = `lectura_inicial`
+- Agrupa por `seriesKey(sucursal, equipo_id)` y ordena cada grupo por
+  `period_start` ascendente.
+- `seriesKey` normaliza la sucursal reusando el `canonicalSucursal` que ya existe
+  en el proyecto (mapea `R. VIDAL` / `R VIDAL` / `Rafael Vidal` a un mismo valor)
+  y aplica `trim` + mayúsculas al `equipo_id`. La **cabina no entra en la clave**:
+  una máquina puede cambiar de cabina dentro de la misma sucursal sin que su
+  contador se reinicie.
+- `inicio` de la fila *n* = `lectura_final` de la fila *n−1* de la misma serie.
+  **El `lectura_inicial` guardado se ignora** para el cálculo siempre que exista
+  una lectura anterior; queda como dato de captura.
+- Primera lectura de la serie (no hay anterior): `inicio` = `lectura_inicial`
   guardado si es > 0, si no 0; `esPrimeraLectura = true`. Es el **único** caso
   donde el valor guardado se usa, porque no hay nada de donde derivarlo.
 - **Conservar la neutralización de alerta que ya existe**: cuando
@@ -139,7 +169,7 @@ duplicar el bucle, y pasa a devolver también el `disp_laser` corregido.
 
 | Archivo | Cambio |
 |---|---|
-| `components/pulsos-auditoria-page.tsx` | eliminar 304-311; tomar `inicio`/`dispLaser`/`faltaFinal` de `resolveEquipoSeries`. Aplica igual a la rama legacy de `lecturasSemanales`. |
+| `components/pulsos-auditoria-page.tsx` | eliminar `prevFinalFor` (207-231) y las líneas 297-311; tomar `inicio`/`dispLaser`/`faltaFinal` de `resolveSeries`. Aplica igual a la rama legacy de `lecturasSemanales`. |
 | `components/pulsos-cuadre-semanal-page.tsx` | sustituir `calculateLecturaInicial` (362-366) por la nueva función. |
 | `components/pulsos-lecturas-page.tsx` | `continuityIssues` (131-149) se deriva de la función; se elimina el bucle inline. |
 | `app/api/csl/_handlers.ts` | `recalculatePulseContinuity` importa el motor; además actualiza `disp_laser` y añade `.eq("business_id", bizId)` al `update`. |
@@ -176,6 +206,14 @@ y palusaapp, y se añade `"test": "vitest run"` a `package.json`.
 7. `lectura_inicial` guardado incorrecto se ignora cuando hay anterior.
 8. Primera lectura sin inicio guardado → `dispLaser = 0` y alerta neutral (no
    "Crítico"), igual que hoy.
+9. **Aislamiento entre sucursales**: el caso real del `equipo_id` 9, que existe en
+   Los Jardines y en Rafael Vidal — son dos series independientes y no se
+   encadenan entre sí.
+10. **Normalización de la clave**: filas con `R. VIDAL`, `R VIDAL` y
+    `Rafael Vidal` para el mismo `equipo_id` forman **una sola** serie continua.
+11. **Rotación de operadora**: si dos semanas consecutivas del mismo equipo tienen
+    operadoras distintas, la serie sigue encadenada (hoy se partiría, por el
+    defecto 6).
 
 ### 5. Fuera de alcance
 
@@ -197,6 +235,9 @@ y palusaapp, y se añade `"test": "vitest run"` a `package.json`.
    789,933.
 2. Auditoría y Cuadre Semanal muestran el **mismo** Disp. Láser para la misma
    semana y equipo.
+2b. El `equipo_id` 9 mantiene **dos series separadas**, una por sucursal, y
+   ninguna lectura de Los Jardines aparece como inicio de una de Rafael Vidal.
+2c. Cambiar la operadora asignada a un equipo **no** altera su Disp. Láser.
 3. Importar un Excel cuyo `Pulsos Inicio` sea incorrecto **no** cambia lo que se
    ve en Auditoría, y el resumen avisa cuántas filas ignoró.
 4. `vitest run` pasa, con los 7 casos anteriores.
