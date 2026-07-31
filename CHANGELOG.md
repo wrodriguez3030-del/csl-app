@@ -18,6 +18,24 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.86.1] — 2026-07-31
+
+### Fixed
+- **El deploy a producción estaba roto desde v0.84.0.** El cron de pagos de
+  AgendaPro usaba `*/3 * * * *` y el proyecto está en plan **Hobby**, donde los
+  crons se limitan a una corrida diaria. Vercel no rechazaba solo el cron:
+  abortaba **el deploy completo** con
+  `deploy_failed — Hobby accounts are limited to daily cron jobs`. Por eso
+  v0.84.0 y v0.85.0 nunca llegaron a producción (el último deploy Ready de
+  Production era del 2026-07-27).
+- `vercel.json`: `payments-cron` pasa a `0 1 * * *` (UTC) = **21:00 hora RD**,
+  después del cierre; la ventana del sync es "ayer + hoy", así que una corrida
+  a esa hora cubre el día completo. Para sincronizar en el momento sigue el
+  botón **"Sincronizar pagos"** de Control Digital de Tratamientos (v0.85.0).
+  Si el proyecto pasa a plan Pro se puede volver a subir la frecuencia.
+
+---
+
 ## [0.86.0] — 2026-07-31
 
 ### Removed

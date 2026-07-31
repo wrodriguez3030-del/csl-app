@@ -2,7 +2,15 @@
  * GET /api/integrations/agendapro/payments-cron
  *
  * Cron de Vercel: sincroniza los PAGOS de AgendaPro automáticamente (Camino B),
- * sin depender del webhook. Configurado en vercel.json cada 3 minutos.
+ * sin depender del webhook.
+ *
+ * Frecuencia: **una vez al día** (`0 1 * * *` UTC = 21:00 hora RD, después del
+ * cierre). El plan Vercel es Hobby y ahí los crons están limitados a una
+ * corrida diaria: una expresión sub-diaria (cada N minutos) hace fallar el
+ * deploy ENTERO con `deploy_failed`, no solo el cron. Para sincronizar en el
+ * momento está el botón "Sincronizar pagos" de Control Digital de Tratamientos
+ * (v0.85.0). Si el proyecto pasa a plan Pro se puede volver a subir la
+ * frecuencia en `vercel.json`.
  *
  * Ventana: ayer + hoy (hora RD) — cubre el borde de medianoche con una sola
  * llamada de listado por corrida. El sync salta los pagos ya procesados sin
