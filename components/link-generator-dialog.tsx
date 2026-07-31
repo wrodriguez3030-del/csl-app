@@ -13,7 +13,6 @@ import { useCurrentBusiness } from "@/hooks/use-current-business"
 import { supabaseBrowser } from "@/lib/supabase-client"
 import { normalizeAddress } from "@/lib/address"
 import type { ClienteCosmiatria } from "@/lib/types"
-import { MASSAGE_SPECIALISTS } from "@/components/consentimientos-page"
 import { dedupeEspecialistas } from "@/lib/especialistas"
 import { searchClients } from "@/lib/cliente-search"
 import { formatPhone, formatCedula, displayPhone, displayDocumento } from "@/lib/formatters"
@@ -37,49 +36,6 @@ const MOTIVOS_CONSULTA = [
 ] as const
 
 const MOTIVO_OTRO = "__otro__"
-
-// Servicios/procedimientos por tipo de consent — espejo de lo que el
-// equipo clínico usa internamente. La opción "Otro" abre un input libre.
-const SERVICIOS_PEELING = [
-  "Peeling superficial",
-  "Peeling medio",
-  "Peeling enzimático",
-  "Peeling químico",
-  "Peeling despigmentante",
-] as const
-
-const SERVICIOS_MASAJES = [
-  "Masaje relajante",
-  "Masaje terapéutico",
-  "Masaje descontracturante",
-  "Masaje reductivo",
-  "Masaje postquirúrgico",
-  "Drenaje linfático",
-  "Maderoterapia",
-  "Masaje deportivo",
-  "Masaje de espalda",
-] as const
-
-const SERVICIOS_TATUAJES = [
-  "Eliminación de tatuaje",
-  "Eliminación de cejas",
-  "Remoción parcial",
-  "Remoción completa",
-  "Retoque / seguimiento",
-  "Evaluación previa",
-] as const
-
-const SERVICIOS_DEPILACION_LASER = [
-  "Depilación láser facial",
-  "Depilación láser axilas",
-  "Depilación láser piernas",
-  "Depilación láser brazos",
-  "Depilación láser zona íntima / bikini",
-  "Depilación láser corporal completa",
-  "Evaluación previa",
-] as const
-
-const SERVICIO_OTRO = "__servicio_otro__"
 
 type FormType =
   | "ficha_dermatologica"
@@ -117,9 +73,10 @@ interface PrefillState {
   correo: string
   direccion: string
   sucursal: string
+  // Solo Ficha Dermatológica. Los consentimientos ya no lo piden al generar el
+  // link: la especialista se completa después desde el sistema interno.
   especialista: string
   motivoConsulta: string
-  servicio: string
 }
 
 const emptyPrefill: PrefillState = {
@@ -132,7 +89,6 @@ const emptyPrefill: PrefillState = {
   sucursal: "",
   especialista: "",
   motivoConsulta: "",
-  servicio: "",
 }
 
 function clienteNombre(cliente: ClienteCosmiatria) {
@@ -177,6 +133,10 @@ function normalizeCliente(raw: Record<string, unknown>): ClienteCosmiatria {
 }
 
 export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Props) {
+  // Ficha Dermatológica es el único tipo que pide Especialista y Motivo de
+  // consulta al generar el link. Los consentimientos solo capturan los datos
+  // del cliente (ver comentario en `PrefillState.especialista`).
+  const isFicha = formType === "ficha_dermatologica"
   const apiUrl = useAppStore((state) => state.apiUrl)
   const sessionUser = useSessionUser()
   // Tenant activo — el link se crea para ESTE negocio (superadmin sigue el switcher).
@@ -212,10 +172,6 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
   // motivoSelected = "" | uno de MOTIVOS_CONSULTA | MOTIVO_OTRO
   const [motivoSelected, setMotivoSelected] = useState<string>("")
   const [motivoOtroText, setMotivoOtroText] = useState("")
-  // Servicio / procedimiento (solo consents): dropdown según el kind +
-  // "+ Otro" que abre input libre. Required para consents.
-  const [servicioSelected, setServicioSelected] = useState<string>("")
-  const [servicioOtroText, setServicioOtroText] = useState("")
 
   // ─── Generación del link ─────────────────────────────────────────────────
   const [generating, setGenerating] = useState(false)
@@ -290,8 +246,6 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       setConsentPrevio(null)
       setMotivoSelected("")
       setMotivoOtroText("")
-      setServicioSelected("")
-      setServicioOtroText("")
       setError("")
       setResult(null)
       setCopied(false)
@@ -301,7 +255,9 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       if (clientes.length === 0) {
         void loadClientes()
       }
-      if (especialistas.length === 0) {
+      // Solo Ficha necesita la lista de especialistas; los consentimientos ya no
+      // muestran ese campo, así que evitamos la llamada.
+      if (isFicha && especialistas.length === 0) {
         void loadEspecialistas()
       }
     }
@@ -512,33 +468,12 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       return
     }
 
-    // Especialista: requerido para ficha_dermatologica + masajes (recepción
-    // debe dejar definido quién atiende antes de enviar al cliente).
-    if (especialistaRequerido && !prefill.especialista.trim()) {
-      setError(
-        isMasajes
-          ? "Selecciona la especialista en masajes antes de generar el link."
-          : "Selecciona el especialista antes de generar el link.",
-      )
+    // Especialista: requerido solo en ficha_dermatologica (recepción debe dejar
+    // definido quién atiende antes de enviar al cliente). Los consentimientos ya
+    // no piden este dato al generar el link.
+    if (isFicha && !prefill.especialista.trim()) {
+      setError("Selecciona el especialista antes de generar el link.")
       return
-    }
-    // Resolver servicio final (solo consents): seleccionado de la lista o
-    // texto manual si eligió "+ Otro". Required.
-    let servicioFinal = ""
-    if (formType !== "ficha_dermatologica") {
-      if (servicioSelected === SERVICIO_OTRO) {
-        servicioFinal = servicioOtroText.trim()
-        if (!servicioFinal) {
-          setError("Escribe el servicio o procedimiento o elige uno de la lista.")
-          return
-        }
-      } else if (servicioSelected) {
-        servicioFinal = servicioSelected
-      }
-      if (!servicioFinal) {
-        setError("Selecciona el servicio o procedimiento.")
-        return
-      }
     }
 
     // Resolver motivoConsulta final (solo ficha): seleccionado de la lista
@@ -599,14 +534,10 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       include("correo")
       include("direccion")
       include("sucursal")
-      include("especialista")
-      if (formType === "ficha_dermatologica") {
+      if (isFicha) {
+        include("especialista")
         // Sobrescribimos motivoConsulta con el valor resuelto (lista u Otro).
         if (motivoConsultaFinal) prefillPayload.motivoConsulta = motivoConsultaFinal
-      } else {
-        // Servicio resuelto (lista u Otro) — viaja como prefill.servicio
-        // que el form público mapea a observaciones del procedimiento.
-        if (servicioFinal) prefillPayload.servicio = servicioFinal
       }
 
       // Tenant activo del link (mismo patrón que RRHH generateSolicitudLink):
@@ -662,21 +593,6 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
       return date.toLocaleString("es-DO", { dateStyle: "medium", timeStyle: "short" })
     } catch { return iso }
   }
-
-  const isFicha = formType === "ficha_dermatologica"
-  const isMasajes = formType === "consentimiento_masajes"
-  // Masajes usa lista canónica cerrada (DAYHANA / Benita) — ignora
-  // csl_operadoras que mezcla operadoras de otros servicios. Para los demás
-  // tipos seguimos usando la lista del backend.
-  // Masajes usa una lista cerrada (no csl_operadoras, que mezcla operadoras de
-  // láser/ficha). Esa lista es de CSL, así que SOLO aplica a CSL; para otros
-  // tenants (Depicenter/La Vega) se deja captura libre para no mostrar nombres de
-  // CSL. Los demás consents usan las operadoras del tenant activo (ya scopeadas).
-  const especialistasOptions: string[] = isMasajes
-    ? (currentBusiness.slug === "csl" ? [...MASSAGE_SPECIALISTS] : [])
-    : especialistas
-  // Especialista obligatorio para ficha + masajes; opcional para tatuajes/cejas.
-  const especialistaRequerido = isFicha || isMasajes
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -877,84 +793,63 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                       <Input value={prefill.sucursal} onChange={(e) => update({ sucursal: e.target.value })} placeholder="Opcional" className="mt-1" />
                     )}
                   </div>
-                  <div className="sm:col-span-2 lg:col-span-2">
+                  {/* Sin Especialista al lado, Dirección ocupa la fila completa
+                      para no dejar un hueco en la tercera columna. */}
+                  <div className={isFicha ? "sm:col-span-2 lg:col-span-2" : "sm:col-span-2 lg:col-span-3"}>
                     <Label className="text-xs">Dirección</Label>
                     <Input value={prefill.direccion} onChange={(e) => update({ direccion: e.target.value })} className="mt-1" />
                   </div>
-                  <div>
-                    <Label className="text-xs">
-                      {isMasajes ? "Especialista en masajes" : "Especialista"}{especialistaRequerido ? " *" : ""}
-                    </Label>
-                    {especialistasOptions.length ? (
-                      <Select value={prefill.especialista || "_none"} onValueChange={(value) => update({ especialista: value === "_none" ? "" : value })}>
-                        <SelectTrigger className="mt-1">
-                          <SelectValue placeholder={especialistaRequerido ? "Seleccionar especialista" : "Opcional"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {/* "Sin asignar" solo aparece cuando el campo es opcional
-                              (tatuajes/cejas). Ficha y masajes lo requieren. */}
-                          {!especialistaRequerido ? <SelectItem value="_none">Sin asignar</SelectItem> : null}
-                          {especialistasOptions.map((esp) => <SelectItem key={esp} value={esp}>{esp}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <Input
-                        value={prefill.especialista}
-                        onChange={(e) => update({ especialista: e.target.value })}
-                        placeholder={especialistaRequerido ? "Nombre del especialista" : "Opcional"}
-                        className="mt-1"
-                      />
-                    )}
-                  </div>
+                  {/* Especialista y Motivo de consulta son exclusivos de la Ficha
+                      Dermatológica. En los consentimientos recepción solo captura
+                      los datos del cliente; la especialista y el procedimiento se
+                      completan después desde el sistema interno. */}
                   {isFicha ? (
-                    <div className="sm:col-span-2 lg:col-span-3">
-                      <Label className="text-xs">Motivo de consulta *</Label>
-                      <Select value={motivoSelected} onValueChange={setMotivoSelected}>
-                        <SelectTrigger className="mt-1">
-                          <SelectValue placeholder="Selecciona un motivo..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {MOTIVOS_CONSULTA.map((m) => (
-                            <SelectItem key={m} value={m}>{m}</SelectItem>
-                          ))}
-                          <SelectItem value={MOTIVO_OTRO}>+ Otro motivo</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      {motivoSelected === MOTIVO_OTRO ? (
-                        <Input
-                          value={motivoOtroText}
-                          onChange={(e) => setMotivoOtroText(e.target.value)}
-                          placeholder="Escribir motivo personalizado..."
-                          className="mt-2"
-                          autoFocus
-                        />
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div className="sm:col-span-2 lg:col-span-3">
-                      <Label className="text-xs">Servicio / Procedimiento *</Label>
-                      <Select value={servicioSelected} onValueChange={setServicioSelected}>
-                        <SelectTrigger className="mt-1">
-                          <SelectValue placeholder="Seleccionar servicio" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(formType === "consentimiento_masajes" ? SERVICIOS_MASAJES : formType === "consentimiento_peeling" ? SERVICIOS_PEELING : formType === "consentimiento_depilacion_laser" ? SERVICIOS_DEPILACION_LASER : SERVICIOS_TATUAJES).map((s) => (
-                            <SelectItem key={s} value={s}>{s}</SelectItem>
-                          ))}
-                          <SelectItem value={SERVICIO_OTRO}>+ Otro</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      {servicioSelected === SERVICIO_OTRO ? (
-                        <Input
-                          value={servicioOtroText}
-                          onChange={(e) => setServicioOtroText(e.target.value)}
-                          placeholder="Especificar servicio / procedimiento..."
-                          className="mt-2"
-                          autoFocus
-                        />
-                      ) : null}
-                    </div>
-                  )}
+                    <>
+                      <div>
+                        <Label className="text-xs">Especialista *</Label>
+                        {especialistas.length ? (
+                          <Select value={prefill.especialista} onValueChange={(value) => update({ especialista: value })}>
+                            <SelectTrigger className="mt-1">
+                              <SelectValue placeholder="Seleccionar especialista" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {especialistas.map((esp) => <SelectItem key={esp} value={esp}>{esp}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Input
+                            value={prefill.especialista}
+                            onChange={(e) => update({ especialista: e.target.value })}
+                            placeholder="Nombre del especialista"
+                            className="mt-1"
+                          />
+                        )}
+                      </div>
+                      <div className="sm:col-span-2 lg:col-span-3">
+                        <Label className="text-xs">Motivo de consulta *</Label>
+                        <Select value={motivoSelected} onValueChange={setMotivoSelected}>
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Selecciona un motivo..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {MOTIVOS_CONSULTA.map((m) => (
+                              <SelectItem key={m} value={m}>{m}</SelectItem>
+                            ))}
+                            <SelectItem value={MOTIVO_OTRO}>+ Otro motivo</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {motivoSelected === MOTIVO_OTRO ? (
+                          <Input
+                            value={motivoOtroText}
+                            onChange={(e) => setMotivoOtroText(e.target.value)}
+                            placeholder="Escribir motivo personalizado..."
+                            className="mt-2"
+                            autoFocus
+                          />
+                        ) : null}
+                      </div>
+                    </>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -1045,8 +940,7 @@ export function LinkGeneratorDialog({ open, onOpenChange, formType, title }: Pro
                   || savingCliente
                   || !prefill.nombre.trim()
                   || (isFicha && !motivoSelected)
-                  || (!isFicha && !servicioSelected)
-                  || (especialistaRequerido && !prefill.especialista.trim())
+                  || (isFicha && !prefill.especialista.trim())
                 }
                 className="gap-2"
               >

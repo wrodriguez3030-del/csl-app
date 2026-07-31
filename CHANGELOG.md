@@ -18,6 +18,32 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.86.0] — 2026-07-31
+
+### Removed
+- **Generar enlace de consentimiento: fuera los campos "Especialista" y
+  "Servicio / Procedimiento".** En el diálogo de generación de enlaces de firma
+  (Clientes y Consentimientos → Generar link), los consentimientos —masajes,
+  peeling, tatuajes/cejas y depilación láser— ya no piden esos dos datos.
+  Recepción solo captura los datos del cliente; la especialista y el
+  procedimiento se completan después desde el sistema interno, igual que el
+  resto de los campos clínicos.
+- Se eliminaron las listas de servicios por tipo de consentimiento
+  (`SERVICIOS_PEELING`, `SERVICIOS_MASAJES`, `SERVICIOS_TATUAJES`,
+  `SERVICIOS_DEPILACION_LASER`) y la opción "+ Otro" asociada, junto con el
+  estado y las validaciones que solo existían para ellas.
+
+### Changed
+- **Ficha Dermatológica no cambia.** Sigue pidiendo "Especialista *" y
+  "Motivo de consulta *"; ambos siguen siendo obligatorios para generar el
+  enlace. El campo "Especialista" pasó a renderizarse solo en Ficha.
+- La lista de especialistas (`getAllPulsosData`) ya no se carga al abrir el
+  diálogo para consentimientos: solo se pide cuando el tipo es Ficha.
+- En consentimientos, "Dirección" ocupa la fila completa para no dejar un hueco
+  en la tercera columna del grid.
+
+---
+
 ## [0.85.0] — 2026-07-27
 
 ### Added
