@@ -18,6 +18,36 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.86.10] — 2026-08-03
+
+### Changed
+- **Solo WANDA queda fuera del incentivo láser en Depicenter**; EVELINA vuelve a
+  entrar, corrigiendo la exclusión de 0.86.9 que sacaba a las dos. Julio 2026
+  recalculado y guardado (el neto del período no cambia: RD$42 493,72).
+
+| Prestadora | Aplica láser | Láser | Neto |
+|---|:--:|---:|---:|
+| SELENIA | sí | 11 477,76 | 13 077,76 |
+| NOELIA | sí | 10 304,48 | 12 804,48 |
+| CLARIBEL | sí | 10 049,42 | 12 049,42 |
+| EVELINA | sí | 255,06 | 2 755,06 |
+| WANDA | **no** | **0** | 1 807,00 |
+
+  SQL: `docs/2026-08-03-depicenter-laser-solo-wanda-fuera.sql`.
+
+### Notes
+- **Elegir quién cobra el incentivo láser ya existía en la interfaz** y no hizo
+  falta construir nada: es la columna **«Aplica láser»** de *Personal que aplica
+  incentivo láser*, en **Reglas de comisión** (`LaserPersonnelEditor`, montado en
+  `comision-reglas-page.tsx:326` y en `comision-pages.tsx:431`). No se veía en
+  Depicenter porque el tenant tenía **0 colaboradores** hasta 0.86.6: la tabla
+  salía vacía y no había interruptores que mostrar.
+  Verificado que el editor es multi-tenant real: `useCommissionBranches` lee el
+  catálogo del negocio activo (Depicenter → `LA VEGA`) y `orderCommissionBranches`
+  degrada bien para un slug sin orden preferido.
+
+---
+
 ## [0.86.9] — 2026-08-03
 
 ### Changed
