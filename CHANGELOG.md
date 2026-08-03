@@ -18,6 +18,30 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.86.5] — 2026-08-03
+
+### Fixed
+- **Los incentivos de Depicenter salían en cero aunque hubiera ventas y
+  reservas importadas.** El motor itera las sucursales del tenant
+  (`readTenantBranches` → `csl_sucursales`, que para Depicenter es **«La
+  Vega»**) y filtra ventas y reservas por ese valor exacto. Pero AgendaPro
+  exporta el «Local» con el nombre comercial («Depicenter Skin Láser»), y
+  `CIBAO_BRANCH_SYNONYMS` no tenía ninguna entrada de Depicenter: las filas se
+  guardaban como `DEPICENTER SKIN LASER` y el motor buscaba `LA VEGA`, así que
+  no encontraba nada. Las tres sucursales de CSL sí estaban mapeadas — por eso
+  el fallo solo se veía en Depicenter.
+  Se añade el canónico `LA VEGA` con sus alias (`DEPICENTER`, `DEPICENTER SKIN
+  LASER`, …). Verificado con el archivo real: las 825 reservas de julio
+  normalizan a `LA VEGA`, y las sucursales de CSL siguen intactas (148 pruebas
+  en verde).
+
+> ⚠️ **Pendiente de backfill manual.** Las filas importadas ANTES de esta
+> versión conservan el nombre viejo (277 ventas + 5 cálculos de Depicenter).
+> Hasta corregirlas, el mes de julio de Depicenter seguirá sin cuadrar. SQL en
+> `docs/2026-08-03-depicenter-sucursal-backfill.sql`.
+
+---
+
 ## [0.86.4] — 2026-08-03
 
 ### Fixed

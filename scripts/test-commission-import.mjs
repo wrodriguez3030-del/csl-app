@@ -38,6 +38,14 @@ t("Cibao Spa Laser  Av. Rafael Vidal → RAFAEL VIDAL", normalizeBranch("Cibao S
 t("R VIDAL → RAFAEL VIDAL", normalizeBranch("R VIDAL") === "RAFAEL VIDAL")
 t("JARDINES → LOS JARDINES", normalizeBranch("JARDINES") === "LOS JARDINES")
 t("Villa Olga → VILLA OLGA", normalizeBranch("Villa Olga") === "VILLA OLGA")
+// Depicenter: AgendaPro exporta el nombre comercial, no el de la sucursal.
+// El canónico debe ser el de csl_sucursales ("La Vega") o el motor no encuentra
+// ninguna venta/reserva al iterar las sucursales del tenant.
+t("Depicenter Skin Láser → LA VEGA", normalizeBranch("Depicenter Skin Láser") === "LA VEGA", `(${normalizeBranch("Depicenter Skin Láser")})`)
+t("DEPICENTER SKIN LASER → LA VEGA", normalizeBranch("DEPICENTER SKIN LASER") === "LA VEGA")
+t("La Vega → LA VEGA", normalizeBranch("La Vega") === "LA VEGA")
+t("Depicenter → LA VEGA", normalizeBranch("Depicenter") === "LA VEGA")
+t("no contamina sucursales de CSL", normalizeBranch("Villa Olga") === "VILLA OLGA" && normalizeBranch("R VIDAL") === "RAFAEL VIDAL")
 
 console.log("── Estados de reserva (§12)")
 t("Asiste → ASISTE", normalizeAttendance("Asiste") === "ASISTE")

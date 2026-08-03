@@ -15,11 +15,22 @@ export function normalizeName(v: unknown): string {
   return stripAccents(String(v ?? "")).replace(/\s+/g, " ").trim().toUpperCase()
 }
 
-/** Sinónimos de sucursal de Cibao (configurable/ampliable desde catálogo). */
+/**
+ * Sinónimos de sucursal (configurable/ampliable desde catálogo).
+ *
+ * El canónico debe coincidir con `csl_sucursales.nombre` en MAYÚSCULAS, porque
+ * el motor de incentivos itera esas sucursales (`readTenantBranches`) y filtra
+ * ventas y reservas por ese valor exacto. Si el alias falta, las filas se
+ * guardan con el nombre crudo del Excel y el motor no encuentra NADA.
+ *
+ * Cubre los dos tenants: AgendaPro exporta el "Local" con el nombre comercial
+ * completo ("Depicenter Skin Láser"), no el de la sucursal ("La Vega").
+ */
 export const CIBAO_BRANCH_SYNONYMS: Record<string, string[]> = {
   "LOS JARDINES": ["JARDINES", "LOS JARDINES"],
   "RAFAEL VIDAL": ["R VIDAL", "RAFAEL VIDAL", "PLAZA MEDITERRANEA"],
   "VILLA OLGA": ["VILLA OLGA"],
+  "LA VEGA": ["LA VEGA", "DEPICENTER", "DEPICENTER SKIN LASER", "DEPICENTER SKIN LASER LA VEGA"],
 }
 
 /**
