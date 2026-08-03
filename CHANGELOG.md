@@ -18,6 +18,25 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.86.7] — 2026-08-03
+
+### Changed
+- **Depicenter queda con la misma configuración de Incentivos que Cibao Spa
+  Laser.** Aplicado en producción:
+  - Roster creado: SELENIA, NOELIA, CLARIBEL, EVELINA y WANDA en `LA VEGA`
+    (`mixto`, sin porcentaje fijo, lineal y pacientes activados, limpieza
+    RD$400, evaluación 100 %, servicio `DEPILACION_LASER`). Antes eran **0
+    colaboradores** y por eso no se podía calcular nada.
+  - `card_percentage` de Depicenter: **27 % → 31 %**, confirmado por el usuario.
+    Netea las ventas con tarjeta antes de la escala láser.
+
+> ⚠️ **Los 5 cálculos de julio 2026 de Depicenter quedaron obsoletos.** Se
+> generaron con el 27 % y sin roster, así que traen láser en 0 y solo
+> incentivo de producto (RD$11 500 en total). Hay que **recalcular julio**
+> después de importar las reservas para que el fondo láser se reparta.
+
+---
+
 ## [0.86.6] — 2026-08-03
 
 ### Added

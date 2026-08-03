@@ -1,4 +1,5 @@
--- Roster de Incentivos de Ventas para DEPICENTER (sucursal LA VEGA)
+-- Configuración de Incentivos de Ventas para DEPICENTER (sucursal LA VEGA):
+-- roster + porcentaje de tarjeta, replicando Cibao Spa Laser.
 --
 -- Replica la configuración vigente de Cibao Spa Laser: los 25 de los 26
 -- colaboradores de CSL comparten exactamente estos valores
@@ -47,18 +48,39 @@ where not exists (
      and c.deleted_at is null
 );
 
+-- ── Porcentaje de tarjeta: 27 % → 31 %, igual que CSL ────────────────────────
+-- Confirmado por el usuario el 2026-08-03: Depicenter también está al 31 %.
+-- Este porcentaje netea las ventas con tarjeta ANTES de la escala láser, así
+-- que subirlo reduce el fondo láser y, con él, lo que cobra el personal.
+update sales_commission_rules
+   set percentage = 0.31000,
+       updated_at = now()
+ where business_id = '03b96698-c5df-4b4b-84df-1160a7ad56b9'
+   and rule_type = 'card_percentage'
+   and percentage = 0.27000;
+
 -- Verificación
-select name, branch, participation_type, linear_participation,
-       patient_participation, cleaning_contribution, evaluation_pct,
-       services::text, active
+select 'roster' AS que, name, branch, participation_type,
+       linear_participation::text, patient_participation::text,
+       cleaning_contribution::text, evaluation_pct::text, services::text,
+       active::text
   from sales_commission_collaborators
  where business_id = '03b96698-c5df-4b4b-84df-1160a7ad56b9'
    and deleted_at is null
  order by name;
 
+select 'tarjeta' AS que, b.slug, r.percentage::text, r.active::text
+  from sales_commission_rules r
+  join businesses b on b.id = r.business_id
+ where r.rule_type = 'card_percentage'
+ order by b.slug;
+
 commit;
 
--- Revertir (borra SOLO las creadas por este script):
+-- Revertir:
 --   delete from sales_commission_collaborators
 --    where business_id = '03b96698-c5df-4b4b-84df-1160a7ad56b9'
 --      and created_by = 'claude:replica-config-csl';
+--   update sales_commission_rules set percentage = 0.27000
+--    where business_id = '03b96698-c5df-4b4b-84df-1160a7ad56b9'
+--      and rule_type = 'card_percentage';
