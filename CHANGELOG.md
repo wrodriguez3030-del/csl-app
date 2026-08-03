@@ -18,6 +18,29 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.86.8] — 2026-08-03
+
+### Added
+- `scripts/import-reservas-depicenter.mjs` — confirma una importación de
+  reservas y calcula el período llamando a los **handlers reales del servidor**
+  (`startReservationsImport` → `appendReservationsRows` → `finalizeReservations
+  Import` → `getCommissionRunPreview` / `saveCommissionRun`) dentro de
+  `runWithBusinessContext`, igual que hace `/api/csl`. No reimplementa nada, así
+  que el resultado es idéntico a pulsar el botón en la interfaz. Si el archivo
+  ya estaba importado, no duplica y pasa directo al cálculo: sirve para
+  recalcular sin volver a subirlo.
+  Uso: `node --import tsx scripts/import-reservas-depicenter.mjs <ruta.xlsx> [--save]`
+
+### Changed
+- **Julio 2026 de Depicenter importado y calculado en producción.** 825 reservas
+  (632 asistencias), conteos de pacientes alimentados y run guardado en estado
+  `borrador`, sin alertas: base láser RD$802 168 → tramo 4 % → fondo
+  RD$32 086,72; neto a repartir RD$42 493,72 entre las 5 prestadoras.
+  Los 5 `sales_commission_calculations` que habían quedado obsoletos (0.86.7) se
+  refrescaron solos al guardar el run — ya no hay que recalcular nada a mano.
+
+---
+
 ## [0.86.7] — 2026-08-03
 
 ### Changed
