@@ -18,6 +18,33 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.87.1] — 2026-08-03
+
+### Added
+- `scripts/recalcular-periodo.mjs` — recalcula el período de incentivos de
+  cualquier negocio con los handlers reales (`getCommissionRunPreview` /
+  `saveCommissionRun`) dentro de `runWithBusinessContext`. **Sin `--save` no
+  escribe nada**: muestra el cálculo actual junto al guardado, con el delta por
+  colaboradora, para poder auditar antes de tocar nómina.
+  Uso: `node --import tsx scripts/recalcular-periodo.mjs <csl|depicenter> <mes> <año> [--save]`
+
+### Notes
+- **Auditoría de runs guardados** (solo lectura, nada modificado):
+
+| Negocio · período | Guardado | Recalculado | Δ |
+|---|---:|---:|---:|
+| CSL · julio 2026 | 17 200,00 | 152 286,69 | **+135 086,69** |
+| CSL · junio 2026 | 121 162,71 | 121 988,86 | +826,15 |
+| Depicenter · julio 2026 | 42 493,72 | 42 493,72 | 0,00 |
+
+  **Julio de CSL está muy desactualizado.** Los runs se guardaron el 17-jul,
+  y las ventas y reservas de julio se importaron el **1-ago** (916 ventas del 1
+  al 31, período detectado 2026-07-01→2026-07-31): se calcularon con datos que
+  aún no existían. Pagar con esos números deja RD$135 086,69 sin repartir.
+  Junio arrastra un desvío menor (+826,15). Pendiente de recalcular con `--save`.
+
+---
+
 ## [0.87.0] — 2026-08-03
 
 ### Security
