@@ -18,6 +18,41 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.87.0] — 2026-08-03
+
+### Security
+- **NUNCA MEZCLAR TENANTS: las reglas de negocio de CSL ya no pueden aplicarse a
+  Depicenter.** Dos módulos del motor de incentivos usaban constantes globales
+  que se evaluaban igual para los dos negocios:
+  - `lib/commission/exclusions.ts` — el prestador excluido `CARLOS ARIAS` y los
+    ítems sin incentivo `RASURADORA` / `APLICACION DE ANESTESIA` son decisiones
+    de Cibao Spa Láser, y se aplicaban también a Depicenter.
+  - `lib/commission/reception-splits.ts` — las cuentas de recepción cuyo
+    producto se reparte (y sus destinatarias: LUISA, YANIBEL, KARLA, LESLIE,
+    YADIBEL, ANGELICA, GIPSY) son de las tres sucursales de CSL.
+
+  Ahora ambas están indexadas por tenant y el slug es un parámetro
+  **obligatorio**, no opcional con valor por defecto: `tsc --noEmit` falla si un
+  llamador lo olvida, así que es imposible introducir una mezcla sin que el
+  build la cace. Un slug desconocido devuelve **conjunto vacío** — nunca cae a
+  las reglas de CSL. `ComputeRunInput` gana el campo obligatorio `tenant`.
+
+  **Sin impacto en los cálculos.** Se comparó el resultado del motor antes y
+  después sobre los 6 runs de CSL y el de Depicenter (56 filas: neto y láser por
+  colaboradora): **idénticos**. Depicenter no tenía ninguna venta que coincidiera
+  con las reglas de CSL (0 en las tres exclusiones, 0 cuentas de recepción), así
+  que el aislamiento previene contaminación futura sin cambiar nada de hoy.
+  Las 15 pruebas que dependían de estas reglas ahora declaran su tenant
+  explícitamente (148 en verde).
+
+### Notes
+- Detectado de paso: **los runs de julio de CSL están obsoletos.** Se guardaron
+  el 17 de julio, a mitad de mes, con datos parciales (netos de 8 600 / 3 600 /
+  5 000 frente a lo que da el cálculo actual con julio completo). No es efecto de
+  este cambio — conviene recalcularlos antes de pagar.
+
+---
+
 ## [0.86.10] — 2026-08-03
 
 ### Changed

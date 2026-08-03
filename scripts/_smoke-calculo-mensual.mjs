@@ -110,7 +110,7 @@ async function readPatients(business_id, branch, month, year) {
       readRoster(business_id, branch),
       readPatients(business_id, branch, MONTH, YEAR),
     ])
-    const r = computeRun({ branch, sales, collaborators, patients: pat.patients, patientsSource: pat.source, rules })
+    const r = computeRun({ tenant: "csl", branch, sales, collaborators, patients: pat.patients, patientsSource: pat.source, rules })
     console.log(`\n── ${branch} · ${String(MONTH).padStart(2, "0")}/${YEAR}: ${sales.length} ventas, ${collaborators.length} colaboradores, pacientes ${r.laser.patientsTotal} (${pat.source}) · modo ${r.laser.mode} (${r.laser.eligibleCount} elegibles, cuota ${r.laser.perCapita.toFixed(2)})`)
     console.log(`   base láser ${r.laser.base.toFixed(2)} → tramo ${(r.laser.pct * 100).toFixed(0)}% → fondo ${r.laser.fund.toFixed(2)} (pac ${r.laser.fundPatients.toFixed(2)} / lin ${r.laser.fundLinear.toFixed(2)})`)
     console.log(`   fondo personas ${r.laser.fundLinear.toFixed(2)} + pacientes ${r.laser.fundPatients.toFixed(2)} (pesos ${((1 - rules.laserSplitPatientsFraction) * 100).toFixed(0)}/${(rules.laserSplitPatientsFraction * 100).toFixed(0)})`)

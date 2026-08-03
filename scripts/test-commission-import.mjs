@@ -193,6 +193,7 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
   // Láser: 200,000 efectivo + 111,800 transferencia + 488,200 tarjeta (neta 356,386)
   // base = 200,000 + 111,800 + 356,386 = 668,186 → tramo 600,000 = 3% → fondo 20,045.58
   const r1 = computeRun({
+    tenant: "csl",
     branch: "RAFAEL VIDAL",
     sales: [
       sale({ amount: 200000 }),
@@ -217,6 +218,7 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
 
   console.log("── Run mensual: split lineal/pacientes + servicios + productos + evaluación")
   const r2 = computeRun({
+    tenant: "csl",
     branch: "RAFAEL VIDAL",
     sales: [
       sale({ amount: 1000000 }), // láser efectivo → tramo 4% → fondo 40,000
@@ -246,6 +248,7 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
 
   console.log("── Run mensual: alertas (nunca calcular en silencio)")
   const r3 = computeRun({
+    tenant: "csl",
     branch: "RAFAEL VIDAL",
     sales: [sale({ amount: 700000 })],
     collaborators: [collab("ROSA")],
@@ -254,6 +257,7 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
   })
   t("sin pacientes → pasa a lineal con alerta", r3.alerts.some((a) => a.includes("LINEAL")) && r3.items[0].laserLinear === r3.laser.fund)
   const r4 = computeRun({
+    tenant: "csl",
     branch: "RAFAEL VIDAL",
     sales: [sale({ amount: 700000 }), sale({ category: "MASAJES", amount: 1000, providerOriginal: "ISAURY (prestador)", provider: "ISAURY" })],
     collaborators: [], patients: [], patientsSource: "ninguna",
@@ -264,6 +268,7 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
   const isaury = r4.items.find((i) => i.name === "ISAURY")
   t("...pero su incentivo se calcula visible (200)", isaury?.serviceIncentive === 200 && isaury?.inRoster === false)
   t("base 250k no alcanza tramo → fondo 0 con alerta", computeRun({
+    tenant: "csl",
     branch: "RAFAEL VIDAL", sales: [sale({ amount: 250000 })],
     collaborators: [collab("ROSA")], patients: [], patientsSource: "ninguna", rules: RULES,
   }).laser.fund === 0)
@@ -277,10 +282,10 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
     patients: [{ collaborator: "ROSA", patients: 60 }],
     patientsSource: "manual",
   }
-  const rZF = computeRun({ ...base, rules: { ...RULES, laserSplitPatientsFraction: 0.5, zeroPatientsGetsFixed: true } })
+  const rZF = computeRun({ tenant: "csl", ...base, rules: { ...RULES, laserSplitPatientsFraction: 0.5, zeroPatientsGetsFixed: true } })
   t("0-pac SÍ recibe parte fija: personas entre las 3", rZF.items.find((i) => i.name === "DIANA")?.laserLinear === Math.round((20000 / 3) * 100) / 100)
   t("0-pac SÍ: ROSA se lleva TODA la parte por pacientes (20,000)", rZF.items.find((i) => i.name === "ROSA")?.laserPatients === 20000)
-  const rZN = computeRun({ ...base, rules: { ...RULES, laserSplitPatientsFraction: 0.5, zeroPatientsGetsFixed: false } })
+  const rZN = computeRun({ tenant: "csl", ...base, rules: { ...RULES, laserSplitPatientsFraction: 0.5, zeroPatientsGetsFixed: false } })
   t("0-pac NO recibe parte fija: DIANA/LUISA fuera del lineal", rZN.items.find((i) => i.name === "DIANA")?.laserLinear === 0)
   t("0-pac NO: parte personas solo para ROSA (20,000)", rZN.items.find((i) => i.name === "ROSA")?.laserLinear === 20000)
   // Cuadre: suma de todo el láser repartido = fondo ± residuo de redondeo del
@@ -293,6 +298,7 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
   // 3 sin pacientes (cuota fija fondo/8 = 1,810.01) + 5 con pacientes que se
   // reparten el resto (9,050.07) por participación. Valores esperados = Excel.
   const rEq = computeRun({
+    tenant: "csl",
     branch: "RAFAEL VIDAL",
     sales: [sale({ amount: 724005.5 })],
     collaborators: ["LUISA", "YANIBEL", "KARLA", "RIQUELMI", "ROSA", "DIANA", "MADELINE", "EMELI"].map((n) => collab(n)),
@@ -319,6 +325,7 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
 
   // Equitativo sin NINGÚN paciente: partes iguales con alerta.
   const rEq0 = computeRun({
+    tenant: "csl",
     branch: "RAFAEL VIDAL", sales: [sale({ amount: 700000 })],
     collaborators: [collab("ROSA"), collab("DIANA")], patients: [], patientsSource: "ninguna",
     rules: { ...RULES, laserDistributionMode: "equitativo" },
@@ -328,6 +335,7 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
 
   console.log("── Tarifa de producto POR COLABORADOR (50 P/P del cuadro)")
   const rProd = computeRun({
+    tenant: "csl",
     branch: "RAFAEL VIDAL",
     sales: [
       sale({ category: "PRODUCTO", amount: 500, quantity: 3, providerOriginal: "DAYHANA (prestador)", provider: "DAYHANA" }),
@@ -341,16 +349,17 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
 
   console.log("── Exclusiones de incentivo (rasuradoras, anestesia, prestador excluido)")
   const { isExcludedProvider, isNonIncentiveItem } = await import("../lib/commission/exclusions.ts")
-  t("RASURADORAS es ítem sin incentivo", isNonIncentiveItem("RASURADORAS") === true)
-  t("APLICACION DE ANESTESIA (servicio) sin incentivo", isNonIncentiveItem("APLICACION DE ANESTESIA ") === true)
-  t("ANESTESIA ENCAIN (producto) SÍ comisiona", isNonIncentiveItem("ANESTESIA ENCAIN ") === false)
-  t("ANESTESIA ZK-INA (producto) SÍ comisiona", isNonIncentiveItem("ANESTESIA ZK-INA") === false)
-  t("un producto normal SÍ comisiona", isNonIncentiveItem("CREMA HIDRATANTE") === false)
-  t("CARLOS ARIAS es prestador excluido", isExcludedProvider("CARLOS ARIAS") === true)
-  t("CARLOS ARIAS (con acento/minúsculas) excluido", isExcludedProvider("carlos arias") === true)
-  t("otra prestadora NO está excluida", isExcludedProvider("DAYHANA") === false)
+  t("RASURADORAS es ítem sin incentivo", isNonIncentiveItem("RASURADORAS", "csl") === true)
+  t("APLICACION DE ANESTESIA (servicio) sin incentivo", isNonIncentiveItem("APLICACION DE ANESTESIA ", "csl") === true)
+  t("ANESTESIA ENCAIN (producto) SÍ comisiona", isNonIncentiveItem("ANESTESIA ENCAIN ", "csl") === false)
+  t("ANESTESIA ZK-INA (producto) SÍ comisiona", isNonIncentiveItem("ANESTESIA ZK-INA", "csl") === false)
+  t("un producto normal SÍ comisiona", isNonIncentiveItem("CREMA HIDRATANTE", "csl") === false)
+  t("CARLOS ARIAS es prestador excluido", isExcludedProvider("CARLOS ARIAS", "csl") === true)
+  t("CARLOS ARIAS (con acento/minúsculas) excluido", isExcludedProvider("carlos arias", "csl") === true)
+  t("otra prestadora NO está excluida", isExcludedProvider("DAYHANA", "csl") === false)
 
   const rExcl = computeRun({
+    tenant: "csl",
     branch: "RAFAEL VIDAL",
     sales: [
       // Rasuradoras NO generan incentivo aunque las venda una prestadora comisionable.
@@ -377,13 +386,14 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
   t("allocateInt 197 en 2 → 99,98 (remanente a la 1ª)", JSON.stringify(allocateInt(197, 2)) === JSON.stringify([99, 98]))
 
   const { receptionSplitsForBranch, isReceptionSplitSale } = await import("../lib/commission/reception-splits.ts")
-  t("RAFAEL VIDAL reparte entre 3", receptionSplitsForBranch("RAFAEL VIDAL")[0]?.recipients.length === 3)
-  t("LOS JARDINES tiene 2 cuentas de reparto (ENCARGADA 1 y 2)", receptionSplitsForBranch("LOS JARDINES").length === 2)
-  t("ENCARGADA 1 (LJ) es cuenta de reparto", isReceptionSplitSale("LOS JARDINES", "LOS JARDINES  ENCARGADA 1 (Recepcionista)") === true)
-  t("ENCARGADA 2 (LJ) es cuenta de reparto", isReceptionSplitSale("LOS JARDINES", "LOS JARDINES  ENCARGADA 2 (Recepcionista)") === true)
-  t("operaciones (LJ) NO es cuenta de reparto", isReceptionSplitSale("LOS JARDINES", "cibao spa los jadines  operaciones (Recepcionista)") === false)
+  t("RAFAEL VIDAL reparte entre 3", receptionSplitsForBranch("RAFAEL VIDAL", "csl")[0]?.recipients.length === 3)
+  t("LOS JARDINES tiene 2 cuentas de reparto (ENCARGADA 1 y 2)", receptionSplitsForBranch("LOS JARDINES", "csl").length === 2)
+  t("ENCARGADA 1 (LJ) es cuenta de reparto", isReceptionSplitSale("LOS JARDINES", "LOS JARDINES  ENCARGADA 1 (Recepcionista)", "csl") === true)
+  t("ENCARGADA 2 (LJ) es cuenta de reparto", isReceptionSplitSale("LOS JARDINES", "LOS JARDINES  ENCARGADA 2 (Recepcionista)", "csl") === true)
+  t("operaciones (LJ) NO es cuenta de reparto", isReceptionSplitSale("LOS JARDINES", "cibao spa los jadines  operaciones (Recepcionista)", "csl") === false)
 
   const rRecep = computeRun({
+    tenant: "csl",
     branch: "RAFAEL VIDAL",
     sales: [
       // Recepción vendió 100 u de producto → se reparte 34/33/33 entre LUISA, YANIBEL, KARLA.
@@ -395,7 +405,7 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
     ],
     collaborators: [collab("LUISA"), collab("YANIBEL"), collab("KARLA")],
     patients: [], patientsSource: "ninguna", rules: RULES,
-    receptionSplits: receptionSplitsForBranch("RAFAEL VIDAL"),
+    receptionSplits: receptionSplitsForBranch("RAFAEL VIDAL", "csl"),
   })
   t("LUISA recibe 34 u (remanente)", rRecep.items.find((i) => i.name === "LUISA")?.productUnits === 34)
   t("YANIBEL recibe 33 u", rRecep.items.find((i) => i.name === "YANIBEL")?.productUnits === 33)

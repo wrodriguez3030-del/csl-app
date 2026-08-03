@@ -44,6 +44,14 @@ function requireBizId(): string {
   if (!id) throw new Error("Selecciona un negocio activo para esta operación")
   return id
 }
+/**
+ * Slug del negocio activo, para las reglas de negocio POR TENANT (exclusiones
+ * de incentivo, cuentas de recepción). NUNCA MEZCLAR TENANTS: si no hay
+ * contexto devuelve "" y esas reglas quedan vacías — jamás caen a las de CSL.
+ */
+function bizSlug(): string {
+  return getBusinessContext()?.businessSlug ?? ""
+}
 
 async function logAudit(
   user: ActionUser, entity: string, entityId: string | null, action: string,
@@ -667,11 +675,11 @@ function effectiveProvider(r: Row): { name: string; commissionable: boolean } {
   if (r.assigned_at && r.provider_normalized) {
     const name = String(r.provider_normalized)
     // Un prestador excluido nunca comisiona, ni siquiera si se le asignó manual.
-    return { name, commissionable: !isExcludedProvider(name) }
+    return { name, commissionable: !isExcludedProvider(name, bizSlug()) }
   }
   const info = classifyProvider(r.provider_original ?? r.provider_normalized)
   const name = String(r.provider_normalized || info.name)
-  return { name, commissionable: info.commissionable && !!info.name && !isExcludedProvider(name) }
+  return { name, commissionable: info.commissionable && !!info.name && !isExcludedProvider(name, bizSlug()) }
 }
 
 async function cardPercentage(): Promise<number> {
@@ -766,7 +774,7 @@ export async function getCommissionUnassignedServices(params: ActionParams) {
       if (String(r.category || "") === "DEPILACION_LASER") return false
       // Las ventas de PRODUCTO de cuentas de recepción designadas se reparten
       // automáticamente entre prestadoras: no son "sin prestador".
-      if (String(r.category || "") === "PRODUCTO" && isReceptionSplitSale(r.branch, r.provider_original)) return false
+      if (String(r.category || "") === "PRODUCTO" && isReceptionSplitSale(r.branch, r.provider_original, bizSlug())) return false
       return !effectiveProvider(r).commissionable
     })
     .map((r) => ({
@@ -798,9 +806,9 @@ export async function getCommissionReceptionSplit(params: ActionParams) {
   const seen = new Map<string, Grp>()
   for (const r of rows) {
     if (String(r.category || "") !== "PRODUCTO") continue
-    if (isNonIncentiveItem(r.service_name)) continue
+    if (isNonIncentiveItem(r.service_name, bizSlug())) continue
     const branch = String(r.branch || "")
-    const splits = receptionSplitsForBranch(branch)
+    const splits = receptionSplitsForBranch(branch, bizSlug())
     if (!splits.length) continue
     const name = normalizeName(classifyProvider(r.provider_original ?? r.provider_normalized).name)
     const split = splits.find((s) => name === s.account)
@@ -869,12 +877,12 @@ export async function assignCommissionSaleProvider(params: ActionParams, user: A
   // Σ unidades × tarifa del prestador. Los insumos sin incentivo (rasuradoras,
   // anestesia) y los prestadores excluidos NO generan delta: se asignan igual
   // pero no suman incentivo (misma regla que el motor de liquidación).
-  const providerExcluded = isExcludedProvider(provider)
+  const providerExcluded = isExcludedProvider(provider, bizSlug())
   const rules = await readRunRules()
   const rate = (await productRatesForProviders([provider], rules.productUnitAmount))[provider]
   const byPeriod = new Map<string, { month: number; year: number; branch: string; byCat: Record<string, number>; prodUnits: number }>()
   for (const r of rows) {
-    if (providerExcluded || isNonIncentiveItem(r.service_name)) continue
+    if (providerExcluded || isNonIncentiveItem(r.service_name, bizSlug())) continue
     const d = String(r.sale_date || "").slice(0, 10)
     const year = Number(d.slice(0, 4)), month = Number(d.slice(5, 7))
     if (!year || !month) continue
@@ -996,7 +1004,7 @@ export async function unassignCommissionSaleProvider(params: ActionParams, user:
   const groups = new Map<string, { provider: string; month: number; year: number; byCat: Record<string, number>; prodUnits: number }>()
   for (const r of rows) {
     const provider = String(r.provider_normalized || "")
-    if (!provider || isExcludedProvider(provider) || isNonIncentiveItem(r.service_name)) continue
+    if (!provider || isExcludedProvider(provider, bizSlug()) || isNonIncentiveItem(r.service_name, bizSlug())) continue
     const d = String(r.sale_date || "").slice(0, 10)
     const year = Number(d.slice(0, 4)), month = Number(d.slice(5, 7))
     if (!year || !month) continue
@@ -1696,8 +1704,8 @@ async function computeRunForPeriod(branch: string, month: number, year: number):
     readRunRules(),
   ])
   const { patients, source } = await readPatientsForRun(branch, month, year)
-  return computeRun({ branch, sales, collaborators, patients, patientsSource: source, rules,
-    receptionSplits: receptionSplitsForBranch(branch) })
+  return computeRun({ tenant: bizSlug(), branch, sales, collaborators, patients, patientsSource: source, rules,
+    receptionSplits: receptionSplitsForBranch(branch, bizSlug()) })
 }
 
 function mapRun(r: Row) {

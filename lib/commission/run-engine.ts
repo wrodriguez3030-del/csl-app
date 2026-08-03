@@ -229,6 +229,10 @@ export interface ReceptionSplit {
 }
 
 export interface ComputeRunInput {
+  /** Slug del negocio ("csl" | "depicenter"). OBLIGATORIO: las exclusiones de
+   *  incentivo son reglas de negocio por tenant y jamás deben heredarse entre
+   *  negocios. Un slug desconocido = sin exclusiones (nunca las de otro). */
+  tenant: string
   branch: string
   sales: RunSaleRow[]
   collaborators: RunCollaborator[]
@@ -240,7 +244,7 @@ export interface ComputeRunInput {
 }
 
 export function computeRun(input: ComputeRunInput): RunResult {
-  const { branch, rules } = input
+  const { branch, rules, tenant } = input
   // Compuerta de limpieza por sucursal: si la sucursal no aplica, la limpieza
   // es 0 para todos sus colaboradores (default: aplica).
   const cleaningApplies = rules.cleaningAppliesByBranch?.[branch] ?? true
@@ -294,12 +298,12 @@ export function computeRun(input: ComputeRunInput): RunResult {
   for (const s of sales) {
     // Insumos sin incentivo (rasuradoras, anestesia): se cobran al cliente pero
     // no comisionan. Se excluyen del incentivo (no de la facturación).
-    if (isNonIncentiveItem(s.serviceName)) continue
+    if (isNonIncentiveItem(s.serviceName, tenant)) continue
     const info = classifyProvider(s.providerOriginal ?? s.provider)
     if (!info.commissionable) continue
     const name = canonicalCollaborator(s.provider || info.name)
     // Prestador excluido (p. ej. administrador): nunca cobra incentivo.
-    if (!name || isExcludedProvider(name)) continue
+    if (!name || isExcludedProvider(name, tenant)) continue
     const it = itemFor(name)
     if (s.category === "PRODUCTO") {
       it.productUnits += Number(s.quantity) || 0
@@ -323,7 +327,7 @@ export function computeRun(input: ComputeRunInput): RunResult {
     const unitsBySplit = new Map<number, number>()
     for (const s of sales) {
       if (s.category !== "PRODUCTO") continue
-      if (isNonIncentiveItem(s.serviceName)) continue
+      if (isNonIncentiveItem(s.serviceName, tenant)) continue
       const info = classifyProvider(s.providerOriginal ?? s.provider)
       if (info.commissionable) continue // ya tiene prestador que comisiona
       const origN = normalizeName(info.name)
