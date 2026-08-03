@@ -399,3 +399,40 @@ input:focus, textarea:focus,
 [data-csl-sidebar] .bg-white {
   color: #063B4A !important;
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Accesibilidad e interacción base
+   ────────────────────────────────────────────────────────────────────────── */
+
+@layer base {
+  /* Tailwind v4 eliminó el `button { cursor: pointer }` que traía el preflight
+     de v3, así que TODO botón quedó con la flecha por defecto. Lo restauramos. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  label[for],
+  summary,
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
+  /* Reduce el retardo de 300 ms al tocar en móvil */
+  button, a, [role="button"] {
+    touch-action: manipulation;
+  }
+}
+
+/* Respeta la preferencia del sistema de movimiento reducido (WCAG 2.3.3). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
