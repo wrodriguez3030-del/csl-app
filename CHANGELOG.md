@@ -18,6 +18,32 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.86.6] — 2026-08-03
+
+### Added
+- `docs/2026-08-03-depicenter-roster-incentivos.sql` — crea el roster de
+  Incentivos de Depicenter (SELENIA, NOELIA, CLARIBEL, EVELINA, WANDA en la
+  sucursal `LA VEGA`) replicando la configuración vigente de Cibao Spa Laser:
+  `mixto`, sin porcentaje fijo, lineal y pacientes activados, aporte de limpieza
+  RD$400, evaluación 100 %, servicio `DEPILACION_LASER`. Idempotente y
+  reversible. Depicenter tenía **0 colaboradores**, así que los incentivos no
+  podían calcularse aunque los datos estuvieran bien.
+
+### Changed
+- Backfill aplicado en producción: las 277 ventas y los 5 cálculos de Depicenter
+  pasan de `DEPICENTER SKIN LASER` a `LA VEGA` (ver 0.86.5). CSL sin cambios
+  (16 505 filas verificadas).
+
+> **Diferencia deliberada con CSL:** el `card_percentage` de Depicenter queda en
+> **27 %** frente al **31 %** de CSL. Es el único valor donde los dos negocios
+> difieren de verdad y cambia lo que cobra el personal (netea las ventas con
+> tarjeta antes de la escala láser), así que no se iguala sin confirmarlo.
+> La regla legacy `laser_split` que CSL tiene y Depicenter no es irrelevante:
+> solo se lee como respaldo cuando faltan `laser_weight_personas` /
+> `laser_weight_pacientes`, y Depicenter ya tiene ambas al 50 %.
+
+---
+
 ## [0.86.5] — 2026-08-03
 
 ### Fixed
