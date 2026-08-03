@@ -18,6 +18,35 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.86.4] — 2026-08-03
+
+### Fixed
+- **Depicenter no podía importar el Excel de reservas en Incentivos de Ventas.**
+  El parser solo valida 5 encabezados obligatorios (`fecha de realizacion`,
+  `local`, `servicio`, `prestador`, `estado`) pero leía las **otras 17 columnas
+  a ciegas**: `col()` devuelve `0` cuando el encabezado no existe y ExcelJS
+  lanza `0 is out of bounds. Excel supports columns from 1 to 16384` al pedir la
+  columna 0. Ese error escapaba como toast ilegible, así que parecía que la
+  aplicación «no permitía cargar» el archivo.
+  La causa de fondo es que **AgendaPro no exporta el mismo juego de columnas en
+  todas las cuentas**: CSL trae 29 columnas y Depicenter 26 (sin `Asignado a` ni
+  `Tipo de facturación`). No era un fallo de Depicenter — cualquier export con
+  columnas distintas rompía el importador.
+  Se añade `cellOf(row, idx)` en `lib/commission/reservations-parser.ts`, que
+  devuelve vacío cuando la columna no viene, y se usa en las 21 lecturas de
+  celda. Verificado con el archivo real de Depicenter: 825 reservas · 632
+  Asiste · julio 2026.
+
+### Added
+- `scripts/diagnose-reservas-xlsx.mjs` — diagnostica por qué el importador
+  rechaza un `.xlsx` de reservas: hojas, fila de encabezados, cuáles de los
+  obligatorios faltan y el resultado del parser real.
+  Uso: `node --import tsx scripts/diagnose-reservas-xlsx.mjs <ruta.xlsx>`.
+- Prueba de regresión en `scripts/test-commission-import.mjs`: export de 26
+  columnas sin `Asignado a` ni `Tipo de facturación` (143 pruebas en verde).
+
+---
+
 ## [0.86.3] — 2026-08-02
 
 ### Fixed

@@ -1,7 +1,11 @@
 /**
- * Parser de la hoja "Reservas" del export real (29 columnas) — PURO: recibe un
- * Workbook de ExcelJS ya cargado (cliente o script) y devuelve filas
- * normalizadas + resúmenes para preview/conciliación.
+ * Parser de la hoja "Reservas" del export real — PURO: recibe un Workbook de
+ * ExcelJS ya cargado (cliente o script) y devuelve filas normalizadas +
+ * resúmenes para preview/conciliación.
+ *
+ * El juego de columnas VARÍA entre cuentas de AgendaPro (CSL exporta 29,
+ * Depicenter 26): solo los 5 encabezados de REQUIRED_HEADERS son obligatorios;
+ * el resto se lee con `cellOf`, que devuelve vacío si la columna no viene.
  *
  * Reglas (spec Importador §10-16):
  *  - El período de una atención sale de "Fecha de realización" (NO creación).
@@ -80,10 +84,13 @@ export interface ReservasParseResult {
 const REQUIRED_HEADERS = ["fecha de realizacion", "local", "servicio", "prestador", "estado"]
 
 type CellVal = unknown
+interface RowLike {
+  getCell: (c: number) => { value: CellVal }
+}
 interface WorksheetLike {
   rowCount: number
   columnCount: number
-  getRow: (r: number) => { getCell: (c: number) => { value: CellVal } }
+  getRow: (r: number) => RowLike
 }
 interface WorkbookLike {
   getWorksheet: (name: string) => WorksheetLike | undefined
@@ -101,6 +108,18 @@ const flat = (v: CellVal): unknown => {
   return v
 }
 const str = (v: CellVal): string => String(flat(v) ?? "").trim()
+
+/**
+ * Lee una celda por índice de columna, tolerando que la columna NO exista.
+ *
+ * `col()` devuelve 0 cuando el encabezado no está en el archivo, y solo se
+ * validan los 5 encabezados OBLIGATORIOS: los opcionales pueden faltar
+ * legítimamente porque AgendaPro no exporta el mismo juego de columnas en todas
+ * las cuentas (CSL trae 29 columnas; Depicenter 26, sin "Asignado a" ni "Tipo de
+ * facturación"). ExcelJS lanza "0 is out of bounds" si se le pide la columna 0,
+ * así que ese caso se resuelve aquí: columna ausente → valor vacío.
+ */
+const cellOf = (row: RowLike, idx: number): CellVal => (idx > 0 ? row.getCell(idx).value : undefined)
 
 export function parseReservasWorkbook(wb: WorkbookLike): ReservasParseResult {
   const ws = wb.getWorksheet("Reservas") || wb.worksheets[0]
@@ -157,43 +176,43 @@ export function parseReservasWorkbook(wb: WorkbookLike): ReservasParseResult {
 
   for (let r = 2; r <= ws.rowCount; r++) {
     const row = ws.getRow(r)
-    const fechaRaw = str(row.getCell(C.fechaReal).value)
-    const estadoRaw = str(row.getCell(C.estado).value)
+    const fechaRaw = str(cellOf(row, C.fechaReal))
+    const estadoRaw = str(cellOf(row, C.estado))
     if (!fechaRaw && !estadoRaw) continue
 
     const appointmentDate = parseDateISO(fechaRaw)
     const timeMatch = fechaRaw.match(/(\d{1,2}:\d{2})/)
-    const providerOriginal = str(row.getCell(C.prestador).value)
+    const providerOriginal = str(cellOf(row, C.prestador))
     const provider = normalizeProviderName(providerOriginal)
-    const branchOriginal = str(row.getCell(C.local).value)
+    const branchOriginal = str(cellOf(row, C.local))
     const attendanceStatus = normalizeAttendance(estadoRaw)
 
     const base: Omit<ReservaRow, "rowHash"> = {
       appointmentDate,
       appointmentTime: timeMatch ? timeMatch[1] : "",
-      createdAt: parseDateISO(str(row.getCell(C.fechaCrea).value)),
+      createdAt: parseDateISO(str(cellOf(row, C.fechaCrea))),
       branchOriginal,
       branch: normalizeBranch(branchOriginal),
-      externalClientId: str(row.getCell(C.nCliente).value),
-      firstName: str(row.getCell(C.nombre).value),
-      lastName: str(row.getCell(C.apellido).value),
-      email: str(row.getCell(C.email).value),
-      phone: str(row.getCell(C.telefono).value),
-      document: str(row.getCell(C.cedula).value),
-      serviceName: str(row.getCell(C.servicio).value),
-      listPrice: Number(flat(row.getCell(C.precioLista).value)) || 0,
-      realPrice: Number(flat(row.getCell(C.precioReal).value)) || 0,
-      sessionNumber: str(row.getCell(C.nSesion).value),
-      totalSessions: str(row.getCell(C.sesionesTot).value),
+      externalClientId: str(cellOf(row, C.nCliente)),
+      firstName: str(cellOf(row, C.nombre)),
+      lastName: str(cellOf(row, C.apellido)),
+      email: str(cellOf(row, C.email)),
+      phone: str(cellOf(row, C.telefono)),
+      document: str(cellOf(row, C.cedula)),
+      serviceName: str(cellOf(row, C.servicio)),
+      listPrice: Number(flat(cellOf(row, C.precioLista))) || 0,
+      realPrice: Number(flat(cellOf(row, C.precioReal))) || 0,
+      sessionNumber: str(cellOf(row, C.nSesion)),
+      totalSessions: str(cellOf(row, C.sesionesTot)),
       providerOriginal,
       provider,
       attendanceStatus,
-      paymentStatus: str(row.getCell(C.estadoPago).value),
-      paymentDate: parseDateISO(str(row.getCell(C.fechaPago).value)),
-      externalPaymentId: str(row.getCell(C.idPago).value),
-      source: str(row.getCell(C.origen).value),
-      assignedTo: str(row.getCell(C.asignadoA).value),
-      billingType: str(row.getCell(C.tipoFact).value),
+      paymentStatus: str(cellOf(row, C.estadoPago)),
+      paymentDate: parseDateISO(str(cellOf(row, C.fechaPago))),
+      externalPaymentId: str(cellOf(row, C.idPago)),
+      source: str(cellOf(row, C.origen)),
+      assignedTo: str(cellOf(row, C.asignadoA)),
+      billingType: str(cellOf(row, C.tipoFact)),
     }
 
     // row_hash por campos estables (§23) + hora + desambiguación de ocurrencias.

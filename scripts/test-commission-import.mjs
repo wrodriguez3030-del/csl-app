@@ -397,6 +397,54 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
   t("LUISA incentivo 34 × 100 = 3,400", rRecep.items.find((i) => i.name === "LUISA")?.productIncentive === 3400)
 }
 
+// ── Reservas con columnas OPCIONALES ausentes (export de otro tenant) ──
+// El export de AgendaPro no trae el mismo juego de columnas en todas las
+// cuentas: el de CSL trae 29 y el de Depicenter 26 (sin "Asignado a" ni
+// "Tipo de facturación"). El parser debe leer lo que haya y dejar el resto
+// vacío, nunca reventar.
+console.log("── Reservas: export con menos columnas (multi-tenant)")
+{
+  const HEADERS_26 = [
+    "Fecha de realización", "Fecha de creación", "Responsable creación",
+    "Fecha última modificación", "Responsable última modificación", "Local",
+    "N° de Cliente", "Nombre", "Apellido", "E-mail", "Teléfono", "cédula",
+    "Servicio", "Precio lista", "Precio real", "Nº de sesión", "Sesiones Totales",
+    "Prestador", "Estado", "Estado de pago", "Fecha pago", "ID pago",
+    "Notas compartidas con cliente", "Comentario interno", "Preferencia Cliente", "Origen",
+  ]
+  const wb = new ExcelJS.Workbook()
+  const ws = wb.addWorksheet("Reservas")
+  ws.addRow(HEADERS_26)
+  ws.addRow([
+    "15/07/2026 10:30", "01/07/2026 09:00", "RECEPCION", "10/07/2026 08:00", "RECEPCION",
+    "Depicenter Santiago", "9001", "ANA", "PEREZ", "a@b.do", "8095551234", "001-0000000-1",
+    "Depilación Láser Axila", 1500, 1200, "2", "6", "SAHOMY", "Asiste", "Pagado",
+    "15/07/2026", "PAY-1", "", "", "", "Web",
+  ])
+  ws.addRow([
+    "16/07/2026 11:00", "02/07/2026 09:00", "RECEPCION", "11/07/2026 08:00", "RECEPCION",
+    "Depicenter Santiago", "9002", "LUIS", "GOMEZ", "c@d.do", "8095554321", "001-0000000-2",
+    "Limpieza Facial", 2000, 2000, "1", "1", "YANIBEL", "No Asiste", "Pendiente",
+    "", "", "", "", "", "Presencial",
+  ])
+
+  let p, threw = null
+  try { p = parseReservasWorkbook(wb) } catch (e) { threw = e }
+  t("no revienta cuando faltan columnas opcionales", threw === null,
+    threw ? `→ ${threw.message}` : "")
+  if (!threw) {
+    t("sin errores de validación", p.errors.length === 0, JSON.stringify(p.errors))
+    t("lee las 2 filas", p.totalRows === 2, `(${p.totalRows})`)
+    t("Asiste 1 / No Asiste 1", p.byStatus.ASISTE === 1 && p.byStatus.NO_ASISTE === 1)
+    t("prestador leído", Boolean(p.rows[0]?.provider === "SAHOMY"), `(${p.rows[0]?.provider})`)
+    t("fecha de realización leída", p.rows[0]?.appointmentDate === "2026-07-15", `(${p.rows[0]?.appointmentDate})`)
+    t("columna ausente 'Asignado a' → vacío", p.rows[0]?.assignedTo === "")
+    t("columna ausente 'Tipo de facturación' → vacío", p.rows[0]?.billingType === "")
+    t("columna presente 'Origen' sí se lee", p.rows[0]?.source === "Web", `(${p.rows[0]?.source})`)
+    t("precio real leído", p.rows[0]?.realPrice === 1200, `(${p.rows[0]?.realPrice})`)
+  }
+}
+
 // ── Archivos reales (§33/§34) — solo si están disponibles ──
 const VENTAS = "C:/Users/ADMIN/Downloads/reporte_de_ventas_3552_2026-07-10T15_38_41+00_00.xlsx"
 const RESERVAS = "C:/Users/ADMIN/Downloads/reservas_3552_1783698071.xlsx"
