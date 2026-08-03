@@ -18,6 +18,36 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.86.9] — 2026-08-03
+
+### Changed
+- **EVELINA y WANDA quedan fuera del reparto del fondo láser en Depicenter**
+  (`services = {}`), decidido por el usuario. En julio 2026 ninguna de las dos
+  tiene una sola cita de depilación láser: EVELINA vende 29/29 en PRODUCTO y sus
+  10 reservas son faciales (limpieza profunda, peeling, casmara); WANDA suma 11
+  producto + 3 faciales y sus 3 reservas son limpieza facial. Las operadoras de
+  láser son SELENIA, NOELIA y CLARIBEL.
+  Es el mismo patrón que CSL ya aplica a 6 de sus 26 colaboradoras (BENITA,
+  JOHELY, ISAURY, DAYHANA, EIDYLEE, LUISA): siguen cobrando producto y
+  servicios, solo no entran al fondo láser. Al replicar la configuración de CSL
+  en 0.86.6 se les puso `{DEPILACION_LASER}` a las 5 por igual.
+  SQL: `docs/2026-08-03-depicenter-excluir-laser-evelina-wanda.sql` (reversible).
+- **Julio 2026 recalculado y guardado.** El fondo (RD$32 086,72) se redistribuye
+  íntegro entre las tres operadoras; el neto total del período no cambia
+  (RD$42 493,72). El motor ahora emite dos alertas explícitas —«Pacientes
+  cargados para X pero no aplica al incentivo láser»— en vez de repartirles en
+  silencio.
+
+| Prestadora | Antes | Ahora | Δ |
+|---|---:|---:|---:|
+| SELENIA | 13 023,28 | 13 169,73 | +146,45 |
+| NOELIA | 12 755,57 | 12 887,05 | +131,48 |
+| CLARIBEL | 12 001,71 | 12 129,94 | +128,23 |
+| EVELINA | 2 753,85 | 2 500,00 | −253,85 |
+| WANDA | 1 959,31 | 1 807,00 | −152,31 |
+
+---
+
 ## [0.86.8] — 2026-08-03
 
 ### Added
