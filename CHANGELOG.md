@@ -18,6 +18,71 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.88.0] — 2026-08-15
+
+### Added
+- **Módulo «Inventario de Productos»** (menú nuevo con 5 pantallas y su permiso
+  por pantalla). Es de productos de VENTA — no se mezcla con los materiales de
+  uso interno de Requisición de Materiales.
+  - **Productos**: catálogo con la existencia de cada sucursal en columnas,
+    buscador por nombre o código de barra, filtro por categoría y por estado.
+    Búsqueda y filtros resueltos en el servidor y paginados de 1000 en 1000.
+  - **Importar Excel**: el archivo se lee EN EL NAVEGADOR (nunca se sube).
+    Detecta las columnas `Stock <sucursal>` por título — no por posición — y
+    propone el mapeo a las sucursales del negocio para que el usuario lo
+    confirme o lo corrija antes de escribir nada. Envía en lotes de 200 filas.
+    Lee las hojas `Productos` e `Inactivos`.
+  - **Reporte de existencias**: PDF con el formato del modelo impreso
+    (encabezado con la marca del negocio, 3 KPIs, tabla de mayor a menor y la
+    nota «Stock bajo»). Selección múltiple de sucursales: una página por
+    sucursal más una página de consolidado. Umbral de alerta ajustable (2 por
+    defecto).
+  - **Conteo físico** (captura manual): abre con la existencia del sistema
+    CONGELADA, diferencia en vivo, autoguardado de borrador y aprobación que
+    ajusta el stock. Sin escáner, sin cola offline.
+  - **Histórico de conteos**: detalle renglón por renglón, filtro «solo
+    diferencias», aprobar/rechazar y acta en PDF.
+- Cinco tablas nuevas en db-cls con RLS por tenant
+  (`202608150001_productos_inventario.sql`): `csl_productos`,
+  `csl_producto_stock`, `csl_producto_importaciones`, `csl_conteos_productos`,
+  `csl_conteos_productos_items`.
+- Permiso granular `productos.aprobar_conteo` (admin y superadmin lo tienen
+  implícito): sin él se puede contar y enviar, pero no aprobar.
+- `scripts/test-productos-inventario.mjs` (32 pruebas de lógica pura, incluida
+  la reproducción exacta del PDF modelo: 19 productos · 204 unidades · 6 en
+  alerta) y `scripts/test-productos-e2e.mjs` (17 comprobaciones contra db-cls
+  con los handlers reales, auto-limpiante, verificado en CSL y Depicenter).
+- `scripts/_verify-real-productos.mjs`: ensayo en seco de un archivo de
+  productos antes de importarlo.
+
+### Changed
+- **El archivo de productos manda SIEMPRE sobre el stock.** Cada importación
+  reemplaza la existencia de las sucursales que trae el archivo —incluso si esa
+  existencia venía de un conteo físico aprobado— y todo producto que ya no
+  aparezca en el archivo queda en **cero**, para que no queden existencias
+  fantasma. Cada importación se estampa con su `import_id` y queda en bitácora
+  (archivo, usuario, fecha, filas, sucursales).
+- `lib/normalize-pulse.ts`: nuevo `allKnownSucursales()`.
+
+### Fixed
+- **Dos productos distintos que comparten código de barra ya no se funden en
+  uno.** En el archivo real, `8470001682673` es AQUAFOAM y también ENDOCARE: con
+  la clave por SKU solo, uno habría desaparecido del reporte y su existencia se
+  habría sumado al otro. La identidad del producto es ahora código + nombre.
+- El parseo de cantidades ya no convierte texto basura en `0` silencioso ni
+  confunde `1,684` (mil seiscientos ochenta y cuatro) con `1.684`.
+- Una columna de existencia con un nombre de sucursal desconocido ya no crea una
+  sucursal fantasma: se reporta como «sin mapear» y se ignora.
+
+### Security
+- Toda lectura y escritura del módulo se scopea por `business_id` del
+  BusinessContext. Una fila cuya sucursal no pertenezca al negocio activo se
+  DESCARTA y se reporta — nunca se estampa con el negocio activo.
+- Las filas del archivo se validan con zod antes de tocar la base; la búsqueda
+  escapa los comodines de PostgREST.
+
+---
+
 ## [0.87.1] — 2026-08-03
 
 ### Added
