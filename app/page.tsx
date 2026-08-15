@@ -25,6 +25,11 @@ import { ReqMatMaterialesPage } from "@/components/req-mat-materiales-page"
 import { ReqMatDashboardPage } from "@/components/req-mat-dashboard-page"
 import { ReqMatInventarioPage } from "@/components/req-mat-inventario-page"
 import { ReqMatInventarioHistoricoPage } from "@/components/req-mat-inventario-historico-page"
+import { ProdCatalogoPage } from "@/components/productos/prod-catalogo-page"
+import { ProdImportarPage } from "@/components/productos/prod-importar-page"
+import { ProdReportePage } from "@/components/productos/prod-reporte-page"
+import { ProdConteoPage } from "@/components/productos/prod-conteo-page"
+import { ProdConteoHistoricoPage } from "@/components/productos/prod-conteo-historico-page"
 import { ComprasDashboardPage } from "@/components/compras-dashboard-page"
 import { ComprasFacturasPage } from "@/components/compras-facturas-page"
 import { ComprasPagosPage } from "@/components/compras-pagos-page"
@@ -358,6 +363,16 @@ export default function HomePage() {
         return <ReqMatInventarioHistoricoPage />
       case "req-mat-dashboard":
         return <ReqMatDashboardPage />
+      case "prod-catalogo":
+        return <ProdCatalogoPage />
+      case "prod-importar":
+        return <ProdImportarPage />
+      case "prod-reporte":
+        return <ProdReportePage />
+      case "prod-conteo":
+        return <ProdConteoPage />
+      case "prod-conteo-historico":
+        return <ProdConteoHistoricoPage />
       case "compras-dashboard":
         return <ComprasDashboardPage />
       case "compras-facturas":

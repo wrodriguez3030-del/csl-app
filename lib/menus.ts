@@ -40,6 +40,14 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "req-mat-inventario", label: "Inventario de materiales", section: "Requisición de materiales" },
   { id: "req-mat-inventario-historico", label: "Histórico de inventarios", section: "Requisición de materiales" },
   { id: "req-mat-dashboard", label: "Dashboard materiales", section: "Requisición de materiales" },
+  // Inventario de Productos: catálogo importado, existencias por sucursal,
+  // reporte impreso y conteo físico. Es de productos de VENTA — no se mezcla
+  // con los materiales de uso interno de la sección de arriba.
+  { id: "prod-catalogo", label: "Productos", section: "Inventario de Productos" },
+  { id: "prod-importar", label: "Importar Excel", section: "Inventario de Productos" },
+  { id: "prod-reporte", label: "Reporte de existencias", section: "Inventario de Productos" },
+  { id: "prod-conteo", label: "Conteo físico", section: "Inventario de Productos" },
+  { id: "prod-conteo-historico", label: "Histórico de conteos", section: "Inventario de Productos" },
   // Compras (facturas de proveedores, pagos/gastos, gastos menores, recurrentes)
   { id: "compras-dashboard", label: "Dashboard compras", section: "Compras" },
   { id: "compras-facturas", label: "Facturas de proveedores", section: "Compras" },

@@ -431,6 +431,12 @@ export type TabId =
   | "req-mat-dashboard"
   | "req-mat-inventario"
   | "req-mat-inventario-historico"
+  // Inventario de Productos (catálogo importado, existencias y conteo físico)
+  | "prod-catalogo"
+  | "prod-importar"
+  | "prod-reporte"
+  | "prod-conteo"
+  | "prod-conteo-historico"
   // Módulo Compras
   | "compras-dashboard"
   | "compras-facturas"

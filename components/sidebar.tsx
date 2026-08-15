@@ -36,7 +36,9 @@ import {
   LineChart,
   Menu,
   Package,
+  PackageSearch,
   PiggyBank,
+  Printer,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -108,6 +110,16 @@ const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
       { id: "req-mat-inventario", label: "Inventario de materiales", icon: <Boxes className="h-4 w-4" /> },
       { id: "req-mat-inventario-historico", label: "Histórico de inventarios", icon: <History className="h-4 w-4" /> },
       { id: "req-mat-dashboard", label: "Dashboard materiales", icon: <LayoutDashboard className="h-4 w-4" /> },
+    ],
+  },
+  {
+    label: "Inventario de Productos",
+    items: [
+      { id: "prod-catalogo", label: "Productos", icon: <PackageSearch className="h-4 w-4" /> },
+      { id: "prod-importar", label: "Importar Excel", icon: <FileText className="h-4 w-4" /> },
+      { id: "prod-reporte", label: "Reporte de existencias", icon: <Printer className="h-4 w-4" /> },
+      { id: "prod-conteo", label: "Conteo físico", icon: <ClipboardCheck className="h-4 w-4" /> },
+      { id: "prod-conteo-historico", label: "Histórico de conteos", icon: <History className="h-4 w-4" /> },
     ],
   },
   {

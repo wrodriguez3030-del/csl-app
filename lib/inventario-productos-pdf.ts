@@ -303,6 +303,101 @@ export function buildProductosPdfHtml(opts: ProductosPdfOpts): string {
   <style>${styles(brand)}</style></head><body>${paginas}${cons}</body></html>`
 }
 
+// ── Acta del conteo físico ───────────────────────────────────────────────────
+
+export interface ActaItem {
+  nombre: string
+  sku?: string | null
+  cantidadSistema: number
+  cantidadContada: number
+  observacion?: string | null
+}
+
+export interface ActaConteoOpts {
+  sucursal: string
+  fecha: string
+  estado: string
+  responsable?: string | null
+  notas?: string | null
+  aprobadoPor?: string | null
+  items: ActaItem[]
+  business: Business
+  origin: string
+  generadoPor?: string
+  /** true = imprime solo los renglones con diferencia. */
+  soloDiferencias: boolean
+}
+
+export function buildActaConteoHtml(opts: ActaConteoOpts): string {
+  const { business, origin, sucursal, fecha, estado, responsable, notas, aprobadoPor, generadoPor } = opts
+  const brand = business.primaryColor || "#0891b2"
+  const generado = new Date().toLocaleString("es-DO", { dateStyle: "long", timeStyle: "short" })
+
+  const items = opts.soloDiferencias
+    ? opts.items.filter((it) => it.cantidadContada - it.cantidadSistema !== 0)
+    : opts.items
+
+  let sobrantes = 0
+  let faltantes = 0
+  for (const it of items) {
+    const d = it.cantidadContada - it.cantidadSistema
+    if (d > 0) sobrantes += 1
+    if (d < 0) faltantes += 1
+  }
+
+  const filas = items
+    .map((it, i) => {
+      const d = it.cantidadContada - it.cantidadSistema
+      const cls = d === 0 ? "" : d > 0 ? "over" : "under"
+      return `<tr>
+        <td class="c">${i + 1}</td>
+        <td>${esc(it.nombre)}</td>
+        <td class="num">${fmtQty(it.cantidadSistema)}</td>
+        <td class="num">${fmtQty(it.cantidadContada)}</td>
+        <td class="num ${cls}">${d > 0 ? "+" : ""}${fmtQty(d)}</td>
+        <td>${esc(it.observacion || "")}</td>
+      </tr>`
+    })
+    .join("")
+
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8">
+  <title>CONTEO_${esc(sucursal.replace(/[^A-Za-z0-9]+/g, "_"))}_${esc(fecha)}</title>
+  <style>${styles(brand)}
+    td.over { color: #b45309; font-weight: 700; }
+    td.under { color: #be123c; font-weight: 700; }
+  </style></head><body>
+    <div class="page">
+      ${headerHtml(business, origin, `Conteo físico ${sucursal}`, `Fecha: ${fecha} · Estado: ${estado}${responsable ? ` · Responsable: ${responsable}` : ""}`)}
+      ${kpisHtml({ productos: items.length, unidades: items.reduce((s, it) => s + it.cantidadContada, 0), alerta: sobrantes + faltantes })}
+      ${notas ? `<div class="sub" style="margin-bottom:8px">Nota: ${esc(notas)}</div>` : ""}
+      <table>
+        <thead><tr>
+          <th class="c" style="width:34px">#</th>
+          <th>Producto</th>
+          <th class="num" style="width:80px">Sistema</th>
+          <th class="num" style="width:80px">Contado</th>
+          <th class="num" style="width:80px">Diferencia</th>
+          <th style="width:160px">Observación</th>
+        </tr></thead>
+        <tbody>${filas || `<tr><td colspan="6" class="empty">Sin renglones que mostrar</td></tr>`}</tbody>
+      </table>
+      <div class="footer">
+        <span>${esc(sobrantes)} sobrantes · ${esc(faltantes)} faltantes${aprobadoPor ? ` · Aprobado por: ${esc(aprobadoPor)}` : ""}</span>
+        <span>Generado: ${esc(generado)}${generadoPor ? ` · Por: ${esc(generadoPor)}` : ""}</span>
+      </div>
+    </div>
+  </body></html>`
+}
+
+export function printActaConteo(opts: ActaConteoOpts): void {
+  const html = buildActaConteoHtml(opts)
+  const popup = window.open("", "_blank", "width=1100,height=900")
+  if (!popup) return
+  popup.document.write(html)
+  popup.document.close()
+  popup.onload = () => setTimeout(() => popup.print(), 400)
+}
+
 export function printProductosPdf(opts: ProductosPdfOpts): void {
   const html = buildProductosPdfHtml(opts)
   const popup = window.open("", "_blank", "width=1100,height=900")
