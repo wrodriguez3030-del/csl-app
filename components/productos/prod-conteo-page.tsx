@@ -19,8 +19,10 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { KpiCard } from "@/components/kpi-card"
-import { Search, Save, Send, CheckCircle2, Loader2, Check, ClipboardCheck, Scale, TrendingUp, TrendingDown } from "lucide-react"
+import { Search, Save, Send, CheckCircle2, Loader2, Check, ClipboardCheck, Scale, TrendingUp, TrendingDown, ScanLine, TriangleAlert } from "lucide-react"
 import { fmtQty, diffConteo, CONTEO_ESTADO_LABEL, type ConteoEstado, type ConteoConItems } from "@/lib/productos-client"
+import { matchProductByCode, normalizeBarcode, isRepeatScan } from "@/lib/productos-scan"
+import { BarcodeScanner, useBarcodeWedge, beep } from "@/components/productos/barcode-scanner"
 
 interface ProductoLinea {
   id: string
@@ -52,8 +54,14 @@ export function ProdConteoPage() {
   const [saving, setSaving] = useState(false)
   const [autosave, setAutosave] = useState<"idle" | "saving" | "saved">("idle")
 
+  const [scannerOn, setScannerOn] = useState(false)
+  const [ultimo, setUltimo] = useState<{ id: string; nombre: string; cantidad: number } | null>(null)
+  const [desconocidos, setDesconocidos] = useState<Record<string, number>>({})
+
   const dirty = useRef(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const ultimaLectura = useRef<{ code: string; at: number } | null>(null)
+  const productosRef = useRef<ProductoLinea[]>([])
 
   useEffect(() => {
     const load = async () => {
@@ -122,6 +130,46 @@ export function ProdConteoPage() {
   }, [apiUrl, sucursal, fecha, userName, showToast])
 
   useEffect(() => { void abrir() }, [abrir])
+
+  // El handler del escáner no debe recrearse en cada tecleo: lee el catálogo
+  // por referencia para que la pistola siga funcionando sin re-suscribirse.
+  useEffect(() => { productosRef.current = productos }, [productos])
+
+  // ── Lectura de código de barra (cámara o pistola) ──────────────────────────
+  const onScan = useCallback((raw: string) => {
+    const code = normalizeBarcode(raw)
+    if (!code) return
+    const ahora = Date.now()
+    // La cámara devuelve el mismo código muchas veces por segundo mientras el
+    // envase siga delante del lente: sin esta guardia sumaría decenas de unidades.
+    if (isRepeatScan(code, ultimaLectura.current, ahora)) return
+    ultimaLectura.current = { code, at: ahora }
+
+    if (estado === "aprobado") {
+      showToast("Este conteo ya está aprobado: no admite más lecturas", "error")
+      return
+    }
+
+    const prod = matchProductByCode(code, productosRef.current)
+    if (!prod) {
+      beep(false)
+      setDesconocidos((prev) => ({ ...prev, [code]: (prev[code] || 0) + 1 }))
+      showToast(`Código ${code} no está en el catálogo`, "error")
+      return
+    }
+
+    dirty.current = true
+    setContado((prev) => {
+      const actual = Number(prev[prod.id]) || 0
+      const siguiente = actual + 1
+      setUltimo({ id: prod.id, nombre: prod.nombre, cantidad: siguiente })
+      return { ...prev, [prod.id]: String(siguiente) }
+    })
+    beep(true)
+  }, [estado, showToast])
+
+  // La pistola lectora escucha siempre, sin abrir la cámara ni hacer clic.
+  useBarcodeWedge(onScan, Boolean(sucursal) && estado !== "aprobado")
 
   // ── Estado derivado ────────────────────────────────────────────────────────
   const visibles = useMemo(() => {
@@ -293,6 +341,14 @@ export function ProdConteoPage() {
               </label>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant={scannerOn ? "default" : "outline"}
+                className="h-10"
+                onClick={() => setScannerOn((v) => !v)}
+                disabled={bloqueado || !sucursal}
+              >
+                <ScanLine className="mr-1.5 h-4 w-4" />{scannerOn ? "Cerrar escáner" : "Escanear"}
+              </Button>
               <Button variant="outline" className="h-10" onClick={() => void guardar("borrador")} disabled={saving || bloqueado || !sucursal}>
                 {saving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}Guardar borrador
               </Button>
@@ -306,6 +362,41 @@ export function ProdConteoPage() {
           </div>
         </CardContent>
       </Card>
+
+      {scannerOn && sucursal && !bloqueado && (
+        <BarcodeScanner onCode={onScan} onClose={() => setScannerOn(false)} />
+      )}
+
+      {ultimo && (
+        <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+          <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-bold text-emerald-900">{ultimo.nombre}</div>
+            <div className="text-xs text-emerald-700">Última lectura · llevas {fmtQty(ultimo.cantidad)} contadas</div>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => setUltimo(null)}>Ocultar</Button>
+        </div>
+      )}
+
+      {Object.keys(desconocidos).length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm font-bold text-amber-900">
+            <TriangleAlert className="h-4 w-4" /> Códigos leídos que no están en el catálogo
+          </div>
+          <p className="mt-1 text-xs text-amber-800">
+            Estos productos existen en el estante pero no en el archivo importado. Anótalos:
+            el conteo no puede ajustarlos.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {Object.entries(desconocidos).map(([code, veces]) => (
+              <Badge key={code} variant="outline" className="border-amber-300 bg-white text-amber-900">
+                {code} · {veces} {veces === 1 ? "lectura" : "lecturas"}
+              </Badge>
+            ))}
+          </div>
+          <Button variant="ghost" size="sm" className="mt-2" onClick={() => setDesconocidos({})}>Limpiar</Button>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard title="Productos contados" value={kpis.contados} icon={ClipboardCheck} variant="success" />
@@ -349,7 +440,12 @@ export function ProdConteoPage() {
                     const tiene = String(valor).trim() !== ""
                     const d = tiene ? diffConteo(p.sistema, Number(valor) || 0) : null
                     return (
-                      <tr key={p.id} className="border-t border-[color:var(--brand-border)]">
+                      <tr
+                        key={p.id}
+                        className={`border-t border-[color:var(--brand-border)] ${
+                          ultimo?.id === p.id ? "bg-emerald-50/70" : ""
+                        }`}
+                      >
                         <td className="px-3 py-1.5">
                           <div className="font-medium">{p.nombre}</div>
                           {p.sku && <div className="text-[11px] text-muted-foreground">{p.sku}</div>}

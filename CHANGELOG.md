@@ -18,6 +18,45 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.89.0] — 2026-08-15
+
+### Added
+- **Escáner de código de barra en el conteo físico** (`prod-conteo`). Dos
+  entradas simultáneas:
+  - **Cámara**: `BarcodeDetector` nativo donde existe y `@zxing/browser` como
+    respaldo universal (iOS Safari), cargado bajo demanda. Formatos de producto
+    (EAN-13/8, UPC-A/E, Code 128/39, ITF) — no QR.
+  - **Pistola lectora USB/Bluetooth**: escucha en toda la pantalla sin hacer
+    clic en ningún campo. Distingue la pistola del tecleo humano por la
+    velocidad entre teclas y se desactiva mientras el foco está en un campo de
+    texto, así que escribir una cantidad a mano nunca se confunde con una lectura.
+  - Cada lectura **suma una unidad** al producto, con pitido y vibración,
+    resalta su fila y muestra «última lectura · llevas N contadas».
+  - Los códigos leídos que **no están en el catálogo** se acumulan y se
+    muestran: existen en el estante pero no en el archivo importado, y el
+    conteo no puede ajustarlos. Antes se habrían perdido en silencio.
+- **Buscador en el menú lateral**: con 80+ pantallas en 15 secciones, escribir
+  filtra todas de golpe (sin acentos: «requisicion» encuentra «Requisición»);
+  el nombre de la sección también busca, Enter abre la primera coincidencia y
+  Escape limpia. Solo aparecen las pantallas a las que el usuario tiene acceso.
+
+### Fixed
+- 🔴 **La cámara y el GPS estaban apagados en TODA la aplicación en producción.**
+  `vercel.json` mandaba `Permissions-Policy: camera=(), microphone=(),
+  geolocation=()`, y una lista vacía apaga la función **también para el propio
+  sitio**. Eso dejaba muertos el kiosko de ponche por QR y el GPS del ponche
+  móvil, sin ningún error visible: el botón simplemente no hacía nada. Ahora es
+  `camera=(self), microphone=(), geolocation=(self)` — se conserva el bloqueo a
+  terceros incrustados, que era la intención real de la cabecera.
+
+### Notes
+- 11 pruebas nuevas del escáner en `scripts/test-productos-inventario.mjs`
+  (43 en total): emparejado exacto y canónico (un UPC-A de 12 dígitos encuentra
+  al EAN-13 equivalente), rechazo de códigos desconocidos sin adivinar,
+  supresión de lecturas repetidas de la cámara y separación pistola/tecleo humano.
+
+---
+
 ## [0.88.0] — 2026-08-15
 
 ### Added

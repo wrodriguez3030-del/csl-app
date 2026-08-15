@@ -25,7 +25,7 @@ Aplica a **CSL y a Depicenter** (multi-tenant, sin excepciones).
 
 | Decisión | Elección |
 |---|---|
-| Alcance del conteo físico | **Solo captura manual** — sin escáner de código de barra, sin cola offline, sin evidencias fotográficas. Mismo patrón que el inventario de materiales que ya existe. |
+| Alcance del conteo físico | **Captura manual** — sin cola offline ni evidencias fotográficas. Mismo patrón que el inventario de materiales que ya existe. **(Ampliado el 2026-08-15, v0.89.0: se añadió el escáner de código de barra por cámara y pistola lectora; cada lectura suma una unidad al producto.)** |
 | PDF multi-sucursal | **Una página por sucursal** + una **página de consolidado** al final. |
 | Fuente de verdad del stock | **El Excel sobrescribe.** Cada importación reemplaza el stock y queda registrada (archivo, usuario, fecha, filas, mapeo). El conteo aprobado también escribe stock, pero la siguiente importación vuelve a mandar. |
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
 import { useAppStore } from "@/lib/store"
 import type { TabId } from "@/lib/types"
@@ -39,6 +39,7 @@ import {
   PackageSearch,
   PiggyBank,
   Printer,
+  Search,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -265,6 +266,21 @@ function groupLabelOf(tab: TabId): string | null {
   return null
 }
 
+/**
+ * Índice plano de TODO el menú, para el buscador. Se arma una sola vez: el
+ * orden es el mismo que ve el usuario en el acordeón.
+ */
+const ALL_NAV_ITEMS: { item: NavItem; group: string }[] = [
+  ...CORE_GROUPS.flatMap((g) => g.items.map((item) => ({ item, group: g.label }))),
+  ...PULSE_ITEMS.map((item) => ({ item, group: PULSE_LABEL })),
+  ...EXTRA_GROUPS.flatMap((g) => g.items.map((item) => ({ item, group: g.label }))),
+]
+
+/** Texto comparable: minúsculas y sin acentos («requisicion» encuentra «Requisición»). */
+function searchable(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
+}
+
 export function Sidebar() {
   const {
     activeTab, setActiveTab, sidebarOpen, setSidebarOpen,
@@ -274,6 +290,24 @@ export function Sidebar() {
   // Multi-tenant: branding dinámico según el business del usuario logueado.
   // Pre-migración (user sin businessSlug) cae a CSL → comportamiento idéntico.
   const business = useCurrentBusiness()
+
+  // ── Buscador del menú ─────────────────────────────────────────────────────
+  // Con 80+ pantallas repartidas en 15 secciones, encontrar una a mano obliga a
+  // abrir acordeón por acordeón. Escribiendo aquí se aplanan todas.
+  const [query, setQuery] = useState("")
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  const matches = useMemo(() => {
+    const q = searchable(query)
+    if (!q) return []
+    const terms = q.split(/\s+/).filter(Boolean)
+    return ALL_NAV_ITEMS.filter(({ item, group }) => {
+      if (!canAccessMenu(user, item.id)) return false
+      // El nombre del grupo también cuenta: «productos» saca toda la sección.
+      const heno = `${searchable(item.label)} ${searchable(group)}`
+      return terms.every((t) => heno.includes(t))
+    })
+  }, [query, user])
 
   const visiblePulse = useMemo(() => PULSE_ITEMS.filter((item) => canAccessMenu(user, item.id)), [user])
   const isPulseActive = visiblePulse.some((item) => item.id === activeTab)
@@ -343,6 +377,18 @@ export function Sidebar() {
   const handleNavClick = (id: TabId) => {
     setActiveTab(id)
     setSidebarOpen(false)
+    setQuery("")
+  }
+
+  /** Enter abre la primera coincidencia; Escape limpia la búsqueda. */
+  const handleSearchKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && matches.length) {
+      e.preventDefault()
+      handleNavClick(matches[0].item.id)
+      searchRef.current?.blur()
+    } else if (e.key === "Escape") {
+      setQuery("")
+    }
   }
 
   // Auto-cerrar el sidebar al cargar / cambiar viewport a tablet (< 1180px).
@@ -408,6 +454,55 @@ export function Sidebar() {
           </div>
         </div>
 
+        <div className="border-b border-[color:var(--brand-border)] px-3 py-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              ref={searchRef}
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleSearchKey}
+              placeholder="Buscar en el menú..."
+              aria-label="Buscar una pantalla del menú"
+              className="h-10 w-full rounded-xl border border-[color:var(--brand-border)] bg-[color:var(--brand-bg-subtle)] pl-8 pr-3 text-[13px] text-slate-700 outline-none transition focus:border-[color:var(--brand-primary)] focus:bg-white"
+            />
+          </div>
+        </div>
+
+        {query.trim() ? (
+          <nav className="relative flex-1 space-y-1 overflow-y-auto px-3 py-4">
+            {matches.length === 0 ? (
+              <p className="px-2 py-8 text-center text-[13px] text-slate-500">
+                Ninguna pantalla coincide con «{query.trim()}».
+              </p>
+            ) : (
+              <>
+                <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                  {matches.length} {matches.length === 1 ? "resultado" : "resultados"}
+                </p>
+                {matches.map(({ item, group }) => (
+                  <button
+                    key={item.id}
+                    onClick={() => handleNavClick(item.id)}
+                    className={cn(
+                      "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors",
+                      activeTab === item.id
+                        ? "bg-[color:var(--brand-primary-soft)] font-bold text-[color:var(--brand-primary-dark)]"
+                        : "text-slate-600 hover:bg-[color:var(--brand-bg-subtle)]"
+                    )}
+                  >
+                    <span className="shrink-0 text-[color:var(--brand-primary)]">{item.icon}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{item.label}</span>
+                      <span className="block truncate text-[10px] font-medium uppercase tracking-wide text-slate-400">{group}</span>
+                    </span>
+                  </button>
+                ))}
+              </>
+            )}
+          </nav>
+        ) : (
         <nav className="relative flex-1 space-y-4 overflow-y-auto px-3 py-4">
           {CORE_GROUPS.map((group) => (
             <NavGroup
@@ -481,6 +576,7 @@ export function Sidebar() {
             />
           ))}
         </nav>
+        )}
 
         <div className="relative border-t border-[color:var(--brand-border)] p-4">
           <div className="rounded-xl bg-[color:var(--brand-bg-subtle)] px-3 py-2 ring-1 ring-[color:var(--brand-border)]">

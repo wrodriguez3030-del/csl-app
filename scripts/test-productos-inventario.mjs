@@ -30,6 +30,12 @@ import {
   kpisDeSucursal,
   buildConsolidado,
 } from "../lib/inventario-productos-pdf.ts"
+import {
+  normalizeBarcode,
+  matchProductByCode,
+  isRepeatScan,
+  pushWedgeKey,
+} from "../lib/productos-scan.ts"
 
 let pasadas = 0
 const ok = (label) => {
@@ -232,7 +238,65 @@ console.log("\n── 4. Reporte de existencias (contra el modelo impreso) ─�
   ok("el consolidado suma por producto y por sucursal")
 }
 
-console.log("\n── 5. Conteo físico ──")
+console.log("\n── 5. Escáner de código de barra ──")
+{
+  const catalogo = [
+    { id: "1", nombre: "HELIOCARE 360 WATER GEL", sku: "8470001930156" },
+    { id: "2", nombre: "ANESTESIA ENCAIN", sku: "3030" },
+    { id: "3", nombre: "PRODUCTO SIN CODIGO", sku: "" },
+    { id: "4", nombre: "UPC CON CERO", sku: "0047000019086" },
+  ]
+
+  assert.equal(normalizeBarcode(" 8470 0019-30156 "), "8470001930156")
+  ok("limpia espacios y guiones de la lectura")
+
+  assert.equal(matchProductByCode("8470001930156", catalogo)?.id, "1")
+  ok("encuentra el producto por código exacto")
+
+  assert.equal(matchProductByCode("3030", catalogo)?.id, "2")
+  ok("encuentra también los códigos internos que no son EAN")
+
+  // UPC-A de 12 dígitos leído contra un EAN-13 guardado con el cero delante.
+  assert.equal(matchProductByCode("047000019086", catalogo)?.id, "4")
+  ok("un UPC de 12 dígitos encuentra al EAN-13 equivalente")
+
+  assert.equal(matchProductByCode("9999999999999", catalogo), null)
+  ok("un código desconocido NO se asigna al producto más parecido: devuelve nulo")
+
+  assert.equal(matchProductByCode("", catalogo), null)
+  assert.equal(matchProductByCode("   ", catalogo), null)
+  ok("una lectura vacía no empareja con el producto sin código")
+
+  const last = { code: "111", at: 1000 }
+  assert.equal(isRepeatScan("111", last, 1400), true)
+  ok("la misma lectura dentro de la ventana se ignora (la cámara repite)")
+  assert.equal(isRepeatScan("111", last, 3000), false)
+  ok("pasada la ventana, volver a escanear el mismo producto SÍ cuenta")
+  assert.equal(isRepeatScan("222", last, 1100), false)
+  ok("otro código distinto nunca se considera repetido")
+
+  // Pistola lectora: teclea rápido y cierra con Enter.
+  let st = { buffer: "", lastKeyAt: 0 }
+  let out = null
+  for (const [i, ch] of [..."8470001930156"].entries()) {
+    ({ state: st, code: out } = pushWedgeKey(st, ch, 1000 + i * 10))
+  }
+  ;({ state: st, code: out } = pushWedgeKey(st, "Enter", 1200))
+  assert.equal(out, "8470001930156")
+  ok("la pistola lectora arma el código y lo entrega con Enter")
+
+  // Tecleo humano: lento → el buffer se reinicia y no se toma como lectura.
+  let hs = { buffer: "", lastKeyAt: 0 }
+  let hout = null
+  for (const [i, ch] of [..."1234"].entries()) {
+    ({ state: hs, code: hout } = pushWedgeKey(hs, ch, 1000 + i * 400))
+  }
+  ;({ state: hs, code: hout } = pushWedgeKey(hs, "Enter", 3000))
+  assert.equal(hout, null)
+  ok("escribir a mano NO se confunde con una lectura de pistola")
+}
+
+console.log("\n── 6. Conteo físico ──")
 {
   assert.equal(diffConteo(10, 7), -3)
   ok("faltante: contado menor que sistema da negativo")
