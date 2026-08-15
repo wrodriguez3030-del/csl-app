@@ -18,6 +18,27 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.89.1] — 2026-08-15
+
+### Changed
+- **El PDF de existencias ahora sí replica el modelo impreso.** La versión
+  anterior reproducía los datos del modelo (KPIs, orden, umbral) pero no su
+  diseño: llevaba el logo a la izquierda y el título a la derecha. Ahora es el
+  documento del dueño: banda verde oscura a todo el ancho con el título
+  centrado y el subtítulo `Negocio | Sucursal X | Reporte profesional de
+  productos con existencia`, tres tarjetas redondeadas de KPI (la de alerta en
+  crema con el número ámbar), tabla con cabecera verde y columnas
+  `CANT. · NOMBRE · CANTIDAD · NOTA`, filas de stock bajo con la cantidad y la
+  nota en rosado y «Stock bajo» en rojo, y el pie pegado al borde inferior con
+  «Fuente: … Solo se incluyen productos con existencia en X.» y «Generado para
+  <Negocio>». Los nombres se imprimen en mayúsculas para que la lista salga
+  uniforme aunque el archivo traiga algunos en minúscula.
+- El acta del conteo físico y la página de consolidado usan el mismo diseño.
+- `scripts/_preview-reporte.mjs`: genera el HTML del reporte con datos reales
+  para revisarlo (o imprimirlo con Chrome headless) sin abrir la aplicación.
+
+---
+
 ## [0.89.0] — 2026-08-15
 
 ### Added

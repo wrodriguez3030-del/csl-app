@@ -1,9 +1,15 @@
 /**
  * Reporte de existencias de productos — PDF profesional (HTML + window.print()).
  *
- * Mismo enfoque que `lib/inventario-materiales-pdf.ts`: se construye un string
- * HTML con el logo y el color de la empresa activa y se imprime en un popup.
- * Sin dependencias de servidor.
+ * El diseño replica el modelo impreso que entregó el dueño
+ * (`INVENTARIO RAFAEL VIDAL MES JUNIO.pdf`): banda verde oscura a todo lo ancho
+ * con el título centrado, tres tarjetas de KPI (la de alerta en crema), tabla
+ * con cabecera verde y columnas `CANT. · Nombre · CANTIDAD · NOTA`, filas de
+ * stock bajo en rosado, y pie fijado al borde inferior de la página.
+ *
+ * Los colores son los del modelo, no los de la marca activa: este reporte ES
+ * ese documento. El nombre del negocio sí es dinámico (subtítulo y pie), así
+ * que Depicenter imprime el suyo.
  *
  * Las funciones de datos (`buildReporteData`, `kpisDeSucursal`,
  * `buildConsolidado`) son PURAS y están cubiertas por
@@ -17,6 +23,22 @@ const esc = (v: unknown) =>
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
+
+/**
+ * El modelo lista los productos en MAYÚSCULAS. El archivo trae unos pocos en
+ * minúscula («Ampollas Hyal Complex»), así que se uniforman al imprimir: en
+ * pantalla el nombre se muestra tal cual vino.
+ */
+function nombreImpreso(value: unknown): string {
+  return String(value ?? "").toUpperCase()
+}
+
+/** «RAFAEL VIDAL» → «Rafael Vidal», como en el subtítulo y el pie del modelo. */
+function titleCase(value: string): string {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/(^|\s|-)([a-záéíóúñ])/g, (_m, sep: string, ch: string) => sep + ch.toUpperCase())
+}
 
 /** Un producto del reporte: nombre y lo que hay en la sucursal. */
 export interface ReporteItem {
@@ -122,71 +144,77 @@ export interface ProductosPdfOpts {
   /** Texto del periodo, ej. «MES AGOSTO». */
   periodo: string
   umbral: number
-  /** window.location.origin — el popup es about:blank, el logo necesita URL absoluta. */
+  /** window.location.origin — el popup es about:blank (reservado para el logo). */
   origin: string
   generadoPor?: string
   consolidado: boolean
 }
 
-function styles(brand: string): string {
-  return `
-    :root { --brand: ${brand}; }
-    @page { size: A4 portrait; margin: 13mm; }
-    @media print { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    * { box-sizing: border-box; }
-    body { font-family: Arial, Helvetica, sans-serif; color: #0f172a; margin: 0; }
-    .page { page-break-after: always; }
-    .page:last-child { page-break-after: auto; }
-    .header { display: flex; align-items: center; justify-content: space-between;
-      border-bottom: 3px solid var(--brand); padding-bottom: 10px; margin-bottom: 10px; }
-    .brand { display: flex; align-items: center; gap: 12px; }
-    .logo-img { height: 54px; width: auto; object-fit: contain; }
-    .logo-circle { height: 54px; width: 54px; border-radius: 50%; background: var(--brand);
-      color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; }
-    .brand-name { font-size: 15px; font-weight: 800; letter-spacing: .3px; }
-    .brand-tag { font-size: 10px; color: #64748b; }
-    .header-right { text-align: right; }
-    h1 { font-size: 17px; margin: 0 0 3px; color: var(--brand); text-transform: uppercase; }
-    .sub { font-size: 10.5px; color: #475569; }
-    .kpis { display: flex; gap: 8px; margin: 10px 0 12px; }
-    .kpi { flex: 1; border: 1px solid #e2e8f0; border-top: 3px solid var(--brand);
-      border-radius: 8px; padding: 8px 10px; background: #f8fafc; }
-    .kpi-label { font-size: 8.5px; letter-spacing: .6px; color: #64748b; text-transform: uppercase; }
-    .kpi-value { font-size: 22px; font-weight: 800; color: #0f172a; line-height: 1.1; }
-    .kpi.warn { border-top-color: #d97706; }
-    .kpi.warn .kpi-value { color: #b45309; }
-    table { width: 100%; border-collapse: collapse; font-size: 11px; page-break-inside: auto; }
-    thead { display: table-header-group; }
-    tr { page-break-inside: avoid; }
-    th, td { border: 1px solid #cbd5e1; padding: 4px 7px; text-align: left; }
-    th { background: var(--brand); color: #fff; font-size: 9.5px; text-transform: uppercase; letter-spacing: .4px; }
-    tbody tr:nth-child(even) { background: #f8fafc; }
-    td.c, th.c { text-align: center; }
-    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-    td.low { color: #b45309; font-weight: 700; }
-    tr.total td { background: #e2e8f0; font-weight: 800; }
-    .footer { margin-top: 12px; padding-top: 8px; border-top: 1px solid #e2e8f0;
-      font-size: 9.5px; color: #64748b; display: flex; justify-content: space-between; gap: 12px; }
-    .empty { text-align: center; color: #64748b; padding: 18px; font-size: 12px; }
-  `
+/** Paleta del modelo impreso. */
+const C = {
+  banda: "#0F3D34",
+  verde: "#27AE7F",
+  tinta: "#0F172A",
+  suave: "#F1F5F9",
+  borde: "#CBD5E1",
+  gris: "#64748B",
+  alertaFondo: "#FFF8EC",
+  alertaBorde: "#F5D9A8",
+  alertaTinta: "#B45309",
+  bajoFondo: "#FEF2F2",
+  bajoTinta: "#DC2626",
 }
 
-function headerHtml(business: Business, origin: string, titulo: string, subtitulo: string): string {
-  const logoSrc = business.logoUrl ? `${origin}${business.logoUrl}` : ""
-  return `<div class="header">
-    <div class="brand">
-      ${logoSrc
-        ? `<img class="logo-img" src="${esc(logoSrc)}" alt="${esc(business.name)}" onerror="this.style.display='none'" />`
-        : `<div class="logo-circle">${esc(business.shortName || "CSL")}</div>`}
-      <div>
-        <div class="brand-name">${esc((business.name || "").toUpperCase())}</div>
-        <div class="brand-tag">Inventario de productos</div>
-      </div>
-    </div>
-    <div class="header-right">
-      <h1>${esc(titulo)}</h1>
-      <div class="sub">${esc(subtitulo)}</div>
-    </div>
+const BASE_STYLES = `
+  @page { size: A4 portrait; margin: 0; }
+  @media print { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; color: ${C.tinta}; }
+
+  /* Cada sucursal es una hoja: la banda sangra a los bordes y el pie queda
+     pegado abajo aunque la tabla sea corta. 296mm (no 297) evita que el
+     redondeo del navegador provoque una página en blanco extra. */
+  .page { min-height: 296mm; display: flex; flex-direction: column; page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+
+  .banda { background: ${C.banda}; color: #fff; padding: 26px 40px 22px; text-align: center; }
+  .banda h1 { margin: 0; font-size: 27px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; }
+  .banda p { margin: 8px 0 0; font-size: 11.5px; color: rgba(255,255,255,.86); }
+
+  .cuerpo { flex: 1; padding: 18px 26px 0; }
+
+  .kpis { display: flex; gap: 14px; margin-bottom: 16px; }
+  .kpi { flex: 1; border: 1px solid ${C.borde}; border-radius: 12px; padding: 10px 14px; background: #fff; }
+  .kpi-label { font-size: 8.5px; font-weight: 700; letter-spacing: .9px; text-transform: uppercase; color: ${C.gris}; }
+  .kpi-value { margin-top: 2px; font-size: 23px; font-weight: 800; color: ${C.banda}; line-height: 1.1; }
+  .kpi.alerta { background: ${C.alertaFondo}; border-color: ${C.alertaBorde}; }
+  .kpi.alerta .kpi-value { color: ${C.alertaTinta}; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
+  th { background: ${C.verde}; color: #fff; font-size: 9px; font-weight: 700; letter-spacing: .7px;
+       text-transform: uppercase; padding: 7px 10px; text-align: left; }
+  td { padding: 6px 10px; border-bottom: 1px solid #E2E8F0; }
+  tbody tr:nth-child(even) td { background: ${C.suave}; }
+  table { border: 1px solid ${C.borde}; }
+  .c { text-align: center; }
+  .r { text-align: right; }
+  .num { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+  td.bajo { background: ${C.bajoFondo} !important; }
+  td.nota-bajo { background: ${C.bajoFondo} !important; color: ${C.bajoTinta}; font-weight: 700; font-size: 9.5px; }
+  tr.total td { background: #E2E8F0 !important; font-weight: 800; }
+  .vacio { text-align: center; color: ${C.gris}; padding: 22px; }
+
+  .pie { margin: 14px 26px 12px; padding-top: 9px; border-top: 1px solid #E2E8F0;
+         display: flex; justify-content: space-between; gap: 16px; font-size: 9px; color: ${C.gris}; }
+`
+
+function bandaHtml(titulo: string, subtitulo: string): string {
+  return `<div class="banda">
+    <h1>${esc(titulo)}</h1>
+    <p>${esc(subtitulo)}</p>
   </div>`
 }
 
@@ -194,113 +222,120 @@ function kpisHtml(k: Kpis): string {
   return `<div class="kpis">
     <div class="kpi"><div class="kpi-label">Productos con stock</div><div class="kpi-value">${fmtQty(k.productos)}</div></div>
     <div class="kpi"><div class="kpi-label">Unidades totales</div><div class="kpi-value">${fmtQty(k.unidades)}</div></div>
-    <div class="kpi warn"><div class="kpi-label">Alerta stock bajo</div><div class="kpi-value">${fmtQty(k.alerta)}</div></div>
+    <div class="kpi alerta"><div class="kpi-label">Alerta stock bajo</div><div class="kpi-value">${fmtQty(k.alerta)}</div></div>
   </div>`
 }
 
-function sucursalPage(
-  bloque: ReporteSucursal,
-  opts: ProductosPdfOpts,
-  generado: string,
-): string {
-  const { business, periodo, umbral, origin, generadoPor } = opts
+function pieHtml(izquierda: string, derecha: string): string {
+  return `<div class="pie"><span>${esc(izquierda)}</span><span>${esc(derecha)}</span></div>`
+}
+
+function sucursalPage(bloque: ReporteSucursal, opts: ProductosPdfOpts): string {
+  const { business, periodo, umbral } = opts
+  const suc = titleCase(bloque.sucursal)
   const k = kpisDeSucursal(bloque.items, umbral)
-  const titulo = `Inventario ${bloque.sucursal} ${periodo}`.trim()
-  const subtitulo = `${business.name} · Sucursal ${bloque.sucursal} · Reporte de productos con existencia`
 
   const filas = bloque.items
     .map((it, i) => {
       const bajo = it.cantidad <= umbral
       return `<tr>
-        <td class="c">${i + 1}</td>
-        <td>${esc(it.nombre)}</td>
-        <td class="num">${fmtQty(it.cantidad)}</td>
-        <td class="${bajo ? "low" : ""}">${bajo ? "Stock bajo" : ""}</td>
+        <td class="r">${i + 1}</td>
+        <td>${esc(nombreImpreso(it.nombre))}</td>
+        <td class="num${bajo ? " bajo" : ""}">${fmtQty(it.cantidad)}</td>
+        <td class="${bajo ? "nota-bajo" : ""}">${bajo ? "Stock bajo" : ""}</td>
       </tr>`
     })
     .join("")
 
   return `<div class="page">
-    ${headerHtml(business, origin, titulo, subtitulo)}
-    ${kpisHtml(k)}
-    <table>
-      <thead><tr>
-        <th class="c" style="width:34px">#</th>
-        <th>Producto</th>
-        <th class="num" style="width:90px">Cantidad</th>
-        <th style="width:110px">Nota</th>
-      </tr></thead>
-      <tbody>${filas || `<tr><td colspan="4" class="empty">Sin productos con existencia en esta sucursal</td></tr>`}</tbody>
-    </table>
-    <div class="footer">
-      <span>Solo se incluyen productos con existencia en ${esc(bloque.sucursal)}. Fuente: archivo de productos cargado.</span>
-      <span>Generado: ${esc(generado)}${generadoPor ? ` · Por: ${esc(generadoPor)}` : ""}</span>
+    ${bandaHtml(
+      `Inventario ${bloque.sucursal} ${periodo}`.trim(),
+      `${business.name} | Sucursal ${suc} | Reporte profesional de productos con existencia`,
+    )}
+    <div class="cuerpo">
+      ${kpisHtml(k)}
+      <table>
+        <thead><tr>
+          <th class="r" style="width:64px">Cant.</th>
+          <th>Nombre</th>
+          <th class="c" style="width:110px">Cantidad</th>
+          <th style="width:130px">Nota</th>
+        </tr></thead>
+        <tbody>${filas || `<tr><td colspan="4" class="vacio">Sin productos con existencia en esta sucursal</td></tr>`}</tbody>
+      </table>
     </div>
+    ${pieHtml(
+      `Fuente: archivo de productos cargado. Solo se incluyen productos con existencia en ${suc}.`,
+      `Generado para ${business.name}`,
+    )}
   </div>`
 }
 
-function consolidadoPage(cons: Consolidado, opts: ProductosPdfOpts, generado: string): string {
-  const { business, periodo, origin, generadoPor } = opts
-  const titulo = `Consolidado ${periodo}`.trim()
-  const subtitulo = `${business.name} · ${cons.sucursales.join(" · ")}`
-
+function consolidadoPage(cons: Consolidado, opts: ProductosPdfOpts): string {
+  const { business, periodo } = opts
   const filas = cons.items
     .map((it, i) => {
       const celdas = cons.sucursales
         .map((s) => `<td class="num">${fmtQty(it.porSucursal[s] || 0)}</td>`)
         .join("")
-      return `<tr><td class="c">${i + 1}</td><td>${esc(it.nombre)}</td>${celdas}<td class="num"><b>${fmtQty(it.total)}</b></td></tr>`
+      return `<tr><td class="r">${i + 1}</td><td>${esc(nombreImpreso(it.nombre))}</td>${celdas}<td class="num">${fmtQty(it.total)}</td></tr>`
     })
     .join("")
-
-  const totales = cons.sucursales
-    .map((s) => `<td class="num">${fmtQty(cons.totales[s] || 0)}</td>`)
-    .join("")
+  const totales = cons.sucursales.map((s) => `<td class="num">${fmtQty(cons.totales[s] || 0)}</td>`).join("")
 
   return `<div class="page">
-    ${headerHtml(business, origin, titulo, subtitulo)}
-    ${kpisHtml({ productos: cons.items.length, unidades: cons.totalGeneral, alerta: cons.sucursales.length })}
-    <table>
-      <thead><tr>
-        <th class="c" style="width:34px">#</th>
-        <th>Producto</th>
-        ${cons.sucursales.map((s) => `<th class="num">${esc(s)}</th>`).join("")}
-        <th class="num">Total</th>
-      </tr></thead>
-      <tbody>
-        ${filas || `<tr><td colspan="${cons.sucursales.length + 3}" class="empty">Sin productos con existencia</td></tr>`}
-        ${filas ? `<tr class="total"><td></td><td>TOTAL</td>${totales}<td class="num">${fmtQty(cons.totalGeneral)}</td></tr>` : ""}
-      </tbody>
-    </table>
-    <div class="footer">
-      <span>Consolidado de ${cons.sucursales.length} sucursales. Fuente: archivo de productos cargado.</span>
-      <span>Generado: ${esc(generado)}${generadoPor ? ` · Por: ${esc(generadoPor)}` : ""}</span>
+    ${bandaHtml(
+      `Consolidado ${periodo}`.trim(),
+      `${business.name} | ${cons.sucursales.map(titleCase).join(" · ")} | Reporte profesional de productos con existencia`,
+    )}
+    <div class="cuerpo">
+      ${kpisHtml({ productos: cons.items.length, unidades: cons.totalGeneral, alerta: cons.sucursales.length })}
+      <table>
+        <thead><tr>
+          <th class="r" style="width:64px">Cant.</th>
+          <th>Nombre</th>
+          ${cons.sucursales.map((s) => `<th class="c">${esc(titleCase(s))}</th>`).join("")}
+          <th class="c">Total</th>
+        </tr></thead>
+        <tbody>
+          ${filas || `<tr><td colspan="${cons.sucursales.length + 3}" class="vacio">Sin productos con existencia</td></tr>`}
+          ${filas ? `<tr class="total"><td></td><td>Total general</td>${totales}<td class="num">${fmtQty(cons.totalGeneral)}</td></tr>` : ""}
+        </tbody>
+      </table>
     </div>
+    ${pieHtml(
+      `Fuente: archivo de productos cargado. Consolidado de ${cons.sucursales.length} sucursales.`,
+      `Generado para ${business.name}`,
+    )}
   </div>`
 }
 
 /** Nombre de archivo profesional para el diálogo de impresión. */
 export function reporteFileBase(data: ReporteSucursal[], periodo: string): string {
-  const suc =
-    data.length === 1
-      ? String(data[0].sucursal || "SUCURSAL")
-      : `${data.length}_SUCURSALES`
+  const suc = data.length === 1 ? String(data[0].sucursal || "SUCURSAL") : `${data.length}_SUCURSALES`
   const clean = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "")
-  return `INVENTARIO_PRODUCTOS_${clean(suc)}_${clean(periodo)}`
+  return `INVENTARIO_${clean(suc)}_${clean(periodo)}`
 }
 
 export function buildProductosPdfHtml(opts: ProductosPdfOpts): string {
-  const brand = opts.business.primaryColor || "#0891b2"
-  const generado = new Date().toLocaleString("es-DO", { dateStyle: "long", timeStyle: "short" })
-  const paginas = opts.data.map((b) => sucursalPage(b, opts, generado)).join("")
+  const paginas = opts.data.map((b) => sucursalPage(b, opts)).join("")
   const cons =
     opts.consolidado && opts.data.length > 1
-      ? consolidadoPage(buildConsolidado(opts.records, opts.data.map((d) => d.sucursal)), opts, generado)
+      ? consolidadoPage(buildConsolidado(opts.records, opts.data.map((d) => d.sucursal)), opts)
       : ""
 
   return `<!doctype html><html lang="es"><head><meta charset="utf-8">
   <title>${esc(reporteFileBase(opts.data, opts.periodo))}</title>
-  <style>${styles(brand)}</style></head><body>${paginas}${cons}</body></html>`
+  <style>${BASE_STYLES}</style></head><body>${paginas}${cons}</body></html>`
+}
+
+export function printProductosPdf(opts: ProductosPdfOpts): void {
+  const html = buildProductosPdfHtml(opts)
+  const popup = window.open("", "_blank", "width=1100,height=900")
+  if (!popup) return
+  popup.document.write(html)
+  popup.document.close()
+  popup.onload = () => setTimeout(() => popup.print(), 400)
 }
 
 // ── Acta del conteo físico ───────────────────────────────────────────────────
@@ -329,9 +364,8 @@ export interface ActaConteoOpts {
 }
 
 export function buildActaConteoHtml(opts: ActaConteoOpts): string {
-  const { business, origin, sucursal, fecha, estado, responsable, notas, aprobadoPor, generadoPor } = opts
-  const brand = business.primaryColor || "#0891b2"
-  const generado = new Date().toLocaleString("es-DO", { dateStyle: "long", timeStyle: "short" })
+  const { business, sucursal, fecha, estado, responsable, notas, aprobadoPor } = opts
+  const suc = titleCase(sucursal)
 
   const items = opts.soloDiferencias
     ? opts.items.filter((it) => it.cantidadContada - it.cantidadSistema !== 0)
@@ -339,8 +373,10 @@ export function buildActaConteoHtml(opts: ActaConteoOpts): string {
 
   let sobrantes = 0
   let faltantes = 0
+  let unidades = 0
   for (const it of items) {
     const d = it.cantidadContada - it.cantidadSistema
+    unidades += it.cantidadContada
     if (d > 0) sobrantes += 1
     if (d < 0) faltantes += 1
   }
@@ -348,58 +384,55 @@ export function buildActaConteoHtml(opts: ActaConteoOpts): string {
   const filas = items
     .map((it, i) => {
       const d = it.cantidadContada - it.cantidadSistema
-      const cls = d === 0 ? "" : d > 0 ? "over" : "under"
+      const dif = d === 0 ? "" : d > 0 ? "sobra" : "falta"
       return `<tr>
-        <td class="c">${i + 1}</td>
-        <td>${esc(it.nombre)}</td>
+        <td class="r">${i + 1}</td>
+        <td>${esc(nombreImpreso(it.nombre))}</td>
         <td class="num">${fmtQty(it.cantidadSistema)}</td>
         <td class="num">${fmtQty(it.cantidadContada)}</td>
-        <td class="num ${cls}">${d > 0 ? "+" : ""}${fmtQty(d)}</td>
-        <td>${esc(it.observacion || "")}</td>
+        <td class="num${d !== 0 ? " bajo" : ""}">${d > 0 ? "+" : ""}${fmtQty(d)}</td>
+        <td class="${d !== 0 ? "nota-bajo" : ""}">${dif ? esc(dif.toUpperCase()) : ""} ${esc(it.observacion || "")}</td>
       </tr>`
     })
     .join("")
 
   return `<!doctype html><html lang="es"><head><meta charset="utf-8">
   <title>CONTEO_${esc(sucursal.replace(/[^A-Za-z0-9]+/g, "_"))}_${esc(fecha)}</title>
-  <style>${styles(brand)}
-    td.over { color: #b45309; font-weight: 700; }
-    td.under { color: #be123c; font-weight: 700; }
-  </style></head><body>
+  <style>${BASE_STYLES}</style></head><body>
     <div class="page">
-      ${headerHtml(business, origin, `Conteo físico ${sucursal}`, `Fecha: ${fecha} · Estado: ${estado}${responsable ? ` · Responsable: ${responsable}` : ""}`)}
-      ${kpisHtml({ productos: items.length, unidades: items.reduce((s, it) => s + it.cantidadContada, 0), alerta: sobrantes + faltantes })}
-      ${notas ? `<div class="sub" style="margin-bottom:8px">Nota: ${esc(notas)}</div>` : ""}
-      <table>
-        <thead><tr>
-          <th class="c" style="width:34px">#</th>
-          <th>Producto</th>
-          <th class="num" style="width:80px">Sistema</th>
-          <th class="num" style="width:80px">Contado</th>
-          <th class="num" style="width:80px">Diferencia</th>
-          <th style="width:160px">Observación</th>
-        </tr></thead>
-        <tbody>${filas || `<tr><td colspan="6" class="empty">Sin renglones que mostrar</td></tr>`}</tbody>
-      </table>
-      <div class="footer">
-        <span>${esc(sobrantes)} sobrantes · ${esc(faltantes)} faltantes${aprobadoPor ? ` · Aprobado por: ${esc(aprobadoPor)}` : ""}</span>
-        <span>Generado: ${esc(generado)}${generadoPor ? ` · Por: ${esc(generadoPor)}` : ""}</span>
+      ${bandaHtml(
+        `Conteo físico ${sucursal} ${fecha}`,
+        `${business.name} | Sucursal ${suc} | Estado: ${estado}${responsable ? ` | Responsable: ${responsable}` : ""}`,
+      )}
+      <div class="cuerpo">
+        <div class="kpis">
+          <div class="kpi"><div class="kpi-label">Productos contados</div><div class="kpi-value">${fmtQty(items.length)}</div></div>
+          <div class="kpi"><div class="kpi-label">Unidades contadas</div><div class="kpi-value">${fmtQty(unidades)}</div></div>
+          <div class="kpi alerta"><div class="kpi-label">Con diferencia</div><div class="kpi-value">${fmtQty(sobrantes + faltantes)}</div></div>
+        </div>
+        ${notas ? `<p style="margin:0 0 10px;font-size:10.5px;color:${C.gris}">Nota: ${esc(notas)}</p>` : ""}
+        <table>
+          <thead><tr>
+            <th class="r" style="width:64px">Cant.</th>
+            <th>Nombre</th>
+            <th class="c" style="width:80px">Sistema</th>
+            <th class="c" style="width:80px">Contado</th>
+            <th class="c" style="width:90px">Diferencia</th>
+            <th style="width:150px">Nota</th>
+          </tr></thead>
+          <tbody>${filas || `<tr><td colspan="6" class="vacio">Sin renglones que mostrar</td></tr>`}</tbody>
+        </table>
       </div>
+      ${pieHtml(
+        `${sobrantes} sobrantes · ${faltantes} faltantes${aprobadoPor ? ` · Aprobado por: ${aprobadoPor}` : ""}`,
+        `Generado para ${business.name}`,
+      )}
     </div>
   </body></html>`
 }
 
 export function printActaConteo(opts: ActaConteoOpts): void {
   const html = buildActaConteoHtml(opts)
-  const popup = window.open("", "_blank", "width=1100,height=900")
-  if (!popup) return
-  popup.document.write(html)
-  popup.document.close()
-  popup.onload = () => setTimeout(() => popup.print(), 400)
-}
-
-export function printProductosPdf(opts: ProductosPdfOpts): void {
-  const html = buildProductosPdfHtml(opts)
   const popup = window.open("", "_blank", "width=1100,height=900")
   if (!popup) return
   popup.document.write(html)
