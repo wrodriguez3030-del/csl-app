@@ -156,6 +156,17 @@ export function sucursalesForTenant(slug: string): string[] {
 }
 
 /**
+ * TODAS las sucursales conocidas, de todos los tenants.
+ *
+ * `normalizeSucursal` devuelve la cadena limpia cuando no reconoce la sucursal
+ * (no vacío), así que quien importe un archivo externo necesita una allow-list
+ * para distinguir «RAFAEL VIDAL» de una columna inventada. Esta es esa lista.
+ */
+export function allKnownSucursales(): string[] {
+  return Object.values(TENANT_SUCURSALES).flat()
+}
+
+/**
  * Slug del tenant DUEÑO de una sucursal, o null si la sucursal no pertenece
  * a ningún tenant conocido. Inverso de `sucursalesForTenant`. Lo usa el
  * backend para rutear cada fila de un import al business_id correcto: el

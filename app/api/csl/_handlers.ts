@@ -54,6 +54,7 @@ import { runWithMaintenanceWriteScope, recordMaintenanceAudit, type MaintenanceC
 import { validateGiftCert } from "@/lib/certificados/cert-layout"
 import { transitionError, type GiftCertAction } from "@/lib/certificados/cert-state"
 import * as materials from "@/lib/server/materials"
+import * as productsInventory from "@/lib/server/products-inventory"
 import * as purchases from "@/lib/server/purchases"
 import * as commission from "@/lib/server/commission"
 import * as biFinance from "@/lib/server/bi-finance-handlers"
@@ -3553,6 +3554,32 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await materials.receiveItem(params, user)
     case "getMaterialDashboard":
       return await materials.getMaterialDashboard(params)
+
+    // ── Inventario de Productos (catálogo, importación, existencias, conteo) ──
+    case "getProductBranches":
+      return productsInventory.getProductBranches()
+    case "getProductos":
+      return await productsInventory.getProductos(params)
+    case "importProducts":
+      return await productsInventory.importProducts(params, user)
+    case "getProductImports":
+      return await productsInventory.getProductImports()
+    case "getProductStockReport":
+      return await productsInventory.getProductStockReport(params)
+    case "getProductCountDraft":
+      return await productsInventory.getProductCountDraft(params)
+    case "saveProductCount":
+      return await productsInventory.saveProductCount(params, user)
+    case "approveProductCount":
+      return await productsInventory.approveProductCount(params, user)
+    case "rejectProductCount":
+      return await productsInventory.rejectProductCount(params, user)
+    case "getProductCounts":
+      return await productsInventory.getProductCounts(params)
+    case "getProductCount":
+      return await productsInventory.getProductCount(params)
+    case "deleteProductCount":
+      return await productsInventory.deleteProductCount(params)
 
     // ── BI Financiero IA (dashboard, config, alertas, inversiones, proyecciones) ──
     case "getBiFinanceData":

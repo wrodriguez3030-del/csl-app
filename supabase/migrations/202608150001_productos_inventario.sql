@@ -58,6 +58,11 @@ create table if not exists public.csl_producto_stock (
   sucursal       text not null,   -- nombre canónico (normalizeSucursal)
   cantidad       numeric(12,2) not null default 0,
   origen         text not null default 'importacion',  -- 'importacion' | 'conteo'
+  -- Importación que tocó esta fila por última vez. Al cerrar una importación,
+  -- toda existencia de las sucursales importadas que NO lleve este id se pone
+  -- en cero: si un producto dejó de venir en el archivo, no puede conservar
+  -- existencia fantasma.
+  import_id      uuid,
   actualizado_en timestamptz not null default now()
 );
 
