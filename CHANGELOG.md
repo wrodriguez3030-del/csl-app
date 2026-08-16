@@ -18,6 +18,41 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.89.2] — 2026-08-15
+
+### Security
+- 🔴 **Mantenimiento: la escritura queda reservada al servidor**
+  (`202608150002_maintenance_lockdown.sql`, aplicada a db-cls). Las seis tablas
+  del módulo (`csl_equipos`, `csl_reportes`, `csl_piezas`, `csl_tecnicos`,
+  `csl_inventario`, `csl_piezas_poliza_lista`) concedían
+  INSERT/UPDATE/DELETE/TRUNCATE a `authenticated` y `anon`, y las políticas RLS
+  permiten tocar las filas del propio negocio: **cualquier usuario con sesión
+  podía borrar todos los reportes de su empresa vía PostgREST**, sin pasar por
+  el módulo, sin ser técnico y sin dejar rastro en la auditoría. Ahora los
+  usuarios solo tienen SELECT; escribe únicamente `service_role`, que es el
+  único camino que pasa por la guardia de `maintenance-guard.ts`.
+- 🔴 **La auditoría de mantenimiento pasa a ser de solo-añadir.**
+  `csl_maintenance_audit` estaba **sin RLS** y con INSERT/UPDATE/DELETE para
+  `authenticated`: el registro con el que se investiga un incidente lo podía
+  borrar o falsear el mismo usuario, y se leía cruzado entre negocios. Ahora
+  tiene RLS con lectura por tenant y ninguna política de escritura para
+  usuarios.
+- Verificado tras aplicar: un DELETE de usuario sobre `csl_reportes` y sobre
+  `csl_maintenance_audit` responde `42501 permission denied`; el servidor sigue
+  leyendo y escribiendo con normalidad; el inicio de sesión no se toca (no
+  interviene `csl_user_profiles` ni `businesses`).
+
+### Notes
+- **Esto NO cubre los cambios hechos con la credencial del servidor**
+  (migraciones, `scripts/*.mjs`, `scripts/db-query.js`). Sigue abierto el riesgo
+  de choque de claves entre negocios: `csl_tecnicos` tiene PK `codigo` a secas
+  (CSL usa 1–7) y `csl_inventario` PK `item_id`. Es la misma falla que en mayo
+  sobrescribió los Equipos 2 y 3 de CSL con los de Depicenter — ver
+  `202605290002_restore_csl_e2_e3.sql`; en `csl_equipos` ya se cerró con PK
+  compuesta, en las otras no.
+
+---
+
 ## [0.89.1] — 2026-08-15
 
 ### Changed
