@@ -288,6 +288,13 @@ export async function upsertRow(entity: string, row: Row, opts?: { targetBusines
   // tenant (PK collision). Las demás tablas siguen con onConflict simple.
   const onConflictByEntity: Record<string, string> = {
     equipos: "business_id,equipo_id",
+    // (202608170001) Misma corrección que en equipos: la PK de estas tres pasó
+    // a ser (business_id, clave). Sin declararlo aquí, el upsert seguiría
+    // apuntando a la clave sola y PostgREST fallaría por no encontrar un índice
+    // único que la respalde.
+    reportes: "business_id,report_id",
+    tecnicos: "business_id,codigo",
+    inventario: "business_id,item_id",
     // (H-2) La bóveda de credenciales tenía PK global `credencial_id`: un tenant
     // podía sobrescribir la fila de otro con un id conocido. Con la clave
     // compuesta el upsert solo colisiona dentro del MISMO negocio; un id de otro

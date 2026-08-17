@@ -18,6 +18,43 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.92.0] — 2026-08-17
+
+### Security
+- 🔴 **Mantenimiento: clave primaria por negocio en las tres tablas que
+  faltaban** (`202608170001_maintenance_pk_y_freno.sql`, aplicada a db-cls).
+  `csl_reportes` se identificaba solo por `report_id`, `csl_tecnicos` por
+  `codigo` y `csl_inventario` por `item_id`: una fila de un negocio podía
+  **sobrescribir la del otro** con la misma clave. No es hipotético — en mayo
+  los Equipos 2 y 3 de CSL fueron sobrescritos por los de Depicenter
+  (`202605290002_restore_csl_e2_e3.sql`), y por eso `csl_equipos` ya llevaba la
+  clave compuesta. CSL usa códigos de técnico 1–7: el día que Depicenter creara
+  un técnico «1», el 1 de CSL desaparecía. Ahora la PK es
+  `(business_id, clave)` en las tres, con índice por la clave sola para las
+  búsquedas. `upsertRow` declara el `onConflict` compuesto correspondiente.
+- 🔴 **Freno en la base de datos, efectivo incluso contra `service_role`.** Las
+  migraciones y los scripts atraviesan RLS y la guardia de aplicación; ahí es
+  donde se perdían los datos (siempre al pedir cambios en Disparos). Tres
+  disparadores en las seis tablas del módulo rechazan:
+  - **borrar más de 3 filas en una sola sentencia** (un borrado puntual desde el
+    módulo sigue funcionando igual),
+  - **TRUNCATE**,
+  - **cambiar el `business_id` de una fila** — el mecanismo por el que una fila
+    no se borra sino que se «muda» al otro negocio y deja de verse.
+
+  Escape deliberado para una migración que sí deba hacerlo:
+  `set local csl.mantenimiento_libre = 'on';` — dura solo esa transacción.
+
+### Notes
+- Probado en una tabla de laboratorio con los mismos disparadores antes de
+  tocar las reales: borrar 1 fila pasa; borrar 4 se bloquea; mover el negocio
+  se bloquea; TRUNCATE se bloquea; con el escape activo pasa. La tabla de
+  laboratorio se eliminó. Ninguna fila de mantenimiento fue modificada:
+  155+7 reportes, 39+3 equipos, 47 piezas, 39 inventario, 15+3 piezas póliza y
+  7+2 técnicos siguen intactos.
+
+---
+
 ## [0.91.0] — 2026-08-17
 
 ### Changed
