@@ -51,10 +51,6 @@ export function ProdConteoPage() {
   const [estado, setEstado] = useState<ConteoEstado | null>(null)
   const [search, setSearch] = useState("")
   const [incluirCeros, setIncluirCeros] = useState(false)
-  // Los inactivos se CARGAN siempre (para que el escáner reconozca cualquier
-  // envase del estante) pero no se listan salvo que se pidan o ya se hayan
-  // contado. Así el conteo cuadra con el reporte, que es de activos.
-  const [incluirInactivos, setIncluirInactivos] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [autosave, setAutosave] = useState<"idle" | "saving" | "saved">("idle")
@@ -99,7 +95,8 @@ export function ProdConteoPage() {
     try {
       const endpoint = normalizeApiUrl(apiUrl)
       const [stockRes, draftRes] = await Promise.all([
-        apiJsonp(endpoint, { action: "getProductStockReport", sucursales: sucursal }),
+        // Solo activos: los inactivos están fuera del inventario.
+        apiJsonp(endpoint, { action: "getProductStockReport", sucursales: sucursal, soloActivos: "true" }),
         apiJsonp(endpoint, { action: "getProductCountDraft", sucursal, fecha }),
       ])
       if (!stockRes?.ok) throw new Error(String(stockRes?.error || "No se pudieron cargar las existencias"))
@@ -181,12 +178,11 @@ export function ProdConteoPage() {
     const q = search.trim().toUpperCase()
     return productos.filter((p) => {
       const contadoYa = String(contado[p.id] ?? "").trim() !== ""
-      if (!incluirInactivos && !p.activo && !contadoYa) return false
       if (!incluirCeros && p.sistema === 0 && !contadoYa) return false
       if (!q) return true
       return p.nombre.toUpperCase().includes(q) || p.sku.toUpperCase().includes(q)
     })
-  }, [productos, search, incluirCeros, incluirInactivos, contado])
+  }, [productos, search, incluirCeros, contado])
 
   const itemsContados = useMemo(
     () => productos.filter((p) => String(contado[p.id] ?? "").trim() !== ""),
@@ -345,10 +341,6 @@ export function ProdConteoPage() {
               <label className="flex cursor-pointer items-center gap-2">
                 <Checkbox checked={incluirCeros} onCheckedChange={(v) => setIncluirCeros(v === true)} />
                 Incluir productos en cero
-              </label>
-              <label className="flex cursor-pointer items-center gap-2">
-                <Checkbox checked={incluirInactivos} onCheckedChange={(v) => setIncluirInactivos(v === true)} />
-                Incluir inactivos
               </label>
             </div>
             <div className="flex flex-wrap items-center gap-2">

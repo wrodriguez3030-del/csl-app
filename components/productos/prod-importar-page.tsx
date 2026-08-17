@@ -39,24 +39,18 @@ type XlsxApi = {
 }
 
 /**
- * Parsea ambas hojas con el mapeo de columnas VIGENTE y las consolida.
- * Los activos van de últimos: si una clave aparece en las dos hojas, gana la
- * fila activa (con sus precios y su estado).
+ * Parsea la hoja de productos con el mapeo de columnas VIGENTE.
+ *
+ * **La hoja «Inactivos» NO se importa** (decisión del dueño). Son productos
+ * descontinuados que aún cargan existencia en el archivo y, además, duplican a
+ * los activos con otra escritura (`RADIO CARE CREMA` vs `RADIOCARE CREMA`):
+ * sumarlos inflaba el reporte. Cualquier fila marcada como inactiva se
+ * descarta, venga de la hoja que venga.
  */
-function construirFilas(
-  columnas: StockColumn[],
-  activos: unknown[][],
-  inactivos: unknown[][] | null,
-): ProductoRow[] {
+function construirFilas(columnas: StockColumn[], activos: unknown[][]): ProductoRow[] {
   const usables = columnas.filter((c) => c.sucursal)
-  const confirmadas = usables.map((c) => c.sucursal)
-  const filasActivas = parseProductSheet(activos, { activo: true, columnas: usables })
-  // La hoja de inactivos resuelve SUS propias columnas (limitadas a las
-  // sucursales confirmadas) por si trae otro orden de cabecera.
-  const filasInactivas = inactivos
-    ? parseProductSheet(inactivos, { activo: false, sucursales: confirmadas })
-    : []
-  return dedupeByClave([...filasInactivas, ...filasActivas])
+  const filas = parseProductSheet(activos, { activo: true, columnas: usables })
+  return dedupeByClave(filas.filter((f) => f.activo))
 }
 
 export function ProdImportarPage() {
@@ -68,7 +62,7 @@ export function ProdImportarPage() {
   // Las matrices crudas se conservan: si el usuario corrige el mapeo de una
   // columna, hay que VOLVER A PARSEAR para que las cantidades viajen a la
   // sucursal nueva. Sin esto el reparto se quedaría con el mapeo automático.
-  const matricesRef = useRef<{ activos: unknown[][]; inactivos: unknown[][] | null }>({ activos: [], inactivos: null })
+  const matricesRef = useRef<unknown[][]>([])
   const [branches, setBranches] = useState<string[]>([])
   const [preview, setPreview] = useState<Preview | null>(null)
   const [reading, setReading] = useState(false)
@@ -112,8 +106,8 @@ export function ProdImportarPage() {
         XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: "", raw: false }) as unknown[][]
 
       const nombres = wb.SheetNames as string[]
+      // Solo la hoja de productos activos. La de inactivos se ignora a propósito.
       const hojaActivos = nombres.find((n) => /producto/i.test(n)) || nombres[0]
-      const hojaInactivos = nombres.find((n) => /inactiv/i.test(n))
       if (!hojaActivos) throw new Error("El archivo no tiene hojas legibles")
 
       const matriz = toMatrix(hojaActivos)
@@ -122,10 +116,9 @@ export function ProdImportarPage() {
       const columnas = detectStockColumns(matriz[0], branches)
       const sinMapear = unresolvedStockColumns(matriz[0], branches)
 
-      const matrizInactivos = hojaInactivos ? toMatrix(hojaInactivos) : null
-      matricesRef.current = { activos: matriz, inactivos: matrizInactivos }
+      matricesRef.current = matriz
 
-      const rows = construirFilas(columnas, matriz, matrizInactivos)
+      const rows = construirFilas(columnas, matriz)
       if (!rows.length) throw new Error("No se encontró ningún producto con nombre en el archivo")
 
       setPreview({
@@ -133,7 +126,7 @@ export function ProdImportarPage() {
         rows,
         columnas,
         sinMapear,
-        hojas: [hojaActivos, hojaInactivos].filter(Boolean) as string[],
+        hojas: [hojaActivos],
       })
     } catch (e) {
       showToast(e instanceof Error ? e.message : "No se pudo leer el archivo", "error")
@@ -148,8 +141,7 @@ export function ProdImportarPage() {
     setPreview((prev) => {
       if (!prev) return prev
       const columnas = prev.columnas.map((c) => (c.index === index ? { ...c, sucursal } : c))
-      const { activos, inactivos } = matricesRef.current
-      return { ...prev, columnas, rows: construirFilas(columnas, activos, inactivos) }
+      return { ...prev, columnas, rows: construirFilas(columnas, matricesRef.current) }
     })
   }
 
@@ -261,7 +253,7 @@ export function ProdImportarPage() {
                 <div className="text-2xl font-bold tabular-nums">{fmtQty(resumen.unidades)}</div>
               </div>
               <div className="rounded-xl border border-[color:var(--brand-border)] p-3">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Hojas leídas</div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Hoja leída</div>
                 <div className="text-sm font-medium">{preview.hojas.join(" · ")}</div>
               </div>
               <div className="rounded-xl border border-[color:var(--brand-border)] p-3">

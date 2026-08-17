@@ -18,6 +18,32 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.91.0] — 2026-08-17
+
+### Changed
+- **Los productos inactivos quedan FUERA del inventario, sin excepción**
+  (decisión del dueño). La importación ya **no lee la hoja «Inactivos»** del
+  archivo, y descarta cualquier fila marcada como inactiva venga de donde
+  venga. Se quitaron las casillas «Incluir productos inactivos» del reporte y
+  «Incluir inactivos» del conteo: no hay forma de colarlos.
+- **La importación no toca las filas inactivas que ya estaban guardadas.** El
+  barrido que pone en cero lo que dejó de venir en el archivo ahora se limita a
+  los productos activos; sin esa salvedad, dejar de importarlos les habría
+  puesto cero, que es justamente modificarlos.
+- El conteo físico solo carga productos activos. Un envase descontinuado que se
+  escanee aparecerá como «no está en el catálogo», que es lo correcto: no forma
+  parte del inventario.
+
+### Notes
+- Efecto en los datos actuales (solo lectura, nada modificado): Rafael Vidal
+  pasa a **16 productos · 161 unidades**, que es exactamente la existencia de la
+  hoja de activos. Los 16 productos inactivos con existencia (121 unidades)
+  quedan ignorados pero **conservan su fila y su cantidad** en la base. Los
+  Jardines (33 · 325) y Villa Olga (37 · 305) no tenían inactivos con
+  existencia, así que no cambian.
+
+---
+
 ## [0.90.0] — 2026-08-17
 
 ### Fixed

@@ -33,10 +33,6 @@ export function ProdReportePage() {
   const [periodo, setPeriodo] = useState(periodoActual())
   const [umbral, setUmbral] = useState(String(UMBRAL_STOCK_BAJO))
   const [consolidado, setConsolidado] = useState(true)
-  // Por defecto SOLO activos: la hoja «Inactivos» del archivo trae productos
-  // descontinuados que aún cargan existencia (y duplicados con otra escritura,
-  // como RADIO CARE CREMA / RADIOCARE CREMA). Sumarlos inflaba el reporte.
-  const [soloActivos, setSoloActivos] = useState(true)
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -44,7 +40,8 @@ export function ProdReportePage() {
     try {
       const res = await apiJsonp(normalizeApiUrl(apiUrl), {
         action: "getProductStockReport",
-        soloActivos: soloActivos ? "true" : "false",
+        // Los productos inactivos quedan fuera del inventario, sin excepción.
+        soloActivos: "true",
       })
       if (!res?.ok) throw new Error(String(res?.error || "No se pudieron cargar las existencias"))
       const sucs = (res.sucursales as string[]) || []
@@ -56,7 +53,7 @@ export function ProdReportePage() {
     } finally {
       setLoading(false)
     }
-  }, [apiUrl, soloActivos, showToast])
+  }, [apiUrl, showToast])
 
   useEffect(() => { void load() }, [load])
 
@@ -142,10 +139,6 @@ export function ProdReportePage() {
               <label className="flex cursor-pointer items-center gap-2 text-sm">
                 <Checkbox checked={consolidado} onCheckedChange={(v) => setConsolidado(v === true)} />
                 Incluir página de consolidado
-              </label>
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
-                <Checkbox checked={!soloActivos} onCheckedChange={(v) => setSoloActivos(v !== true)} />
-                Incluir productos inactivos
               </label>
             </div>
           </div>

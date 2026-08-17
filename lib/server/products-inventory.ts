@@ -372,14 +372,32 @@ export async function importProducts(params: ActionParams, user: ActionUser) {
 
     if (sucursalesImportadas.length) {
       // Lo que ya no viene en el archivo queda en cero, no con el dato viejo.
-      const { error: zeroErr } = await sb
-        .from("csl_producto_stock")
-        .update({ cantidad: 0, actualizado_en: now })
-        .eq("business_id", businessId)
-        .in("sucursal", sucursalesImportadas)
-        .gt("cantidad", 0)
-        .or(`import_id.is.null,import_id.neq.${importId.data}`)
-      if (zeroErr) throw zeroErr
+      // EXCEPCIÓN: los productos inactivos no se tocan (decisión del dueño).
+      // Ya no se importan, así que sin esta salvedad el barrido les pondría
+      // cero — que es justamente modificarlos.
+      const activos = await fetchAll<Row>((from, to) =>
+        sb
+          .from("csl_productos")
+          .select("id")
+          .eq("business_id", businessId)
+          .eq("activo", true)
+          .range(from, to),
+      )
+      const idsActivos = activos.map((p) => p.id as string)
+      if (idsActivos.length) {
+        const LOTE_IDS = 300
+        for (let i = 0; i < idsActivos.length; i += LOTE_IDS) {
+          const { error: zeroErr } = await sb
+            .from("csl_producto_stock")
+            .update({ cantidad: 0, actualizado_en: now })
+            .eq("business_id", businessId)
+            .in("sucursal", sucursalesImportadas)
+            .in("producto_id", idsActivos.slice(i, i + LOTE_IDS))
+            .gt("cantidad", 0)
+            .or(`import_id.is.null,import_id.neq.${importId.data}`)
+          if (zeroErr) throw zeroErr
+        }
+      }
     }
 
     const resumen = {
