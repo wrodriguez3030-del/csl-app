@@ -2,6 +2,8 @@
 
 import { useState, useMemo } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
+import { useSessionUser } from "@/hooks/use-session-user"
+import { ReportesPapeleraDialog } from "@/components/reportes-papelera-dialog"
 import { usePagination } from "@/lib/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { fmtN } from "@/lib/fmt"
@@ -123,11 +125,13 @@ export function ReportesPage() {
     setEditingReporte,
     setPiezasReporte,
   } = useAppStore()
+  const sessionUser = useSessionUser()
 
   const [searchQuery, setSearchQuery] = useState("")
   const [filterSucursal, setFilterSucursal] = useState("")
   const [filterTipo, setFilterTipo] = useState("")
   const [deleteDialog, setDeleteDialog] = useState<Reporte | null>(null)
+  const [papeleraAbierta, setPapeleraAbierta] = useState(false)
   const [sortCol, setSortCol] = useState<string>("Fecha")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
 
@@ -512,15 +516,29 @@ export function ReportesPage() {
             </div>
           </div>
           <div className="flex items-center justify-between">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportCSV}
-              className="gap-2"
-            >
-              <Download className="h-4 w-4" />
-              Exportar CSV
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportCSV}
+                className="gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Exportar CSV
+              </Button>
+              {sessionUser?.isAdmin ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPapeleraAbierta(true)}
+                  className="gap-2"
+                  title="Reportes eliminados — se pueden restaurar"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Eliminados
+                </Button>
+              ) : null}
+            </div>
             <span className="text-sm text-muted-foreground">
               {filteredReportes.length} registros
             </span>
@@ -817,6 +835,20 @@ export function ReportesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ReportesPapeleraDialog
+        open={papeleraAbierta}
+        onClose={() => setPapeleraAbierta(false)}
+        onRestored={async () => {
+          // Al devolver un reporte hay que recargar la lista: el estado local
+          // no lo tiene porque las lecturas filtran los eliminados.
+          const normalized = normalizeApiUrl(apiUrl)
+          if (!normalized) return
+          try {
+            const res = await apiJsonp(normalized, { action: "getAllData" }) as { ok?: boolean; data?: typeof db }
+            if (res?.ok && res.data) setDb(res.data)
+          } catch { /* la papelera ya avisó del resultado */ }
+        }}
+      />
     </div>
   )
 }

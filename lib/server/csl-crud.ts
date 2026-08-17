@@ -109,11 +109,19 @@ export function tableConfig(entity: string) {
  *     server-side futura.
  */
 export interface GetRowsOptions {
+  /** true = incluir también las filas con borrado suave (papelera). */
+  includeDeleted?: boolean
   columns?: string
   sinceColumn?: string
   sinceDays?: number
   limit?: number
 }
+
+/**
+ * Entidades con BORRADO SUAVE: sus filas eliminadas siguen en la tabla con
+ * `deleted_at` y no deben aparecer en ninguna lectura normal.
+ */
+const SOFT_DELETE_ENTITIES = new Set<string>(["reportes"])
 
 export async function getRows(entity: string, options?: GetRowsOptions): Promise<Row[]> {
   const supabase = getSupabaseAdmin()
@@ -141,6 +149,10 @@ export async function getRows(entity: string, options?: GetRowsOptions): Promise
     let query = supabase.from(config.table).select(select)
     if (applyTenant) {
       query = query.eq("business_id", ctx!.businessId)
+    }
+    // Borrado suave: lo eliminado no aparece en ninguna lectura normal.
+    if (SOFT_DELETE_ENTITIES.has(entity) && !options?.includeDeleted) {
+      query = query.is("deleted_at", null)
     }
     if (sinceIso && options?.sinceColumn) {
       query = query.gte(options.sinceColumn, sinceIso)
@@ -282,6 +294,22 @@ export async function upsertRow(entity: string, row: Row, opts?: { targetBusines
     }
   }
 
+  // Captura de la fila ANTERIOR COMPLETA antes de sobrescribirla. Guardar un
+  // reporte desde el formulario es un upsert: sin esto, una edición que borra
+  // el contenido no deja forma de saber qué decía antes. Best-effort — nunca
+  // rompe el guardado.
+  let beforeRow: Row | null = null
+  if (maintScope) {
+    try {
+      let bq = supabase.from(config.table).select("*").eq(config.key, String(row[config.key]))
+      if (!exempt && payload.business_id) bq = bq.eq("business_id", payload.business_id as string)
+      const { data } = await bq.maybeSingle()
+      beforeRow = (data as Row | null) ?? null
+    } catch {
+      beforeRow = null
+    }
+  }
+
   // onConflict: para tablas multi-tenant cuya PK es composite (business_id, X)
   // el caller debe declarar las dos columnas. Hoy: csl_equipos. Si no,
   // un upsert con solo equipo_id puede sobreescribir una fila de OTRO
@@ -323,6 +351,14 @@ export async function upsertRow(entity: string, row: Row, opts?: { targetBusines
           changeSource: maintScope.source,
           userId: maintScope.userId,
           userEmail: maintScope.userEmail,
+          details: {
+            nuevo: !beforeRow,
+            campos: Object.keys(payload),
+            // `before` es la fila completa: con ella se reconstruye lo
+            // sobrescrito. El «después» no se guarda porque es la fila que
+            // quedó en la tabla — se lee de ahí.
+            before: beforeRow,
+          },
         })
       }
       return
@@ -358,6 +394,20 @@ export async function deleteRow(entity: string, keyValue: string, opts?: { targe
     opts?.targetBusinessId ?? (ctx && !ctx.bypassTenantFilter ? ctx.businessId : undefined)
   const applyTenant = !exempt && !!targetBusinessId
 
+  // Copia COMPLETA de lo que se va a borrar: la auditoría queda como respaldo
+  // de última instancia para reconstruir la fila.
+  let borrada: Row | null = null
+  if (maintScope) {
+    try {
+      let bq = supabase.from(config.table).select("*").eq(config.key, keyValue)
+      if (applyTenant) bq = bq.eq("business_id", targetBusinessId!)
+      const { data } = await bq.maybeSingle()
+      borrada = (data as Row | null) ?? null
+    } catch {
+      borrada = null
+    }
+  }
+
   let query = supabase.from(config.table).delete().eq(config.key, keyValue)
   if (applyTenant) {
     query = query.eq("business_id", targetBusinessId!)
@@ -377,6 +427,7 @@ export async function deleteRow(entity: string, keyValue: string, opts?: { targe
       changeSource: maintScope.source,
       userId: maintScope.userId,
       userEmail: maintScope.userEmail,
+      details: { before: borrada },
     })
   }
 }
@@ -651,6 +702,134 @@ export async function getAllPulsosData(opts?: { extendedDays?: number }) {
 /** Carga un reporte COMPLETO por ID — incluye firmas, fotos, piezas_json,
  *  checklist, partes_texto. Usado por el detalle del reporte al abrirlo
  *  desde el listado. Esos campos NO vienen en getAllData.reportes. */
+/**
+ * BORRADO SUAVE de una fila (hoy solo `reportes`): la marca como eliminada en
+ * vez de sacarla de la base. Deja de aparecer en los listados exactamente igual
+ * que antes, pero se puede restaurar desde el módulo y la auditoría guarda una
+ * copia completa por si acaso.
+ */
+export async function softDeleteRow(
+  entity: string,
+  keyValue: string,
+  opts: { targetBusinessId?: string; userName?: string; motivo?: string },
+) {
+  const supabase = getSupabaseAdmin()
+  const config = tableConfig(entity)
+  if (!keyValue) throw new Error(`Falta clave para eliminar ${entity}`)
+
+  const maintScope = await assertMaintenanceWriteAllowed(config.table, "delete", {
+    entity,
+    recordKey: keyValue,
+  })
+
+  const ctx = getBusinessContext()
+  const targetBusinessId =
+    opts.targetBusinessId ?? (ctx && !ctx.bypassTenantFilter ? ctx.businessId : undefined)
+
+  let bq = supabase.from(config.table).select("*").eq(config.key, keyValue)
+  if (targetBusinessId) bq = bq.eq("business_id", targetBusinessId)
+  const { data: antes } = await bq.maybeSingle()
+  if (!antes) throw noRowsError(entity)
+  if ((antes as Row).deleted_at) throw new Error("Ese registro ya estaba eliminado")
+
+  let uq = supabase
+    .from(config.table)
+    .update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: maintScope?.userId ?? null,
+      deleted_by_name: opts.userName || null,
+      deleted_reason: opts.motivo || null,
+    })
+    .eq(config.key, keyValue)
+  if (targetBusinessId) uq = uq.eq("business_id", targetBusinessId)
+  const { data, error } = await uq.select(config.key)
+  if (error) throw error
+  if (!data || data.length === 0) throw noRowsError(entity)
+
+  if (maintScope) {
+    await recordMaintenanceAudit({
+      entity,
+      table: config.table,
+      recordKey: keyValue,
+      op: "delete",
+      changeSource: maintScope.source,
+      userId: maintScope.userId,
+      userEmail: maintScope.userEmail,
+      details: { suave: true, motivo: opts.motivo || null, before: antes },
+    })
+  }
+}
+
+/** Deshace un borrado suave. */
+export async function restoreRow(
+  entity: string,
+  keyValue: string,
+  opts?: { targetBusinessId?: string },
+) {
+  const supabase = getSupabaseAdmin()
+  const config = tableConfig(entity)
+  if (!keyValue) throw new Error(`Falta clave para restaurar ${entity}`)
+
+  const maintScope = await assertMaintenanceWriteAllowed(config.table, "update", {
+    entity,
+    recordKey: keyValue,
+  })
+
+  const ctx = getBusinessContext()
+  const targetBusinessId =
+    opts?.targetBusinessId ?? (ctx && !ctx.bypassTenantFilter ? ctx.businessId : undefined)
+
+  let uq = supabase
+    .from(config.table)
+    .update({ deleted_at: null, deleted_by: null, deleted_by_name: null, deleted_reason: null })
+    .eq(config.key, keyValue)
+    .not("deleted_at", "is", null)
+  if (targetBusinessId) uq = uq.eq("business_id", targetBusinessId)
+  const { data, error } = await uq.select(config.key)
+  if (error) throw error
+  if (!data || data.length === 0) throw new Error("No se encontró un registro eliminado con esa clave")
+
+  if (maintScope) {
+    await recordMaintenanceAudit({
+      entity,
+      table: config.table,
+      recordKey: keyValue,
+      op: "update",
+      changeSource: maintScope.source,
+      userId: maintScope.userId,
+      userEmail: maintScope.userEmail,
+      details: { restaurado: true },
+    })
+  }
+}
+
+/** Papelera: reportes con borrado suave, del negocio en contexto. */
+export async function getReportesEliminados(): Promise<Row[]> {
+  const supabase = getSupabaseAdmin()
+  const ctx = getBusinessContext()
+  let q = supabase
+    .from("csl_reportes")
+    .select(`${REPORTES_LIST_COLS},deleted_at,deleted_by_name,deleted_reason`)
+    .not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: false })
+    .limit(500)
+  if (ctx && !ctx.bypassTenantFilter) q = q.eq("business_id", ctx.businessId)
+  const { data, error } = await q
+  if (error) throw error
+  // `fromDb` mapea solo los campos conocidos del reporte y descartaría los de
+  // borrado: se vuelven a añadir para que la papelera pueda mostrar quién lo
+  // eliminó, cuándo y por qué.
+  return (data || []).map((r) => {
+    const row = r as unknown as Row
+    return {
+      ...fromDb("reportes", row),
+      deletedAt: row.deleted_at ?? null,
+      deletedByName: row.deleted_by_name ?? null,
+      deletedReason: row.deleted_reason ?? null,
+    }
+  })
+}
+
 export async function getReporteCompleto(reportId: string): Promise<Row | null> {
   if (!reportId) return null
   const supabase = getSupabaseAdmin()
@@ -934,6 +1113,9 @@ export async function getRowsForBusiness(entity: string, ctx: BusinessContext): 
   const rows: Row[] = []
   while (true) {
     let query = supabase.from(config.table).select("*").eq("business_id", ctx.businessId)
+    if (SOFT_DELETE_ENTITIES.has(entity)) {
+      query = query.is("deleted_at", null)
+    }
     if (config.order) {
       query = query.order(config.order, { ascending: entity !== "reportes" && entity !== "sesiones_cliente" })
     }

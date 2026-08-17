@@ -18,6 +18,41 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.93.0] — 2026-08-17
+
+### Added
+- **Papelera de reportes de mantenimiento.** Borrar un reporte desde el módulo
+  ya no lo saca de la base: lo marca como eliminado, deja de listarse igual que
+  antes, y un administrador puede devolverlo desde **Lista de reportes →
+  Eliminados** (`202608170002_reportes_borrado_suave.sql`: columnas
+  `deleted_at`, `deleted_by`, `deleted_by_name`, `deleted_reason` + índice
+  parcial de vigentes). La papelera muestra quién lo eliminó, cuándo y por qué.
+  Acciones nuevas `getReportesEliminados` y `restoreReporte`, ambas exigen
+  admin en el servidor — la pantalla no es la guardia.
+- Todas las lecturas de reportes filtran `deleted_at is null`
+  (`getRows`, `getRowsForBusiness`), así que para el usuario no cambia nada.
+
+### Changed
+- **La auditoría de mantenimiento ahora guarda la fila ANTERIOR COMPLETA.**
+  Antes solo la registraban las ediciones de campos sueltos; el **guardado del
+  formulario** (que es un upsert: 47 registros históricos) y el **borrado** no
+  dejaban nada, así que sobrescribir un reporte no dejaba forma de saber qué
+  decía. Ahora `upsertRow` guarda `before` con la fila completa previa (y si era
+  nueva lo marca), y `deleteRow` guarda una copia íntegra de lo borrado. La
+  auditoría queda como respaldo de última instancia para reconstruir a mano.
+
+### Notes
+- Corrección a lo reportado antes: las ediciones de campos (`updateRowFields`)
+  **sí** guardaban `before` y `after` — 122 de los 132 registros de tipo
+  `update` los tienen. El hueco real estaba en `upsert` y en `delete`.
+- Probado el ciclo completo con un reporte de prueba creado para eso: se marca
+  eliminado, desaparece del listado vigente, se restaura y vuelve. La fila de
+  prueba se eliminó al terminar con la puerta deliberada
+  (`csl.mantenimiento_libre`). La base quedó en 162 reportes, 162 vigentes,
+  igual que antes de empezar.
+
+---
+
 ## [0.92.0] — 2026-08-17
 
 ### Security

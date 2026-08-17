@@ -31,12 +31,15 @@ import {
   getProfile,
   getRecordCompleto,
   getReporteCompleto,
+  getReportesEliminados,
   getRowBusinessIds,
   getRows,
   getRowsPaged,
   loadBusinessContext,
   requireAdmin,
   resolveClienteId,
+  restoreRow,
+  softDeleteRow,
   syncFichasCliente,
   tableConfig,
   updateRowFields,
@@ -74,7 +77,7 @@ const MAINTENANCE_MANUAL_ACTIONS = new Set<string>([
   // Piezas (catálogo)
   "savePieza", "deletePieza",
   // Reportes
-  "saveReporte", "updateReporteCampos", "deleteReporte",
+  "saveReporte", "updateReporteCampos", "deleteReporte", "restoreReporte",
   // Inventario
   "addInventario", "updateInventario", "saveInventario", "deleteInventario",
   // Lista piezas póliza
@@ -665,6 +668,12 @@ async function enforceCredentialsGate(action: string, user: ActionUser): Promise
   if (!access.active) {
     throw new Error("Verificación TOTP requerida para acceder a Credenciales.")
   }
+}
+
+/** Admin del negocio o superadmin — quien puede ver y restaurar la papelera. */
+function isMaintenanceAdmin(): boolean {
+  const ctx = getBusinessContext()
+  return Boolean(ctx?.isAdmin || ctx?.isSuperadmin)
 }
 
 async function dispatchAction(action: string, params: ActionParams, user: ActionUser) {
@@ -3872,9 +3881,28 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (!record) return { ok: false, error: "Reporte no encontrado" }
       return { ok: true, record }
     }
-    case "deleteReporte":
-      await deleteRow("reportes", textValue(params, "reportId") || textValue(params, "id"))
+    case "deleteReporte": {
+      // Borrado SUAVE: el reporte deja de listarse pero se puede restaurar.
+      const reportId = textValue(params, "reportId") || textValue(params, "id")
+      await softDeleteRow("reportes", reportId, {
+        targetBusinessId: await resolveMaintenanceTargetBusiness(params, "reportes", reportId),
+        userName: textValue(params, "userName"),
+        motivo: textValue(params, "motivo"),
+      })
       return { ok: true }
+    }
+    case "getReportesEliminados": {
+      if (!isMaintenanceAdmin()) throw new Error("Solo un administrador puede ver los reportes eliminados")
+      return { ok: true, records: await getReportesEliminados() }
+    }
+    case "restoreReporte": {
+      if (!isMaintenanceAdmin()) throw new Error("Solo un administrador puede restaurar un reporte")
+      const reportId = textValue(params, "reportId") || textValue(params, "id")
+      await restoreRow("reportes", reportId, {
+        targetBusinessId: await resolveMaintenanceTargetBusiness(params, "reportes", reportId),
+      })
+      return { ok: true }
+    }
     case "addInventario":
     case "updateInventario":
     case "saveInventario": {
