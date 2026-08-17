@@ -167,8 +167,14 @@ const C = {
 
 const BASE_STYLES = `
   @page { size: A4 portrait; margin: 0; }
-  @media print { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  * { box-sizing: border-box; }
+  /* Sin esto el navegador IMPRIME SIN FONDOS: la banda verde, la cabecera de la
+     tabla y las filas de stock bajo salen en blanco. Va en un selector real —
+     escrito suelto dentro de @media print, el bloque es inválido y se ignora,
+     que es exactamente lo que pasaba. */
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @media print {
+    html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
   html, body { margin: 0; padding: 0; }
   body { font-family: Arial, Helvetica, sans-serif; color: ${C.tinta}; }
 

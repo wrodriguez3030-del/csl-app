@@ -18,6 +18,34 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.90.0] — 2026-08-17
+
+### Fixed
+- 🔴 **El PDF salía SIN COLORES al imprimir.** La regla que obliga al navegador
+  a imprimir los fondos estaba escrita suelta dentro de `@media print { ... }`,
+  sin selector: CSS inválido, el bloque entero se ignora. Al imprimir de verdad
+  se perdían la banda verde, la cabecera de la tabla y el rosado del stock bajo
+  — todo salía en blanco, aunque en pantalla se viera bien. Ahora
+  `print-color-adjust: exact` va en un selector real y se imprime idéntico al
+  modelo. **El mismo defecto existe en `lib/inventario-materiales-pdf.ts` y
+  `lib/purchases-export.ts`; no se tocan por ser de otros módulos.**
+- 🔴 **El reporte contaba productos de más.** Sumaba las dos hojas del archivo
+  (`Productos` e `Inactivos`), así que Rafael Vidal salía con **32 productos y
+  282 unidades** cuando la existencia real de la hoja de activos es **16
+  productos y 161 unidades**. Los 16 de más venían de productos descontinuados
+  que aún cargan existencia, encabezados por `RADIO CARE CREMA` (63) — que
+  además es el mismo producto que `RADIOCARE CREMA` (36) escrito distinto en el
+  origen. Ahora el reporte sale **solo con activos** y la casilla «Incluir
+  productos inactivos» queda desmarcada por defecto.
+
+### Changed
+- El **conteo físico** lista solo productos activos, para que cuadre con el
+  reporte. Los inactivos se siguen cargando por debajo —así el escáner reconoce
+  cualquier envase del estante— y aparecen en la lista si se marcan con
+  «Incluir inactivos» o si ya se contaron.
+
+---
+
 ## [0.89.2] — 2026-08-15
 
 ### Security

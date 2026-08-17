@@ -33,7 +33,10 @@ export function ProdReportePage() {
   const [periodo, setPeriodo] = useState(periodoActual())
   const [umbral, setUmbral] = useState(String(UMBRAL_STOCK_BAJO))
   const [consolidado, setConsolidado] = useState(true)
-  const [soloActivos, setSoloActivos] = useState(false)
+  // Por defecto SOLO activos: la hoja «Inactivos» del archivo trae productos
+  // descontinuados que aún cargan existencia (y duplicados con otra escritura,
+  // como RADIO CARE CREMA / RADIOCARE CREMA). Sumarlos inflaba el reporte.
+  const [soloActivos, setSoloActivos] = useState(true)
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -141,8 +144,8 @@ export function ProdReportePage() {
                 Incluir página de consolidado
               </label>
               <label className="flex cursor-pointer items-center gap-2 text-sm">
-                <Checkbox checked={soloActivos} onCheckedChange={(v) => setSoloActivos(v === true)} />
-                Solo productos activos
+                <Checkbox checked={!soloActivos} onCheckedChange={(v) => setSoloActivos(v !== true)} />
+                Incluir productos inactivos
               </label>
             </div>
           </div>

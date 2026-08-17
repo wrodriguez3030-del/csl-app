@@ -29,6 +29,7 @@ interface ProductoLinea {
   nombre: string
   sku: string
   sistema: number
+  activo: boolean
 }
 
 const hoyISO = () => new Date().toISOString().slice(0, 10)
@@ -50,6 +51,10 @@ export function ProdConteoPage() {
   const [estado, setEstado] = useState<ConteoEstado | null>(null)
   const [search, setSearch] = useState("")
   const [incluirCeros, setIncluirCeros] = useState(false)
+  // Los inactivos se CARGAN siempre (para que el escáner reconozca cualquier
+  // envase del estante) pero no se listan salvo que se pidan o ya se hayan
+  // contado. Así el conteo cuadra con el reporte, que es de activos.
+  const [incluirInactivos, setIncluirInactivos] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [autosave, setAutosave] = useState<"idle" | "saving" | "saved">("idle")
@@ -99,8 +104,8 @@ export function ProdConteoPage() {
       ])
       if (!stockRes?.ok) throw new Error(String(stockRes?.error || "No se pudieron cargar las existencias"))
 
-      const lineas: ProductoLinea[] = ((stockRes.records as { id: string; nombre: string; sku: string; stock: Record<string, number> }[]) || [])
-        .map((p) => ({ id: p.id, nombre: p.nombre, sku: p.sku || "", sistema: Number(p.stock?.[sucursal]) || 0 }))
+      const lineas: ProductoLinea[] = ((stockRes.records as { id: string; nombre: string; sku: string; activo?: boolean; stock: Record<string, number> }[]) || [])
+        .map((p) => ({ id: p.id, nombre: p.nombre, sku: p.sku || "", sistema: Number(p.stock?.[sucursal]) || 0, activo: p.activo !== false }))
         .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
       setProductos(lineas)
 
@@ -175,11 +180,13 @@ export function ProdConteoPage() {
   const visibles = useMemo(() => {
     const q = search.trim().toUpperCase()
     return productos.filter((p) => {
-      if (!incluirCeros && p.sistema === 0 && !contado[p.id]) return false
+      const contadoYa = String(contado[p.id] ?? "").trim() !== ""
+      if (!incluirInactivos && !p.activo && !contadoYa) return false
+      if (!incluirCeros && p.sistema === 0 && !contadoYa) return false
       if (!q) return true
       return p.nombre.toUpperCase().includes(q) || p.sku.toUpperCase().includes(q)
     })
-  }, [productos, search, incluirCeros, contado])
+  }, [productos, search, incluirCeros, incluirInactivos, contado])
 
   const itemsContados = useMemo(
     () => productos.filter((p) => String(contado[p.id] ?? "").trim() !== ""),
@@ -338,6 +345,10 @@ export function ProdConteoPage() {
               <label className="flex cursor-pointer items-center gap-2">
                 <Checkbox checked={incluirCeros} onCheckedChange={(v) => setIncluirCeros(v === true)} />
                 Incluir productos en cero
+              </label>
+              <label className="flex cursor-pointer items-center gap-2">
+                <Checkbox checked={incluirInactivos} onCheckedChange={(v) => setIncluirInactivos(v === true)} />
+                Incluir inactivos
               </label>
             </div>
             <div className="flex flex-wrap items-center gap-2">
