@@ -9,7 +9,7 @@
  * Server-only. NUNCA importar desde código cliente.
  */
 import { getSupabaseAdmin } from "./supabase"
-import { getBusinessContext, getBranchScope, scopeByBranch } from "./business-context"
+import { getBusinessContext, getBranchScope, scopeByBranch, hasPermission } from "./business-context"
 import { normalizeSucursal, sucursalesForTenant, sucursalAllowedForTenant } from "@/lib/normalize-pulse"
 import { textValue, numberValue, dateValue } from "./csl-helpers"
 import type { ActionParams, ActionUser, Row } from "./csl-types"
@@ -43,6 +43,17 @@ const PERM_REQ_DELETE = "material_requisitions.delete"
 function canDeleteRequisitions(): boolean {
   const ctx = getBusinessContext()
   return Boolean(ctx?.isAdmin || ctx?.isSuperadmin || ctx?.permissions?.includes(PERM_REQ_DELETE))
+}
+
+/** Corregir/eliminar un inventario FINALIZADO. Antes exclusivo de
+ *  admin/superadmin; ahora también por permiso granular. `hasPermission` ya
+ *  bypassa para admin/superadmin, así que no hace falta repetir el check.
+ *  Espejo de los checks de req-mat-inventario-historico-page.tsx. */
+function canCorrectInventories(): boolean {
+  return hasPermission("materials.inventory.correct")
+}
+function canDeleteInventories(): boolean {
+  return hasPermission("materials.inventory.delete")
 }
 
 // ── Auditoría (best-effort) ─────────────────────────────────────────────────
@@ -975,7 +986,7 @@ export async function saveInventory(params: ActionParams, user: ActionUser) {
     const existing = await fetchInv(sb, id)
     if (existing.deleted_at) throw new Error("Inventario eliminado")
     if (existing.status === "finalizado") {
-      throw new Error("Este inventario ya está finalizado y no se puede editar. Usa Corregir (admin) o Duplicar como nuevo conteo.")
+      throw new Error("Este inventario ya está finalizado y no se puede editar. Usa Corregir inventario o Duplicar como nuevo conteo.")
     }
   } else {
     // Reanudar el borrador existente de (sucursal, fecha) → evita duplicados.
@@ -1117,7 +1128,7 @@ export async function deleteInventory(params: ActionParams, user: ActionUser) {
   const inv = await fetchInv(sb, id)
   if (inv.deleted_at) return { ok: true } // idempotente
   const isCreator = Boolean(inv.created_by && user.id && String(inv.created_by) === String(user.id))
-  const canDelete = isManager() || (isCreator && inv.status === "borrador")
+  const canDelete = canDeleteInventories() || (isCreator && inv.status === "borrador")
   if (!canDelete) throw new Error("No tienes permiso para eliminar este inventario.")
   const fields: Row = {
     deleted_at: new Date().toISOString(),
@@ -1220,7 +1231,7 @@ export async function duplicateInventory(params: ActionParams, user: ActionUser)
  * Registra auditoría con valor anterior, valor nuevo, motivo y usuario.
  */
 export async function correctInventoryItem(params: ActionParams, user: ActionUser) {
-  if (!isManager()) throw new Error("Solo admin/superadmin puede corregir un inventario finalizado")
+  if (!canCorrectInventories()) throw new Error("No tienes permiso para corregir un inventario finalizado")
   const itemId = textValue(params, "itemId")
   if (!itemId) throw new Error("Falta itemId")
   const reason = textValue(params, "reason").trim()

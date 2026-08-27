@@ -18,6 +18,44 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.94.0] — 2026-08-27
+
+### Added
+- **Dos permisos granulares nuevos para el histórico de inventarios de
+  materiales**, en `lib/permissions.ts` (asignables desde la UI de permisos):
+  - `materials.inventory.correct` — «Corregir inventarios finalizados»
+  - `materials.inventory.delete` — «Eliminar inventarios finalizados»
+
+### Changed
+- **Corregir y eliminar un inventario finalizado ya no exigen ser
+  admin/superadmin.** Antes eran las dos únicas opciones del menú de acciones
+  cerradas por rol, así que un usuario con todos los permisos de inventario
+  igual veía un menú incompleto. Ahora se conceden por permiso, siguiendo el
+  patrón que el módulo ya usaba para `material_requisitions.delete`.
+  - Pantalla (`components/req-mat-inventario-historico-page.tsx`): las
+    opciones se gatean con `canPerm(...)` en vez de `isManager`.
+  - Servidor (`lib/server/materials.ts`): `correctInventoryItem` y
+    `deleteInventory` aceptan el permiso vía `hasPermission`, que ya bypassa
+    para admin/superadmin. **El servidor sigue siendo la guardia** — la
+    pantalla nunca decide sola.
+- La opción se llama **«Corregir inventario»** (antes «Corregir (admin)»), y el
+  mensaje de error de `saveInventory` se actualizó para no seguir diciendo
+  «admin».
+
+### Notes
+- **Lo que NO cambió, a propósito:** corregir sigue exigiendo **motivo
+  obligatorio** y sigue dejando la fila anterior y la nueva en
+  `material_inventory_audit_logs` con el nombre de quien la hizo; eliminar
+  sigue siendo **borrado suave**; y **restaurar un inventario eliminado sigue
+  siendo exclusivo de admin/superadmin** (`restoreInventory`), que queda como
+  red de seguridad frente a un borrado por error.
+- Concedidos ambos permisos al usuario **CARLOS** (`cariascmad@gmail.com`,
+  negocio `csl`), que ya tenía los cuatro de ver/imprimir/Excel/PDF. Con esto
+  ve el menú de acciones completo. `UPDATE` puntual filtrado por su `user_id`,
+  sin tocar a ningún otro usuario.
+
+---
+
 ## [0.93.0] — 2026-08-17
 
 ### Added

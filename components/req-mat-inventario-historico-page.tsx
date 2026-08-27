@@ -44,7 +44,6 @@ export function ReqMatInventarioHistoricoPage() {
   const { apiUrl, showToast, setActiveTab } = useAppStore()
   const business = useCurrentBusiness()
   const sessionUser = useSessionUser()
-  const isManager = Boolean(sessionUser?.isAdmin || sessionUser?.isSuperadmin)
   const responsable = sessionUser?.nombre || sessionUser?.username || "—"
 
   // Permisos granulares (admin/superadmin bypassan vía canPerm).
@@ -53,6 +52,11 @@ export function ReqMatInventarioHistoricoPage() {
   const canExcel = canPerm(sessionUser, "materials.inventory.export_excel")
   const canPdf = canPerm(sessionUser, "materials.inventory.export_pdf")
   const canAnyExport = canView || canPrintInv || canExcel || canPdf
+  // Corregir y eliminar un inventario FINALIZADO ya no son exclusivas de admin:
+  // se conceden por permiso granular. El servidor repite ambos checks — la
+  // pantalla nunca es la guardia.
+  const canCorrect = canPerm(sessionUser, "materials.inventory.correct")
+  const canDeleteInv = canPerm(sessionUser, "materials.inventory.delete")
 
   const [items, setItems] = useState<MaterialInventory[]>([])
   const [branches, setBranches] = useState<string[]>([])
@@ -281,11 +285,11 @@ export function ReqMatInventarioHistoricoPage() {
                             {r.status === "borrador" && (
                               <DropdownMenuItem onClick={() => doEdit(r)}><Pencil className="mr-2 h-4 w-4" />Editar</DropdownMenuItem>
                             )}
-                            {isManager && r.status === "finalizado" && (
-                              <DropdownMenuItem onClick={() => openCorrect(r)}><Wrench className="mr-2 h-4 w-4" />Corregir (admin)</DropdownMenuItem>
+                            {canCorrect && r.status === "finalizado" && (
+                              <DropdownMenuItem onClick={() => openCorrect(r)}><Wrench className="mr-2 h-4 w-4" />Corregir inventario</DropdownMenuItem>
                             )}
                             <DropdownMenuItem onClick={() => openAudit(r)}><ScrollText className="mr-2 h-4 w-4" />Ver historial de cambios</DropdownMenuItem>
-                            {(r.status === "borrador" || isManager) && (
+                            {(r.status === "borrador" || canDeleteInv) && (
                               <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={() => doDelete(r)} className="text-red-600 focus:text-red-600"><Trash2 className="mr-2 h-4 w-4" />Eliminar</DropdownMenuItem>

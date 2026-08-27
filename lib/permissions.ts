@@ -30,6 +30,11 @@ export const PERMISSION_OPTIONS: PermissionOption[] = [
   { id: "materials.inventory.print", label: "Imprimir inventarios", section: "Requisición de materiales" },
   { id: "materials.inventory.export_excel", label: "Exportar inventarios a Excel", section: "Requisición de materiales" },
   { id: "materials.inventory.export_pdf", label: "Generar PDF de inventarios", section: "Requisición de materiales" },
+  // Inventario de materiales: acciones que ANTES eran exclusivas de admin.
+  // Un inventario finalizado es inmutable salvo por estas dos vías, ambas
+  // auditadas y con motivo obligatorio.
+  { id: "materials.inventory.correct", label: "Corregir inventarios finalizados", section: "Requisición de materiales" },
+  { id: "materials.inventory.delete", label: "Eliminar inventarios finalizados", section: "Requisición de materiales" },
   // Incentivos de Ventas (sección 32)
   { id: "sales_commission.view", label: "Ver incentivos de ventas", section: "Incentivos de Ventas" },
   { id: "sales_commission.import", label: "Importar (general)", section: "Incentivos de Ventas" },
