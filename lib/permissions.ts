@@ -35,6 +35,11 @@ export const PERMISSION_OPTIONS: PermissionOption[] = [
   // auditadas y con motivo obligatorio.
   { id: "materials.inventory.correct", label: "Corregir inventarios finalizados", section: "Requisición de materiales" },
   { id: "materials.inventory.delete", label: "Eliminar inventarios finalizados", section: "Requisición de materiales" },
+  // Inventario de Productos. `productos.aprobar_conteo` ya lo exigía el
+  // servidor (products-inventory.ts) desde v0.88.0, pero faltaba aquí: sin
+  // entrada en el catálogo la UI de permisos no lo ofrecía y no había forma de
+  // concederlo sin volver admin al usuario.
+  { id: "productos.aprobar_conteo", label: "Aprobar/rechazar conteos físicos", section: "Inventario de Productos" },
   // Incentivos de Ventas (sección 32)
   { id: "sales_commission.view", label: "Ver incentivos de ventas", section: "Incentivos de Ventas" },
   { id: "sales_commission.import", label: "Importar (general)", section: "Incentivos de Ventas" },

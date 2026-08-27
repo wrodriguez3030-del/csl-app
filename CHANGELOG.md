@@ -18,6 +18,38 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.95.0] — 2026-08-27
+
+### Added
+- **`productos.aprobar_conteo` entra al catálogo de permisos**
+  («Aprobar/rechazar conteos físicos», sección Inventario de Productos). El
+  servidor ya lo exigía desde v0.88.0 (`canApproveCount` en
+  `products-inventory.ts`), pero **faltaba en `lib/permissions.ts`**: sin
+  entrada en el catálogo la UI de permisos no lo ofrecía, así que no había
+  forma de concederlo — aprobar un conteo era, en la práctica, exclusivo de
+  admin aunque el código dijera otra cosa.
+
+### Fixed
+- **Histórico de conteos de productos: los botones «Aprobar y ajustar» y
+  «Rechazar» ya no se muestran a quien no puede usarlos.** Se renderizaban con
+  solo tener el menú y el servidor los rechazaba después con «No tienes permiso
+  para aprobar conteos»: el usuario veía una acción, la pulsaba y recibía un
+  error. Ahora la pantalla comprueba `productos.aprobar_conteo` con `canPerm`,
+  igual que el servidor.
+
+### Notes
+- Concedidos al usuario **CARLOS** (`cariascmad@gmail.com`, negocio `csl`) el
+  menú `prod-conteo-historico` y el permiso `productos.aprobar_conteo`. No
+  tenía ningún menú del módulo de Productos, así que antes no veía la pantalla.
+- **Hueco conocido, NO tocado:** `deleteProductCount` existe en el servidor y
+  en `_handlers.ts`, es exclusivo de admin y **hace borrado físico**
+  (`.delete()`, sin `deleted_at` ni auditoría, a diferencia del borrado suave
+  de los inventarios de materiales). **No está conectado a ninguna pantalla**,
+  así que hoy nadie lo puede invocar desde la app. Exponerlo pedía primero
+  convertirlo en borrado suave con auditoría; queda documentado, sin decidir.
+
+---
+
 ## [0.94.0] — 2026-08-27
 
 ### Added

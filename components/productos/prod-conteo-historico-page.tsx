@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Printer, Loader2, ArrowLeft, CheckCircle2, XCircle } from "lucide-react"
 import { fmtQty, diffConteo, CONTEO_ESTADO_LABEL, type Conteo, type ConteoConItems, type ConteoEstado } from "@/lib/productos-client"
 import { printActaConteo } from "@/lib/inventario-productos-pdf"
+import { canPerm } from "@/lib/permissions"
 
 const TODOS = "__todos__"
 
@@ -34,6 +35,10 @@ export function ProdConteoHistoricoPage() {
   const business = useCurrentBusiness()
   const sessionUser = useSessionUser()
   const userName = sessionUser?.nombre || sessionUser?.username || ""
+  // Espejo del check del servidor (`canApproveCount` en products-inventory.ts).
+  // Antes los botones se mostraban a cualquiera con el menú y el servidor los
+  // rechazaba después: el usuario veía una acción que no podía ejecutar.
+  const canApprove = canPerm(sessionUser, "productos.aprobar_conteo")
 
   const [records, setRecords] = useState<Conteo[]>([])
   const [estado, setEstado] = useState(TODOS)
@@ -150,7 +155,7 @@ export function ProdConteoHistoricoPage() {
             <Button variant="outline" className="h-9" onClick={imprimir}>
               <Printer className="mr-1.5 h-4 w-4" /> Acta en PDF
             </Button>
-            {detalle.estado !== "aprobado" && (
+            {canApprove && detalle.estado !== "aprobado" && (
               <>
                 <Button variant="outline" className="h-9" onClick={() => void rechazar()} disabled={busy}>
                   <XCircle className="mr-1.5 h-4 w-4" /> Rechazar
