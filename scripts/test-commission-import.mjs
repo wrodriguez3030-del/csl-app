@@ -15,6 +15,7 @@ const { extractResumenControls } = await import("../lib/commission/ventas-resume
 const { payBucketsFromV2, dominantPayment, addBuckets } = await import("../lib/commission/ventas-pago.ts")
 const { computeRowHash, fnvHex } = await import("../lib/commission/hash.ts")
 const { toSaleRecord } = await import("../lib/commission/aggregate.ts")
+const { aggregateBranches } = await import("../lib/commission/branch-summary.ts")
 const { monthBounds, exclusiveEnd, monthsCovered, quickRange, todayInTz, lastDayOfMonth } = await import("../lib/commission/period.ts")
 
 let pass = 0, fail = 0
@@ -506,6 +507,39 @@ if (existsSync(RESERVAS)) {
   const att = counts.reduce((s, c) => s + c.attended, 0)
   t("atenciones agregadas = Asiste con prestador/fecha", att > 14000 && att <= 14432, `(${att})`)
 } else console.log("(archivo de Reservas no disponible — controles §34 omitidos)")
+
+console.log("── Ventas por sucursal · % de venta en tarjeta (§43)")
+{
+  // Dos sucursales con MEZCLA DE PAGO DISTINTA: el % de tarjeta debe diferir.
+  const rows = [
+    { branch: "RAFAEL VIDAL", gross_amount: 700, payment_method: "TARJETA",       category: "FACIALES" },
+    { branch: "RAFAEL VIDAL", gross_amount: 300, payment_method: "EFECTIVO",      category: "PRODUCTO" },
+    { branch: "LOS JARDINES", gross_amount: 200, payment_method: "TARJETA",       category: "DEPILACION_LASER" },
+    { branch: "LOS JARDINES", gross_amount: 800, payment_method: "TRANSFERENCIA", category: "FACIALES" },
+  ]
+  const CARD_PCT = 0.31
+  const out = aggregateBranches(rows, CARD_PCT)
+  const rv = out.find((b) => b.branch === "RAFAEL VIDAL")
+  const lj = out.find((b) => b.branch === "LOS JARDINES")
+
+  t("RAFAEL VIDAL: 70% de sus ventas en tarjeta", rv.cardShare === 0.7, `(${rv?.cardShare})`)
+  t("LOS JARDINES: 20% de sus ventas en tarjeta", lj.cardShare === 0.2, `(${lj?.cardShare})`)
+  t("el % de tarjeta NO es el mismo en las dos sucursales", rv.cardShare !== lj.cardShare)
+  t("el % de tarjeta NO es la regla fija del negocio", rv.cardShare !== CARD_PCT && lj.cardShare !== CARD_PCT)
+
+  t("descuento tarjeta RAFAEL VIDAL = 700 × 31%", rv.cardResult === 217, `(${rv?.cardResult})`)
+  t("descuento tarjeta LOS JARDINES = 200 × 31%", lj.cardResult === 62, `(${lj?.cardResult})`)
+  t("la regla fija sigue expuesta por sucursal", rv.cardPct === CARD_PCT && lj.cardPct === CARD_PCT)
+
+  t("bruto por sucursal", rv.gross === 1000 && lj.gross === 1000)
+  t("tarjeta / efectivo / transferencia separados", rv.tarjeta === 700 && rv.efectivo === 300 && lj.transferencia === 800)
+  t("categorías: producto / servicio / láser", rv.producto === 300 && rv.servicio === 700 && lj.laser === 200)
+  t("ordenado por bruto descendente", out.length === 2)
+
+  // Sucursal sin ventas: no debe reventar ni inventar un 100%.
+  const cero = aggregateBranches([{ branch: "NUEVA", gross_amount: 0, payment_method: "TARJETA", category: "" }], CARD_PCT)
+  t("bruto 0 → % tarjeta 0 (sin división por cero)", cero[0].cardShare === 0, `(${cero[0]?.cardShare})`)
+}
 
 console.log(`\n${pass} pasaron · ${fail} fallaron`)
 process.exit(fail ? 1 : 0)

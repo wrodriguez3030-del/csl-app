@@ -98,6 +98,16 @@ export function ComisionHistorialPage() {
   )
 }
 
+/** Fila de «Ventas por sucursal» (ver lib/commission/branch-summary.ts).
+ *  `cardShare` = cuánto de LO VENDIDO en esa sucursal se cobró con tarjeta.
+ *  `cardPct`   = la regla del negocio que se le descuenta a esa tarjeta. */
+interface BranchRow {
+  branch: string; gross: number; tarjeta: number; efectivo: number; transferencia: number; otros: number
+  cardShare: number; cardPct: number; cardResult: number
+  producto: number; servicio: number; laser: number
+}
+const fmtShare = (fraction: number) => ((Number(fraction) || 0) * 100).toFixed(1) + "%"
+
 // ── Scaffolds dedicados (próxima fase) ──────────────────────────────────────
 // Ventas por sucursal (agrega ventas persistidas; filtros backend)
 export function ComisionSucursalesPage() {
@@ -105,7 +115,7 @@ export function ComisionSucursalesPage() {
   const { apiUrl, showToast } = useAppStore()
   const { params } = useCommissionFilters()
   const [payment, setPayment] = useState("")
-  const [data, setData] = useState<{ cardPct: number; branches: { branch: string; gross: number; tarjeta: number; efectivo: number; transferencia: number; otros: number; cardResult: number; producto: number; servicio: number; laser: number }[] } | null>(null)
+  const [data, setData] = useState<{ cardPct: number; branches: BranchRow[]; totals?: BranchRow } | null>(null)
   const [loading, setLoading] = useState(true)
   const load = useCallback(async () => {
     setLoading(true)
@@ -131,7 +141,7 @@ export function ComisionSucursalesPage() {
           : br.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin datos. Importa un archivo de ventas primero.</div>
           : (<div className="overflow-x-auto"><table className="w-full text-sm">
             <thead><tr className="border-b text-left text-[11px] uppercase text-muted-foreground">
-              <th className="px-3 py-2">Sucursal</th><th className="px-2 py-2 text-right">Bruto</th><th className="px-2 py-2 text-right">Tarjeta</th><th className="px-2 py-2 text-right">Efectivo</th><th className="px-2 py-2 text-right">Transfer.</th><th className="px-2 py-2 text-right">Otros</th><th className="px-2 py-2 text-right">% Tarj.</th><th className="px-2 py-2 text-right">Result. tarjeta</th><th className="px-2 py-2 text-right">Productos</th><th className="px-2 py-2 text-right">Servicios</th><th className="px-3 py-2 text-right">Láser</th>
+              <th className="px-3 py-2">Sucursal</th><th className="px-2 py-2 text-right">Bruto</th><th className="px-2 py-2 text-right">Tarjeta</th><th className="px-2 py-2 text-right">Efectivo</th><th className="px-2 py-2 text-right">Transfer.</th><th className="px-2 py-2 text-right">Otros</th><th className="px-2 py-2 text-right">% Tarj.</th><th className="px-2 py-2 text-right">Desc. tarjeta{data?.cardPct ? ` (${(data.cardPct * 100).toFixed(0)}%)` : ""}</th><th className="px-2 py-2 text-right">Productos</th><th className="px-2 py-2 text-right">Servicios</th><th className="px-3 py-2 text-right">Láser</th>
             </tr></thead>
             <tbody>{br.map((b) => (
               <tr key={b.branch} className="border-b last:border-0">
@@ -141,14 +151,14 @@ export function ComisionSucursalesPage() {
                 <td className="px-2 py-2 text-right tabular-nums">{fmtRD(b.efectivo)}</td>
                 <td className="px-2 py-2 text-right tabular-nums">{fmtRD(b.transferencia)}</td>
                 <td className="px-2 py-2 text-right tabular-nums">{fmtRD(b.otros)}</td>
-                <td className="px-2 py-2 text-right tabular-nums">{((data?.cardPct || 0) * 100).toFixed(0)}%</td>
+                <td className="px-2 py-2 text-right tabular-nums">{fmtShare(b.cardShare)}</td>
                 <td className="px-2 py-2 text-right tabular-nums text-[color:var(--brand-primary)]">{fmtRD(b.cardResult)}</td>
                 <td className="px-2 py-2 text-right tabular-nums">{fmtRD(b.producto)}</td>
                 <td className="px-2 py-2 text-right tabular-nums">{fmtRD(b.servicio)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{fmtRD(b.laser)}</td>
               </tr>
             ))}</tbody>
-            <tfoot><tr className="bg-slate-50 font-bold"><td className="px-3 py-2">Totales</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.gross))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.tarjeta))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.efectivo))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.transferencia))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.otros))}</td><td className="px-2 py-2"></td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.cardResult))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.producto))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.servicio))}</td><td className="px-3 py-2 text-right tabular-nums">{fmtRD(T((b) => b.laser))}</td></tr></tfoot>
+            <tfoot><tr className="bg-slate-50 font-bold"><td className="px-3 py-2">Totales</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.gross))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.tarjeta))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.efectivo))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.transferencia))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.otros))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtShare(data?.totals?.cardShare ?? 0)}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.cardResult))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.producto))}</td><td className="px-2 py-2 text-right tabular-nums">{fmtRD(T((b) => b.servicio))}</td><td className="px-3 py-2 text-right tabular-nums">{fmtRD(T((b) => b.laser))}</td></tr></tfoot>
           </table></div>)}
       </CardContent></Card>
     </Shell>

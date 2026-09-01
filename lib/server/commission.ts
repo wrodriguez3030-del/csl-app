@@ -16,6 +16,7 @@ import { orderCommissionBranches } from "@/lib/business"
 import { parseDateISO, canonicalCollaborator, normalizeName } from "@/lib/commission/normalize"
 import { exclusiveEnd, monthBounds, monthsCovered, todayInTz } from "@/lib/commission/period"
 import { assignLaserToCalcs } from "@/lib/commission/laser-apply"
+import { aggregateBranches, totalsOf, type BranchSalesRow } from "@/lib/commission/branch-summary"
 import { computeRun, netAmount, allocateInt, type RunResult, type RunRules, type RunSaleRow } from "@/lib/commission/run-engine"
 
 /**
@@ -690,32 +691,19 @@ async function cardPercentage(): Promise<number> {
   return data?.percentage != null ? Number(data.percentage) : 0.27
 }
 
-/** Ventas por sucursal: bruto, medios de pago, % tarjeta, categorías. */
+/**
+ * Ventas por sucursal: bruto, medios de pago, categorías y DOS porcentajes de
+ * tarjeta distintos — `cardShare` (medida: cuánto se cobró con tarjeta en ESA
+ * sucursal) y `cardPct` (regla del negocio que se descuenta). Ver
+ * `lib/commission/branch-summary.ts`.
+ */
 export async function getCommissionByBranch(params: ActionParams) {
   let rows = await fetchSalesForPeriod(params)
   const payment = textValue(params, "payment")
   if (payment) rows = rows.filter((r) => String(r.payment_method || "OTROS") === payment)
   const cardPct = await cardPercentage()
-  type B = { branch: string; gross: number; tarjeta: number; efectivo: number; transferencia: number; otros: number; producto: number; servicio: number; laser: number; count: number }
-  const map = new Map<string, B>()
-  for (const r of rows) {
-    const branch = String(r.branch || "(sin sucursal)")
-    let b = map.get(branch)
-    if (!b) { b = { branch, gross: 0, tarjeta: 0, efectivo: 0, transferencia: 0, otros: 0, producto: 0, servicio: 0, laser: 0, count: 0 }; map.set(branch, b) }
-    const amt = Number(r.gross_amount) || 0
-    b.gross = round2(b.gross + amt); b.count++
-    const pm = String(r.payment_method || "OTROS")
-    if (pm === "TARJETA") b.tarjeta = round2(b.tarjeta + amt)
-    else if (pm === "EFECTIVO") b.efectivo = round2(b.efectivo + amt)
-    else if (pm === "TRANSFERENCIA") b.transferencia = round2(b.transferencia + amt)
-    else b.otros = round2(b.otros + amt)
-    const cat = String(r.category || "")
-    if (cat === "PRODUCTO") b.producto = round2(b.producto + amt)
-    else if (cat === "DEPILACION_LASER") b.laser = round2(b.laser + amt)
-    else b.servicio = round2(b.servicio + amt)
-  }
-  const branches = [...map.values()].map((b) => ({ ...b, cardPct, cardResult: round2(b.tarjeta * cardPct) })).sort((a, b) => b.gross - a.gross)
-  return { ok: true, cardPct, branches }
+  const branches = aggregateBranches(rows as BranchSalesRow[], cardPct)
+  return { ok: true, cardPct, branches, totals: totalsOf(branches, cardPct) }
 }
 
 /** Detalle de la comisión de servicios por categoría (prestador × categoría):

@@ -18,6 +18,38 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.95.1] — 2026-09-01
+
+### Fixed
+- **«Incentivos de Ventas · Ventas por sucursal»: la columna «% Tarj.» mostraba
+  siempre el mismo número fijo en todas las sucursales.** Se estaba pintando la
+  regla del negocio `card_percentage` (31 %) — una CONFIGURACIÓN, igual para
+  todas — en lugar del porcentaje de ventas que cada sucursal cobró con
+  tarjeta, que es lo que la columna dice medir. En julio de 2026 se leía «31 %»
+  en las tres sucursales cuando los valores reales eran RAFAEL VIDAL 54,2 %,
+  LOS JARDINES 63,4 % y VILLA OLGA 60,2 % (total 58,7 %).
+  - `getCommissionByBranch` ahora devuelve **dos** campos distintos por
+    sucursal: `cardShare` (la medida, `tarjeta / bruto`) y `cardPct` (la regla
+    que se descuenta). La columna «% Tarj.» usa `cardShare`.
+  - La columna vecina pasa a llamarse **«Desc. tarjeta (31 %)»**: siempre fue
+    el descuento (`tarjeta × cardPct`), no un «resultado», y ahora lleva el
+    porcentaje de la regla escrito en la cabecera.
+  - La fila de totales ya no deja la celda del porcentaje en blanco: **recalcula**
+    el % sobre el total (no suma porcentajes).
+
+### Changed
+- La agregación por sucursal sale de `lib/server/commission.ts` a
+  **`lib/commission/branch-summary.ts`** (`aggregateBranches`, `cardShareOf`,
+  `totalsOf`), lógica pura y por tanto comprobable. 12 pruebas nuevas en
+  `scripts/test-commission-import.mjs` (`pnpm test:commission`, 160 en verde),
+  incluida la que fija el comportamiento: el % de dos sucursales con distinta
+  mezcla de pago **no** puede coincidir ni ser igual a la regla del negocio.
+
+### Notes
+- Solo afecta a la presentación y a este handler: el motor de liquidación ya
+  usaba `cardPct` por su cuenta (`netAmount`, `run-engine.ts`) y no se tocó.
+  Ningún cálculo de incentivo cambia de valor.
+
 ## [0.95.0] — 2026-08-27
 
 ### Added
