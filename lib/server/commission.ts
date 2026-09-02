@@ -641,6 +641,7 @@ import { isExcludedProvider, isNonIncentiveItem } from "@/lib/commission/exclusi
 import { buildProductSellers, sellerTotals } from "@/lib/commission/product-sellers"
 import { planAutoRuns, AUTO_RUN_SKIP_LABEL } from "@/lib/commission/auto-run"
 import { filterRosterForPeriod, type RosterPeriod } from "@/lib/commission/roster-period"
+import { staleLedgerProviders, dedupeLedgerRows } from "@/lib/commission/ledger-cleanup"
 import { receptionSplitsForBranch, isReceptionSplitSale } from "@/lib/commission/reception-splits"
 
 /** Trae las ventas del negocio filtradas en DB por período (sale_date, rango
@@ -1821,12 +1822,18 @@ async function materializeRunToLedger(
     .select("id,provider_name_snapshot,fixed_incentive,manual_adjustment,status")
     .eq("business_id", business_id).eq("branch", branch)
     .eq("period_month", month).eq("period_year", year)
+    .order("provider_name_snapshot", { ascending: true })
   // Un período CERRADO ya se pagó: recalcularlo cambiaría lo cobrado.
   if ((existingRows || []).some((r) => String((r as Row).status) === "cerrado")) {
     throw new Error(`Período ${month}/${year} cerrado en ${branch}: no se puede recalcular`)
   }
+  // Una persona, una fila: si un alias dejó dos filas de la misma persona, se
+  // conserva la primera y la otra se anula más abajo.
+  const rows = (existingRows || []) as Row[]
+  const dedupe = dedupeLedgerRows(rows.map((r) => ({ id: String(r.id), provider: String(r.provider_name_snapshot || "") })))
+  const rowById = new Map(rows.map((r) => [String(r.id), r]))
   const byProv = new Map<string, Row>()
-  for (const r of (existingRows || []) as Row[]) byProv.set(canonicalCollaborator(String(r.provider_name_snapshot || "")), r)
+  for (const [canon, id] of dedupe.keep) { const r = rowById.get(id); if (r) byProv.set(canon, r) }
 
   for (const it of items) {
     const prov = canonicalCollaborator(it.name)
@@ -1861,6 +1868,24 @@ async function materializeRunToLedger(
       })
       if (error) throw new Error(error.message)
     }
+  }
+
+  // Quien YA NO sale en el cálculo (baja, fusión por alias, cambio de sucursal)
+  // debe dejar de cobrar: sus importes calculados se ponen a cero. La fila se
+  // conserva —con su ajuste manual y su incentivo fijo— para no perder el rastro.
+  const stale = staleLedgerProviders([...dedupe.keep.keys()], items.map((it) => it.name))
+  const toZero = [...stale.map((n) => byProv.get(n)?.id).filter(Boolean) as string[], ...dedupe.duplicates]
+  for (const id of toZero) {
+    const row = rowById.get(String(id))
+    if (!row) continue
+    const fixedIncentive = Number(row.fixed_incentive) || 0
+    const manualAdjustment = Number(row.manual_adjustment) || 0
+    const gross = round2(fixedIncentive + manualAdjustment)
+    const { error } = await sb.from("sales_commission_calculations").update({
+      products_count: 0, product_incentive: 0, service_commission: 0, laser_incentive: 0,
+      bonus_extra: 0, cleaning_contribution: 0, gross_total: gross, net_total: gross, updated_at: nowIso,
+    }).eq("id", row.id as string).eq("business_id", business_id)
+    if (error) throw new Error(error.message)
   }
 }
 

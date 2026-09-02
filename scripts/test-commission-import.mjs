@@ -19,6 +19,8 @@ const { aggregateBranches } = await import("../lib/commission/branch-summary.ts"
 const { buildProductSellers, sellerTotals, SELLER_STATUS_LABEL } = await import("../lib/commission/product-sellers.ts")
 const { planAutoRuns, AUTO_RUN_SKIP_LABEL } = await import("../lib/commission/auto-run.ts")
 const { activeInPeriod, filterRosterForPeriod } = await import("../lib/commission/roster-period.ts")
+const { staleLedgerProviders, dedupeLedgerRows } = await import("../lib/commission/ledger-cleanup.ts")
+const { canonicalCollaborator: canonColab } = await import("../lib/commission/normalize.ts")
 const { monthBounds, exclusiveEnd, monthsCovered, quickRange, todayInTz, lastDayOfMonth, availableYears, lastMonths, TREND_MONTHS } = await import("../lib/commission/period.ts")
 
 let pass = 0, fail = 0
@@ -166,7 +168,7 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
   t("JOELY → JOHELY", canonicalCollaborator("Joely") === "JOHELY")
   t("KATHERINE → KATHERIN", canonicalCollaborator("KATHERINE") === "KATHERIN")
   t("AHSLEY → ASHLEY", canonicalCollaborator("AHSLEY") === "ASHLEY")
-  t("EMELY → EMELI", canonicalCollaborator("emely") === "EMELI")
+  t("EMELY → ASHLEY (le cambiaron el nombre)", canonicalCollaborator("emely") === "ASHLEY" && canonicalCollaborator("EMELI") === "ASHLEY")
 
   console.log("── Run mensual: tarjeta 27% (ejemplo del documento)")
   t("netAmount tarjeta 488,200 → 356,386", netAmount(488200, "TARJETA", 0.27) === 356386)
@@ -305,11 +307,11 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
     tenant: "csl",
     branch: "RAFAEL VIDAL",
     sales: [sale({ amount: 724005.5 })],
-    collaborators: ["LUISA", "YANIBEL", "KARLA", "RIQUELMI", "ROSA", "DIANA", "MADELINE", "EMELI"].map((n) => collab(n)),
+    collaborators: ["LUISA", "YANIBEL", "KARLA", "RIQUELMI", "ROSA", "DIANA", "MADELINE", "ASHLEY"].map((n) => collab(n)),
     patients: [
       { collaborator: "RIQUELMI", patients: 246 }, { collaborator: "ROSA", patients: 192 },
       { collaborator: "DIANA", patients: 206 }, { collaborator: "MADELINE", patients: 244 },
-      { collaborator: "EMELY", patients: 240 }, // alias EMELY→EMELI (como viene del archivo)
+      { collaborator: "EMELY", patients: 240 }, // alias EMELY→ASHLEY (como viene del archivo)
     ],
     patientsSource: "manual",
     rules: { ...RULES, laserScale: [{ threshold: 260000, percentage: 0.02 }], laserDistributionMode: "equitativo" },
@@ -323,7 +325,7 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
   t("ROSA 192 → 1,540.44", Math.abs(eq("ROSA").laserTotal - 1540.44) <= 0.02)
   t("DIANA 206 → 1,652.76", Math.abs(eq("DIANA").laserTotal - 1652.76) <= 0.02)
   t("MADELINE 244 → 1,957.64", Math.abs(eq("MADELINE").laserTotal - 1957.64) <= 0.02)
-  t("EMELY 240 → 1,925.55 (con alias)", Math.abs(eq("EMELI").laserTotal - 1925.55) <= 0.02)
+  t("EMELY 240 → 1,925.55 (con alias, cae en ASHLEY)", Math.abs(eq("ASHLEY").laserTotal - 1925.55) <= 0.02)
   const sumEq = rEq.items.reduce((s, i) => s + i.laserTotal, 0)
   t("CUADRE EXACTO: Σ repartido = fondo", Math.round(sumEq * 100) / 100 === 14480.11, `(${sumEq.toFixed(2)})`)
 
@@ -723,6 +725,47 @@ console.log("── Roster con fecha de alta y baja (§69)")
   t("quien no tiene fechas aparece en los dos meses", ago.includes("LESLIE@LOS JARDINES") && sep.includes("LESLIE@LOS JARDINES"))
   t("no muta la lista original", roster.length === 3)
   t("sin período devuelve todo", filterRosterForPeriod(roster, null).length === 3)
+}
+
+console.log("── Alias de colaboradoras y limpieza del libro (§70)")
+{
+  // EMELI es ASHLEY: le cambiaron el nombre. Sin alias, la misma persona
+  // aparecía dos veces y cobraba el láser dos veces.
+  t("EMELI se resuelve a ASHLEY", canonColab("EMELI") === "ASHLEY")
+  t("y la variante EMELY también", canonColab("EMELY") === "ASHLEY")
+  t("ASHLEY sigue siendo ASHLEY", canonColab("ASHLEY") === "ASHLEY")
+  t("AHSLEY (con el error de tecleo) también", canonColab("AHSLEY") === "ASHLEY")
+  t("los demás alias no se rompen", canonColab("YANIBLE") === "YANIBEL" && canonColab("KATHERINE") === "KATHERIN" && canonColab("MADELIN") === "MADELINE")
+
+  // Al recalcular, quien ya no sale en el cálculo debe dejar de cobrar.
+  t("quien ya no está en el cálculo sale de la lista", staleLedgerProviders(["ASHLEY", "PATRICIA", "DIANA"], ["ASHLEY", "DIANA"]).join(",") === "PATRICIA")
+  t("compara por nombre canónico: EMELI ya es ASHLEY, así que NO sobra", staleLedgerProviders(["EMELI"], ["ASHLEY"]).length === 0)
+  t("y al revés: ASHLEY no sobra si el cálculo trae EMELI", staleLedgerProviders(["ASHLEY"], ["EMELI"]).length === 0)
+  t("sin sobrantes devuelve lista vacía", staleLedgerProviders(["ASHLEY"], ["ASHLEY", "DIANA"]).length === 0)
+  t("libro vacío no revienta", staleLedgerProviders([], ["ASHLEY"]).length === 0)
+  t("cálculo vacío deja fuera a todos", staleLedgerProviders(["ASHLEY", "DIANA"], []).length === 2)
+  t("no muta las entradas", (() => { const a = Object.freeze(["ASHLEY", "PATRICIA"]); staleLedgerProviders(a, ["ASHLEY"]); return a.length === 2 })())
+
+  // Al fusionar dos nombres, el libro queda con DOS filas de la misma persona.
+  // Hay que quedarse con una y anular la otra, o el cálculo actualiza la que no es.
+  const filas = Object.freeze([
+    { id: "a", provider: "ASHLEY" }, { id: "b", provider: "EMELI" }, { id: "c", provider: "DIANA" },
+  ])
+  const dd = dedupeLedgerRows(filas)
+  t("una sola fila por persona", dd.keep.size === 2 && dd.keep.get("ASHLEY") === "a" && dd.keep.get("DIANA") === "c")
+  t("la fila duplicada se marca para anular", dd.duplicates.join(",") === "b")
+  t("gana la fila con el nombre canónico, esté donde esté", dd.keep.get("ASHLEY") === "a")
+  t("aunque el alias venga primero", (() => {
+    const d = dedupeLedgerRows([{ id: "b", provider: "EMELI" }, { id: "a", provider: "ASHLEY" }])
+    return d.keep.get("ASHLEY") === "a" && d.duplicates.join(",") === "b"
+  })())
+  t("si ninguna es canónica, gana la primera", (() => {
+    const d = dedupeLedgerRows([{ id: "x", provider: "EMELI" }, { id: "y", provider: "EMELY" }])
+    return d.keep.get("ASHLEY") === "x" && d.duplicates.join(",") === "y"
+  })())
+  t("sin duplicados no marca nada", dedupeLedgerRows([{ id: "a", provider: "ASHLEY" }]).duplicates.length === 0)
+  t("libro vacío no revienta", dedupeLedgerRows([]).keep.size === 0)
+  t("no muta el libro", filas.length === 3)
 }
 
 console.log(`\n${pass} pasaron · ${fail} fallaron`)

@@ -18,6 +18,52 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.105.0] — 2026-09-02
+
+### Fixed
+- 🔴 **La misma persona cobraba el incentivo láser DOS VECES.** A ASHLEY le
+  cambiaron el nombre y quedó también como «EMELI» en el roster: dos filas, dos
+  cuotas. Cobró de más **RD$8.767,04** entre junio y agosto (2.321,83 + 5.412,63
+  + 1.032,58). Se resuelve con un alias `EMELI/EMELY → ASHLEY` y quitando la
+  fila duplicada del roster.
+- 🔴 **Al recalcular, quien ya no salía en el cálculo seguía cobrando.**
+  `materializeRunToLedger` actualizaba o creaba la fila de cada persona del
+  cálculo, pero no tocaba las de quien había desaparecido (baja, fusión por
+  alias, cambio de sucursal): se quedaban con el importe viejo. Ahora sus
+  importes calculados se ponen a cero, conservando la fila —y su ajuste manual e
+  incentivo fijo— para no perder el rastro (`lib/commission/ledger-cleanup.ts`).
+- 🔴 **Dos filas de la misma persona en un período rompían el recálculo.** El
+  libro se indexaba por nombre canónico, así que con un duplicado solo una fila
+  se actualizaba y la otra quedaba pagando su importe viejo. Ahora se conserva
+  una —la que ya lleva el nombre canónico— y las demás se anulan. Apareció otro
+  caso real: **ROSA duplicada en julio** (Rafael Vidal), de dos cargas distintas.
+- El libro se lee ordenado por nombre, para que el recálculo sea determinista.
+
+### Changed
+- **El descuento de tarjeta pasa de 31 % a 27 %**, por decisión del negocio: es
+  el porcentaje que usa el cuadro de Excel (`=G68*27%`). Afecta a la base láser
+  y a todo lo que se netea por tarjeta.
+- **EMELI** dada de baja del roster como duplicada de ASHLEY.
+
+### Notes — junio a agosto recalculados
+| Mes | Fondo láser | Inc. productos | Inc. servicios | Neto |
+|---|---|---|---|---|
+| Junio | 37.548,76 | 33.600,00 | 41.742,45 | 124.491,21 |
+| Julio | 93.293,36 | 24.600,00 | 34.220,97 | 164.114,33 |
+| Agosto | 22.850,66 | 23.000,00 | 28.065,05 | 85.515,71 |
+
+El 27 % sube los fondos y en **Los Jardines julio** hace saltar de tramo (la base
+pasa de 797.280 a 821.760 y cruza el umbral de 800.000): del 3 % al 4 %,
++RD$8.952. Las nueve sucursales-mes cuadran al céntimo entre fondo y repartido.
+Todo sigue en **borrador**.
+
+### Diferencia con el cuadro de Excel (Rafael Vidal, agosto)
+Su base era 458.785 y la del sistema 464.659. Dos causas, ya conciliadas:
+el Excel netea al **27 %** (ya aplicado) y calcula el láser **por resta**
+(total − masajes − productos − faciales), lo que le deja dentro lo que no restó
+—como los RD$200 de aplicación de anestesia—; el sistema suma solo las líneas de
+categoría LÁSER. El reparto ahora es entre **8**, no 9, al fusionar EMELI.
+
 ## [0.104.0] — 2026-09-02
 
 ### Fixed

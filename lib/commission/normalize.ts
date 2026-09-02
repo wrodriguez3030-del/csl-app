@@ -62,10 +62,13 @@ export function normalizeBranch(v: unknown, synonyms: Record<string, string[]> =
  */
 export const COLLABORATOR_ALIASES: Record<string, string> = {
   AHSLEY: "ASHLEY",
+  // EMELI/EMELY es ASHLEY: le cambiaron el nombre y quedó duplicada en el
+  // roster, cobrando el incentivo láser DOS VECES (junio–agosto 2026).
+  EMELI: "ASHLEY",
+  EMELY: "ASHLEY",
   YANIBLE: "YANIBEL",
   KATHERINE: "KATHERIN",
   ROQUELMI: "RIQUELMI",
-  EMELY: "EMELI",
   JOELY: "JOHELY",
   MADELIN: "MADELINE",
 }
