@@ -49,6 +49,68 @@ export async function sha256Hex(buf: ArrayBuffer): Promise<string> {
 }
 
 interface ParsedSale { rec: SaleRecord; rawProvider: string; rowHash: string; originalId: string; monthKey: string }
+export interface AutoRunRow {
+  branch: string; status: "guardado" | "omitido" | "error"; reason: string | null
+  laserFund: number; productIncentive: number; serviceIncentive: number; netTotal: number; alerts: number
+}
+export interface AutoRunResult {
+  month: number; year: number; rows: AutoRunRow[]
+  totals: { laserFund: number; productIncentive: number; serviceIncentive: number; netTotal: number }
+}
+
+const RUN_STATUS_CLASS: Record<string, string> = {
+  guardado: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  omitido: "bg-slate-50 text-slate-600 border-slate-200",
+  error: "bg-red-50 text-red-600 border-red-200",
+}
+
+/** Cuadro del cálculo mensual que se corrió solo tras importar. */
+function AutoRunCard({ runs }: { runs: AutoRunResult[] }) {
+  return (
+    <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
+      <div className="border-b px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-600">
+        Cálculo mensual corrido automáticamente
+      </div>
+      {runs.map((r) => (
+        <div key={`${r.year}-${r.month}`} className="border-b last:border-0">
+          <div className="px-4 pt-3 text-sm font-semibold">{MONTHS[r.month]} {r.year}</div>
+          <div className="overflow-x-auto"><table className="w-full text-sm">
+            <thead><tr className="border-b text-left text-[11px] uppercase text-muted-foreground">
+              <th className="px-4 py-2">Sucursal</th><th className="px-2 py-2 text-right">Fondo láser</th>
+              <th className="px-2 py-2 text-right">Inc. productos</th><th className="px-2 py-2 text-right">Inc. servicios</th>
+              <th className="px-2 py-2 text-right">Neto</th><th className="px-4 py-2">Estado</th>
+            </tr></thead>
+            <tbody>{r.rows.map((b) => (
+              <tr key={b.branch} className="border-b last:border-0">
+                <td className="px-4 py-2 font-medium">{b.branch}</td>
+                <td className="px-2 py-2 text-right tabular-nums">{fmtRD(b.laserFund)}</td>
+                <td className="px-2 py-2 text-right tabular-nums">{fmtRD(b.productIncentive)}</td>
+                <td className="px-2 py-2 text-right tabular-nums">{fmtRD(b.serviceIncentive)}</td>
+                <td className="px-2 py-2 text-right font-semibold tabular-nums">{fmtRD(b.netTotal)}</td>
+                <td className="px-4 py-2">
+                  <Badge variant="outline" className={RUN_STATUS_CLASS[b.status] || ""}>{b.status}</Badge>
+                  {b.alerts ? <span className="ml-1.5 text-[11px] text-amber-700">{b.alerts} alertas</span> : null}
+                  {b.reason ? <div className="mt-0.5 text-[11px] text-muted-foreground">{b.reason}</div> : null}
+                </td>
+              </tr>
+            ))}</tbody>
+            <tfoot><tr className="bg-slate-50 font-bold">
+              <td className="px-4 py-2">Totales</td>
+              <td className="px-2 py-2 text-right tabular-nums">{fmtRD(r.totals.laserFund)}</td>
+              <td className="px-2 py-2 text-right tabular-nums">{fmtRD(r.totals.productIncentive)}</td>
+              <td className="px-2 py-2 text-right tabular-nums">{fmtRD(r.totals.serviceIncentive)}</td>
+              <td className="px-2 py-2 text-right tabular-nums">{fmtRD(r.totals.netTotal)}</td>
+              <td className="px-4 py-2" />
+            </tr></tfoot>
+          </table></div>
+        </div>
+      ))}
+      <p className="px-4 py-2 text-[11px] text-muted-foreground">
+        Queda en BORRADOR: el reparto de las cuentas de recepción ya está aplicado, pero nada se finaliza solo. Revísalo en Cálculo mensual antes de pagar.
+      </p>
+    </CardContent></Card>
+  )
+}
 interface Parsed {
   filename: string; fileHash: string; sales: ParsedSale[]; agg: AggregateResult
   periods: string[]; minDate: string; maxDate: string
@@ -93,6 +155,7 @@ export function ImportarVentasTab({ onImported }: { onImported?: () => void }) {
   const [parsed, setParsed] = useState<Parsed | null>(null)
   const [dupExisting, setDupExisting] = useState<{ periodMonth: number; periodYear: number; filename: string; rowsCount: number; grossTotal: number } | null>(null)
   const [committed, setCommitted] = useState<{ salesInserted: number; salesDuplicated: number; employees: number } | null>(null)
+  const [autoRun, setAutoRun] = useState<AutoRunResult[] | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -106,7 +169,7 @@ export function ImportarVentasTab({ onImported }: { onImported?: () => void }) {
   }, [apiUrl])
 
   const process = useCallback(async (file: File) => {
-    setBusy(true); setParsed(null); setDupExisting(null); setCommitted(null)
+    setBusy(true); setParsed(null); setDupExisting(null); setCommitted(null); setAutoRun(null)
     try {
       setPhase("Analizando archivo…")
       const buf = await file.arrayBuffer()
@@ -226,6 +289,23 @@ export function ImportarVentasTab({ onImported }: { onImported?: () => void }) {
       setCommitted(res as never)
       showToast("Importación de ventas confirmada", "success")
       onImported?.()
+      // El reparto de las cuentas de recepción lo aplica el CÁLCULO mensual, no
+      // la importación: si nadie lo corre, esas unidades no llegan a nadie. Se
+      // corre solo, un período por llamada, y nunca pisa un cálculo finalizado
+      // ni un período cerrado (el servidor los omite y lo dice).
+      const corridas: AutoRunResult[] = []
+      for (const period of parsed.periods) {
+        const [y, m] = period.split("-").map(Number)
+        setPhase(`Calculando incentivos de ${MONTHS[m]} ${y}…`)
+        try {
+          const r = await apiJsonp(normalizeApiUrl(apiUrl), { action: "autoRunCommissionPeriod", month: m, year: y })
+          if (r?.ok) corridas.push(r as unknown as AutoRunResult)
+        } catch { /* el cálculo se puede repetir a mano desde Cálculo mensual */ }
+      }
+      if (corridas.length) {
+        setAutoRun(corridas)
+        invalidateReadCache("getCommissionCalculations"); invalidateReadCache("getCommissionRuns")
+      }
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Error al importar", "error")
     } finally {
@@ -300,6 +380,8 @@ export function ImportarVentasTab({ onImported }: { onImported?: () => void }) {
           </div>
         </CardContent></Card>
       ) : null}
+
+      {autoRun ? <AutoRunCard runs={autoRun} /> : null}
 
       {agg && !committed ? (
         <>

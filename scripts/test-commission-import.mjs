@@ -17,6 +17,7 @@ const { computeRowHash, fnvHex } = await import("../lib/commission/hash.ts")
 const { toSaleRecord } = await import("../lib/commission/aggregate.ts")
 const { aggregateBranches } = await import("../lib/commission/branch-summary.ts")
 const { buildProductSellers, sellerTotals, SELLER_STATUS_LABEL } = await import("../lib/commission/product-sellers.ts")
+const { planAutoRuns, AUTO_RUN_SKIP_LABEL } = await import("../lib/commission/auto-run.ts")
 const { monthBounds, exclusiveEnd, monthsCovered, quickRange, todayInTz, lastDayOfMonth, availableYears, lastMonths, TREND_MONTHS } = await import("../lib/commission/period.ts")
 
 let pass = 0, fail = 0
@@ -637,6 +638,55 @@ console.log("── Quién vendió producto (§67)")
 
   t("lista vacía no revienta", buildProductSellers([], "csl").length === 0 && sellerTotals([]).units === 0)
   t("no muta la entrada", rows[0].quantity === 20)
+}
+
+console.log("── Cálculo automático tras importar ventas (§68)")
+{
+  const BR = ["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA"]
+  const periods = ["2026-07", "2026-08"]
+
+  // Nada previo: se corre todo.
+  const limpio = planAutoRuns(periods, BR, { runs: [], closed: [] })
+  t("sin nada previo corre las 3 sucursales de cada mes", limpio.run.length === 6 && limpio.skipped.length === 0)
+  t("cada entrada lleva mes, año y sucursal", limpio.run.every((r) => r.year === 2026 && [7, 8].includes(r.month) && BR.includes(r.branch)))
+
+  // Un run FINALIZADO no se pisa nunca de forma automática.
+  const conFinal = planAutoRuns(periods, BR, {
+    runs: [{ year: 2026, month: 7, branch: "RAFAEL VIDAL", status: "finalizado" }],
+    closed: [],
+  })
+  t("un cálculo FINALIZADO se omite", conFinal.run.length === 5 && conFinal.skipped.length === 1)
+  t("y se dice por qué", conFinal.skipped[0].reason === "finalizado" && conFinal.skipped[0].branch === "RAFAEL VIDAL" && conFinal.skipped[0].month === 7)
+
+  // Un borrador SÍ se recalcula (es lo que hace el botón manual).
+  const conBorrador = planAutoRuns(periods, BR, {
+    runs: [{ year: 2026, month: 8, branch: "VILLA OLGA", status: "borrador" }], closed: [],
+  })
+  t("un borrador se recalcula", conBorrador.run.length === 6 && conBorrador.skipped.length === 0)
+
+  // Un run ANULADO no bloquea.
+  const conAnulado = planAutoRuns(periods, BR, {
+    runs: [{ year: 2026, month: 8, branch: "VILLA OLGA", status: "anulado" }], closed: [],
+  })
+  t("un run anulado no bloquea", conAnulado.run.length === 6)
+
+  // Un período CERRADO en el libro de liquidación tampoco se toca.
+  const conCerrado = planAutoRuns(periods, BR, {
+    runs: [], closed: [{ year: 2026, month: 7, branch: "LOS JARDINES" }],
+  })
+  t("un período CERRADO se omite", conCerrado.run.length === 5 && conCerrado.skipped[0].reason === "cerrado")
+
+  // Ambos motivos a la vez: gana el más fuerte y no se duplica la entrada.
+  const ambos = planAutoRuns(["2026-07"], BR, {
+    runs: [{ year: 2026, month: 7, branch: "LOS JARDINES", status: "finalizado" }],
+    closed: [{ year: 2026, month: 7, branch: "LOS JARDINES" }],
+  })
+  t("finalizado + cerrado = una sola omisión", ambos.skipped.length === 1 && ambos.run.length === 2)
+
+  t("cada motivo tiene texto legible", ["finalizado", "cerrado"].every((k) => typeof AUTO_RUN_SKIP_LABEL[k] === "string"))
+  t("períodos mal formados se ignoran", planAutoRuns(["", "xx", "2026-13"], BR, { runs: [], closed: [] }).run.length === 0)
+  t("sin sucursales no hay nada que correr", planAutoRuns(periods, [], { runs: [], closed: [] }).run.length === 0)
+  t("orden estable: por período y luego por sucursal", limpio.run[0].month === 7 && limpio.run[3].month === 8)
 }
 
 console.log(`\n${pass} pasaron · ${fail} fallaron`)

@@ -18,6 +18,44 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.103.0] — 2026-09-02
+
+### Added
+- **El cálculo mensual se corre solo al terminar de importar ventas**, un
+  período por vez, y la pantalla muestra el **cuadro del resultado**: por
+  sucursal, fondo láser · incentivo de productos · incentivo de servicios ·
+  neto · estado y número de alertas, con fila de totales.
+  - Motivo: **el reparto de las cuentas de recepción lo aplica el cálculo, no la
+    importación**. Si nadie lo corría, esas unidades no llegaban a nadie. Pasó
+    con agosto 2026: 116 unidades de las cuatro cuentas de recepción quedaron
+    sin repartir y LUISA, YADIBEL, LESLIE, YANIBEL y KARLA no cobraban producto.
+  - Queda en **borrador**. Nada se finaliza solo.
+- Handler `autoRunCommissionPeriod` + planificador puro
+  `lib/commission/auto-run.ts`, con 12 pruebas.
+
+### Fixed
+- 🔴 **`materializeRunToLedger` podía sobrescribir un período CERRADO.** El
+  cálculo mensual escribe en el libro de liquidación y no comprobaba el estado,
+  así que recalcular un mes ya cerrado (y pagado) cambiaba lo cobrado sin avisar.
+  Ahora lanza un error claro, igual que ya hacía la asignación manual de
+  prestador. Imprescindible antes de automatizar el cálculo.
+
+### Notes — qué NO toca el cálculo automático
+- Un run **finalizado**: se omite y lo dice («anúlalo si quieres recalcularlo»).
+- Un período **cerrado** en la liquidación: se omite.
+- Un **borrador** sí se recalcula, que es lo que hace el botón manual.
+- Los **ajustes manuales** y el `fixed_incentive` se conservan (ya lo hacía).
+- Si una sucursal falla, las otras siguen y el fallo sale en el cuadro. Si falla
+  el cálculo entero, la importación **no** se deshace: se puede correr a mano.
+- Rendimiento medido: 7,3 s por período (tres sucursales). Cada período va en su
+  propia llamada, así que un archivo de varios meses no agota el tiempo límite.
+
+### Datos
+Agosto 2026 quedó corrido y guardado en borrador: Rafael Vidal neto
+RD$17.893,18 · Los Jardines RD$35.699,00 · Villa Olga RD$25.858,05 (total
+RD$79.450,23). El incentivo de producto pasa de 12 personas / 121 u a **19
+personas / 230 u / RD$23.000**, ya con el reparto aplicado.
+
 ## [0.102.0] — 2026-09-02
 
 ### Added

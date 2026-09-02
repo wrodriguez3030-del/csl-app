@@ -639,6 +639,7 @@ export async function setCommissionCalcStatus(params: ActionParams, user: Action
 import { classifyProvider } from "@/lib/commission/classification"
 import { isExcludedProvider, isNonIncentiveItem } from "@/lib/commission/exclusions"
 import { buildProductSellers, sellerTotals } from "@/lib/commission/product-sellers"
+import { planAutoRuns, AUTO_RUN_SKIP_LABEL } from "@/lib/commission/auto-run"
 import { receptionSplitsForBranch, isReceptionSplitSale } from "@/lib/commission/reception-splits"
 
 /** Trae las ventas del negocio filtradas en DB por período (sale_date, rango
@@ -1810,9 +1811,13 @@ async function materializeRunToLedger(
   const sb = getSupabaseAdmin()
   const nowIso = new Date().toISOString()
   const { data: existingRows } = await sb.from("sales_commission_calculations")
-    .select("id,provider_name_snapshot,fixed_incentive,manual_adjustment")
+    .select("id,provider_name_snapshot,fixed_incentive,manual_adjustment,status")
     .eq("business_id", business_id).eq("branch", branch)
     .eq("period_month", month).eq("period_year", year)
+  // Un período CERRADO ya se pagó: recalcularlo cambiaría lo cobrado.
+  if ((existingRows || []).some((r) => String((r as Row).status) === "cerrado")) {
+    throw new Error(`Período ${month}/${year} cerrado en ${branch}: no se puede recalcular`)
+  }
   const byProv = new Map<string, Row>()
   for (const r of (existingRows || []) as Row[]) byProv.set(canonicalCollaborator(String(r.provider_name_snapshot || "")), r)
 
@@ -1922,6 +1927,61 @@ export async function saveCommissionRun(params: ActionParams, user: ActionUser) 
     existing ? { status: existing.status } : null, { branch, month, year, netTotal: result.totals.netTotal },
     null, { month, year })
   return { ok: true, runId, result }
+}
+
+/**
+ * Cálculo automático de UN período (las sucursales del tenant), pensado para
+ * correr solo al terminar de importar ventas. Nunca toca un cálculo FINALIZADO
+ * ni un período CERRADO: los omite y lo dice. Cada sucursal va por su cuenta —
+ * si una falla, las demás siguen y el fallo se reporta.
+ */
+export async function autoRunCommissionPeriod(params: ActionParams, user: ActionUser) {
+  requirePermission("sales_commission.calculate")
+  const business_id = requireBizId()
+  const month = numberValue(params, "month")
+  const year = numberValue(params, "year")
+  if (!month || !year) throw new Error("Falta el período a calcular")
+  const sb = getSupabaseAdmin()
+  const period = `${year}-${String(month).padStart(2, "0")}`
+  const branches = await readTenantBranches()
+
+  const [{ data: runRows }, { data: calcRows }] = await Promise.all([
+    sb.from("sales_commission_runs").select("branch,status")
+      .eq("business_id", business_id).eq("period_month", month).eq("period_year", year).is("deleted_at", null),
+    sb.from("sales_commission_calculations").select("branch,status")
+      .eq("business_id", business_id).eq("period_month", month).eq("period_year", year).eq("status", "cerrado"),
+  ])
+  const plan = planAutoRuns([period], branches, {
+    runs: ((runRows || []) as Row[]).map((r) => ({ year, month, branch: String(r.branch || ""), status: String(r.status || "") })),
+    closed: ((calcRows || []) as Row[]).map((r) => ({ year, month, branch: String(r.branch || "") })),
+  })
+
+  const rows: Row[] = plan.skipped.map((sk) => ({
+    branch: sk.branch, status: "omitido", reason: AUTO_RUN_SKIP_LABEL[sk.reason],
+    laserFund: 0, productIncentive: 0, serviceIncentive: 0, netTotal: 0, alerts: 0,
+  }))
+  for (const target of plan.run) {
+    try {
+      const saved = await saveCommissionRun({ branch: target.branch, month, year }, user)
+      const t = saved.result.totals
+      rows.push({
+        branch: target.branch, status: "guardado", reason: null,
+        laserFund: saved.result.laser.fund, productIncentive: t.productIncentive,
+        serviceIncentive: t.serviceIncentiveAdjusted, netTotal: t.netTotal, alerts: saved.result.alerts.length,
+      })
+    } catch (e) {
+      rows.push({
+        branch: target.branch, status: "error", reason: e instanceof Error ? e.message : "Error al calcular",
+        laserFund: 0, productIncentive: 0, serviceIncentive: 0, netTotal: 0, alerts: 0,
+      })
+    }
+  }
+  rows.sort((a, b) => String(a.branch).localeCompare(String(b.branch)))
+  const sum = (k: string) => round2(rows.reduce((s, r) => s + (Number(r[k]) || 0), 0))
+  return {
+    ok: true, month, year, rows,
+    totals: { laserFund: sum("laserFund"), productIncentive: sum("productIncentive"), serviceIncentive: sum("serviceIncentive"), netTotal: sum("netTotal") },
+  }
 }
 
 /** Lista de runs del período (todas las sucursales). */
