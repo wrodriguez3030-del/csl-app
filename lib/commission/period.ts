@@ -142,3 +142,25 @@ export function availableYears(minISO: string, maxISO: string, currentYear: numb
   for (let y = to; y >= from && out.length < MAX_YEARS; y--) out.push(y)
   return out
 }
+
+/** Meses que dibuja la «Tendencia mensual» del tablero: un año completo, para
+ *  que se vea la estacionalidad y no solo medio año. */
+export const TREND_MONTHS = 12
+
+/**
+ * Los `count` meses que terminan en (`anchorYear`, `anchorMonth`), del más
+ * viejo al más nuevo — el orden en que el gráfico los dibuja de izquierda a
+ * derecha. Cruza el cambio de año hacia atrás sin saltarse ningún mes.
+ */
+export function lastMonths(anchorYear: number, anchorMonth: number, count: number): { year: number; month: number }[] {
+  const n = Math.max(0, Math.floor(Number(count) || 0))
+  const out: { year: number; month: number }[] = []
+  let y = Number(anchorYear) || new Date().getFullYear()
+  let m = Number(anchorMonth) || 1
+  for (let i = 0; i < n; i++) {
+    out.unshift({ year: y, month: m })
+    m--
+    if (m < 1) { m = 12; y-- }
+  }
+  return out
+}

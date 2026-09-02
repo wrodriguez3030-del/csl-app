@@ -14,7 +14,7 @@ import type { ActionParams, ActionUser, Row } from "./csl-types"
 import { defaultCommissionRules } from "@/lib/commission/rules"
 import { orderCommissionBranches } from "@/lib/business"
 import { parseDateISO, canonicalCollaborator, normalizeName } from "@/lib/commission/normalize"
-import { exclusiveEnd, monthBounds, monthsCovered, todayInTz, availableYears } from "@/lib/commission/period"
+import { exclusiveEnd, monthBounds, monthsCovered, todayInTz, availableYears, lastMonths, TREND_MONTHS } from "@/lib/commission/period"
 import { assignLaserToCalcs } from "@/lib/commission/laser-apply"
 import { aggregateBranches, totalsOf, type BranchSalesRow } from "@/lib/commission/branch-summary"
 import { computeRun, netAmount, allocateInt, type RunResult, type RunRules, type RunSaleRow } from "@/lib/commission/run-engine"
@@ -1372,12 +1372,9 @@ export async function getCommissionExecutiveDashboard(params: ActionParams) {
   const prevYear = anchorMonth === 1 ? anchorYear - 1 : anchorYear
   const prevMonth = anchorMonth === 1 ? 12 : anchorMonth - 1
 
-  // Tendencia: 6 meses hasta el ancla (incluye el mes anterior para comparar).
-  const trendMonths: { year: number; month: number }[] = []
-  {
-    let y = anchorYear, m = anchorMonth
-    for (let i = 0; i < 6; i++) { trendMonths.unshift({ year: y, month: m }); m--; if (m < 1) { m = 12; y-- } }
-  }
+  // Tendencia: 12 meses hasta el ancla — un año completo, para que se vea la
+  // estacionalidad (incluye el mes anterior, que además sirve de comparación).
+  const trendMonths = lastMonths(anchorYear, anchorMonth, TREND_MONTHS)
   const trendFrom = monthBounds(trendMonths[0].year, trendMonths[0].month).from
   const trendToEx = exclusiveEnd(anchorB.to)
 
@@ -1428,8 +1425,10 @@ export async function getCommissionExecutiveDashboard(params: ActionParams) {
 
   // — Tendencia + mes anterior desde la agregación mensual.
   const monthAgg = (y: number, m: number) => monthlyAgg.filter((r) => r.y === y && r.m === m)
-  const trend = trendMonths.map(({ year, month }) => ({
-    year, month, label: monthLabel(year, month),
+  const trend = trendMonths.map(({ year, month }, i) => ({
+    year, month,
+    label: monthLabel(year, month),
+    short: i === 0 || month === 1 ? `${MONTHS_ES_SHORT[month - 1] || ""} ${String(year).slice(2)}` : (MONTHS_ES_SHORT[month - 1] || ""),
     sales: round2(monthAgg(year, month).reduce((s, r) => s + r.gross, 0)),
   }))
   const prevAgg = monthAgg(prevYear, prevMonth)

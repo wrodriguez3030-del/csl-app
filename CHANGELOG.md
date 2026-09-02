@@ -18,6 +18,28 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.98.0] — 2026-09-02
+
+### Changed
+- **La «Tendencia mensual» del tablero pasa de 6 a 12 meses.** Con medio año no
+  se veía la estacionalidad del negocio; ahora el gráfico cubre un año completo
+  hasta el mes seleccionado. La ventana sale de `lastMonths()` +
+  `TREND_MONTHS` (`lib/commission/period.ts`), función pura con 12 pruebas
+  (cruce de año hacia atrás, enero como ancla, orden estrictamente creciente,
+  sin meses repetidos).
+- **Etiquetas del eje adaptadas a 12 puntos.** Con «Sep 2026» en cada tick los
+  rótulos se pisaban: el eje usa ahora la forma corta («Sep») y solo escribe el
+  año donde cambia — el primer punto y cada enero («Ene 26»). El tooltip sigue
+  mostrando el mes completo. `interval="preserveStartEnd"` con `minTickGap`
+  adelgaza los rótulos solo si la pantalla es estrecha; los 12 puntos se dibujan
+  siempre. El título del panel dice «Tendencia mensual · 12 meses (Ventas)».
+
+### Notes
+- No encarece la consulta: la agregación va por la función SQL `sc_sales_monthly`
+  (verificada en db-cls), no por lectura de filas.
+- Comprobado con datos reales de CSL (ancla sep-2026): oct-2025 → sep-2026, con
+  el pico de nov-2025 (RD$16,1 M) que con la ventana de 6 meses quedaba fuera.
+
 ## [0.97.0] — 2026-09-02
 
 ### Fixed

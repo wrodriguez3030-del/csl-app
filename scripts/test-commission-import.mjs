@@ -16,7 +16,7 @@ const { payBucketsFromV2, dominantPayment, addBuckets } = await import("../lib/c
 const { computeRowHash, fnvHex } = await import("../lib/commission/hash.ts")
 const { toSaleRecord } = await import("../lib/commission/aggregate.ts")
 const { aggregateBranches } = await import("../lib/commission/branch-summary.ts")
-const { monthBounds, exclusiveEnd, monthsCovered, quickRange, todayInTz, lastDayOfMonth, availableYears } = await import("../lib/commission/period.ts")
+const { monthBounds, exclusiveEnd, monthsCovered, quickRange, todayInTz, lastDayOfMonth, availableYears, lastMonths, TREND_MONTHS } = await import("../lib/commission/period.ts")
 
 let pass = 0, fail = 0
 const t = (name, cond, extra = "") => {
@@ -564,6 +564,32 @@ console.log("── Años seleccionables en el filtro (§44)")
   // Fecha corrupta remota: la lista no puede crecer sin límite.
   t("fecha absurda → lista acotada", availableYears("1900-01-01", "2026-08-31", 2026).length <= 20)
   t("fecha absurda → conserva los años recientes", availableYears("1900-01-01", "2026-08-31", 2026).includes(2026))
+}
+
+console.log("── Tendencia mensual: ventana de 12 meses (§46)")
+{
+  t("la tendencia es de 12 meses", TREND_MONTHS === 12, `(${TREND_MONTHS})`)
+
+  const v = lastMonths(2026, 9, TREND_MONTHS)
+  t("devuelve 12 puntos", v.length === 12, `(${v.length})`)
+  t("termina en el mes ancla", v[11].year === 2026 && v[11].month === 9)
+  t("empieza 11 meses antes (oct 2025)", v[0].year === 2025 && v[0].month === 10, `(${v[0]?.year}-${v[0]?.month})`)
+  t("cruza el año hacia atrás sin saltos", v.map((x) => `${x.year}-${x.month}`).join(",") ===
+    "2025-10,2025-11,2025-12,2026-1,2026-2,2026-3,2026-4,2026-5,2026-6,2026-7,2026-8,2026-9")
+
+  // Enero como ancla: los 11 anteriores caen todos en el año pasado.
+  const ene = lastMonths(2026, 1, 12)
+  t("ancla enero → arranca en feb del año anterior", ene[0].year === 2025 && ene[0].month === 2)
+  t("ancla enero → termina en enero", ene[11].year === 2026 && ene[11].month === 1)
+
+  // Orden y unicidad: el gráfico dibuja de izquierda (viejo) a derecha (nuevo).
+  const clave = (x) => x.year * 12 + x.month
+  t("estrictamente creciente", v.every((x, i) => i === 0 || clave(x) === clave(v[i - 1]) + 1))
+  t("sin meses repetidos", new Set(v.map((x) => `${x.year}-${x.month}`)).size === 12)
+  t("ningún mes fuera de 1–12", v.every((x) => x.month >= 1 && x.month <= 12))
+
+  t("count 1 → solo el ancla", lastMonths(2026, 9, 1).length === 1)
+  t("count inválido no revienta", Array.isArray(lastMonths(2026, 9, 0)))
 }
 
 console.log(`\n${pass} pasaron · ${fail} fallaron`)

@@ -304,10 +304,10 @@ export function IncentiveCompositionChart({ data, onDetail }: { data: { name: st
   )
 }
 
-export function MonthlyTrendChart({ data, onReport }: { data: { label: string; sales: number }[]; onReport: () => void }) {
+export function MonthlyTrendChart({ data, onReport }: { data: { label: string; short?: string; sales: number }[]; onReport: () => void }) {
   const hasData = data.some((d) => d.sales > 0)
   return (
-    <PanelCard title="Tendencia mensual (Ventas)" action="Ver reporte" onAction={onReport}>
+    <PanelCard title="Tendencia mensual · 12 meses (Ventas)" action="Ver reporte" onAction={onReport}>
       {!hasData ? <EmptyChart /> : (
         <ResponsiveContainer width="100%" height={230}>
           <AreaChart data={data} margin={{ top: 16, right: 12, left: 8, bottom: 0 }}>
@@ -318,9 +318,9 @@ export function MonthlyTrendChart({ data, onReport }: { data: { label: string; s
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
-            <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#64748B" }} tickLine={false} axisLine={false} interval={0} />
+            <XAxis dataKey="short" tick={{ fontSize: 10, fill: "#64748B" }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={4} />
             <YAxis tickFormatter={(v: number) => fmtCompact(v)} tick={{ fontSize: 10, fill: "#94A3B8" }} tickLine={false} axisLine={false} width={54} />
-            <Tooltip formatter={(v: number) => [fmtRD(v), "Ventas"]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+            <Tooltip formatter={(v: number) => [fmtRD(v), "Ventas"]} labelFormatter={(_l, p) => String(p?.[0]?.payload?.label ?? _l)} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
             <Area type="monotone" dataKey="sales" name="Ventas" stroke={TEAL} strokeWidth={2} fill="url(#scTrendFill)" dot={{ r: 3, fill: TEAL, strokeWidth: 0 }} activeDot={{ r: 5 }} />
           </AreaChart>
         </ResponsiveContainer>
