@@ -71,13 +71,13 @@ function configFromRules(rules: { ruleType: string; category: string | null; per
 }
 
 /** Semáforo de conciliación: CUADRADO (≤ RD$1), ADVERTENCIA (≤1%), CRÍTICO. */
-function semaforo(diff: number, base: number): "CUADRADO" | "ADVERTENCIA" | "CRÍTICO" {
+export function semaforo(diff: number, base: number): "CUADRADO" | "ADVERTENCIA" | "CRÍTICO" {
   const d = Math.abs(diff)
   if (d <= 1) return "CUADRADO"
   if (base > 0 && d / base <= 0.01) return "ADVERTENCIA"
   return "CRÍTICO"
 }
-const SEM_CLASS: Record<string, string> = {
+export const SEM_CLASS: Record<string, string> = {
   CUADRADO: "bg-emerald-50 text-emerald-700 border-emerald-200",
   ADVERTENCIA: "bg-amber-50 text-amber-700 border-amber-200",
   "CRÍTICO": "bg-red-50 text-red-600 border-red-200",

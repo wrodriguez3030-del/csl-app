@@ -1,6 +1,6 @@
 {
   "name": "my-project",
-  "version": "0.99.0",
+  "version": "0.100.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -12,7 +12,8 @@
     "test:gift": "node --import tsx scripts/test-gift-certificates.mjs",
     "test:agendapro": "node --import tsx scripts/test-agendapro-webhook.mjs",
     "test:ui": "tsx scripts/test-ui-format.mjs",
-    "test:bi": "tsx scripts/test-bi-flujo.mjs"
+    "test:bi": "tsx scripts/test-bi-flujo.mjs",
+    "test:gastos": "tsx scripts/test-gastos-import.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

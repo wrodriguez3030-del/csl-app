@@ -18,6 +18,63 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.100.0] — 2026-09-02
+
+### Added
+- **Importador del libro de gastos** (Incentivos de Ventas › Importador › nueva
+  pestaña **«Gastos»**). Lee `reportes de incentivo AAAA.xlsx` en el navegador y
+  carga, en una sola confirmación:
+  - **Gastos por sucursal** de cada hoja mensual (bloques R VIDAL `W..AA`,
+    LOS JARDINES `AC..AG`, NACO `AI..AM`, VILLA OLGA `AO..AS`, filas 5–124) →
+    `expenses` con categoría inferida del concepto (Nómina, Alquiler,
+    Electricidad, Internet, Publicidad… 18 reglas), `RET. CTA` → `account`.
+  - **Inversiones y retiros de socios** de la hoja `consolidado` (fila 27) →
+    `bi_finance_investments` y `bi_finance_partner_withdrawals`.
+  - **Histórico de ventas** anterior a mayo 2020 de `Historico ventas` →
+    `sales_history_monthly` (casilla opcional).
+- **Conciliación contra el propio Excel**: cada hoja × sucursal se compara con el
+  RESUMEN `Y129..Z132` (o la fila 125) con semáforo CUADRADO / ADVERTENCIA /
+  CRÍTICO. Con una diferencia CRÍTICA hay que marcar «importar de todos modos».
+- `pnpm test:gastos` — 66 pruebas: fixture ExcelJS en memoria + comprobaciones
+  contra el libro REAL (totales de enero por sucursal, JULIO, consolidado de
+  marzo, 36 filas de histórico).
+
+### Changed
+- El historial del importador ahora mezcla ventas, reservas y gastos, con filtro
+  «Gastos» y anulación por tipo; cuarta tarjeta de estado del período.
+- `flat()` de celdas ExcelJS sale a **`lib/commission/xlsx-cell.ts`** (con
+  `cellStr`/`cellNum`/`isTextAmount`), compartido por los importadores.
+
+### Notes — reglas que impone el propio Excel (verificadas contra el libro real)
+- **Montos escritos como TEXTO** («RD$3,849.85») **no entran en el SUM de
+  Excel**: se importan igual (son gastos reales) y la conciliación se hace con la
+  suma numérica, informando el texto aparte. Por eso enero suma **1.452.075,70**
+  y no los 1.436.572,80 de la hoja: la diferencia son exactamente **15.502,90**
+  en tres líneas (3.849,85 + 7.289,25 + 4.363,80).
+- **NACO se omite** (no es sucursal), como hace el Excel — salvo cuando ≥ 80 % de
+  sus filas llevan sufijo de sucursal: en JULIO ese bloque trae las 13 filas de
+  Villa Olga (387.934,56) y el RESUMEN las cuenta así.
+- **«RETIRO CTAS» del consolidado NO es un retiro**: es `SUM(GASTOS:RETIRO
+  DIVIDENDO)`, el total de egresos. Se usa solo como control.
+- **La hoja manda sobre el mes**: dos filas con la fecha mal tecleada (MARZO con
+  28/02 y MAYO con 25/05/**2025**) se corrigen al mes de su hoja conservando el
+  día, con aviso — es como las cuenta el Excel.
+- **Reemplazo reversible**: al importar el detalle de (sucursal, mes) se retiran
+  con soft-delete los totales mensuales cargados a mano de ese mes
+  (`deleted_reason = superseded:expense_import:<id>`); anular la importación los
+  restaura. Sin esto, BI Finanzas contaría el gasto dos veces.
+- Reimportar: el mismo archivo queda bloqueado por `file_hash`; una exportación
+  nueva solo inserta las filas nuevas (`row_hash` = fecha|sucursal|concepto|
+  monto, sin el `NO.`, que no es estable); una fila con el monto editado se
+  **omite y se lista**, no se actualiza.
+
+### Datos cargados (CSL, 2026)
+700 gastos ene–jul (RAFAEL VIDAL 260 · LOS JARDINES 317 · VILLA OLGA 123,
+RD$13.706.114,40), 1 inversión nueva (casa Los Jardines, marzo 500.000; las 10
+ya cargadas a mano no se duplicaron), 4 retiros de dividendos, 36 meses de
+histórico 2017-04 → 2020-03, y 18 totales mensuales reemplazados por su detalle.
+Las 21 conciliaciones del libro cuadran. AGOSTO está vacío en el Excel.
+
 ## [0.99.0] — 2026-09-02
 
 ### Added

@@ -14,9 +14,10 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Upload, ShoppingCart, CalendarCheck, History, RefreshCcw, Ban, Stethoscope } from "lucide-react"
+import { Upload, ShoppingCart, CalendarCheck, Receipt, History, RefreshCcw, Ban, Stethoscope } from "lucide-react"
 import { ImportarVentasTab } from "./comision-importar-ventas"
 import { ImportarReservasTab } from "./comision-importar-reservas"
+import { ImportarGastosTab } from "./comision-importar-gastos"
 
 const fmtRD = (n: number) => "RD$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -35,7 +36,15 @@ const STATUS_CLASS: Record<string, string> = {
   anulado: "bg-red-50 text-red-600 border-red-200",
 }
 
-type Tab = "ventas" | "reservas" | "historial"
+type Tab = "ventas" | "reservas" | "gastos" | "historial"
+type Filter = "todos" | "SALES" | "RESERVATIONS" | "EXPENSES"
+
+const TYPE_LABEL: Record<string, string> = { SALES: "Ventas", RESERVATIONS: "Reservas", EXPENSES: "Gastos" }
+const TYPE_CLASS: Record<string, string> = {
+  SALES: "bg-cyan-50 text-cyan-800 border-cyan-200",
+  RESERVATIONS: "bg-violet-50 text-violet-700 border-violet-200",
+  EXPENSES: "bg-amber-50 text-amber-800 border-amber-200",
+}
 
 export function ComisionImportarPage() {
   const { apiUrl, showToast } = useAppStore()
@@ -43,14 +52,19 @@ export function ComisionImportarPage() {
   const canVoid = canPerm(user, "sales_commission.import")
   const [tab, setTab] = useState<Tab>("ventas")
   const [imports, setImports] = useState<ImportRow[]>([])
-  const [filter, setFilter] = useState<"todos" | "SALES" | "RESERVATIONS">("todos")
+  const [filter, setFilter] = useState<Filter>("todos")
   const [busy, setBusy] = useState(false)
   const [diag, setDiag] = useState<ImportRow | null>(null)
 
   const load = useCallback(async () => {
     try {
-      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionImports" })
-      if (res?.ok) setImports((res.records as ImportRow[]) || [])
+      // Historial mixto: ventas/reservas (sales_commission_imports) + gastos (expense_imports).
+      const [ventas, gastos] = await Promise.all([
+        apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionImports" }),
+        apiJsonp(normalizeApiUrl(apiUrl), { action: "getExpenseImports" }).catch(() => null),
+      ])
+      const rows = [...(ventas?.ok ? (ventas.records as ImportRow[]) || [] : []), ...(gastos?.ok ? (gastos.records as ImportRow[]) || [] : [])]
+      setImports(rows.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))))
     } catch { /* la card mostrará vacío */ }
   }, [apiUrl])
   useEffect(() => { void load() }, [load])
@@ -58,15 +72,17 @@ export function ComisionImportarPage() {
   const lastActive = (type: string) => imports.find((i) => i.importType === type && i.status !== "anulado")
   const lastSales = useMemo(() => lastActive("SALES"), [imports])
   const lastResv = useMemo(() => lastActive("RESERVATIONS"), [imports])
+  const lastGastos = useMemo(() => lastActive("EXPENSES"), [imports])
 
   const doVoid = async (r: ImportRow) => {
     const reason = window.prompt(`¿Anular la importación "${r.filename}"? Es una anulación lógica (no se borra el historial).\nMotivo:`, "")
     if (reason === null) return
     setBusy(true)
     try {
-      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "voidCommissionImport", id: r.id, reason })
+      const action = r.importType === "EXPENSES" ? "voidExpenseImport" : "voidCommissionImport"
+      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action, id: r.id, reason })
       if (!res?.ok) throw new Error((res as { error?: string })?.error || "No se pudo anular")
-      invalidateReadCache("getCommissionImports")
+      for (const k of ["getCommissionImports", "getExpenseImports", "getBiFinanceData"]) invalidateReadCache(k)
       showToast("Importación anulada", "success")
       await load()
     } catch (e) {
@@ -86,13 +102,13 @@ export function ComisionImportarPage() {
             <Upload className="h-4 w-4 text-[color:var(--brand-primary)]" /> Importador de Incentivos de Ventas
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Carga los archivos de Ventas y Reservas del período. El sistema valida, detecta duplicados, vincula prestadores y calcula las bases necesarias para las comisiones e incentivos.
+            Carga los archivos de Ventas, Reservas y el libro de Gastos del período. El sistema valida, concilia contra los totales del propio Excel, detecta duplicados y calcula las bases de comisiones, incentivos y rentabilidad.
           </p>
         </CardContent>
       </Card>
 
       {/* Cards de estado */}
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4">
           <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-600"><ShoppingCart className="h-3.5 w-3.5" /> Ventas</div>
           {lastSales ? (
@@ -116,20 +132,33 @@ export function ComisionImportarPage() {
           ) : <div className="mt-1 text-xs text-muted-foreground">Sin importaciones de reservas.</div>}
         </CardContent></Card>
         <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-600"><Receipt className="h-3.5 w-3.5" /> Gastos</div>
+          {lastGastos ? (
+            <div className="mt-1 space-y-0.5 text-xs">
+              <div className="truncate font-medium">{lastGastos.filename}</div>
+              <div className="text-muted-foreground">{lastGastos.rowsCount.toLocaleString("en-US")} filas · {fmtRD(lastGastos.grossTotal)}</div>
+              <div className="text-muted-foreground">Período: {periodLabel(lastGastos)}</div>
+              <Badge variant="outline" className={STATUS_CLASS[lastGastos.status] || ""}>{lastGastos.status}</Badge>
+            </div>
+          ) : <div className="mt-1 text-xs text-muted-foreground">Sin importaciones de gastos.</div>}
+        </CardContent></Card>
+        <Card className="border-[color:var(--brand-border)]"><CardContent className="p-4">
           <div className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Estado del período</div>
           <div className="mt-1 space-y-0.5 text-xs">
             <div>Ventas cargadas: <b className={lastSales ? "text-emerald-600" : "text-red-600"}>{lastSales ? "Sí" : "No"}</b></div>
             <div>Reservas cargadas: <b className={lastResv ? "text-emerald-600" : "text-red-600"}>{lastResv ? "Sí" : "No"}</b></div>
+            <div>Gastos cargados: <b className={lastGastos ? "text-emerald-600" : "text-red-600"}>{lastGastos ? "Sí" : "No"}</b></div>
             <div>Cálculo listo: <b className={lastSales ? "text-emerald-600" : "text-slate-500"}>{lastSales ? "Sí" : "No"}</b></div>
             {!lastSales ? <div className="text-amber-600">Período incompleto: falta cargar archivo de Ventas.</div> : null}
             {!lastResv ? <div className="text-amber-600">Período incompleto: falta cargar archivo de Reservas.</div> : null}
+            {!lastGastos ? <div className="text-amber-600">Sin gastos: la rentabilidad y el flujo saldrán incompletos.</div> : null}
           </div>
         </CardContent></Card>
       </div>
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 rounded-xl border border-[color:var(--brand-border)] bg-white p-1">
-        {([["ventas", "Ventas", ShoppingCart], ["reservas", "Reservas", CalendarCheck], ["historial", "Historial", History]] as [Tab, string, typeof ShoppingCart][]).map(([id, label, Icon]) => (
+        {([["ventas", "Ventas", ShoppingCart], ["reservas", "Reservas", CalendarCheck], ["gastos", "Gastos", Receipt], ["historial", "Historial", History]] as [Tab, string, typeof ShoppingCart][]).map(([id, label, Icon]) => (
           <button
             key={id}
             onClick={() => setTab(id)}
@@ -145,12 +174,13 @@ export function ComisionImportarPage() {
 
       {tab === "ventas" ? <ImportarVentasTab onImported={load} /> : null}
       {tab === "reservas" ? <ImportarReservasTab onImported={load} /> : null}
+      {tab === "gastos" ? <ImportarGastosTab onImported={load} /> : null}
       {tab === "historial" ? (
         <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
           <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
             <span className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Historial de importaciones</span>
             <div className="ml-auto flex gap-1">
-              {([["todos", "Todos"], ["SALES", "Ventas"], ["RESERVATIONS", "Reservas"]] as const).map(([id, label]) => (
+              {([["todos", "Todos"], ["SALES", "Ventas"], ["RESERVATIONS", "Reservas"], ["EXPENSES", "Gastos"]] as const).map(([id, label]) => (
                 <button key={id} onClick={() => setFilter(id)} className={cn("rounded-full border px-2.5 py-0.5 text-[11px] font-medium", filter === id ? "border-[color:var(--brand-primary)] bg-[color:var(--brand-primary-soft)] text-[color:var(--brand-primary-dark)]" : "border-slate-200 text-slate-500 hover:bg-slate-50")}>{label}</button>
               ))}
               <Button variant="ghost" size="sm" className="h-6 px-1.5" onClick={load}><RefreshCcw className="h-3.5 w-3.5" /></Button>
@@ -164,7 +194,7 @@ export function ComisionImportarPage() {
               <tbody>{filtered.map((r) => (
                 <tr key={r.id} className="border-b last:border-0">
                   <td className="px-4 py-2 text-xs">{String(r.createdAt || "").replace("T", " ").slice(0, 16)}</td>
-                  <td className="px-2 py-2"><Badge variant="outline" className={r.importType === "SALES" ? "bg-cyan-50 text-cyan-800 border-cyan-200" : "bg-violet-50 text-violet-700 border-violet-200"}>{r.importType === "SALES" ? "Ventas" : "Reservas"}</Badge></td>
+                  <td className="px-2 py-2"><Badge variant="outline" className={TYPE_CLASS[r.importType] || ""}>{TYPE_LABEL[r.importType] || r.importType}</Badge></td>
                   <td className="max-w-[220px] truncate px-2 py-2 text-xs" title={r.filename}>{r.filename}</td>
                   <td className="px-2 py-2 text-xs tabular-nums">{periodLabel(r)}</td>
                   <td className="px-2 py-2 text-right tabular-nums">{r.rowsCount.toLocaleString("en-US")}</td>
@@ -192,7 +222,7 @@ export function ComisionImportarPage() {
           {diag ? (
             <div className="space-y-2 text-sm">
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-md border p-3 text-xs">
-                <div>Tipo: <b>{diag.importType === "SALES" ? "Ventas" : "Reservas"}</b></div>
+                <div>Tipo: <b>{TYPE_LABEL[diag.importType] || diag.importType}</b></div>
                 <div>Estado: <b>{diag.status}</b></div>
                 <div className="col-span-2 break-all">Archivo: <b>{diag.filename}</b></div>
                 <div>Filas: <b className="tabular-nums">{diag.rowsCount.toLocaleString("en-US")}</b></div>

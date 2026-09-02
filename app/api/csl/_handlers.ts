@@ -62,6 +62,7 @@ import * as purchases from "@/lib/server/purchases"
 import * as commission from "@/lib/server/commission"
 import * as biFinance from "@/lib/server/bi-finance-handlers"
 import * as withdrawals from "@/lib/server/bi-finance-withdrawals"
+import * as expenseImport from "@/lib/server/expense-import"
 
 /**
  * Acciones MANUALES del módulo de Mantenimiento. Solo estas pueden escribir en
@@ -3618,6 +3619,14 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await withdrawals.savePartnerWithdrawal(params, user)
     case "deletePartnerWithdrawal":
       return await withdrawals.deletePartnerWithdrawal(params, user)
+    case "checkExpenseImport":
+      return await expenseImport.checkExpenseImport(params)
+    case "commitExpenseImport":
+      return await expenseImport.commitExpenseImport(params, user)
+    case "getExpenseImports":
+      return await expenseImport.getExpenseImports(params)
+    case "voidExpenseImport":
+      return await expenseImport.voidExpenseImport(params, user)
     case "getBiFinanceForecast":
       return await biFinance.getBiFinanceForecast(params)
     case "getBiFinanceModels":
