@@ -8,6 +8,7 @@
  */
 import { useCallback, useEffect, useState } from "react"
 import { apiJsonp } from "@/lib/store"
+import { kpiValueClasses } from "@/lib/ui/kpi-value"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -321,7 +322,7 @@ function UsageCard({ icon: Icon, label, value, sub }: { icon: typeof Gauge; labe
   return (
     <div className="rounded-2xl border border-[color:var(--brand-border)] p-3">
       <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"><Icon className="h-3.5 w-3.5" />{label}</div>
-      <div className="mt-1 truncate text-lg font-black tabular-nums text-[color:var(--brand-primary-dark)]">{value}</div>
+      <div className={`mt-1 ${kpiValueClasses(value)}`}>{value}</div>
       {sub ? <div className="text-[11px] text-muted-foreground">{sub}</div> : null}
     </div>
   )

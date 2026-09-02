@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import type { LucideIcon } from "lucide-react"
 import { fmtN } from "@/lib/fmt"
+import { kpiValueClasses } from "@/lib/ui/kpi-value"
 
 interface KpiCardProps {
   title: string
@@ -42,7 +43,7 @@ export function KpiCard({
         </div>
         <div className="min-w-0">
           <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</div>
-          <div className="truncate text-lg font-black tabular-nums text-[color:var(--brand-primary-dark)]">
+          <div className={kpiValueClasses(typeof value === "number" ? fmtN(value) : value)}>
             {typeof value === "number" ? fmtN(value) : value}
           </div>
           {description ? <div className="mt-1 text-[11px] text-muted-foreground">{description}</div> : null}

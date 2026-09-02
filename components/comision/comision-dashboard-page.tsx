@@ -29,6 +29,7 @@ import {
 import { monthBounds, quickRange, todayInTz } from "@/lib/commission/period"
 import { FILTER_MONTHS, defaultCommissionFilters, useCommissionFilters, type CommissionFilters } from "./comision-filter-bar"
 import { useCommissionBranches } from "@/hooks/use-commission-branches"
+import { kpiValueClasses } from "@/lib/ui/kpi-value"
 
 const TEAL = "#0D9488"
 const DONUT_COLORS = ["#0D9488", "#D97706", "#7C3AED", "#DB2777"]
@@ -206,7 +207,7 @@ export function ExecutiveKpiCard({ icon, title, value, pct, prevLabel, suffix, s
         <div className="shrink-0 rounded-xl bg-[color:var(--brand-primary-soft)] p-2.5 text-[color:var(--brand-primary)]">{icon}</div>
         <div className="min-w-0">
           <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</div>
-          <div className="truncate text-lg font-black tabular-nums text-[color:var(--brand-primary-dark)]">{value}</div>
+          <div className={kpiValueClasses(value)}>{value}</div>
           {sub ? <div className="mt-1 text-[11px] text-muted-foreground">{sub}</div>
             : <DeltaLine pct={pct} prevLabel={prevLabel ?? null} suffix={suffix} />}
         </div>
@@ -416,7 +417,7 @@ export function PeriodInsightsCard({ insights, onAll }: { insights: ExecData["in
 
 // ── Página ───────────────────────────────────────────────────────────────────
 const SkeletonRow = ({ n, h = "h-[92px]" }: { n: number; h?: string }) => (
-  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+  <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,240px),1fr))] gap-3">
     {Array.from({ length: n }).map((_, i) => <div key={i} className={`${h} animate-pulse rounded-2xl bg-slate-100`} />)}
   </div>
 )
@@ -463,7 +464,7 @@ export function ComisionDashboardPage() {
       ) : (
         <>
           {/* Fila 1 · KPIs principales */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,240px),1fr))] gap-3">
             <ExecutiveKpiCard icon={<CircleDollarSign className="h-5 w-5" />} title="Ventas totales" value={fmtRD(k?.salesTotal || 0)} pct={d?.salesTotal} prevLabel={prevL} />
             <ExecutiveKpiCard icon={<Percent className="h-5 w-5" />} title="Total comisiones" value={fmtRD(k?.serviceCommission || 0)} pct={d?.serviceCommission} prevLabel={prevL} />
             <ExecutiveKpiCard icon={<Package className="h-5 w-5" />} title="Incentivos productos" value={fmtRD(k?.productIncentive || 0)} pct={d?.productIncentive} prevLabel={prevL} />
@@ -473,7 +474,7 @@ export function ComisionDashboardPage() {
           </div>
 
           {/* Fila 2 · KPIs operativos */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,240px),1fr))] gap-3">
             <OperationalKpiCard icon={<Users className="h-5 w-5" />} title="Empleados calculados" value={fmtInt(k?.employees || 0)} sub="Activos este mes" />
             <OperationalKpiCard icon={<Upload className="h-5 w-5" />} title="Importaciones del mes" value={fmtInt(k?.importsMonth || 0)} sub="Total importaciones" />
             <OperationalKpiCard icon={<HeartHandshake className="h-5 w-5" />} title="Clientes atendidos" value={fmtInt(k?.patients || 0)} pct={d?.patients} prevLabel={prevL} />

@@ -18,6 +18,37 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.97.0] — 2026-09-02
+
+### Fixed
+- **Las tarjetas de los tableros cortaban los importes con «…».** La línea del
+  valor era `truncate text-lg`: en una columna estrecha «RD$147,733,900.35»
+  se veía **«RD$147,733,9…»** y «RD$1,974,512.00» como **«RD$1,974,512…»**.
+  El tablero mostraba una cifra incompleta sin avisar de que faltaba algo.
+  - Nuevo `lib/ui/kpi-value.ts`: el número se ve **entero siempre**; lo que cede
+    es el tamaño de la letra, en escalones según su longitud
+    (≤11 → `text-lg`, ≤14 → `text-base`, ≤18 → `text-sm`, más → `text-xs`).
+    Sin `truncate` y con `whitespace-nowrap`, así que tampoco se parte en dos
+    líneas a mitad de un número.
+  - Aplicado en las tres tarjetas que tenían el defecto: la del tablero de
+    Incentivos de Ventas, la **compartida** `components/kpi-card.tsx` (la usan
+    10 tableros: Inicio, PulseControl, RR.HH., Compras, Requisición,
+    Productos, BI…) y la de BI Finanzas.
+- **Las dos filas de KPIs del tablero de Incentivos se apretaban a 6 columnas
+  fijas** (`2xl:grid-cols-6`), que es lo que dejaba ~110 px para un importe de
+  17 caracteres. Pasan a `repeat(auto-fit, minmax(min(100%,240px), 1fr))`: las
+  tarjetas nunca bajan de 240 px y el número de columnas se ajusta solo al
+  ancho disponible. El esqueleto de carga usa la misma rejilla, así que ya no
+  salta el diseño al terminar de cargar.
+
+### Added
+- `pnpm test:ui` — `scripts/test-ui-format.mjs`, 11 pruebas del escalonado
+  (incluida la monotonía: alargar el texto nunca puede agrandar la letra).
+
+### Notes
+- Comprobado en navegador con las tarjetas reproducidas al ancho mínimo
+  (240 px): antes «RD$147,733,9…», después «RD$147,733,900.35» completo.
+
 ## [0.96.0] — 2026-09-02
 
 ### Fixed
