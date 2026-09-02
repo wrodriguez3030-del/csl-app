@@ -18,6 +18,39 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.96.0] — 2026-09-02
+
+### Fixed
+- **El historial de ventas 2020–2023 estaba importado pero era imposible de
+  consultar.** El desplegable «Año» de la barra de filtros de Incentivos de
+  Ventas se construía con `[hoy+1, hoy, hoy−1, hoy−2]`
+  (`comision-filter-bar.tsx`), o sea **2027, 2026, 2025 y 2024**: ofrecía un año
+  futuro sin una sola venta y escondía cuatro años que sí tenían datos. Tras
+  importar 2020–2024 (32.659 filas, RD$147,7 M) el sistema parecía no haberlos
+  recibido — estaban en `sales_commission_sales`, pero ninguna pantalla del
+  módulo podía apuntar a ellos salvo con «Todos (historial)» o escribiendo el
+  rango a mano en Desde/Hasta.
+  - Los años salen ahora del **dato real**: nuevo handler `getCommissionYears`
+    (dos consultas de una fila — primera y última venta del tenant) + hook
+    `useCommissionYears`. Con los datos de CSL el selector ofrece
+    **2026 … 2020**.
+  - `availableYears()` en `lib/commission/period.ts` cubre el rango completo,
+    incluye siempre el año en curso (un negocio sin ventas no ve el selector
+    vacío) y **acota la lista a 20 años**, por si una fecha corrupta en un
+    archivo trae un año absurdo.
+  - Lectura cacheada (30 s) y particionada por negocio: la barra la comparten
+    las 7 pantallas del módulo y se pide una sola vez.
+
+### Added
+- Acción `getCommissionYears` y hook `useCommissionYears`.
+- 9 pruebas nuevas en `scripts/test-commission-import.mjs` (169 en verde).
+
+### Notes
+- Comprobado contra db-cls: primera venta **2020-05-20**, última **2026-08-31**.
+  Consultando por año — 2020 RD$14.845.073 (1 sucursal), 2022 RD$29.322.354
+  (1 sucursal), 2024 RD$38.293.991 (3 sucursales).
+- No se tocó ningún dato ni cálculo: era solo lo que el filtro dejaba elegir.
+
 ## [0.95.1] — 2026-09-01
 
 ### Fixed

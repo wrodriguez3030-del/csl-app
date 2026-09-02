@@ -14,7 +14,7 @@ import type { ActionParams, ActionUser, Row } from "./csl-types"
 import { defaultCommissionRules } from "@/lib/commission/rules"
 import { orderCommissionBranches } from "@/lib/business"
 import { parseDateISO, canonicalCollaborator, normalizeName } from "@/lib/commission/normalize"
-import { exclusiveEnd, monthBounds, monthsCovered, todayInTz } from "@/lib/commission/period"
+import { exclusiveEnd, monthBounds, monthsCovered, todayInTz, availableYears } from "@/lib/commission/period"
 import { assignLaserToCalcs } from "@/lib/commission/laser-apply"
 import { aggregateBranches, totalsOf, type BranchSalesRow } from "@/lib/commission/branch-summary"
 import { computeRun, netAmount, allocateInt, type RunResult, type RunRules, type RunSaleRow } from "@/lib/commission/run-engine"
@@ -689,6 +689,27 @@ async function cardPercentage(): Promise<number> {
     .select("percentage").eq("business_id", business_id).eq("rule_type", "card_percentage").eq("active", true)
     .order("effective_from", { ascending: false }).limit(1).maybeSingle()
   return data?.percentage != null ? Number(data.percentage) : 0.27
+}
+
+/**
+ * Años que el filtro de Incentivos de Ventas debe ofrecer: los que REALMENTE
+ * tienen ventas importadas, no una ventana fija alrededor del año en curso.
+ * Dos consultas de una fila (primera y última venta), no un recuento completo.
+ */
+export async function getCommissionYears(_params: ActionParams) {
+  const business_id = requireBizId()
+  const sb = getSupabaseAdmin()
+  const edge = (ascending: boolean) => sb.from("sales_commission_sales")
+    .select("sale_date").eq("business_id", business_id)
+    .not("sale_date", "is", null)
+    .order("sale_date", { ascending }).limit(1).maybeSingle()
+  const [first, last] = await Promise.all([edge(true), edge(false)])
+  if (first.error) throw new Error(first.error.message)
+  if (last.error) throw new Error(last.error.message)
+  const minISO = String((first.data as Row | null)?.sale_date || "")
+  const maxISO = String((last.data as Row | null)?.sale_date || "")
+  const currentYear = Number(todayInTz().slice(0, 4)) || new Date().getFullYear()
+  return { ok: true, years: availableYears(minISO, maxISO, currentYear), first: minISO || null, last: maxISO || null }
 }
 
 /**

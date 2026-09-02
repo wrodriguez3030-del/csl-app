@@ -112,3 +112,33 @@ export function monthsCovered(fromISO: string, toISO: string): Set<string> {
   }
   return out
 }
+
+/** Tope de años que puede ofrecer el selector (defensa ante una fecha corrupta
+ *  en el archivo: una venta con año 1900 no debe generar un desplegable eterno). */
+const MAX_YEARS = 20
+
+/**
+ * Años que el filtro debe ofrecer, del más nuevo al más viejo.
+ *
+ * Sale de las fechas REALES de las ventas importadas, no del reloj: si hay
+ * historial desde 2020, los siete años deben poder elegirse. Antes la lista era
+ * `[hoy+1, hoy, hoy−1, hoy−2]`, así que un historial de 2020–2023 quedaba
+ * importado pero inalcanzable desde la interfaz.
+ *
+ * Siempre incluye `currentYear` para que un negocio sin ventas no vea el
+ * selector vacío, y se queda con los `MAX_YEARS` más recientes.
+ */
+export function availableYears(minISO: string, maxISO: string, currentYear: number): number[] {
+  const yearOf = (iso: string): number | null => {
+    const y = Number(String(iso || "").slice(0, 4))
+    return Number.isInteger(y) && y > 1900 && y < 3000 ? y : null
+  }
+  const now = Number(currentYear) || new Date().getFullYear()
+  const first = yearOf(minISO) ?? now
+  const last = yearOf(maxISO) ?? now
+  const from = Math.min(first, last, now)
+  const to = Math.max(first, last, now)
+  const out: number[] = []
+  for (let y = to; y >= from && out.length < MAX_YEARS; y--) out.push(y)
+  return out
+}

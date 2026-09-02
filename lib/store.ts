@@ -321,6 +321,7 @@ const READ_ACTIONS = new Set([
   "getConsentTatuajesCejas",
   "getCertificadosRegalo",
   "getPiezasPolizaLista",
+  "getCommissionYears",
 ])
 
 function cacheKey(params: Record<string, unknown>): string | null {

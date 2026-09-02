@@ -14,6 +14,7 @@
  */
 import { useMemo, useState } from "react"
 import { useAppStore } from "@/lib/store"
+import { useCommissionYears } from "@/hooks/use-commission-years"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -120,7 +121,7 @@ export function CommissionFilterBar({
   const clear = () => { const f = defaultCommissionFilters(); setDraft(f); apply(f) }
 
   const activeCount = (applied.branch ? 1 : 0) + (applied.provider ? 1 : 0) + 1
-  const yearNow = new Date().getFullYear()
+  const years = useCommissionYears()
   const { label } = useCommissionFilters()
 
   return (
@@ -163,7 +164,7 @@ export function CommissionFilterBar({
               <SelectTrigger className="mt-0.5 h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="todos">Todos (historial)</SelectItem>
-                {[yearNow + 1, yearNow, yearNow - 1, yearNow - 2].map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

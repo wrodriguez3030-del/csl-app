@@ -16,7 +16,7 @@ const { payBucketsFromV2, dominantPayment, addBuckets } = await import("../lib/c
 const { computeRowHash, fnvHex } = await import("../lib/commission/hash.ts")
 const { toSaleRecord } = await import("../lib/commission/aggregate.ts")
 const { aggregateBranches } = await import("../lib/commission/branch-summary.ts")
-const { monthBounds, exclusiveEnd, monthsCovered, quickRange, todayInTz, lastDayOfMonth } = await import("../lib/commission/period.ts")
+const { monthBounds, exclusiveEnd, monthsCovered, quickRange, todayInTz, lastDayOfMonth, availableYears } = await import("../lib/commission/period.ts")
 
 let pass = 0, fail = 0
 const t = (name, cond, extra = "") => {
@@ -539,6 +539,31 @@ console.log("── Ventas por sucursal · % de venta en tarjeta (§43)")
   // Sucursal sin ventas: no debe reventar ni inventar un 100%.
   const cero = aggregateBranches([{ branch: "NUEVA", gross_amount: 0, payment_method: "TARJETA", category: "" }], CARD_PCT)
   t("bruto 0 → % tarjeta 0 (sin división por cero)", cero[0].cardShare === 0, `(${cero[0]?.cardShare})`)
+}
+
+console.log("── Años seleccionables en el filtro (§44)")
+{
+  const eq = (a, b) => a.length === b.length && a.every((v, i) => v === b[i])
+
+  // Historial real de CSL: ventas desde 2020 hasta 2026.
+  const hist = availableYears("2020-05-20", "2026-08-31", 2026)
+  t("cubre TODO el historial 2020–2026", eq(hist, [2026, 2025, 2024, 2023, 2022, 2021, 2020]), `(${hist})`)
+  t("incluye 2020, 2021, 2022 y 2023", [2020, 2021, 2022, 2023].every((y) => hist.includes(y)))
+  t("del más nuevo al más viejo", hist[0] === 2026 && hist[hist.length - 1] === 2020)
+  t("no inventa años futuros sin datos", !hist.includes(2027))
+
+  // Sin ventas todavía: al menos el año en curso, para no dejar el selector vacío.
+  t("sin datos → solo el año en curso", eq(availableYears("", "", 2026), [2026]))
+
+  // Datos de un solo año viejo: el año en curso sigue disponible.
+  t("hueco entre el dato y hoy → rango continuo", eq(availableYears("2024-01-03", "2024-12-21", 2026), [2026, 2025, 2024]))
+
+  // Ventas con fecha futura (archivo con fecha mal tecleada): no se ocultan.
+  t("dato futuro → el año aparece", availableYears("2026-01-01", "2027-03-01", 2026)[0] === 2027)
+
+  // Fecha corrupta remota: la lista no puede crecer sin límite.
+  t("fecha absurda → lista acotada", availableYears("1900-01-01", "2026-08-31", 2026).length <= 20)
+  t("fecha absurda → conserva los años recientes", availableYears("1900-01-01", "2026-08-31", 2026).includes(2026))
 }
 
 console.log(`\n${pass} pasaron · ${fail} fallaron`)
