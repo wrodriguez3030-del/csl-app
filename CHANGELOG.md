@@ -18,6 +18,32 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.106.0] — 2026-09-02
+
+### Added
+- **La Liquidación de incentivos abre la columna «Inc. servicios».** Era un solo
+  número que mezclaba las comisiones por categoría, el fondo láser, el incentivo
+  fijo y el ajuste manual: no se veía de dónde salía. Ahora, pulsando en la
+  cabecera de esa columna, se despliega **una columna por categoría con importe
+  en el período** (Faciales, Tatuajes y cejas, Masajes, Hollywood/Aqua Peel…)
+  más «Fondo láser», «Fijo» y «Ajuste» cuando los hay. La columna del total se
+  queda a la derecha.
+  - Solo aparecen las categorías que tienen importe, ordenadas de mayor a menor,
+    para no llenar la tabla de ceros.
+  - El desglose se indexa por **persona Y sucursal**: quien cobra en dos
+    sucursales, como DAYHANA, ve cada una por separado.
+  - Reutiliza `getCommissionServiceDetail`, el mismo handler que ya alimenta
+    Reportes, así que los números cuadran con el resto del módulo.
+- `lib/commission/service-columns.ts` con 11 pruebas.
+
+### Notes — verificación
+Comprobado sobre agosto 2026: en **todas** las filas la suma del desglose
+(categorías + láser + fijo + ajuste) da exactamente el total de «Inc. servicios».
+Ejemplos: BENITA (Los Jardines) 10.140,60 faciales + 5.179,80 masajes + 390,60
+láser = 15.711,00; ANGELICA (Villa Olga) 2.652,30 tatuajes + 188,05 láser =
+2.840,35; DAYHANA cobra 911,00 de masajes en Rafael Vidal y 7.381,00 en Villa
+Olga, en filas distintas.
+
 ## [0.105.3] — 2026-09-02
 
 ### Datos (CSL) — agosto recalculado tras asignar las ventas sin prestador

@@ -20,6 +20,7 @@ const { buildProductSellers, sellerTotals, SELLER_STATUS_LABEL } = await import(
 const { planAutoRuns, AUTO_RUN_SKIP_LABEL } = await import("../lib/commission/auto-run.ts")
 const { activeInPeriod, filterRosterForPeriod } = await import("../lib/commission/roster-period.ts")
 const { staleLedgerProviders, dedupeLedgerRows } = await import("../lib/commission/ledger-cleanup.ts")
+const { serviceColumns, serviceCellsBy, SERVICE_EXTRA_COLS } = await import("../lib/commission/service-columns.ts")
 const { canonicalCollaborator: canonColab } = await import("../lib/commission/normalize.ts")
 const { monthBounds, exclusiveEnd, monthsCovered, quickRange, todayInTz, lastDayOfMonth, availableYears, lastMonths, TREND_MONTHS } = await import("../lib/commission/period.ts")
 
@@ -766,6 +767,34 @@ console.log("── Alias de colaboradoras y limpieza del libro (§70)")
   t("sin duplicados no marca nada", dedupeLedgerRows([{ id: "a", provider: "ASHLEY" }]).duplicates.length === 0)
   t("libro vacío no revienta", dedupeLedgerRows([]).keep.size === 0)
   t("no muta el libro", filas.length === 3)
+}
+
+console.log("── Liquidación: la comisión de servicios se abre por categoría (§71)")
+{
+  const detalle = Object.freeze([
+    { provider: "ANGELICA", branch: "VILLA OLGA", category: "TATUAJES", base: 26523, pct: 0.1, amount: 2652.30 },
+    { provider: "BENITA", branch: "LOS JARDINES", category: "FACIALES", base: 50703, pct: 0.2, amount: 10140.60 },
+    { provider: "BENITA", branch: "LOS JARDINES", category: "MASAJES", base: 25899, pct: 0.2, amount: 5179.80 },
+    { provider: "EIDYLEE", branch: "VILLA OLGA", category: "HOLLYWOOD_AQUA_PEEL", base: 3000, pct: 0.1, amount: 300 },
+    { provider: "EIDYLEE", branch: "VILLA OLGA", category: "TATUAJES", base: 38758.5, pct: 0.1, amount: 3875.85 },
+    { provider: "NADIE", branch: "VILLA OLGA", category: "HIFU", base: 0, pct: 0.1, amount: 0 },
+  ])
+
+  const cols = serviceColumns(detalle)
+  t("solo las categorías con importe", cols.join(",") === "FACIALES,TATUAJES,MASAJES,HOLLYWOOD_AQUA_PEEL", `(${cols})`)
+  t("ordenadas de mayor a menor importe", cols[0] === "FACIALES" && cols[cols.length - 1] === "HOLLYWOOD_AQUA_PEEL")
+  t("HIFU en cero no genera columna", !cols.includes("HIFU"))
+  t("sin detalle no hay columnas", serviceColumns([]).length === 0)
+
+  const cells = serviceCellsBy(detalle)
+  t("cada persona lleva su desglose por sucursal", cells.get("BENITA|LOS JARDINES").FACIALES === 10140.60 && cells.get("BENITA|LOS JARDINES").MASAJES === 5179.80)
+  t("la misma persona en otra sucursal no se mezcla", cells.get("ANGELICA|VILLA OLGA").TATUAJES === 2652.30 && cells.get("ANGELICA|VILLA OLGA").FACIALES === undefined)
+  t("quien no tiene esa categoría no aparece en ella", cells.get("EIDYLEE|VILLA OLGA").MASAJES === undefined)
+  t("clave por persona Y sucursal (la de importe cero no entra)", cells.size === 3)
+
+  t("las columnas fijas cubren láser, fijo y ajuste", SERVICE_EXTRA_COLS.map((c) => c.key).join(",") === "laserIncentive,fixedIncentive,manualAdjustment")
+  t("cada columna fija tiene etiqueta", SERVICE_EXTRA_COLS.every((c) => typeof c.label === "string" && c.label.length > 0))
+  t("no muta el detalle", detalle.length === 6)
 }
 
 console.log(`\n${pass} pasaron · ${fail} fallaron`)

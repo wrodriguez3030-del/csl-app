@@ -11,8 +11,10 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { ReceiptText, RefreshCcw, MoreHorizontal, Pencil, Check, DollarSign, Loader2 } from "lucide-react"
+import { ReceiptText, RefreshCcw, MoreHorizontal, Pencil, Check, DollarSign, Loader2, ChevronRight, ChevronDown } from "lucide-react"
 import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
+import { CATEGORY_LABELS } from "@/lib/commission/classification"
+import { serviceColumns, serviceCellsBy, cellKey, SERVICE_EXTRA_COLS, type ServiceDetailRow } from "@/lib/commission/service-columns"
 import { useCommissionBranches } from "@/hooks/use-commission-branches"
 
 interface Calc {
@@ -28,6 +30,7 @@ const STATUS_BADGE: Record<string, string> = {
 }
 const STATUS_LABEL: Record<string, string> = { calculado: "Calculado", en_revision: "En revisión", aprobado: "Aprobado", pagado: "Pagado", cerrado: "Cerrado", anulado: "Anulado" }
 const svcTotal = (c: Calc) => c.serviceCommission + c.laserIncentive + c.fixedIncentive + c.manualAdjustment
+const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100
 
 export function ComisionLiquidacionPage() {
   const BRANCHES = useCommissionBranches()
@@ -40,6 +43,9 @@ export function ComisionLiquidacionPage() {
   const { params } = useCommissionFilters()
   const [statusFilter, setStatusFilter] = useState("")
   const [items, setItems] = useState<Calc[]>([])
+  // Desglose de la comisión de servicios por categoría (misma fuente que Reportes).
+  const [detail, setDetail] = useState<ServiceDetailRow[]>([])
+  const [abierto, setAbierto] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [editT, setEditT] = useState<Calc | null>(null)
@@ -48,13 +54,22 @@ export function ComisionLiquidacionPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionCalculations", ...params, ...(statusFilter ? { status: statusFilter } : {}) })
+      const [res, det] = await Promise.all([
+        apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionCalculations", ...params, ...(statusFilter ? { status: statusFilter } : {}) }),
+        apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionServiceDetail", ...params }).catch(() => null),
+      ])
       if (res?.ok) setItems((res.records as Calc[]) || [])
       else showToast((res as { error?: string })?.error || "Error", "error")
+      setDetail(det?.ok ? ((det.rows as ServiceDetailRow[]) || []) : [])
     } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
   }, [apiUrl, showToast, params, statusFilter])
   useEffect(() => { void load() }, [load])
   const providerOptions = [...new Set(items.map((c) => c.provider).filter(Boolean))].sort()
+  // Columnas del desglose: solo las categorías con importe en el período.
+  const svcCols = serviceColumns(detail)
+  const svcCells = serviceCellsBy(detail)
+  const extraCols = SERVICE_EXTRA_COLS.filter((x) => items.some((c) => Number(c[x.key as keyof Calc]) !== 0))
+  const svcOf = (c: Calc, cat: string) => svcCells.get(cellKey(c.provider, c.branch))?.[cat] || 0
 
   const openEdit = (c: Calc) => { setEditT(c); setForm({ bonusExtra: String(c.bonusExtra || 0), cleaningContribution: String(c.cleaningContribution || 0), manualAdjustment: String(c.manualAdjustment || 0) }) }
 
@@ -112,7 +127,14 @@ export function ComisionLiquidacionPage() {
             <div className="overflow-x-auto"><table className="w-full text-sm">
               <thead><tr className="border-b text-left text-[11px] uppercase text-muted-foreground">
                 <th className="px-3 py-2 text-center">#</th><th className="px-2 py-2">Empleado</th><th className="px-2 py-2">Sucursal</th>
-                <th className="px-2 py-2 text-right">Inc. productos</th><th className="px-2 py-2 text-right">Inc. servicios</th>
+                <th className="px-2 py-2 text-right">Inc. productos</th>
+                {abierto ? svcCols.map((cat) => <th key={cat} className="px-2 py-2 text-right font-normal normal-case">{CATEGORY_LABELS[cat] || cat}</th>) : null}
+                {abierto ? extraCols.map((x) => <th key={x.key} className="px-2 py-2 text-right font-normal normal-case">{x.label}</th>) : null}
+                <th className="px-2 py-2 text-right">
+                  <button onClick={() => setAbierto((v) => !v)} className="inline-flex items-center gap-1 uppercase hover:text-[color:var(--brand-primary)]" title={abierto ? "Ocultar el desglose" : "Ver de qué se compone"}>
+                    {abierto ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}Inc. servicios
+                  </button>
+                </th>
                 <th className="px-2 py-2 text-right">Bono</th><th className="px-2 py-2 text-right">Bruto</th>
                 <th className="px-2 py-2 text-right">Limpieza</th><th className="px-2 py-2 text-right">Neto</th>
                 <th className="px-2 py-2">Estado</th><th className="px-3 py-2 text-right">Acciones</th>
@@ -123,7 +145,9 @@ export function ComisionLiquidacionPage() {
                   <td className="px-2 py-2 font-medium">{c.provider}</td>
                   <td className="px-2 py-2 text-xs text-muted-foreground">{c.branch}</td>
                   <td className="px-2 py-2 text-right tabular-nums">{fmtRD(c.productIncentive)}</td>
-                  <td className="px-2 py-2 text-right tabular-nums">{fmtRD(svcTotal(c))}</td>
+                  {abierto ? svcCols.map((cat) => <td key={cat} className="px-2 py-2 text-right tabular-nums text-muted-foreground">{svcOf(c, cat) ? fmtRD(svcOf(c, cat)) : "—"}</td>) : null}
+                  {abierto ? extraCols.map((x) => <td key={x.key} className="px-2 py-2 text-right tabular-nums text-muted-foreground">{Number(c[x.key as keyof Calc]) ? fmtRD(Number(c[x.key as keyof Calc])) : "—"}</td>) : null}
+                  <td className="px-2 py-2 text-right font-medium tabular-nums">{fmtRD(svcTotal(c))}</td>
                   <td className="px-2 py-2 text-right tabular-nums">{fmtRD(c.bonusExtra)}</td>
                   <td className="px-2 py-2 text-right font-semibold tabular-nums">{fmtRD(c.grossTotal)}</td>
                   <td className="px-2 py-2 text-right tabular-nums text-red-600">−{fmtRD(c.cleaningContribution)}</td>
