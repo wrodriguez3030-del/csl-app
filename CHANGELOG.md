@@ -18,6 +18,31 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.105.2] — 2026-09-02
+
+### Datos (CSL)
+- **BENITA** pasa a participar del incentivo láser en Los Jardines. Atiende
+  pacientes desde marzo y va en aumento (20 · 18 · 16 · 43 · 56 · **52** en
+  agosto), pero al estar sin láser en el roster esas atenciones no le pagaban
+  nada ni entraban al reparto.
+
+Agosto, Los Jardines: el fondo (8.213,80) se reparte ahora entre **6**. Cuota
+1.368,97. LILIAN 1.847,82 · JESABETH 1.629,99 · YAMILKA 1.607,46 · LESLIE
+1.368,97 · YADIBEL 1.368,96 · **BENITA 390,60**. Neto de la sucursal 37.634,20.
+
+### Notes — verificación de agosto
+Los servicios se recalcularon **desde las ventas crudas**, por fuera del motor:
+Los Jardines 15.320,40 y Rafael Vidal 911,00 coinciden al céntimo; Villa Olga da
+16.907,85 contra un techo de 18.795,95, y los 1.888,10 de diferencia son ventas
+de servicio sin prestador comisionable (correcto que no se paguen). El fondo
+láser cuadra con lo repartido en las tres sucursales.
+
+**Pendiente de decisión:** **JOHELY** también está sin láser, pero no tiene
+atenciones desde junio. Activársela le daría la cuota fija sin trabajar —el
+mismo patrón que se acaba de corregir con EMELI, NAYELI y KATHERIN—, así que se
+deja como está. **DAYHANA** cobra servicios en dos sucursales (Villa Olga
+7.381,00 y Rafael Vidal 911,00): conviene confirmar que es correcto.
+
 ## [0.105.1] — 2026-09-02
 
 ### Datos (CSL) — bajas en el roster, sin cambios de código
