@@ -18,6 +18,43 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.104.0] — 2026-09-02
+
+### Fixed
+- 🔴 **El roster no miraba las fechas de alta ni de baja.** `start_date` y
+  `end_date` se guardaban desde siempre, pero el cálculo usaba la foto de HOY:
+  recalcular un mes viejo le aplicaba el personal actual. Con el cálculo
+  automático de v0.103.0 eso pasaba **sin que nadie lo pidiera**. Ahora
+  `readRoster` recibe el período y deja solo a quien estaba ese mes
+  (`lib/commission/roster-period.ts`, 16 pruebas). El mes cuenta entero: quien
+  entra el 15 cuenta ese mes, y quien se va el 10 también.
+
+### Changed
+- **El primer tramo de la escala láser pasa de RD$260.000 a 0**, por decisión del
+  negocio: se paga el 2 % aunque la base no llegue al umbral. Es un cambio de
+  regla, editable desde «Reglas de comisión». Único período afectado de los ya
+  calculados: **Villa Olga agosto 2026**, cuyo fondo pasa de 0 a **RD$4.824,40**.
+
+### Datos (CSL)
+- **GIPSY** se traslada de Villa Olga a Los Jardines: baja el 31/08/2026 en Villa
+  Olga y alta el 01/09/2026 en Los Jardines, con láser. Agosto queda intacto
+  gracias al roster por período.
+- **JESABETH** entra al roster de Los Jardines desde el 01/08/2026, con láser.
+  No era personal nuevo: tenía ventas desde enero 2024 y **217 atenciones en
+  agosto** que no entraban al reparto por no estar dada de alta.
+- Agosto 2026 recalculado con los tres cambios:
+
+  | Sucursal | Fondo láser | Inc. productos | Inc. servicios | Neto |
+  |---|---|---|---|---|
+  | Rafael Vidal | 9.293,18 | 8.200,00 | 0,00 | 17.893,18 |
+  | Los Jardines | 7.971,40 | 7.500,00 | 14.027,60 | 35.299,00 |
+  | Villa Olga | 4.824,40 | 7.300,00 | 13.558,05 | 30.682,45 |
+  | **Total** | **22.088,98** | **23.000,00** | **27.585,65** | **83.874,63** |
+
+  El fondo de Los Jardines ahora se reparte entre 7 en vez de 6 (entra JESABETH
+  con el 32 % de las atenciones), así que las demás bajan un poco. Villa Olga
+  sube RD$4.824,40 por el 2 %. Todo sigue en **borrador**.
+
 ## [0.103.0] — 2026-09-02
 
 ### Added

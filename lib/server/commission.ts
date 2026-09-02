@@ -640,6 +640,7 @@ import { classifyProvider } from "@/lib/commission/classification"
 import { isExcludedProvider, isNonIncentiveItem } from "@/lib/commission/exclusions"
 import { buildProductSellers, sellerTotals } from "@/lib/commission/product-sellers"
 import { planAutoRuns, AUTO_RUN_SKIP_LABEL } from "@/lib/commission/auto-run"
+import { filterRosterForPeriod, type RosterPeriod } from "@/lib/commission/roster-period"
 import { receptionSplitsForBranch, isReceptionSplitSale } from "@/lib/commission/reception-splits"
 
 /** Trae las ventas del negocio filtradas en DB por período (sale_date, rango
@@ -1604,6 +1605,8 @@ function mapCollaborator(r: Row) {
     patientParticipation: r.patient_participation !== false,
     fixedPercentage: r.fixed_percentage == null ? null : Number(r.fixed_percentage),
     active: r.active !== false,
+    startDate: r.start_date == null ? null : String(r.start_date).slice(0, 10),
+    endDate: r.end_date == null ? null : String(r.end_date).slice(0, 10),
     cleaningContribution: r.cleaning_contribution == null ? 400 : Number(r.cleaning_contribution),
     bonusExtra: Number(r.bonus_extra) || 0,
     evaluationPct: r.evaluation_pct == null ? 100 : Number(r.evaluation_pct),
@@ -1614,7 +1617,11 @@ function mapCollaborator(r: Row) {
 }
 
 /** Roster de colaboradores vivos (soft delete excluido). */
-async function readRoster(branch?: string, includeInactive = false) {
+/**
+ * Roster de la sucursal. Con `period`, deja solo a quien estaba en ese MES según
+ * su alta/baja: así recalcular un mes viejo no le aplica el personal de hoy.
+ */
+async function readRoster(branch?: string, includeInactive = false, period?: RosterPeriod | null) {
   const business_id = requireBizId()
   let q = getSupabaseAdmin().from("sales_commission_collaborators")
     .select("*").eq("business_id", business_id).is("deleted_at", null)
@@ -1623,7 +1630,7 @@ async function readRoster(branch?: string, includeInactive = false) {
   if (!includeInactive) q = q.eq("active", true)
   const { data, error } = await q
   if (error) throw new Error(error.message)
-  return (data || []).map((r) => mapCollaborator(r as Row))
+  return filterRosterForPeriod((data || []).map((r) => mapCollaborator(r as Row)), period)
 }
 
 /** Configuración de reglas (RunRules) para el motor, desde las reglas activas. */
@@ -1726,7 +1733,7 @@ async function readRunSales(branch: string, month: number, year: number): Promis
 async function computeRunForPeriod(branch: string, month: number, year: number): Promise<RunResult> {
   const [sales, collaborators, rules] = await Promise.all([
     readRunSales(branch, month, year),
-    readRoster(branch, false),
+    readRoster(branch, false, { year, month }),
     readRunRules(),
   ])
   const { patients, source } = await readPatientsForRun(branch, month, year)

@@ -18,6 +18,7 @@ const { toSaleRecord } = await import("../lib/commission/aggregate.ts")
 const { aggregateBranches } = await import("../lib/commission/branch-summary.ts")
 const { buildProductSellers, sellerTotals, SELLER_STATUS_LABEL } = await import("../lib/commission/product-sellers.ts")
 const { planAutoRuns, AUTO_RUN_SKIP_LABEL } = await import("../lib/commission/auto-run.ts")
+const { activeInPeriod, filterRosterForPeriod } = await import("../lib/commission/roster-period.ts")
 const { monthBounds, exclusiveEnd, monthsCovered, quickRange, todayInTz, lastDayOfMonth, availableYears, lastMonths, TREND_MONTHS } = await import("../lib/commission/period.ts")
 
 let pass = 0, fail = 0
@@ -687,6 +688,41 @@ console.log("── Cálculo automático tras importar ventas (§68)")
   t("períodos mal formados se ignoran", planAutoRuns(["", "xx", "2026-13"], BR, { runs: [], closed: [] }).run.length === 0)
   t("sin sucursales no hay nada que correr", planAutoRuns(periods, [], { runs: [], closed: [] }).run.length === 0)
   t("orden estable: por período y luego por sucursal", limpio.run[0].month === 7 && limpio.run[3].month === 8)
+}
+
+console.log("── Roster con fecha de alta y baja (§69)")
+{
+  const p = (y, m) => ({ year: y, month: m })
+
+  t("sin fechas: siempre cuenta (como hasta ahora)", activeInPeriod({}, p(2026, 8)) === true)
+  t("alta el 01/09: NO cuenta en agosto", activeInPeriod({ startDate: "2026-09-01" }, p(2026, 8)) === false)
+  t("alta el 01/09: sí cuenta en septiembre", activeInPeriod({ startDate: "2026-09-01" }, p(2026, 9)) === true)
+  t("alta el 01/09: sí cuenta en octubre", activeInPeriod({ startDate: "2026-09-01" }, p(2026, 10)) === true)
+  t("alta a mitad de mes cuenta ese mes completo", activeInPeriod({ startDate: "2026-09-15" }, p(2026, 9)) === true)
+
+  t("baja el 31/08: sí cuenta en agosto", activeInPeriod({ endDate: "2026-08-31" }, p(2026, 8)) === true)
+  t("baja el 31/08: NO cuenta en septiembre", activeInPeriod({ endDate: "2026-08-31" }, p(2026, 9)) === false)
+  t("baja a mitad de mes cuenta ese mes completo", activeInPeriod({ endDate: "2026-08-10" }, p(2026, 8)) === true)
+
+  t("alta y baja: solo dentro del tramo", activeInPeriod({ startDate: "2026-03-01", endDate: "2026-06-30" }, p(2026, 5)) === true
+    && activeInPeriod({ startDate: "2026-03-01", endDate: "2026-06-30" }, p(2026, 2)) === false
+    && activeInPeriod({ startDate: "2026-03-01", endDate: "2026-06-30" }, p(2026, 7)) === false)
+  t("cruza el año", activeInPeriod({ startDate: "2025-11-01" }, p(2026, 1)) === true && activeInPeriod({ startDate: "2026-01-01" }, p(2025, 12)) === false)
+  t("fecha basura se ignora (no excluye a nadie)", activeInPeriod({ startDate: "no-es-fecha" }, p(2026, 8)) === true)
+
+  // El caso real: GIPSY se muda de Villa Olga a Los Jardines en septiembre.
+  const roster = Object.freeze([
+    { name: "GIPSY", branch: "VILLA OLGA", endDate: "2026-08-31" },
+    { name: "GIPSY", branch: "LOS JARDINES", startDate: "2026-09-01" },
+    { name: "LESLIE", branch: "LOS JARDINES" },
+  ])
+  const ago = filterRosterForPeriod(roster, p(2026, 8)).map((r) => `${r.name}@${r.branch}`)
+  const sep = filterRosterForPeriod(roster, p(2026, 9)).map((r) => `${r.name}@${r.branch}`)
+  t("agosto: GIPSY sigue en Villa Olga y no está en Jardines", ago.includes("GIPSY@VILLA OLGA") && !ago.includes("GIPSY@LOS JARDINES"))
+  t("septiembre: GIPSY está en Jardines y ya no en Villa Olga", sep.includes("GIPSY@LOS JARDINES") && !sep.includes("GIPSY@VILLA OLGA"))
+  t("quien no tiene fechas aparece en los dos meses", ago.includes("LESLIE@LOS JARDINES") && sep.includes("LESLIE@LOS JARDINES"))
+  t("no muta la lista original", roster.length === 3)
+  t("sin período devuelve todo", filterRosterForPeriod(roster, null).length === 3)
 }
 
 console.log(`\n${pass} pasaron · ${fail} fallaron`)
