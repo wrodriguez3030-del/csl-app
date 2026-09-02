@@ -18,6 +18,23 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.105.1] — 2026-09-02
+
+### Datos (CSL) — bajas en el roster, sin cambios de código
+- **NAYELI** y **KATHERIN** dejan Los Jardines: baja el 31/07/2026. En agosto no
+  tenían **ninguna** actividad —ni ventas ni atenciones— pero cobraban la cuota
+  fija del fondo láser: **RD$1.173,40 cada una**. Sus filas de agosto quedan
+  anuladas por la limpieza del libro de v0.105.0.
+- **ASHLEY** tenía una fila suelta e inactiva en Los Jardines, con una nota de
+  junio ya caducada («cobra láser en LOS JARDINES, no en RV»). Los datos dicen lo
+  contrario: vende y atiende en **Rafael Vidal** todos los meses de 2026 (159
+  atenciones en agosto, 5 en septiembre). Fila retirada y nota corregida.
+
+Agosto, Los Jardines: el fondo (8.213,80) pasa a repartirse entre **5** en vez de
+7. LILIAN 1.790,78 · LESLIE 1.642,76 · YADIBEL 1.642,76 · JESABETH 1.579,67 ·
+YAMILKA 1.557,83 — cuadra al céntimo. El neto de la sucursal sube a 36.583,00
+(las dos bajas dejan de restar su aporte de limpieza). Roster: 24 activas.
+
 ## [0.105.0] — 2026-09-02
 
 ### Fixed
