@@ -18,6 +18,67 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.99.0] — 2026-09-02
+
+### Added
+- **Cimientos del «Dashboard financiero», «Rentabilidad y flujo» y «Análisis IA»
+  de Incentivos de Ventas** (etapa 1 de 3; las pantallas llegan en la 3).
+  `getBiFinanceSummary` (motor único de BI Finanzas, que ya usa las mismas ventas
+  de Incentivos) **añade** —sin tocar ninguna clave existente—:
+  - `ingresos.porServicio` / `porServicioByBranch`: ventas por las 10 categorías
+    (láser, producto, faciales, masaje, tatuajes, Hollywood peel, anestesia,
+    botox/plasma, HIFU, otros), siempre las 10 claves. RPC nuevo
+    `sc_sales_by_category` (≤ 30 filas en un viaje en vez de paginar ~10 k).
+  - `inversiones{total, general, byBranch}` desde `bi_finance_investments`
+    (solo `en_curso`/`completada`; sin sucursal = inversión general).
+  - `retiros{total, dividendos, cuentas}` desde la tabla nueva
+    **`bi_finance_partner_withdrawals`** (retiros de socios: salida de caja que
+    NO es gasto operativo, por eso no vive en `expenses`).
+  - `flujo{ingresos, egresosOperativos, inversiones, retiros, egresos, neto}` y
+    **`flujoMensual[12]`** (con `ventasByBranch` y `gastosByBranch` por mes).
+  - `historicoAnual[]` 2017 → hoy: referencia **`sales_history_monthly`** (tabla
+    nueva, se siembra desde la hoja «Historico ventas» en la etapa 2) solo para
+    los meses anteriores a la primera venta real; desde ahí manda la venta real.
+    Marca `parcial` el año en curso.
+- Tabla **`expense_imports`** + columnas `import_id`/`row_hash` en `expenses` y
+  `bi_finance_investments` (índices únicos parciales): base del importador del
+  libro de gastos de la etapa 2. Las filas actuales quedan con `row_hash` nulo.
+- Acciones `getPartnerWithdrawals` / `savePartnerWithdrawal` /
+  `deletePartnerWithdrawal` (zod; sucursal validada contra el tenant; soft
+  delete; auditoría).
+- Permisos nuevos: `sales_commission.import.expenses` («Importar libro de
+  gastos») y `sales_commission.finance.manage` («Gestionar inversiones y retiros
+  de socios»). `requireAnyPermission()` en `business-context`.
+- `pnpm test:bi` — `scripts/test-bi-flujo.mjs`, 42 pruebas de los núcleos puros
+  (`lib/bi-finance/{months,flujo,historico,categorias,analisis-prompt}.ts`).
+- Prompt fijo del futuro «Análisis IA» (`lib/bi-finance/analisis-prompt.ts`,
+  scope `incentivos-analisis`): es parte del `data_hash` de la caché — no
+  retocarlo a la ligera.
+
+### Changed
+- Lectura de BI Finanzas (`getBiFinanceData`, inversiones) aceptan
+  `sales_commission.view` **o** `bi_finance.view`; escribir inversiones acepta
+  `bi_finance.investments` **o** `sales_commission.finance.manage`.
+- `bi-finance.ts` baja de 460 a 447 líneas: el bucle de gastos mensuales sale a
+  `bi-finance-expenses.ts` (5 fuentes, una pasada de 12 meses); la tendencia de
+  6 meses son los últimos 6 de esa serie (mismos valores que antes).
+- `fetchMonthlyAggregates` (commission.ts) pasa a exportarse.
+
+### Fixed
+- En la tendencia mensual los **pagos recurrentes** no respetaban el filtro de
+  sucursal (el P&L del período sí). Ahora ambos resuelven la sucursal del
+  recurrente.
+
+### Notes
+- Migraciones `202609020001…0004` aplicadas en db-cls (12 políticas RLS, 5
+  índices, RPC). Todas aditivas.
+- Comprobado con datos reales de CSL, enero 2026, contra el libro
+  `reportes de incentivo 2026.xlsx`: ingresos 1.691.000; gastos por sucursal
+  722.056,39 / 505.638,81 / 208.877,60; inversión general 403.117,98; inv.
+  Villa Olga 484.243,20; **flujo neto −632.933,98**; rentabilidad R.Vidal
+  6,0 % · Jardines 37,47 % · V.Olga −82,91 % — idénticos a la hoja.
+- La caché del asistente IA se invalida una vez (el summary cambió de forma).
+
 ## [0.98.0] — 2026-09-02
 
 ### Changed

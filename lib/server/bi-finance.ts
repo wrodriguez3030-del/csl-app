@@ -33,7 +33,16 @@ import {
   getCommissionByBranch,
   getCommissionExecutiveDashboard,
   getCommissionPatients,
+  fetchMonthlyAggregates,
 } from "@/lib/server/commission"
+import { exclusiveEnd } from "@/lib/commission/period"
+import { trailingMonths } from "@/lib/bi-finance/months"
+import { porServicioFrom } from "@/lib/bi-finance/categorias"
+import { buildFlujo, sumInversiones, sumRetiros, buildFlujoMensual } from "@/lib/bi-finance/flujo"
+import { monthlyExpenses } from "@/lib/server/bi-finance-expenses"
+import { fetchCategoryAggregates } from "@/lib/server/bi-finance-sales"
+import { loadInvestments, loadWithdrawals } from "@/lib/server/bi-finance-flujo"
+import { loadHistoricoAnual } from "@/lib/server/bi-finance-historico"
 
 const NO_BRANCH = "(sin sucursal)"
 const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100
@@ -49,19 +58,6 @@ function monthBounds(year: number, month: number): { from: string; to: string } 
   const d = new Date(Date.UTC(year, month, 0)) // día 0 del mes siguiente = último día del mes
   const last = String(d.getUTCDate()).padStart(2, "0")
   return { from: `${year}-${mm}-01`, to: `${year}-${mm}-${last}` }
-}
-
-function trailingMonths(anchorYear: number, anchorMonth: number, count: number) {
-  const out: { year: number; month: number; key: string; label: string }[] = []
-  let y = anchorYear
-  let m = anchorMonth
-  const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
-  for (let i = 0; i < count; i++) {
-    out.unshift({ year: y, month: m, key: `${y}-${String(m).padStart(2, "0")}`, label: `${MESES[m - 1]} ${y}` })
-    m--
-    if (m < 1) { m = 12; y-- }
-  }
-  return out
 }
 
 function canonBranch(raw: unknown): string {
@@ -340,63 +336,50 @@ export async function getBiFinanceSummary(params: BiFinanceParams = {}) {
     })
   }
 
-  // ── Tendencia 6 meses (ingresos vs gastos vs utilidad) ───────────────────
-  const months = trailingMonths(year, month, 6)
-  const trendFrom = monthBounds(months[0].year, months[0].month).from
-  const trendTo = mEnd
-  const ingresosByMonth: Record<string, number> = {}
-  if (exec?.trend) {
-    for (const t of exec.trend) ingresosByMonth[`${t.year}-${String(t.month).padStart(2, "0")}`] = Number(t.sales) || 0
-  }
-  const gastosByMonth: Record<string, number> = {}
-  const bucket = (dateStr: unknown, amount: number) => {
-    const key = String(dateStr || "").slice(0, 7)
-    if (!key) return
-    gastosByMonth[key] = round2((gastosByMonth[key] || 0) + (Number(amount) || 0))
-  }
-  try {
-    const { data } = await sb.from("purchase_invoices").select("total, invoice_date, branch, status, deleted_at")
-      .eq("business_id", business_id).is("deleted_at", null).neq("status", "anulada")
-      .gte("invoice_date", trendFrom).lte("invoice_date", trendTo)
-    for (const r of (data || []) as Array<Record<string, unknown>>) { if (matchBranch(r.branch)) bucket(r.invoice_date, Number(r.total) || 0) }
-  } catch { /* opcional */ }
-  try {
-    const { data } = await sb.from("expenses").select("amount, expense_date, branch, status, deleted_at")
-      .eq("business_id", business_id).is("deleted_at", null).neq("status", "anulado")
-      .gte("expense_date", trendFrom).lte("expense_date", trendTo)
-    for (const r of (data || []) as Array<Record<string, unknown>>) { if (matchBranch(r.branch)) bucket(r.expense_date, Number(r.amount) || 0) }
-  } catch { /* opcional */ }
-  try {
-    const { data } = await sb.from("petty_expenses").select("amount, expense_date, branch, status, deleted_at")
-      .eq("business_id", business_id).is("deleted_at", null)
-      .gte("expense_date", trendFrom).lte("expense_date", trendTo)
-    for (const r of (data || []) as Array<Record<string, unknown>>) {
-      if (["aprobado", "pagado"].includes(String(r.status)) && matchBranch(r.branch)) bucket(r.expense_date, Number(r.amount) || 0)
-    }
-  } catch { /* opcional */ }
-  try {
-    const { data } = await sb.from("recurring_payment_history").select("amount, paid_date")
-      .eq("business_id", business_id).gte("paid_date", trendFrom).lte("paid_date", trendTo)
-    for (const r of (data || []) as Array<Record<string, unknown>>) bucket(r.paid_date, Number(r.amount) || 0)
-  } catch { /* opcional */ }
-  // Nómina en la tendencia (por mes del run).
-  try {
-    const { data: runs } = await sb.from("hr_payroll_runs").select("id, period_start")
-      .eq("business_id", business_id).gte("period_start", trendFrom).lte("period_start", trendTo)
-    const rlist = (runs || []) as Array<Record<string, unknown>>
-    if (rlist.length) {
-      const { data: items } = await sb.from("hr_payroll_items").select("run_id, neto").eq("business_id", business_id).in("run_id", rlist.map((r) => r.id) as string[])
-      const monthByRun: Record<string, string> = {}
-      for (const r of rlist) monthByRun[String(r.id)] = String(r.period_start || "").slice(0, 7)
-      for (const it of (items || []) as Array<Record<string, unknown>>) bucket(monthByRun[String(it.run_id)], Number(it.neto) || 0)
-    }
-  } catch { /* opcional */ }
+  // ── Series de 12 meses: gastos, ventas, inversiones, retiros, servicio ────
+  // Una sola pasada sobre la ventana. La tendencia clásica de 6 meses sale de
+  // la misma serie (últimos 6), así conserva exactamente los valores de antes.
+  const months12 = trailingMonths(year, month, 12)
+  const winFrom = monthBounds(months12[0].year, months12[0].month).from
+  const winTo = mEnd
+  const keepBranch = (b: string | null) => matchBranch(b)
+  const [monthly, catRows, invWin, retWin, historicoAnual, salesWin] = await Promise.all([
+    monthlyExpenses({ sb, businessId: business_id, from: winFrom, to: winTo, matchBranch, canonBranch, noBranch: NO_BRANCH }),
+    fetchCategoryAggregates(sb, business_id, mStart, exclusiveEnd(mEnd), branchFilter).catch(() => []),
+    loadInvestments(sb, business_id, winFrom, winTo),
+    loadWithdrawals(sb, business_id, winFrom, winTo),
+    loadHistoricoAnual(sb, business_id, { anchorYear: year, anchorMonth: month, to: mEnd }).catch(() => []),
+    fetchMonthlyAggregates(business_id, winFrom, exclusiveEnd(winTo), branchFilter, null).catch(() => []),
+  ])
 
-  const trend = months.map((m) => {
-    const ingresos = round2(ingresosByMonth[m.key] || 0)
-    const gastos = round2(gastosByMonth[m.key] || 0)
+  // Ventas por mes (total y por sucursal) desde la agregación mensual real.
+  const monthKeyOf = (y: number, m: number) => `${y}-${String(m).padStart(2, "0")}`
+  const ventasByMonth = salesWin.reduce<Record<string, number>>((acc, r) => {
+    const key = monthKeyOf(r.y, r.m)
+    return { ...acc, [key]: round2((acc[key] || 0) + r.gross) }
+  }, {})
+  const ventasByMonthBranch = salesWin.reduce<Record<string, Record<string, number>>>((acc, r) => {
+    const key = monthKeyOf(r.y, r.m), b = canonBranch(r.branch)
+    const prev = acc[key] || {}
+    return { ...acc, [key]: { ...prev, [b]: round2((prev[b] || 0) + r.gross) } }
+  }, {})
+
+  const trend = months12.slice(-6).map((m) => {
+    const ingresos = round2(ventasByMonth[m.key] || 0)
+    const gastos = round2(monthly.byMonth[m.key] || 0)
     return { key: m.key, label: m.label, ingresos, gastos, utilidad: round2(ingresos - gastos) }
   })
+
+  // Flujo de efectivo del período (inversiones y retiros dentro de [mStart, mEnd]).
+  const inPeriod = (d: string | null | undefined) => { const s = String(d || "").slice(0, 10); return s >= mStart && s <= mEnd }
+  const inversiones = sumInversiones(invWin.filter((r) => inPeriod(r.fecha_inicio)), keepBranch)
+  const retiros = sumRetiros(retWin.filter((r) => inPeriod(r.withdrawal_date)), keepBranch)
+  const flujo = buildFlujo({ ingresos: ingresosTotal, egresosOperativos: gastosTotal, inversiones: inversiones.total, retiros: retiros.total })
+  const flujoMensual = buildFlujoMensual({
+    months: months12, ventasByMonth, gastosByMonth: monthly.byMonth, invRows: invWin, retRows: retWin, keep: keepBranch,
+  }).map((row) => ({ ...row, ventasByBranch: ventasByMonthBranch[row.key] || {}, gastosByBranch: monthly.byMonthBranch[row.key] || {} }))
+
+  const porServicio = porServicioFrom(catRows)
 
   const ingresosDeltaPct = exec?.deltas?.salesTotal ?? null
   const patients = patientsRes as { total?: number } | null
@@ -421,6 +404,9 @@ export async function getBiFinanceSummary(params: BiFinanceParams = {}) {
       total: ingresosTotal,
       porCategoria: { producto: catProducto, servicio: catServicio, laser: catLaser },
       byBranch: ingresosByBranch,
+      /** Ventas por servicio (las 10 categorías, siempre presentes). */
+      porServicio: porServicio.total,
+      porServicioByBranch: porServicio.byBranch,
     },
     gastos: {
       total: gastosTotal,
@@ -434,12 +420,26 @@ export async function getBiFinanceSummary(params: BiFinanceParams = {}) {
     },
     rentabilidad,
     trend,
+    /** Inversiones del período (bi_finance_investments): general = sin sucursal. */
+    inversiones,
+    /** Retiros de socios del período (dividendos / cuentas). */
+    retiros,
+    /** Flujo de efectivo del período: ingresos − (gastos operativos + inversiones + retiros). */
+    flujo,
+    /** Serie de 12 meses del flujo, con ventas y gastos también por sucursal. */
+    flujoMensual,
+    /** Ventas por año (referencia Excel antes de la 1.ª venta real + real), consolidado. */
+    historicoAnual,
     fuentes: {
       ventas: "sales_commission_sales (bruto)",
       gastos: "purchase_invoices + expenses + petty_expenses + recurring_payment_history + hr_payroll_items",
       nomina: "hr_payroll_items (overhead; el sistema no desglosa empleado→sucursal)",
       materiales: "material_requisition_items.purchased_cost (informativo)",
       pacientes: "sales_commission_patient_counts",
+      porServicio: "sc_sales_by_category (categoría de cada venta)",
+      inversiones: "bi_finance_investments (en_curso/completada, por fecha_inicio; sin sucursal = general)",
+      retiros: "bi_finance_partner_withdrawals (dividendo/cuenta)",
+      historico: "sales_history_monthly (solo antes de la 1.ª venta real) + sales_commission_sales; consolidado",
     },
   }
 }

@@ -45,6 +45,7 @@ export const PERMISSION_OPTIONS: PermissionOption[] = [
   { id: "sales_commission.import", label: "Importar (general)", section: "Incentivos de Ventas" },
   { id: "sales_commission.import.sales", label: "Importar archivo de ventas", section: "Incentivos de Ventas" },
   { id: "sales_commission.import.reservations", label: "Importar archivo de reservas", section: "Incentivos de Ventas" },
+  { id: "sales_commission.import.expenses", label: "Importar libro de gastos", section: "Incentivos de Ventas" },
   { id: "sales_commission.calculate", label: "Calcular comisiones", section: "Incentivos de Ventas" },
   { id: "sales_commission.rules.manage", label: "Gestionar reglas de comisión", section: "Incentivos de Ventas" },
   { id: "sales_commission.adjust", label: "Ajustes manuales", section: "Incentivos de Ventas" },
@@ -56,6 +57,7 @@ export const PERMISSION_OPTIONS: PermissionOption[] = [
   { id: "sales_commission.close", label: "Cerrar período", section: "Incentivos de Ventas" },
   { id: "sales_commission.export", label: "Exportar Excel/PDF", section: "Incentivos de Ventas" },
   { id: "sales_commission.audit.view", label: "Ver auditoría de comisiones", section: "Incentivos de Ventas" },
+  { id: "sales_commission.finance.manage", label: "Gestionar inversiones y retiros de socios", section: "Incentivos de Ventas" },
   // CF PARA IMPRIMIR · Certificados de regalo (el módulo se controla por MENÚ;
   // solo la ANULACIÓN, destructiva, requiere permiso).
   { id: "gift_certificates.void", label: "Anular certificados de regalo", section: "Certificados de Regalo" },

@@ -9,7 +9,12 @@
  * Aislamiento por tenant: todo se filtra por el business_id del contexto.
  */
 import { getSupabaseAdmin } from "@/lib/server/supabase"
-import { getBusinessContext, requirePermission, hasPermission } from "@/lib/server/business-context"
+import { getBusinessContext, requirePermission, requireAnyPermission, hasPermission } from "@/lib/server/business-context"
+
+/** Lectura compartida con Incentivos de Ventas (las pantallas financieras viven en ambos menús). */
+const READ_PERMS = ["bi_finance.view", "sales_commission.view"] as const
+/** Inversiones: BI Financiero o el gestor financiero de Incentivos. */
+const INVEST_PERMS = ["bi_finance.investments", "sales_commission.finance.manage"] as const
 import { textValue, numberValue, parsePayload } from "@/lib/server/csl-helpers"
 import type { ActionParams, ActionUser } from "@/lib/server/csl-types"
 import { getBiFinanceSummary } from "@/lib/server/bi-finance"
@@ -34,7 +39,7 @@ function periodOf(params: ActionParams): { month: number; year: number } {
 
 // ── Dashboard / datos agregados ─────────────────────────────────────────────
 export async function getBiFinanceData(params: ActionParams) {
-  requirePermission("bi_finance.view")
+  requireAnyPermission(READ_PERMS)
   const { month, year } = periodOf(params)
   const from = textValue(params, "from") || undefined
   const to = textValue(params, "to") || undefined
@@ -310,7 +315,7 @@ export async function updateBiFinanceAlert(params: ActionParams, user: ActionUse
 
 // ── Inversiones y ROI ───────────────────────────────────────────────────────
 export async function getBiFinanceInvestments() {
-  requirePermission("bi_finance.view")
+  requireAnyPermission(READ_PERMS)
   const business_id = bizId()
   const { data } = await getSupabaseAdmin().from("bi_finance_investments").select("*")
     .eq("business_id", business_id).is("deleted_at", null).order("created_at", { ascending: false })
@@ -323,7 +328,7 @@ function computeRoi(inversion: number, beneficio: number | null): number | null 
 }
 
 export async function saveBiFinanceInvestment(params: ActionParams, user: ActionUser) {
-  requirePermission("bi_finance.investments")
+  requireAnyPermission(INVEST_PERMS)
   const business_id = bizId()
   const p = parsePayload(params)
   const id = p.id ? String(p.id) : null
@@ -371,7 +376,7 @@ export async function saveBiFinanceInvestment(params: ActionParams, user: Action
 }
 
 export async function deleteBiFinanceInvestment(params: ActionParams) {
-  requirePermission("bi_finance.investments")
+  requireAnyPermission(INVEST_PERMS)
   const business_id = bizId()
   const id = textValue(params, "id")
   if (!id) throw new Error("Falta el id")

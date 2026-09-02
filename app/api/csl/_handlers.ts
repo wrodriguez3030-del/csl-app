@@ -61,6 +61,7 @@ import * as productsInventory from "@/lib/server/products-inventory"
 import * as purchases from "@/lib/server/purchases"
 import * as commission from "@/lib/server/commission"
 import * as biFinance from "@/lib/server/bi-finance-handlers"
+import * as withdrawals from "@/lib/server/bi-finance-withdrawals"
 
 /**
  * Acciones MANUALES del módulo de Mantenimiento. Solo estas pueden escribir en
@@ -3611,6 +3612,12 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await biFinance.saveBiFinanceInvestment(params, user)
     case "deleteBiFinanceInvestment":
       return await biFinance.deleteBiFinanceInvestment(params)
+    case "getPartnerWithdrawals":
+      return await withdrawals.getPartnerWithdrawals(params)
+    case "savePartnerWithdrawal":
+      return await withdrawals.savePartnerWithdrawal(params, user)
+    case "deletePartnerWithdrawal":
+      return await withdrawals.deletePartnerWithdrawal(params, user)
     case "getBiFinanceForecast":
       return await biFinance.getBiFinanceForecast(params)
     case "getBiFinanceModels":

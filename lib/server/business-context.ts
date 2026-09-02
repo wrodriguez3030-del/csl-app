@@ -94,6 +94,11 @@ export function requirePermission(perm: string): void {
   if (!hasPermission(perm)) throw new Error("No tienes permiso para realizar esta acción.")
 }
 
+/** Basta con UNO de los permisos (p. ej. una pantalla que comparten dos módulos). */
+export function requireAnyPermission(perms: readonly string[]): void {
+  if (!perms.some((p) => hasPermission(p))) throw new Error("No tienes permiso para realizar esta acción.")
+}
+
 /**
  * UUIDs reales de los businesses en producción (Supabase pfqnyzbtwhfkemkixril).
  * Espejo del mapa cliente en `components/superadmin-business-filter.tsx`.

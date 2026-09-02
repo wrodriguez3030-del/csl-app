@@ -1307,7 +1307,7 @@ interface MonthlyAgg { y: number; m: number; branch: string; payment: string; gr
 /** Agregación mensual de ventas (año, mes, sucursal, pago) vía la función SQL
  *  `sc_sales_monthly`; si no existe en la DB, cae a agregar las ventas crudas
  *  por páginas (lento pero correcto). */
-async function fetchMonthlyAggregates(
+export async function fetchMonthlyAggregates(
   business_id: string, fromISO: string, toEx: string,
   branch: string | null, provider: string | null,
 ): Promise<MonthlyAgg[]> {
