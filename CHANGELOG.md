@@ -18,6 +18,33 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.105.3] — 2026-09-02
+
+### Datos (CSL) — agosto recalculado tras asignar las ventas sin prestador
+El usuario asignó desde «Ventas sin prestador» las 9 ventas de eliminación de
+tatuajes de Villa Olga que no pagaban a nadie: **3 a ANGELICA** (RD$7.800) y
+**6 a EIDYLEE** (RD$13.727). Recalculado agosto:
+
+| Sucursal | Fondo láser | Inc. productos | Inc. servicios | Neto |
+|---|---|---|---|---|
+| Rafael Vidal | 9.622,06 | 8.200,00 | 911,00 | 19.533,06 |
+| Los Jardines | 8.213,80 | 7.500,00 | 15.320,40 | 37.634,20 |
+| Villa Olga | 5.014,80 | 7.400,00 | 18.795,95 | 36.210,75 |
+| **Total** | **22.850,66** | **23.100,00** | **35.027,35** | **93.378,01** |
+
+ANGELICA pasa de 2.001,90 a **2.652,30** de servicios (neto 4.640,35) y EIDYLEE
+de 7.524,95 a **8.762,65** (neto 10.162,65).
+
+### Notes — controles
+- Villa Olga da ahora **18.795,95** de servicios, que es exactamente el techo
+  calculado desde las ventas crudas: **no queda ninguna venta de servicio sin
+  cobrar** en ninguna de las tres sucursales en agosto.
+- El fondo láser cuadra con lo repartido en las tres.
+- El campo «servicios» del roster es solo el sí/no de «aplica láser»: los
+  incentivos de tatuajes, faciales y masajes se pagan a quien figura como
+  prestador en cada venta, no dependen de ese campo. Por eso ANGELICA cobraba
+  sus tatuajes sin necesidad de tocar su ficha.
+
 ## [0.105.2] — 2026-09-02
 
 ### Datos (CSL)
