@@ -14,6 +14,7 @@ import {
   Loader2, CheckCircle2, AlertTriangle, Wand2, Download, Printer, RefreshCw, ChevronDown, Save, RotateCcw,
 } from "lucide-react"
 import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
+import { sellerTotals, SELLER_STATUS_LABEL, type SellerRow } from "@/lib/commission/product-sellers"
 import { exportLaserExcel, printLaserPdf, laserModeLabel, type LaserDetail } from "@/lib/commission/laser-export"
 import { LaserPersonnelEditor } from "./laser-personnel-editor"
 
@@ -165,31 +166,110 @@ export function ComisionSucursalesPage() {
   )
 }
 
-// Incentivos de productos (lee cálculos vivos; período compartido)
+// Incentivos de productos — QUIÉN VENDIÓ (archivo de ventas) y QUIÉN COBRA
+// (cálculo del período). No son la misma lista: las ventas de las cuentas de
+// recepción se reparten entre prestadoras designadas, hay prestadores excluidos
+// y ventas sin prestador. Cada fila de la primera tabla dice por qué.
+const SELLER_CLASS: Record<string, string> = {
+  incentiva: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  repartido: "bg-sky-50 text-sky-700 border-sky-200",
+  excluido: "bg-slate-50 text-slate-600 border-slate-200",
+  sin_prestador: "bg-amber-50 text-amber-700 border-amber-200",
+  no_comisionable: "bg-slate-50 text-slate-600 border-slate-200",
+}
+
+function SellersTable({ rows }: { rows: SellerRow[] }) {
+  const tot = sellerTotals(rows)
+  return (
+    <div className="overflow-x-auto"><table className="w-full text-sm">
+      <thead><tr className="border-b text-left text-[11px] uppercase text-muted-foreground">
+        <th className="px-4 py-2">Vendedor</th><th className="px-2 py-2">Sucursal</th><th className="px-2 py-2 text-right">Líneas</th>
+        <th className="px-2 py-2 text-right">Unidades</th><th className="px-2 py-2 text-right">Sin incentivo</th><th className="px-2 py-2 text-right">Monto</th><th className="px-4 py-2">Incentivo</th>
+      </tr></thead>
+      <tbody>{rows.map((r) => (
+        <tr key={`${r.provider}|${r.branch}`} className="border-b last:border-0">
+          <td className="px-4 py-2 font-medium">{r.provider}{r.role ? <span className="ml-1 text-[11px] font-normal text-muted-foreground">({r.role})</span> : null}</td>
+          <td className="px-2 py-2 text-xs text-muted-foreground">{r.branch}</td>
+          <td className="px-2 py-2 text-right tabular-nums">{r.lines}</td>
+          <td className="px-2 py-2 text-right font-semibold tabular-nums">{r.units}</td>
+          <td className="px-2 py-2 text-right tabular-nums text-muted-foreground" title="Rasuradoras y aplicación de anestesia: se venden pero nunca comisionan">{r.unitsSinIncentivo || "—"}</td>
+          <td className="px-2 py-2 text-right tabular-nums">{fmtRD(r.gross)}</td>
+          <td className="px-4 py-2">
+            <Badge variant="outline" className={SELLER_CLASS[r.status] || ""}>{SELLER_STATUS_LABEL[r.status]}</Badge>
+            {r.note ? <div className="mt-0.5 text-[11px] text-muted-foreground">{r.note}</div> : null}
+          </td>
+        </tr>
+      ))}</tbody>
+      <tfoot><tr className="bg-slate-50 font-bold">
+        <td className="px-4 py-2" colSpan={2}>Totales</td>
+        <td className="px-2 py-2 text-right tabular-nums">{tot.lines}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{tot.units}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{tot.unitsSinIncentivo || "—"}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{fmtRD(tot.gross)}</td>
+        <td className="px-4 py-2" />
+      </tr></tfoot>
+    </table></div>
+  )
+}
+
+function SellersResumen({ tot }: { tot: ReturnType<typeof sellerTotals> }) {
+  const partes: [string, number, string][] = ([
+    ["Generan incentivo directo", tot.unitsIncentivan, "text-emerald-700"],
+    ["Se reparten entre prestadoras", tot.unitsRepartidas, "text-sky-700"],
+    ["De prestadores excluidos", tot.unitsExcluidas, "text-slate-600"],
+    ["Sin prestador asignado", tot.unitsSinPrestador, "text-amber-700"],
+    ["De cuentas no comisionables", tot.unitsNoComisionables, "text-slate-600"],
+    ["Ítems que nunca comisionan", tot.unitsSinIncentivo, "text-slate-600"],
+  ] as [string, number, string][]).filter(([, n]) => n > 0)
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-1 border-b px-4 py-3 text-sm">
+      <div><span className="text-muted-foreground">Unidades vendidas: </span><b className="tabular-nums">{tot.units}</b></div>
+      {partes.map(([label, n, cls]) => (
+        <div key={label}><span className="text-muted-foreground">{label}: </span><b className={`tabular-nums ${cls}`}>{n}</b></div>
+      ))}
+    </div>
+  )
+}
+
 export function ComisionProductosPage() {
   const BRANCHES = useCommissionBranches()
   const { apiUrl, showToast } = useAppStore()
   const { params } = useCommissionFilters()
+  const [sellers, setSellers] = useState<SellerRow[]>([])
   const [items, setItems] = useState<{ id: string; provider: string; branch: string; productsCount: number; productIncentive: number }[]>([])
   const [loading, setLoading] = useState(true)
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionCalculations", ...params })
-      if (res?.ok) setItems(((res.records as never[]) || []).filter((c: { productsCount: number }) => c.productsCount > 0))
-      else showToast((res as { error?: string })?.error || "Error", "error")
+      const [vend, calc] = await Promise.all([
+        apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionProductSellers", ...params }),
+        apiJsonp(normalizeApiUrl(apiUrl), { action: "getCommissionCalculations", ...params }),
+      ])
+      if (vend?.ok) setSellers((vend.sellers as SellerRow[]) || [])
+      else showToast((vend as { error?: string })?.error || "Error", "error")
+      if (calc?.ok) setItems(((calc.records as never[]) || []).filter((c: { productsCount: number }) => c.productsCount > 0))
     } catch (e) { showToast(e instanceof Error ? e.message : "Error", "error") } finally { setLoading(false) }
   }, [apiUrl, showToast, params])
   useEffect(() => { void load() }, [load])
   const totalU = items.reduce((s, c) => s + c.productsCount, 0)
   const totalI = items.reduce((s, c) => s + c.productIncentive, 0)
-  const providers = [...new Set(items.map((c) => c.provider).filter(Boolean))].sort()
+  const providers = [...new Set([...sellers.map((s) => s.provider), ...items.map((c) => c.provider)].filter(Boolean))].sort()
+  const tot = sellerTotals(sellers)
   return (
     <Shell icon={<Package className="h-4 w-4" />} title="Incentivos de Ventas · Incentivos de productos">
       <CommissionFilterBar branches={BRANCHES} providers={providers} />
+
       <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
+        <div className="border-b px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-600">Quién vendió producto</div>
         {loading ? <div className="py-10 text-center text-sm text-muted-foreground">Cargando...</div>
-          : items.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin datos. Importa un archivo de ventas primero.</div>
+          : sellers.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin ventas de producto en el período. Importa un archivo de ventas primero.</div>
+          : <><SellersResumen tot={tot} /><SellersTable rows={sellers} /></>}
+      </CardContent></Card>
+
+      <Card className="border-[color:var(--brand-border)]"><CardContent className="p-0">
+        <div className="border-b px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-600">Quién cobra el incentivo</div>
+        {loading ? <div className="py-10 text-center text-sm text-muted-foreground">Cargando...</div>
+          : items.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin cálculo de incentivos en el período.</div>
           : (<div className="overflow-x-auto"><table className="w-full text-sm">
             <thead><tr className="border-b text-left text-[11px] uppercase text-muted-foreground"><th className="px-4 py-2">Empleado</th><th className="px-2 py-2">Sucursal</th><th className="px-2 py-2 text-right">Unidades</th><th className="px-4 py-2 text-right">Incentivo</th></tr></thead>
             <tbody>{[...items].sort((a, b) => b.productsCount - a.productsCount).map((c) => (
@@ -197,6 +277,9 @@ export function ComisionProductosPage() {
             ))}</tbody>
             <tfoot><tr className="bg-slate-50 font-bold"><td className="px-4 py-2" colSpan={2}>Totales</td><td className="px-2 py-2 text-right tabular-nums">{totalU}</td><td className="px-4 py-2 text-right tabular-nums">{fmtRD(totalI)}</td></tr></tfoot>
           </table></div>)}
+        <p className="border-t px-4 py-2 text-[11px] text-muted-foreground">
+          Las dos listas no coinciden a propósito: las ventas de las cuentas de recepción se reparten entre las prestadoras designadas, así que quien cobra puede no haber vendido y quien vendió puede no cobrar. Además, las rasuradoras y la aplicación de anestesia se venden pero nunca comisionan.
+        </p>
       </CardContent></Card>
     </Shell>
   )

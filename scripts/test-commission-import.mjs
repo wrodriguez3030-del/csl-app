@@ -16,6 +16,7 @@ const { payBucketsFromV2, dominantPayment, addBuckets } = await import("../lib/c
 const { computeRowHash, fnvHex } = await import("../lib/commission/hash.ts")
 const { toSaleRecord } = await import("../lib/commission/aggregate.ts")
 const { aggregateBranches } = await import("../lib/commission/branch-summary.ts")
+const { buildProductSellers, sellerTotals, SELLER_STATUS_LABEL } = await import("../lib/commission/product-sellers.ts")
 const { monthBounds, exclusiveEnd, monthsCovered, quickRange, todayInTz, lastDayOfMonth, availableYears, lastMonths, TREND_MONTHS } = await import("../lib/commission/period.ts")
 
 let pass = 0, fail = 0
@@ -590,6 +591,52 @@ console.log("── Tendencia mensual: ventana de 12 meses (§46)")
 
   t("count 1 → solo el ancla", lastMonths(2026, 9, 1).length === 1)
   t("count inválido no revienta", Array.isArray(lastMonths(2026, 9, 0)))
+}
+
+console.log("── Quién vendió producto (§67)")
+{
+  // Las ventas de producto tal como vienen del archivo (julio 2026, casos reales).
+  const rows = [
+    { providerOriginal: "EIDYLEE (prestador)", branch: "VILLA OLGA", quantity: 20, amount: 37800 },
+    { providerOriginal: "PC Recepcion  LAP TOP R VIDAL (Recepcionista)", branch: "RAFAEL VIDAL", quantity: 43, amount: 65950 },
+    { providerOriginal: "LOS JARDINES  ENCARGADA 1 (Recepcionista)", branch: "LOS JARDINES", quantity: 20, amount: 27600 },
+    { providerOriginal: "CARLOS ARIAS (Administrador Local)", branch: "RAFAEL VIDAL", quantity: 13, amount: 4860 },
+    { providerOriginal: "Sin información", branch: "VILLA OLGA", quantity: 16, amount: 22350 },
+    { providerOriginal: "cibao spa los jadines  operaciones (Recepcionista)", branch: "LOS JARDINES", quantity: 3, amount: 2075 },
+    { providerOriginal: "EIDYLEE (prestador)", branch: "VILLA OLGA", quantity: 5, amount: 3000 },
+    { providerOriginal: "DIANA (prestador)", branch: "RAFAEL VIDAL", serviceName: "RASURADORAS", quantity: 4, amount: 1200 },
+  ]
+  const out = buildProductSellers(rows, "csl")
+  const byName = (n) => out.find((r) => r.provider.toUpperCase().includes(n))
+
+  t("aparecen TODOS los que vendieron, no solo los que cobran", out.length === 7, `(${out.length}: ${out.map((r) => r.provider)})`)
+  t("agrupa las líneas del mismo vendedor y sucursal", byName("EIDYLEE").lines === 2 && byName("EIDYLEE").units === 25 && byName("EIDYLEE").gross === 40800)
+  t("ordenado por unidades descendente", out.every((r, i) => i === 0 || out[i - 1].units >= r.units))
+
+  t("prestadora normal → incentiva", byName("EIDYLEE").status === "incentiva")
+  t("recepción con reparto → repartido, y dice a quién", byName("PC RECEPCION").status === "repartido" && /LUISA/.test(byName("PC RECEPCION").note) && /KARLA/.test(byName("PC RECEPCION").note))
+  t("encargada de Jardines → repartido entre LESLIE y YADIBEL", byName("ENCARGADA 1").status === "repartido" && /LESLIE/.test(byName("ENCARGADA 1").note))
+  t("CARLOS ARIAS → excluido por regla del negocio", byName("CARLOS ARIAS").status === "excluido")
+  t("«Sin información» → sin prestador", byName("SIN INFORMACI").status === "sin_prestador")
+  t("recepción SIN regla de reparto → no comisionable (no se reparte a nadie)", byName("OPERACIONES").status === "no_comisionable")
+  t("el rol se conserva para poder explicarlo", byName("PC RECEPCION").role === "Recepcionista" && byName("EIDYLEE").role === "prestador")
+  t("el nombre sale limpio, sin el rol entre paréntesis", !byName("EIDYLEE").provider.includes("("))
+  t("cada estado tiene etiqueta legible", ["incentiva", "repartido", "excluido", "sin_prestador", "no_comisionable"].every((k) => typeof SELLER_STATUS_LABEL[k] === "string"))
+
+  const tot = sellerTotals(out)
+  t("totales: 124 unidades vendidas", tot.units === 124, `(${tot.units})`)
+  t("totales: 29 unidades de gente que cobra, pero 4 son rasuradoras", tot.unitsIncentivan === 29 && tot.unitsSinIncentivo === 4, `(${tot.unitsIncentivan}/${tot.unitsSinIncentivo})`)
+  t("las rasuradoras se marcan por vendedor", byName("DIANA").unitsSinIncentivo === 4 && byName("EIDYLEE").unitsSinIncentivo === 0)
+  t("totales: la diferencia se explica por estado", tot.unitsRepartidas === 63 && tot.unitsExcluidas === 13 && tot.unitsSinPrestador === 16 && tot.unitsNoComisionables === 3)
+  t("totales: las cuatro partes suman el total", tot.unitsIncentivan + tot.unitsRepartidas + tot.unitsExcluidas + tot.unitsSinPrestador + tot.unitsNoComisionables === tot.units)
+  t("totales: monto vendido", tot.gross === 164835, `(${tot.gross})`)
+
+  // Tenant distinto: las reglas de CSL NO se heredan.
+  const dep = buildProductSellers([{ providerOriginal: "CARLOS ARIAS (Administrador Local)", branch: "LA VEGA", quantity: 1, amount: 100 }], "depicenter")
+  t("las exclusiones de CSL no aplican en otro negocio", dep[0].status !== "excluido")
+
+  t("lista vacía no revienta", buildProductSellers([], "csl").length === 0 && sellerTotals([]).units === 0)
+  t("no muta la entrada", rows[0].quantity === 20)
 }
 
 console.log(`\n${pass} pasaron · ${fail} fallaron`)

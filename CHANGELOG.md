@@ -18,6 +18,40 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.102.0] — 2026-09-02
+
+### Added
+- **«Incentivos de productos» ahora lista a TODOS los que vendieron producto.**
+  La pantalla mostraba solo el cálculo del incentivo, así que faltaban las
+  cuentas de recepción, los prestadores excluidos y las ventas sin prestador. En
+  julio 2026 se veían **20 personas / 246 unidades**; las ventas reales eran
+  **25 vendedores / 300 unidades**.
+  - Tabla nueva **«Quién vendió producto»**: vendedor (con su rol), sucursal,
+    líneas, unidades, unidades de ítems que nunca comisionan, monto y **el motivo**
+    de cada caso — *Cobra su incentivo* · *Se reparte* (diciendo entre quiénes) ·
+    *Excluido del incentivo* · *Sin prestador* · *No comisionable*.
+  - Debajo, la tabla de siempre, ahora titulada **«Quién cobra el incentivo»**,
+    con una nota que explica por qué las dos listas no coinciden.
+  - Resumen de conciliación arriba: cuántas unidades generan incentivo directo,
+    cuántas se reparten, cuántas quedan fuera y por qué.
+- Handler `getCommissionProductSellers` y núcleo puro
+  `lib/commission/product-sellers.ts`, que aplica las reglas ya existentes
+  (reparto de recepción, exclusiones e ítems sin incentivo) sin duplicarlas.
+  16 pruebas nuevas en `pnpm test:commission` (202 en verde).
+
+### Notes — por qué las dos listas difieren (julio 2026, verificado)
+- **125 u se reparten**: PC Recepción R. Vidal (43) → LUISA/YANIBEL/KARLA;
+  Villa Olga Encargada (36) → ANGELICA/GIPSY; Jardines Encargada 1 y 2 (46) →
+  LESLIE/YADIBEL. Quien cobra ahí **no vendió**, y las cuentas que vendieron
+  **no cobran**: es la regla del negocio, no un error.
+- **23 u de CARLOS ARIAS** (excluido del incentivo), **25 u «Sin información»**
+  (sin prestador en el archivo) y **3 u de una cuenta de operaciones** sin regla
+  de reparto.
+- **19 rasuradoras** vendidas como producto no comisionan nunca; 3 de ellas son
+  de vendedores que sí cobran, y por eso salen en su propia columna.
+- Cuadre exacto: 300 − 23 − 25 − 3 − 3 = **246**, las unidades que efectivamente
+  pagan incentivo.
+
 ## [0.101.0] — 2026-09-02
 
 ### Added

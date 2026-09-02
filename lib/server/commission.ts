@@ -638,6 +638,7 @@ export async function setCommissionCalcStatus(params: ActionParams, user: Action
 // ── Vistas agregadas desde las ventas persistidas ───────────────────────────
 import { classifyProvider } from "@/lib/commission/classification"
 import { isExcludedProvider, isNonIncentiveItem } from "@/lib/commission/exclusions"
+import { buildProductSellers, sellerTotals } from "@/lib/commission/product-sellers"
 import { receptionSplitsForBranch, isReceptionSplitSale } from "@/lib/commission/reception-splits"
 
 /** Trae las ventas del negocio filtradas en DB por período (sale_date, rango
@@ -710,6 +711,22 @@ export async function getCommissionYears(_params: ActionParams) {
   const maxISO = String((last.data as Row | null)?.sale_date || "")
   const currentYear = Number(todayInTz().slice(0, 4)) || new Date().getFullYear()
   return { ok: true, years: availableYears(minISO, maxISO, currentYear), first: minISO || null, last: maxISO || null }
+}
+
+/**
+ * Quién VENDIÓ producto en el período — la lista real del archivo de ventas.
+ * No es lo mismo que quién COBRA el incentivo: las ventas de las cuentas de
+ * recepción se reparten, hay prestadores excluidos y ventas sin prestador. Cada
+ * fila trae el motivo. Ver `lib/commission/product-sellers.ts`.
+ */
+export async function getCommissionProductSellers(params: ActionParams) {
+  const slug = bizSlug()
+  const rows = (await fetchSalesForPeriod(params)).filter((r) => String(r.category || "") === "PRODUCTO")
+  const sellers = buildProductSellers(rows.map((r) => ({
+    providerOriginal: r.provider_original ?? r.provider_normalized ?? "",
+    branch: r.branch, serviceName: r.service_name, quantity: r.quantity, amount: r.gross_amount,
+  })), slug)
+  return { ok: true, sellers, totals: sellerTotals(sellers) }
 }
 
 /**

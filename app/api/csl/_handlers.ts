@@ -3743,6 +3743,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await commission.updateCommissionCalculation(params, user)
     case "setCommissionCalcStatus":
       return await commission.setCommissionCalcStatus(params, user)
+    case "getCommissionProductSellers":
+      return await commission.getCommissionProductSellers(params)
     case "getCommissionYears":
       return await commission.getCommissionYears(params)
     case "getCommissionByBranch":
