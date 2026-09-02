@@ -56,6 +56,9 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "compras-recurrentes", label: "Pagos recurrentes", section: "Compras" },
   // Incentivos de Ventas (importación mensual → cálculo → liquidación)
   { id: "comision-dashboard", label: "Dashboard", section: "Incentivos de Ventas" },
+  { id: "comision-finanzas", label: "Dashboard financiero", section: "Incentivos de Ventas" },
+  { id: "comision-rentabilidad", label: "Rentabilidad y flujo", section: "Incentivos de Ventas" },
+  { id: "comision-analisis", label: "Análisis IA", section: "Incentivos de Ventas" },
   { id: "comision-importar", label: "Importador", section: "Incentivos de Ventas" },
   { id: "comision-sucursales", label: "Ventas por sucursal", section: "Incentivos de Ventas" },
   { id: "comision-prestadores", label: "Comisiones por prestador", section: "Incentivos de Ventas" },

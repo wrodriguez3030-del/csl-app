@@ -5,6 +5,7 @@
  */
 import type { BusinessBranding } from "@/lib/business"
 import type { BiSummary } from "@/components/bi-finance/bi-shared"
+import { finanzasSheets, finanzasPdfSection } from "./bi-export-finanzas"
 
 const argb = (hex: string) => "FF" + (hex || "#0891b2").replace("#", "").toUpperCase().padStart(6, "0").slice(0, 6)
 const rd = (n: number) => Math.round(Number(n) || 0)
@@ -146,6 +147,9 @@ export async function exportBiFinanceExcel(summary: BiSummary, branding: Busines
     { header: "Utilidad", key: "utilidad", money: true },
   ], summary.trend.map((t) => ({ label: t.label, ingresos: t.ingresos, gastos: t.gastos, utilidad: t.utilidad })))
 
+  // Hojas 6-8 — flujo mensual, ventas por servicio e histórico anual
+  for (const sh of finanzasSheets(summary)) addSheet(sh.name, sh.title, sh.cols, sh.rows, sh.totals)
+
   const buf = await wb.xlsx.writeBuffer()
   const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
   const url = URL.createObjectURL(blob)
@@ -209,6 +213,7 @@ export function printBiFinancePdf(summary: BiSummary, branding: BusinessBranding
     <tfoot><tr><td>TOTAL</td><td class="r">${money(r.ingresos)}</td><td class="r">${money(r.gastos)}</td><td class="r">${money(r.utilidadNeta)}</td><td class="r">${r.margenNeto.toFixed(1)}%</td></tr></tfoot></table>
     <h2>Tendencia 6 meses</h2>
     <table><thead><tr><th>Mes</th><th class="r">Ingresos</th><th class="r">Gastos</th><th class="r">Utilidad</th></tr></thead><tbody>${trend}</tbody></table>
+    ${finanzasPdfSection(summary)}
     <div class="foot">${branding.footerText} · Reporte generado el ${new Date().toLocaleString("es-DO")} · Cifras en RD$ · Datos agregados del sistema.</div>
   </body></html>`
 

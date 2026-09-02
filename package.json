@@ -1,6 +1,6 @@
 {
   "name": "my-project",
-  "version": "0.100.0",
+  "version": "0.101.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -13,7 +13,8 @@
     "test:agendapro": "node --import tsx scripts/test-agendapro-webhook.mjs",
     "test:ui": "tsx scripts/test-ui-format.mjs",
     "test:bi": "tsx scripts/test-bi-flujo.mjs",
-    "test:gastos": "tsx scripts/test-gastos-import.mjs"
+    "test:gastos": "tsx scripts/test-gastos-import.mjs",
+    "test:finanzas": "tsx scripts/test-finanzas-ui.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

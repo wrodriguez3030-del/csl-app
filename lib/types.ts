@@ -445,6 +445,9 @@ export type TabId =
   | "compras-recurrentes"
   // Módulo Incentivos de Ventas
   | "comision-dashboard"
+  | "comision-finanzas"
+  | "comision-rentabilidad"
+  | "comision-analisis"
   | "comision-importar"
   | "comision-sucursales"
   | "comision-prestadores"

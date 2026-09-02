@@ -25,9 +25,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { KpiCard } from "@/components/kpi-card"
 import { DashHeader } from "@/components/dashboard-kit"
 import { useCommissionBranches } from "@/hooks/use-commission-branches"
+import { useCommissionYears } from "@/hooks/use-commission-years"
+import { useCurrentBusiness } from "@/hooks/use-current-business"
+import { getBusinessBranding } from "@/lib/business"
+import { exportBiFinanceExcel, printBiFinancePdf } from "@/lib/bi-finance/bi-export"
 import {
   BrainCircuit, Sparkles, RefreshCcw, Loader2, AlertTriangle, CheckCircle2,
-  Lightbulb, ShieldAlert, ListChecks, ClipboardList, Info, SlidersHorizontal, type LucideIcon,
+  Lightbulb, ShieldAlert, ListChecks, ClipboardList, Info, SlidersHorizontal, FileSpreadsheet, Printer, type LucideIcon,
 } from "lucide-react"
 
 // ── Formateadores ────────────────────────────────────────────────────────────
@@ -55,12 +59,35 @@ export interface BiSummary {
   branchFilter: string | null
   allocateOverhead: boolean
   resumen: { ingresos: number; gastos: number; utilidadNeta: number; margenNeto: number; ticketPromedio: number; transacciones: number; pacientes: number; ingresosDeltaPct: number | null }
-  ingresos: { total: number; porCategoria: { producto: number; servicio: number; laser: number }; byBranch: Record<string, number> }
+  ingresos: {
+    total: number; porCategoria: { producto: number; servicio: number; laser: number }; byBranch: Record<string, number>
+    /** Ventas por servicio (las 10 categorías de SaleCategory, siempre presentes). */
+    porServicio?: Record<string, number>
+    porServicioByBranch?: Record<string, Record<string, number>>
+  }
   gastos: { total: number; facturas: number; gastosGenerales: number; gastosMenores: number; recurrentes: number; nomina: number; materiales: number; overhead: { total: number; nomina: number; sinSucursal: number; prorrateado: boolean }; byBranch: Record<string, Record<string, number>> }
   rentabilidad: BranchProfit[]
   trend: { key: string; label: string; ingresos: number; gastos: number; utilidad: number }[]
+  /** Inversiones del período; `general` = las que no tienen sucursal. */
+  inversiones?: { total: number; general: number; byBranch: Record<string, number> }
+  /** Retiros de socios del período. */
+  retiros?: { total: number; dividendos: number; cuentas: number }
+  /** Flujo de efectivo: ingresos − (gastos operativos + inversiones + retiros). */
+  flujo?: Flujo
+  /** Serie de 12 meses del flujo, con ventas y gastos también por sucursal. */
+  flujoMensual?: FlujoMes[]
+  /** Ventas por año (referencia del Excel antes de la 1.ª venta real + real). */
+  historicoAnual?: HistoricoYear[]
   fuentes: Record<string, string>
 }
+export interface Flujo { ingresos: number; egresosOperativos: number; inversiones: number; retiros: number; egresos: number; neto: number }
+export interface FlujoMes {
+  key: string; label: string; short: string
+  ventas: number; gastosOperativos: number; inversionGeneral: number; inversionByBranch: Record<string, number>
+  retiros: number; egresos: number; neto: number
+  ventasByBranch?: Record<string, number>; gastosByBranch?: Record<string, number>
+}
+export interface HistoricoYear { year: number; ventas: number; crecimientoPct: number | null; parcial: boolean }
 
 // ── Store de filtros (mismo modelo que "Ventas por sucursal": Mes + Año +
 //    rango Desde/Hasta + Sucursal). Persistente e independiente por sesión. ──
@@ -276,6 +303,7 @@ export function BiFilterBar({ onRefresh, loading, right, showBranch = true }: {
 }) {
   const s = useBiStore()
   const branches = useCommissionBranches()
+  const years = useCommissionYears()
   const yearNow = new Date().getUTCFullYear()
 
   const setMes = (m: number) => s.setPeriod(m, s.year || yearNow)
@@ -326,7 +354,7 @@ export function BiFilterBar({ onRefresh, loading, right, showBranch = true }: {
               <SelectTrigger className="mt-0.5 h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="todos">Todos (historial)</SelectItem>
-                {[yearNow + 1, yearNow, yearNow - 1, yearNow - 2].map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -509,6 +537,83 @@ export function AskAiPanel({ scope, suggestions = [], compact }: { scope: string
 }
 
 // ── Estados de carga / error / vacío ────────────────────────────────────────
+
+// ── Piezas compartidas con las pantallas de Incentivos de Ventas ────────────
+export function useExportHandlers(summary: BiSummary | null) {
+  const business = useCurrentBusiness()
+  const branding = getBusinessBranding(business.slug)
+  const onExcel = useCallback(() => { if (summary) void exportBiFinanceExcel(summary, branding) }, [summary, branding])
+  const onPdf = useCallback(() => { if (summary) printBiFinancePdf(summary, branding, window.location.origin) }, [summary, branding])
+  return { onExcel, onPdf }
+}
+
+export function ExportButtons({ summary }: { summary: BiSummary | null }) {
+  const { onExcel, onPdf } = useExportHandlers(summary)
+  return (
+    <>
+      <Button variant="outline" size="sm" className="h-9" onClick={onExcel} disabled={!summary}><FileSpreadsheet className="h-4 w-4" /><span className="ml-1 hidden sm:inline">Excel</span></Button>
+      <Button variant="outline" size="sm" className="h-9" onClick={onPdf} disabled={!summary}><Printer className="h-4 w-4" /><span className="ml-1 hidden sm:inline">PDF</span></Button>
+    </>
+  )
+}
+
+// ── Tabla simple reutilizable ────────────────────────────────────────────────
+export function SimpleTable({ head, rows, alignRight = [], footer }: { head: string[]; rows: (string | number)[][]; alignRight?: number[]; footer?: (string | number)[] }) {
+  const isR = (i: number) => alignRight.includes(i)
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead><tr className="border-b text-left text-xs uppercase text-muted-foreground">{head.map((h, i) => <th key={i} className={`p-2 ${isR(i) ? "text-right" : ""}`}>{h}</th>)}</tr></thead>
+        <tbody>
+          {rows.map((row, ri) => (
+            <tr key={ri} className="border-b last:border-0">
+              {row.map((c, ci) => <td key={ci} className={`p-2 ${isR(ci) ? "text-right tabular-nums" : ""} ${ci === 0 ? "font-medium" : ""}`}>{c}</td>)}
+            </tr>
+          ))}
+        </tbody>
+        {footer ? <tfoot><tr className="border-t-2 font-bold">{footer.map((c, i) => <td key={i} className={`p-2 ${isR(i) ? "text-right tabular-nums" : ""}`}>{c}</td>)}</tr></tfoot> : null}
+      </table>
+    </div>
+  )
+}
+
+/** Insights automáticos por reglas sobre el resumen real (sin IA). */
+export function computeInsights(summary: BiSummary): { tone: "success" | "info" | "warning"; title: string; detail: string }[] {
+  const out: { tone: "success" | "info" | "warning"; title: string; detail: string }[] = []
+  const r = summary.resumen
+  // Margen consolidado
+  if (r.ingresos <= 0) {
+    out.push({ tone: "info", title: "Sin ventas registradas en el período", detail: "Importa el archivo de ventas del mes para ver el análisis." })
+  } else if (r.utilidadNeta < 0) {
+    out.push({ tone: "warning", title: "El negocio operó en pérdida", detail: `Utilidad ${fmtRD0(r.utilidadNeta)} · margen ${fmtPct(r.margenNeto)}.` })
+  } else if (r.margenNeto >= 25) {
+    out.push({ tone: "success", title: `Margen saludable (${fmtPct(r.margenNeto)})`, detail: `Utilidad neta de ${fmtRD0(r.utilidadNeta)} en el período.` })
+  } else {
+    out.push({ tone: "warning", title: `Margen a vigilar (${fmtPct(r.margenNeto)})`, detail: `Los gastos representan ${fmtPct((r.gastos / r.ingresos) * 100)} de los ingresos.` })
+  }
+  // Ventas vs mes anterior
+  if (r.ingresosDeltaPct != null) {
+    const up = r.ingresosDeltaPct >= 0
+    out.push({ tone: up ? "success" : "warning", title: `Ventas ${up ? "▲" : "▼"} ${fmtPct(Math.abs(r.ingresosDeltaPct))} vs mes anterior`, detail: `Ingresos del período: ${fmtRD0(r.ingresos)}.` })
+  }
+  // Mejor / peor sucursal por margen
+  const conIngresos = summary.rentabilidad.filter((b) => b.ingresos > 0 && b.branch !== "(sin sucursal)")
+  if (conIngresos.length >= 2) {
+    const best = [...conIngresos].sort((a, b) => b.margenNeto - a.margenNeto)[0]
+    const worst = [...conIngresos].sort((a, b) => a.margenNeto - b.margenNeto)[0]
+    out.push({ tone: "success", title: `${best.branch} es la más rentable`, detail: `Margen ${fmtPct(best.margenNeto)} · utilidad ${fmtRD0(best.utilidadNeta)}.` })
+    if (worst.branch !== best.branch && worst.margenNeto < 15) {
+      out.push({ tone: "warning", title: `${worst.branch} necesita atención`, detail: `Margen ${fmtPct(worst.margenNeto)} — el más bajo del período.` })
+    }
+  }
+  // Compras vacío (contexto real del negocio)
+  if (r.ingresos > 0 && summary.gastos.facturas === 0 && summary.gastos.gastosGenerales === 0 && summary.gastos.gastosMenores === 0) {
+    out.push({ tone: "info", title: "Gastos operativos sin registrar en Compras", detail: "Solo se contabiliza la nómina. Registra facturas y gastos en el módulo Compras para un P&L completo." })
+  }
+  return out
+}
+
+
 export function BiLoading() {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">

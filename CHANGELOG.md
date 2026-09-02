@@ -18,6 +18,59 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 
 ---
 
+## [0.101.0] — 2026-09-02
+
+### Added
+- **Tres pantallas nuevas en el menú «Incentivos de Ventas»**, justo tras
+  «Dashboard», que replican las hojas del libro `reportes de incentivo 2026.xlsx`:
+  - **Dashboard financiero** (`comision-finanzas`) — hoja DASHBOARD: KPIs de
+    ventas brutas, gastos, margen y rentabilidad; ventas por sucursal (monto y
+    % de participación); **ventas por servicio** (láser, producto, faciales,
+    masaje, tatuajes, Hollywood peel, aplicación anest., botox/plasma);
+    **histórico anual 2017 → hoy** con % de crecimiento; ventas vs gastos mes a
+    mes (12 meses) y el desglose sucursal × mes.
+  - **Rentabilidad y flujo** (`comision-rentabilidad`) — hoja DASH RENTABILIDAD:
+    tarjeta por sucursal (ventas, gastos, margen, rentabilidad %, % del total);
+    flujo de efectivo del período con el desglose de egresos (gastos operativos,
+    inversión general, inversión por sucursal, retiros de socios); rentabilidad
+    mensual por sucursal; tabla de flujo de 12 meses con fila TOTAL; y un editor
+    de **retiros de socios** (alta, edición y baja) para quien tenga el permiso.
+  - **Análisis IA** (`comision-analisis`) — hoja ANÁLISIS: al abrir pide al
+    asistente el análisis financiero del período con una **pregunta fija**
+    (resumen ejecutivo, sucursales con veredicto, servicios y concentración de
+    láser, flujo de efectivo, cuatro prioridades y plan de acción con
+    responsable/plazo/impacto). El servidor cachea por los datos exactos del
+    período: **reabrir la pantalla cuesta 0 tokens**; «Regenerar» fuerza uno
+    nuevo. Botones de copiar e imprimir. Sin IA configurada o sin permiso, cae al
+    análisis por reglas. Debajo, preguntas libres sobre el mismo período.
+- El export ejecutivo gana tres hojas —«Flujo mensual», «Ventas por servicio» e
+  «Histórico anual»— y el PDF, la tabla de flujo mensual.
+- `pnpm test:finanzas` — 39 pruebas del formato (etiquetas de servicio, %,
+  crecimiento, totales del flujo, hojas del export, texto del análisis).
+- Permisos: las pantallas se asignan por menú; el editor de retiros exige
+  `sales_commission.finance.manage`; el análisis IA, `bi_finance.ai_chat`.
+
+### Changed
+- `SimpleTable`, `computeInsights`, `ExportButtons` y `useExportHandlers` pasan
+  de ser privados de `bi-finance-pages.tsx` a exportarse desde `bi-shared.tsx`:
+  las pantallas de Incentivos reutilizan las mismas piezas en vez de duplicarlas.
+- **El selector de Año de BI Financiero usa ahora los años reales del historial**
+  (`useCommissionYears`), no una ventana fija alrededor del año en curso — el
+  mismo defecto que se corrigió en Incentivos en v0.96.0. Ofrecía 2027 (sin
+  ventas) y escondía 2020–2023.
+
+### Notes
+- Comprobado con datos reales de CSL, enero 2026: ventas RD$1.691.000; gastos por
+  sucursal 725.906,24 / 512.928,06 / 213.241,40; inversión 403.117,98 +
+  484.243,20 (Villa Olga); **flujo neto −648.436,88**; rentabilidad R.Vidal 5,5 %
+  · Jardines 36,57 % · V.Olga −86,73 %. Ventas por servicio: láser 1.141.500
+  (67,5 %), producto 352.575. Histórico 2017 = 3.219.248 → 2026 marcado parcial.
+- Los importes difieren del Excel en los montos escritos como texto que su SUM no
+  cuenta (enero: RD$15.502,90). Ver v0.100.0.
+- ⚠️ El propio Excel se contradice en el total de 2017: «Historico ventas» dice
+  **3.219.248** y el DASHBOARD **3.576.348** (dos tablas anuales distintas). Se
+  usa la del detalle mensual, que es la que cuadra con sus propios meses.
+
 ## [0.100.0] — 2026-09-02
 
 ### Added

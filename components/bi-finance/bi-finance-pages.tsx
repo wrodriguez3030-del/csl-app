@@ -28,29 +28,11 @@ import {
 import {
   useBiData, useBiStore, BiFilterBar, BiKpiGrid, BiHeader, BiLoading, BiError,
   AskAiPanel, fmtRD, fmtRD0, fmtInt, fmtPct, fmtCompact, CHART_COLORS,
+  SimpleTable, computeInsights, ExportButtons, useExportHandlers,
   type BiSummary,
 } from "./bi-shared"
-import { exportBiFinanceExcel, printBiFinancePdf } from "@/lib/bi-finance/bi-export"
 
 const tooltipFmt = (v: number | string) => fmtRD(Number(v))
-
-function useExportHandlers(summary: BiSummary | null) {
-  const business = useCurrentBusiness()
-  const branding = getBusinessBranding(business.slug)
-  const onExcel = useCallback(() => { if (summary) void exportBiFinanceExcel(summary, branding) }, [summary, branding])
-  const onPdf = useCallback(() => { if (summary) printBiFinancePdf(summary, branding, window.location.origin) }, [summary, branding])
-  return { onExcel, onPdf }
-}
-
-function ExportButtons({ summary }: { summary: BiSummary | null }) {
-  const { onExcel, onPdf } = useExportHandlers(summary)
-  return (
-    <>
-      <Button variant="outline" size="sm" className="h-9" onClick={onExcel} disabled={!summary}><FileSpreadsheet className="h-4 w-4" /><span className="ml-1 hidden sm:inline">Excel</span></Button>
-      <Button variant="outline" size="sm" className="h-9" onClick={onPdf} disabled={!summary}><Printer className="h-4 w-4" /><span className="ml-1 hidden sm:inline">PDF</span></Button>
-    </>
-  )
-}
 
 // ══════════════════════════════════ DASHBOARD ══════════════════════════════
 const MESES_CORTO = ["", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
@@ -758,62 +740,6 @@ function ReportCard({ icon: Icon, title, desc, action, onClick }: { icon: typeof
   )
 }
 
-// ── Tabla simple reutilizable ────────────────────────────────────────────────
-function SimpleTable({ head, rows, alignRight = [], footer }: { head: string[]; rows: (string | number)[][]; alignRight?: number[]; footer?: (string | number)[] }) {
-  const isR = (i: number) => alignRight.includes(i)
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead><tr className="border-b text-left text-xs uppercase text-muted-foreground">{head.map((h, i) => <th key={i} className={`p-2 ${isR(i) ? "text-right" : ""}`}>{h}</th>)}</tr></thead>
-        <tbody>
-          {rows.map((row, ri) => (
-            <tr key={ri} className="border-b last:border-0">
-              {row.map((c, ci) => <td key={ci} className={`p-2 ${isR(ci) ? "text-right tabular-nums" : ""} ${ci === 0 ? "font-medium" : ""}`}>{c}</td>)}
-            </tr>
-          ))}
-        </tbody>
-        {footer ? <tfoot><tr className="border-t-2 font-bold">{footer.map((c, i) => <td key={i} className={`p-2 ${isR(i) ? "text-right tabular-nums" : ""}`}>{c}</td>)}</tr></tfoot> : null}
-      </table>
-    </div>
-  )
-}
-
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="space-y-1"><Label className="text-xs text-muted-foreground">{label}</Label>{children}</div>
-}
-
-/** Insights automáticos por reglas sobre el resumen real (sin IA). */
-function computeInsights(summary: BiSummary): { tone: "success" | "info" | "warning"; title: string; detail: string }[] {
-  const out: { tone: "success" | "info" | "warning"; title: string; detail: string }[] = []
-  const r = summary.resumen
-  // Margen consolidado
-  if (r.ingresos <= 0) {
-    out.push({ tone: "info", title: "Sin ventas registradas en el período", detail: "Importa el archivo de ventas del mes para ver el análisis." })
-  } else if (r.utilidadNeta < 0) {
-    out.push({ tone: "warning", title: "El negocio operó en pérdida", detail: `Utilidad ${fmtRD0(r.utilidadNeta)} · margen ${fmtPct(r.margenNeto)}.` })
-  } else if (r.margenNeto >= 25) {
-    out.push({ tone: "success", title: `Margen saludable (${fmtPct(r.margenNeto)})`, detail: `Utilidad neta de ${fmtRD0(r.utilidadNeta)} en el período.` })
-  } else {
-    out.push({ tone: "warning", title: `Margen a vigilar (${fmtPct(r.margenNeto)})`, detail: `Los gastos representan ${fmtPct((r.gastos / r.ingresos) * 100)} de los ingresos.` })
-  }
-  // Ventas vs mes anterior
-  if (r.ingresosDeltaPct != null) {
-    const up = r.ingresosDeltaPct >= 0
-    out.push({ tone: up ? "success" : "warning", title: `Ventas ${up ? "▲" : "▼"} ${fmtPct(Math.abs(r.ingresosDeltaPct))} vs mes anterior`, detail: `Ingresos del período: ${fmtRD0(r.ingresos)}.` })
-  }
-  // Mejor / peor sucursal por margen
-  const conIngresos = summary.rentabilidad.filter((b) => b.ingresos > 0 && b.branch !== "(sin sucursal)")
-  if (conIngresos.length >= 2) {
-    const best = [...conIngresos].sort((a, b) => b.margenNeto - a.margenNeto)[0]
-    const worst = [...conIngresos].sort((a, b) => a.margenNeto - b.margenNeto)[0]
-    out.push({ tone: "success", title: `${best.branch} es la más rentable`, detail: `Margen ${fmtPct(best.margenNeto)} · utilidad ${fmtRD0(best.utilidadNeta)}.` })
-    if (worst.branch !== best.branch && worst.margenNeto < 15) {
-      out.push({ tone: "warning", title: `${worst.branch} necesita atención`, detail: `Margen ${fmtPct(worst.margenNeto)} — el más bajo del período.` })
-    }
-  }
-  // Compras vacío (contexto real del negocio)
-  if (r.ingresos > 0 && summary.gastos.facturas === 0 && summary.gastos.gastosGenerales === 0 && summary.gastos.gastosMenores === 0) {
-    out.push({ tone: "info", title: "Gastos operativos sin registrar en Compras", detail: "Solo se contabiliza la nómina. Registra facturas y gastos en el módulo Compras para un P&L completo." })
-  }
-  return out
 }

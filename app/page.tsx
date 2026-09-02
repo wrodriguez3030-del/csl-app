@@ -37,6 +37,9 @@ import { ComprasGastosMenoresPage } from "@/components/compras-gastos-menores-pa
 import { ComprasRecurrentesPage } from "@/components/compras-recurrentes-page"
 import { ComisionReglasPage } from "@/components/comision/comision-reglas-page"
 import { ComisionImportarPage } from "@/components/comision/comision-importar-page"
+import { ComisionFinanzasPage } from "@/components/comision/finanzas/comision-finanzas-page"
+import { ComisionRentabilidadPage } from "@/components/comision/finanzas/comision-rentabilidad-page"
+import { ComisionAnalisisPage } from "@/components/comision/finanzas/comision-analisis-page"
 import { ComisionPrestadoresPage } from "@/components/comision/comision-prestadores-page"
 import { ComisionLiquidacionPage } from "@/components/comision/comision-liquidacion-page"
 import { ComisionReportesPage } from "@/components/comision/comision-reportes-page"
@@ -385,6 +388,12 @@ export default function HomePage() {
         return <ComprasRecurrentesPage />
       case "comision-dashboard":
         return <ComisionDashboardPage />
+      case "comision-finanzas":
+        return <ComisionFinanzasPage />
+      case "comision-rentabilidad":
+        return <ComisionRentabilidadPage />
+      case "comision-analisis":
+        return <ComisionAnalisisPage />
       case "comision-importar":
         return <ComisionImportarPage />
       case "comision-sucursales":

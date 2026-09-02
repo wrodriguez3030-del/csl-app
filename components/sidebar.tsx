@@ -32,6 +32,7 @@ import {
   Gauge,
   History,
   KeyRound,
+  Landmark,
   LayoutDashboard,
   LineChart,
   Menu,
@@ -137,6 +138,9 @@ const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
     label: "Incentivos de Ventas",
     items: [
       { id: "comision-dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
+      { id: "comision-finanzas", label: "Dashboard financiero", icon: <Landmark className="h-4 w-4" /> },
+      { id: "comision-rentabilidad", label: "Rentabilidad y flujo", icon: <PiggyBank className="h-4 w-4" /> },
+      { id: "comision-analisis", label: "Análisis IA", icon: <BrainCircuit className="h-4 w-4" /> },
       { id: "comision-importar", label: "Importador", icon: <FileText className="h-4 w-4" /> },
       { id: "comision-sucursales", label: "Ventas por sucursal", icon: <Building2 className="h-4 w-4" /> },
       { id: "comision-prestadores", label: "Comisiones por prestador", icon: <Users className="h-4 w-4" /> },
