@@ -14,6 +14,7 @@
  */
 import { useMemo, useState } from "react"
 import { useAppStore } from "@/lib/store"
+import { businessIdForSlug } from "@/lib/business"
 import { useCommissionYears } from "@/hooks/use-commission-years"
 import { useCommissionBranches } from "@/hooks/use-commission-branches"
 import { cn } from "@/lib/utils"
@@ -46,6 +47,7 @@ export function useCommissionFilters(): {
 } {
   const stored = useAppStore((s) => s.commissionFilters)
   const sucursalesDelNegocio = useCommissionBranches()
+  const negocioActivo = useAppStore((s) => s.activeBusinessSlug)
   // MEMOIZADO: sin esto, cuando el store está en null, `defaultCommissionFilters()`
   // devuelve un OBJETO NUEVO en cada render → params/label/load cambian de
   // identidad → el useEffect([load]) de las pantallas re-dispara las consultas en
@@ -72,8 +74,16 @@ export function useCommissionFilters(): {
     }
     if (filters.branch) p.branch = filters.branch
     if (filters.provider) p.provider = filters.provider
+    // 🔴 El negocio activo viaja EN LOS PARAMS a propósito. Las pantallas
+    // recargan cuando cambian estos `params` (`useEffect([load])`), y sin el
+    // negocio aquí un cambio de tenant no disparaba ninguna consulta: quedaba
+    // en pantalla lo del negocio anterior, con la etiqueta del nuevo. Es decir,
+    // se veían datos de csl bajo el rótulo de Depicenter.
+    // `injectActiveBusiness` es idempotente, así que no duplica nada.
+    const idNegocio = businessIdForSlug(negocioActivo)
+    if (idNegocio) p.activeBusinessId = idNegocio
     return p
-  }, [filters])
+  }, [filters, negocioActivo])
   const label = useMemo(() => {
     if (filters.quick === "todo") return "Todo el historial"
     if (filters.quick === "año") return `Todos los meses · ${filters.year}`

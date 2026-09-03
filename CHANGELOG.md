@@ -16,6 +16,33 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.117.0] - 2026-09-03
+
+### Seguridad
+- 🔴🔴 **Al cambiar de negocio, Incentivos seguía enseñando los datos del
+  anterior.** Cada pantalla del módulo recarga cuando cambian los `params` de
+  `useCommissionFilters` (`useEffect([load])`), y el negocio activo **no estaba
+  en esos params**: cambiar de tenant no disparaba ninguna consulta y quedaba en
+  pantalla lo del negocio anterior, ya con el rótulo del nuevo. Con el selector
+  en «Depicenter Skin Láser» se veía la tabla de RAFAEL VIDAL con RD$714.480 —
+  datos de Cibao Spa Láser.
+
+  **El backend nunca filtró mal**: con DEPICENTER activo y `branch=RAFAEL VIDAL`
+  devuelve vacío, y sin filtro devuelve LA VEGA 657.775. La fuga era de
+  presentación, no de consulta, pero se ve igual de mal y puede llevar a decidir
+  sobre datos de otra empresa.
+
+  Ahora el negocio activo viaja en los `params`, así que un cambio de tenant
+  vuelve a consultar en todas las pantallas del módulo. `injectActiveBusiness`
+  ya era idempotente, así que no se duplica nada en la petición.
+
+### Corregido
+- La sucursal y el prestador del filtro se quedaban pegados entre negocios y
+  dejaban todo en cero (una sucursal de otro tenant no existe aquí). Se limpian
+  al cambiar de negocio y, para las sesiones que ya los tuvieran guardados,
+  `useCommissionFilters` descarta una sucursal que no esté en el catálogo del
+  negocio activo. El período se conserva: no depende del negocio.
+
 ## [0.116.0] - 2026-09-03
 
 ### Corregido
