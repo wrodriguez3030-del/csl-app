@@ -16,6 +16,24 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.121.1] - 2026-09-03
+
+### Fixed
+
+- 🔴 **Al emitir un certificado de regalo no salían las sucursales.** Seis cuentas
+  (CF REGALOS, CF Digital Depicenter, Evalina y los tres PC de recepción) se quedaron
+  sin poder elegir sucursal. Dos errores míos en v0.119.0:
+  - **El recorte por permiso de `getAllData` no respetaba `PERMISOS_ESTRICTOS`.** El
+    modo sombra promete comprobar sin cambiar nada, y este recorte se aplicaba igual —
+    rompiendo en silencio y sin dejar ni una fila en `csl_permission_denials`, que es
+    justo lo que el modo sombra existe para evitar. Los recortes van ahora por
+    `puedeVer()`, que respeta el interruptor.
+  - **Las sucursales no debían recortarse.** Son el catálogo de nombres que pinta media
+    app como filtro, y `getBranchOptions` ya se las da a cualquiera: gatearlas en un
+    sitio y no en el otro era incoherente.
+- Comprobación nueva en `pnpm test:permisos`: una acción pública que recorte su
+  respuesta con `hasPermission` directo, en vez de `puedeVer`, rompe la construcción.
+
 ## [0.121.0] - 2026-09-03
 
 ### Security

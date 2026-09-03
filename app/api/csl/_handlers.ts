@@ -183,6 +183,19 @@ function effectiveBusinessId(): string | null {
   return ctx?.businessId ?? null
 }
 /** ¿Se debe filtrar por business_id? (false solo para superadmin en modo "Todos"). */
+/**
+ * Para los RECORTES por permiso dentro de una acción pública.
+ *
+ * Tiene que respetar el interruptor igual que la puerta: en modo sombra el
+ * sistema comprueba pero NO cambia nada, y un recorte que se aplicara igual
+ * rompería en silencio sin dejar rastro en `csl_permission_denials` —
+ * exactamente lo que el modo sombra existe para evitar. Pasó: seis cuentas se
+ * quedaron sin sucursales al emitir un certificado y no hubo ni un registro.
+ */
+function puedeVer(perm: string): boolean {
+  return !modoEstricto() || hasPermission(perm)
+}
+
 function shouldScopeTenant(): boolean {
   const ctx = getBusinessContext()
   return Boolean(ctx && !ctx.bypassTenantFilter)
@@ -703,13 +716,16 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       // Negarla entera dejaría a media empresa sin pantalla de inicio, así que
       // se recorta por permiso: quien no puede ver un módulo lo recibe vacío.
       const data = await getAllData()
-      const verMantenimiento = hasPermission("mantenimiento.ver")
-      const verConsentimientos = hasPermission("consentimientos.ver")
+      const verMantenimiento = puedeVer("mantenimiento.ver")
+      const verConsentimientos = puedeVer("consentimientos.ver")
       return {
         ok: true,
         data: {
           ...data,
-          sucursales: hasPermission("config.ver") || verMantenimiento ? data.sucursales : [],
+          // Las SUCURSALES no se recortan: son el catálogo de nombres que pinta
+          // media app como filtro, y `getBranchOptions` ya las da a cualquiera.
+          // Gatearlas aquí y no allí dejó a seis cuentas sin poder elegir
+          // sucursal al emitir un certificado de regalo.
           equipos: verMantenimiento ? data.equipos : [],
           reportes: verMantenimiento ? data.reportes : [],
           piezas: verMantenimiento ? data.piezas : [],
@@ -728,8 +744,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       // entero y dejaba un rechazo por usuario y por minuto en el registro.
       // Así que pasa, pero recortada — igual que `getAllData`.
       const pulsos = await getAllPulsosData()
-      const verMantenimiento = hasPermission("mantenimiento.ver")
-      const verClientes = hasPermission("clientes.ver")
+      const verMantenimiento = puedeVer("mantenimiento.ver")
+      const verClientes = puedeVer("clientes.ver")
       return {
         ok: true,
         ...pulsos,

@@ -154,5 +154,24 @@ else ok("getRowsPaged se resuelve por entidad (la bóveda no se cuela por ahí)"
 if (publicas.length > 8) fail(`${publicas.length} acciones marcadas como públicas (máximo razonable: 8)`, publicas)
 else ok(`${publicas.length} acciones públicas: ${publicas.join(", ")}`)
 
+// ── 11. Los recortes de las acciones públicas respetan el interruptor ──────
+// Una acción PUBLICO que recorte su respuesta con `hasPermission` directo
+// cambia el comportamiento AUNQUE estemos en modo sombra, y sin dejar registro:
+// rompe en silencio justo donde el modo sombra prometía no tocar nada. Pasó con
+// las sucursales del certificado de regalo. El recorte va con `puedeVer`.
+const bloquesPublicos = publicas
+  .map((accion) => {
+    const i = handlers.indexOf(`case "${accion}"`)
+    if (i < 0) return null
+    const fin = handlers.indexOf('\n    case "', i + 1)
+    return { accion, cuerpo: handlers.slice(i, fin < 0 ? i + 4000 : fin) }
+  })
+  .filter(Boolean)
+const recorteCrudo = bloquesPublicos
+  .filter((b) => /\bhasPermission\(/.test(b.cuerpo))
+  .map((b) => `${b.accion} usa hasPermission() directo; debe usar puedeVer()`)
+if (recorteCrudo.length) fail("recortes que ignoran PERMISOS_ESTRICTOS", recorteCrudo)
+else ok("los recortes de las acciones públicas respetan el interruptor")
+
 console.log(fallos === 0 ? "\n✅ Permisos completos\n" : `\n❌ ${fallos} comprobaciones fallaron\n`)
 process.exit(fallos === 0 ? 0 : 1)
