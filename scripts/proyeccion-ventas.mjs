@@ -261,3 +261,21 @@ nota(mm, fm + 3, "El % del año es el peso medio de cada mes en los tres último
 
 await wb.xlsx.writeFile(SALIDA)
 console.log(`\n✅ ${SALIDA}`)
+
+// ── Volcado de datos (para insertar la hoja en otro libro) ─────────────────
+const JSON_OUT = (process.argv.find((a) => a.startsWith("--json=")) || "").split("=")[1]
+if (JSON_OUT) {
+  const datos = {
+    anio: ANIO, meses: MESES, sucursales: SUCS,
+    cuotaEneAgo, pesoMes, cuotaTranscurrida, ultimoMes,
+    historico: anios.map((y) => ({
+      anio: y, total: totalAnio(y), meses: mesesBy[y] || null,
+      porSucursal: Object.fromEntries(SUCS.map((s) => [s, n2(sucBy[y]?.[s] || 0)])),
+    })),
+    enCurso: enCurso.map((r) => ({ ...r, mesesConVenta: mesesDeSuc(r.suc) })),
+    mesReal: MESES.map((_, i) => n2(mesBy[ANIO]?.[i + 1] || 0)),
+    crecimiento: CREC, razon: RAZON,
+  }
+  fs.writeFileSync(JSON_OUT, JSON.stringify(datos, null, 2))
+  console.log(`datos → ${JSON_OUT}`)
+}

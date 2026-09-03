@@ -16,6 +16,18 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.109.0] - 2026-09-03
+
+### Añadido
+- `scripts/insertar-hoja-proyeccion.py`: inserta la proyección como **una hoja
+  más** del libro de incentivos, por cirugía sobre el XML del ZIP. Solo AÑADE
+  `xl/worksheets/sheetN.xml` y toca las cuatro piezas que la registran
+  (`workbook.xml`, sus rels, `[Content_Types].xml` y `styles.xml`, este último
+  solo por el final, de modo que ningún índice de estilo existente se mueve).
+  Los 18 gráficos, 17 tablas dinámicas y 13 dibujos quedan intactos.
+- `scripts/proyeccion-ventas.mjs` acepta `--json=<ruta>` para volcar lo que
+  calcula, de forma que el insertador no duplique las consultas.
+
 ## [0.108.0] - 2026-09-03
 
 ### Añadido
