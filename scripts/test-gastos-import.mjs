@@ -202,8 +202,17 @@ if (existsSync(REAL)) {
   const julVO = jul.rows.filter((r) => r.branch === "VILLA OLGA")
   t("JULIO: Villa Olga vía bloque NACO — 13 filas / 387.934,56", julVO.length === 13 && near(julVO.reduce((s, r) => s + r.amount, 0), 387934.56), `(${julVO.length} / ${julVO.reduce((s, r) => s + r.amount, 0)})`)
   t("MAYO: la fila con fecha 2025 se corrige a mayo 2026", res.rows.every((r) => r.date.startsWith("2026")) && res.warnings.some((w) => /MAYO fila 22.*se corrige a 2026-05-25/.test(w)))
-  t("AGOSTO vacío avisado", res.sheets.find((s) => s.sheet === "AGOSTO")?.empty === true)
-  t("períodos ENE…JUL", res.periods.join(",") === "2026-01,2026-02,2026-03,2026-04,2026-05,2026-06,2026-07", `(${res.periods})`)
+  const ago = res.sheets.find((s) => s.sheet === "AGOSTO")
+  const agoCtl = (b) => ago.controls.find((c) => c.branch === b)
+  t("AGOSTO: 95 filas — RV 560.617,42 · JA 633.577,08 · VO 455.758,48", ago.rows.length === 95 && near(agoCtl("RAFAEL VIDAL").numericTotal, 560617.42) && near(agoCtl("LOS JARDINES").numericTotal, 633577.08) && near(agoCtl("VILLA OLGA").numericTotal, 455758.48), `(${ago.rows.length} filas)`)
+  // Invariante que aguanta según el dueño llena meses: toda hoja con filas cuadra
+  // contra su propio RESUMEN. Sustituye a las aserciones clavadas a una foto del libro.
+  // Un centavo de holgura: el RESUMEN del Excel redondea y ABRIL/R VIDAL difiere
+  // en 0,01. Se compara la diferencia YA redondeada para no tropezar con la coma flotante.
+  const centavos = (a, b) => Math.round(Math.abs(Number(a) - Number(b)) * 100)
+  const descuadres = res.sheets.flatMap((sh) => sh.controls.filter((c) => c.control != null && centavos(c.numericTotal, c.control) > 1).map((c) => `${sh.sheet}/${c.branch}: ${c.numericTotal} vs ${c.control}`))
+  t("toda hoja con filas cuadra contra su RESUMEN (±1 centavo)", descuadres.length === 0, `(${descuadres.join(" · ")})`)
+  t("períodos: arranca en 2026-01, correlativos y llega al menos a agosto", res.periods[0] === "2026-01" && res.periods.includes("2026-08") && res.periods.every((k, i) => k === `2026-${String(i + 1).padStart(2, "0")}`), `(${res.periods})`)
   const c = parseConsolidado(wb, 2026)
   const mar = c.investments.filter((i) => i.month === 3)
   t("consolidado MARZO: 378.424,68 / 111.511,66 / 500.000 / dividendo 315.000", near(mar.find((i) => !i.branch)?.amount, 378424.68) && near(mar.find((i) => i.branch === "VILLA OLGA")?.amount, 111511.66) && near(mar.find((i) => i.branch === "LOS JARDINES")?.amount, 500000) && near(c.withdrawals.find((w) => w.month === 3)?.amount, 315000))

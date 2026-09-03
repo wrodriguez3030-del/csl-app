@@ -16,6 +16,23 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.106.1] - 2026-09-02
+
+### Añadido
+- `scripts/_import-gastos-2026.mjs` acepta `--only=YYYY-MM` para importar **un solo
+  mes** del libro de gastos. El libro trae hojas de meses futuros copiadas como
+  plantilla (SEPTIEMBRE es AGOSTO con las fechas corridas: 93 de 93 filas idénticas
+  en sucursal, concepto y monto), y sin el filtro esas filas entraban como gasto
+  real. Con `--only` se acotan también inversiones y retiros del consolidado, se
+  omite el histórico y el resumen guardado en la auditoría queda solo con las hojas
+  del mes importado.
+
+### Datos
+- Importados los **95 gastos de agosto 2026** a db-cls: Rafael Vidal 20 filas
+  RD$560,617.42 · Los Jardines 53 filas RD$633,577.08 · Villa Olga 22 filas
+  RD$455,758.48. Los tres cuadran sin diferencia contra el RESUMEN de la hoja
+  AGOSTO. Septiembre queda deliberadamente fuera.
+
 ---
 
 ## [0.106.0] — 2026-09-02
