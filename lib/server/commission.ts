@@ -728,10 +728,11 @@ export async function getCommissionYears(_params: ActionParams) {
 export async function getCommissionProductSellers(params: ActionParams) {
   const slug = bizSlug()
   const rows = (await fetchSalesForPeriod(params)).filter((r) => String(r.category || "") === "PRODUCTO")
+  const mesPS = numberValue(params, "month"), anioPS = numberValue(params, "year")
   const sellers = buildProductSellers(rows.map((r) => ({
     providerOriginal: r.provider_original ?? r.provider_normalized ?? "",
     branch: r.branch, serviceName: r.service_name, quantity: r.quantity, amount: r.gross_amount,
-  })), slug)
+  })), slug, mesPS && anioPS ? { year: anioPS, month: mesPS } : null)
   return { ok: true, sellers, totals: sellerTotals(sellers) }
 }
 
@@ -801,12 +802,14 @@ export async function getCommissionServiceDetail(params: ActionParams) {
  *  asignado uno manual. */
 export async function getCommissionUnassignedServices(params: ActionParams) {
   const rows = await fetchSalesForPeriod(params)
+  const mesUS = numberValue(params, "month"), anioUS = numberValue(params, "year")
+  const periodoUS = mesUS && anioUS ? { year: anioUS, month: mesUS } : null
   const out = rows
     .filter((r) => {
       if (String(r.category || "") === "DEPILACION_LASER") return false
       // Las ventas de PRODUCTO de cuentas de recepción designadas se reparten
       // automáticamente entre prestadoras: no son "sin prestador".
-      if (String(r.category || "") === "PRODUCTO" && isReceptionSplitSale(r.branch, r.provider_original, bizSlug())) return false
+      if (String(r.category || "") === "PRODUCTO" && isReceptionSplitSale(r.branch, r.provider_original, bizSlug(), periodoUS)) return false
       return !effectiveProvider(r).commissionable
     })
     .map((r) => ({
@@ -833,6 +836,10 @@ export async function getCommissionUnassignedServices(params: ActionParams) {
  *  producto. Espeja lo que el motor ya aplica en la liquidación (transparencia). */
 export async function getCommissionReceptionSplit(params: ActionParams) {
   const [rows, rules] = await Promise.all([fetchSalesForPeriod(params), readRunRules()])
+  // El reparto cambia cuando alguien deja la sucursal: se consulta POR PERÍODO
+  // para que un mes viejo se siga viendo como se pagó.
+  const mes = numberValue(params, "month"), anio = numberValue(params, "year")
+  const periodo = mes && anio ? { year: anio, month: mes } : null
   type Grp = { branch: string; account: string; recipients: string[]; units: number }
   const groups: Grp[] = []
   const seen = new Map<string, Grp>()
@@ -840,7 +847,7 @@ export async function getCommissionReceptionSplit(params: ActionParams) {
     if (String(r.category || "") !== "PRODUCTO") continue
     if (isNonIncentiveItem(r.service_name, bizSlug())) continue
     const branch = String(r.branch || "")
-    const splits = receptionSplitsForBranch(branch, bizSlug())
+    const splits = receptionSplitsForBranch(branch, bizSlug(), periodo)
     if (!splits.length) continue
     const name = normalizeName(classifyProvider(r.provider_original ?? r.provider_normalized).name)
     const split = splits.find((s) => name === s.account)
@@ -1748,7 +1755,7 @@ async function computeRunForPeriod(branch: string, month: number, year: number):
   ])
   const { patients, source } = await readPatientsForRun(branch, month, year)
   return computeRun({ tenant: bizSlug(), branch, sales, collaborators, patients, patientsSource: source, rules,
-    receptionSplits: receptionSplitsForBranch(branch, bizSlug()) })
+    receptionSplits: receptionSplitsForBranch(branch, bizSlug(), { year, month }) })
 }
 
 function mapRun(r: Row) {

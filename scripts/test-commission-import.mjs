@@ -396,6 +396,27 @@ t("monthsCovered rango 1 día = 1 mes", monthsCovered("2026-07-10", "2026-07-10"
   const { receptionSplitsForBranch, isReceptionSplitSale } = await import("../lib/commission/reception-splits.ts")
   t("RAFAEL VIDAL reparte entre 3", receptionSplitsForBranch("RAFAEL VIDAL", "csl")[0]?.recipients.length === 3)
   t("LOS JARDINES tiene 2 cuentas de reparto (ENCARGADA 1 y 2)", receptionSplitsForBranch("LOS JARDINES", "csl").length === 2)
+
+  // El reparto cambia cuando alguien deja la sucursal. Se consulta POR PERÍODO
+  // para que recalcular un mes viejo lo reparta como se pagó entonces.
+  const vo = (p) => receptionSplitsForBranch("VILLA OLGA", "csl", p)
+  t("VILLA OLGA en agosto 2026 reparte entre ANGELICA y GIPSY",
+    JSON.stringify(vo({ year: 2026, month: 8 })[0]?.recipients) === '["ANGELICA","GIPSY"]',
+    `(${JSON.stringify(vo({ year: 2026, month: 8 }))})`)
+  t("VILLA OLGA en septiembre 2026 reparte entre ANGELICA y VANELY",
+    JSON.stringify(vo({ year: 2026, month: 9 })[0]?.recipients) === '["ANGELICA","VANELY"]',
+    `(${JSON.stringify(vo({ year: 2026, month: 9 }))})`)
+  t("una sola regla vigente por período (no se solapan)",
+    vo({ year: 2026, month: 8 }).length === 1 && vo({ year: 2026, month: 9 }).length === 1 && vo("2026-12").length === 1)
+  t("sin período manda la regla abierta (la de hoy)",
+    JSON.stringify(vo(null)[0]?.recipients) === '["ANGELICA","VANELY"]')
+  t("un mes anterior a todo sigue con la regla vieja",
+    JSON.stringify(vo({ year: 2026, month: 1 })[0]?.recipients) === '["ANGELICA","GIPSY"]')
+  t("la cuenta se reconoce en los dos períodos", isReceptionSplitSale("VILLA OLGA", "VILLA OLGA  ENCARGADA (Recepcionista)", "csl", { year: 2026, month: 8 })
+    && isReceptionSplitSale("VILLA OLGA", "VILLA OLGA  ENCARGADA (Recepcionista)", "csl", { year: 2026, month: 9 }))
+  t("las sucursales sin cambio no se ven afectadas",
+    receptionSplitsForBranch("RAFAEL VIDAL", "csl", { year: 2026, month: 8 }).length === 1
+    && receptionSplitsForBranch("RAFAEL VIDAL", "csl", { year: 2026, month: 9 }).length === 1)
   t("ENCARGADA 1 (LJ) es cuenta de reparto", isReceptionSplitSale("LOS JARDINES", "LOS JARDINES  ENCARGADA 1 (Recepcionista)", "csl") === true)
   t("ENCARGADA 2 (LJ) es cuenta de reparto", isReceptionSplitSale("LOS JARDINES", "LOS JARDINES  ENCARGADA 2 (Recepcionista)", "csl") === true)
   t("operaciones (LJ) NO es cuenta de reparto", isReceptionSplitSale("LOS JARDINES", "cibao spa los jadines  operaciones (Recepcionista)", "csl") === false)

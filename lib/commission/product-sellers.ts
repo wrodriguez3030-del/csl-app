@@ -9,7 +9,7 @@
  */
 import { classifyProvider } from "./classification"
 import { isExcludedProvider, isNonIncentiveItem } from "./exclusions"
-import { receptionSplitsForBranch, isReceptionSplitSale } from "./reception-splits"
+import { receptionSplitsForBranch, isReceptionSplitSale, type SplitPeriod } from "./reception-splits"
 import { normalizeName } from "./normalize"
 
 export type SellerStatus = "incentiva" | "repartido" | "excluido" | "sin_prestador" | "no_comisionable"
@@ -55,20 +55,21 @@ export interface SellerTotals {
 
 const round2 = (n: number): number => Math.round((Number(n) || 0) * 100) / 100
 
-function statusOf(providerOriginal: string, name: string, branch: string, tenant: string): { status: SellerStatus; note: string } {
+function statusOf(providerOriginal: string, name: string, branch: string, tenant: string, period?: SplitPeriod | null): { status: SellerStatus; note: string } {
   const n = normalizeName(name)
   if (!n || n === "SIN INFORMACION") return { status: "sin_prestador", note: "Venta sin prestador asignado en el archivo" }
   if (isExcludedProvider(name, tenant)) return { status: "excluido", note: "Excluido del incentivo por regla del negocio" }
-  if (isReceptionSplitSale(branch, providerOriginal, tenant)) {
-    const rule = receptionSplitsForBranch(branch, tenant).find((s) => s.account === normalizeName(classifyProvider(providerOriginal).name))
+  if (isReceptionSplitSale(branch, providerOriginal, tenant, period)) {
+    const rule = receptionSplitsForBranch(branch, tenant, period).find((s) => s.account === normalizeName(classifyProvider(providerOriginal).name))
     return { status: "repartido", note: `Sus unidades se reparten entre ${(rule?.recipients || []).join(", ")}` }
   }
   if (!classifyProvider(providerOriginal).commissionable) return { status: "no_comisionable", note: "Cuenta no comisionable y sin regla de reparto" }
   return { status: "incentiva", note: "" }
 }
 
-/** Agrupa las ventas de producto por vendedor y sucursal, de más a menos unidades. */
-export function buildProductSellers(rows: readonly ProductSaleIn[], tenant: string): SellerRow[] {
+/** Agrupa las ventas de producto por vendedor y sucursal, de más a menos unidades.
+ *  `period` decide qué reparto de recepción estaba vigente en ese mes. */
+export function buildProductSellers(rows: readonly ProductSaleIn[], tenant: string, period?: SplitPeriod | null): SellerRow[] {
   const map = rows.reduce<Record<string, SellerRow>>((acc, r) => {
     const providerOriginal = String(r.providerOriginal ?? "").trim()
     const branch = String(r.branch ?? "") || "(sin sucursal)"
@@ -81,7 +82,7 @@ export function buildProductSellers(rows: readonly ProductSaleIn[], tenant: stri
     if (prev) {
       return { ...acc, [key]: { ...prev, lines: prev.lines + 1, units: round2(prev.units + units), unitsSinIncentivo: round2(prev.unitsSinIncentivo + sinIncentivo), gross: round2(prev.gross + gross) } }
     }
-    const { status, note } = statusOf(providerOriginal, name, branch, tenant)
+    const { status, note } = statusOf(providerOriginal, name, branch, tenant, period)
     return { ...acc, [key]: { provider: name, providerOriginal, role, branch, lines: 1, units: round2(units), unitsSinIncentivo: round2(sinIncentivo), gross: round2(gross), status, note } }
   }, {})
   return Object.values(map).sort((a, b) => b.units - a.units || b.gross - a.gross)

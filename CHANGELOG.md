@@ -16,6 +16,26 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.110.0] - 2026-09-03
+
+### Añadido
+- **El reparto de producto de recepción ahora tiene vigencia.**
+  `ReceptionSplitRule` acepta `from`/`to` («YYYY-MM», inclusive) y
+  `receptionSplitsForBranch(branch, tenant, period)` devuelve la regla que
+  estaba vigente ESE mes. Sin período manda la regla abierta.
+
+  Hacía falta porque las destinatarias son nombres fijos: cambiar GIPSY por
+  VANELY sin fechas habría hecho que recalcular agosto repartiera sus 18
+  unidades a alguien que aún no estaba. Verificado en seco: agosto sigue dando
+  19.533,06 · 37.634,20 · 36.210,75.
+
+### Datos
+- **VANELY** entra en Villa Olga desde 2026-09-01 en lugar de GIPSY (que pasa a
+  Los Jardines), con la misma configuración: láser, mixto, lineal y por
+  pacientes, aporte de limpieza 400. Villa Olga pasa a 4 personas con láser.
+- Villa Olga reparte las ventas de la cuenta ENCARGADA entre ANGELICA y GIPSY
+  hasta 2026-08, y entre ANGELICA y VANELY desde 2026-09.
+
 ## [0.109.0] - 2026-09-03
 
 ### Añadido
