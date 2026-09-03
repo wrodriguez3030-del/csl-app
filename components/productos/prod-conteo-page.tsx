@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { KpiCard } from "@/components/kpi-card"
 import { Search, Save, Send, CheckCircle2, Loader2, Check, ClipboardCheck, Scale, TrendingUp, TrendingDown, ScanLine, TriangleAlert } from "lucide-react"
 import { fmtQty, diffConteo, CONTEO_ESTADO_LABEL, type ConteoEstado, type ConteoConItems } from "@/lib/productos-client"
-import { matchProductByCode, normalizeBarcode, isRepeatScan } from "@/lib/productos-scan"
+import { matchProductByCode, normalizeBarcode, isRepeatScan, ajusteVisibilidad } from "@/lib/productos-scan"
 import { BarcodeScanner, useBarcodeWedge, beep } from "@/components/productos/barcode-scanner"
 
 interface ProductoLinea {
@@ -57,6 +57,10 @@ export function ProdConteoPage() {
 
   const [scannerOn, setScannerOn] = useState(false)
   const [ultimo, setUltimo] = useState<{ id: string; nombre: string; cantidad: number } | null>(null)
+  /** Casillas de cantidad por producto: al escanear se enfoca la del producto leído. */
+  const cantidadRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  /** Caja de escaneo: el cursor vuelve aquí solo tras cada lectura. */
+  const cajaRef = useRef<HTMLInputElement | null>(null)
   const [desconocidos, setDesconocidos] = useState<Record<string, number>>({})
 
   const dirty = useRef(false)
@@ -138,40 +142,68 @@ export function ProdConteoPage() {
   useEffect(() => { productosRef.current = productos }, [productos])
 
   // ── Lectura de código de barra (cámara o pistola) ──────────────────────────
-  const onScan = useCallback((raw: string) => {
+  /**
+   * Una lectura = UNA unidad, y va sumando.
+   *
+   * `origen` importa: la CÁMARA devuelve el mismo código muchas veces por
+   * segundo mientras el envase siga delante del lente, así que ahí sí hay que
+   * ignorar repeticiones. La pistola y la caja de escaneo, no: cada disparo es
+   * deliberado, y bloquearlos impedía contar varias unidades del mismo producto.
+   */
+  const onScan = useCallback((raw: string, origen: "camara" | "lector" | "caja" = "lector"): boolean => {
     const code = normalizeBarcode(raw)
-    if (!code) return
-    const ahora = Date.now()
-    // La cámara devuelve el mismo código muchas veces por segundo mientras el
-    // envase siga delante del lente: sin esta guardia sumaría decenas de unidades.
-    if (isRepeatScan(code, ultimaLectura.current, ahora)) return
-    ultimaLectura.current = { code, at: ahora }
+    if (!code) return false
+    if (origen === "camara") {
+      const ahora = Date.now()
+      if (isRepeatScan(code, ultimaLectura.current, ahora)) return false
+      ultimaLectura.current = { code, at: ahora }
+    }
 
     if (estado === "aprobado") {
       showToast("Este conteo ya está aprobado: no admite más lecturas", "error")
-      return
+      return false
     }
 
     const prod = matchProductByCode(code, productosRef.current)
     if (!prod) {
+      // Desde la caja de escaneo no se avisa: puede ser que estés escribiendo
+      // el nombre de un producto para filtrar, no un código.
+      if (origen === "caja") return false
       beep(false)
       setDesconocidos((prev) => ({ ...prev, [code]: (prev[code] || 0) + 1 }))
       showToast(`Código ${code} no está en el catálogo`, "error")
-      return
+      return false
     }
 
     dirty.current = true
     setContado((prev) => {
-      const actual = Number(prev[prod.id]) || 0
-      const siguiente = actual + 1
+      const siguiente = (Number(prev[prod.id]) || 0) + 1
       setUltimo({ id: prod.id, nombre: prod.nombre, cantidad: siguiente })
       return { ...prev, [prod.id]: String(siguiente) }
     })
+    // Que la fila se vea, aunque la escondan el buscador o el filtro de ceros.
+    const arregla = ajusteVisibilidad(
+      { nombre: prod.nombre, sku: prod.sku, sistema: prod.sistema, contado: contadoRef.current[prod.id] ?? "" },
+      { search: searchRef.current, incluirCeros: cerosRef.current },
+    )
+    if (arregla.limpiarBusqueda) setSearch("")
+    if (arregla.mostrarCeros) setIncluirCeros(true)
+    // Se lleva la vista a la fila, pero NO el cursor: el cursor vive en la caja
+    // de escaneo para que la siguiente lectura entre sin tocar nada.
+    requestAnimationFrame(() => {
+      cantidadRefs.current[prod.id]?.scrollIntoView({ block: "center", behavior: "smooth" })
+    })
     beep(true)
+    return true
   }, [estado, showToast])
 
+  // Espejos para que `onScan` lea el estado actual sin recrearse en cada tecla.
+  const contadoRef = useRef(contado); contadoRef.current = contado
+  const searchRef = useRef(search); searchRef.current = search
+  const cerosRef = useRef(incluirCeros); cerosRef.current = incluirCeros
+
   // La pistola lectora escucha siempre, sin abrir la cámara ni hacer clic.
-  useBarcodeWedge(onScan, Boolean(sucursal) && estado !== "aprobado")
+  useBarcodeWedge((c) => { onScan(c, "lector") }, Boolean(sucursal) && estado !== "aprobado")
 
   // ── Estado derivado ────────────────────────────────────────────────────────
   const visibles = useMemo(() => {
@@ -293,7 +325,7 @@ export function ProdConteoPage() {
     <div className="space-y-5">
       <Card className="border-[color:var(--brand-border)]">
         <CardContent className="flex flex-col gap-3 p-3 sm:p-4">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <div>
               <Label className="text-xs">Sucursal *</Label>
               <Select value={sucursal} onValueChange={setSucursal}>
@@ -310,13 +342,6 @@ export function ProdConteoPage() {
             <div>
               <Label className="text-xs">Responsable</Label>
               <Input className="mt-1 h-10" value={responsable} onChange={(e) => { dirty.current = true; setResponsable(e.target.value) }} disabled={bloqueado} />
-            </div>
-            <div>
-              <Label className="text-xs">Buscar producto</Label>
-              <div className="relative mt-1">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input className="h-10 pl-8" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nombre o código..." />
-              </div>
             </div>
           </div>
 
@@ -367,7 +392,7 @@ export function ProdConteoPage() {
       </Card>
 
       {scannerOn && sucursal && !bloqueado && (
-        <BarcodeScanner onCode={onScan} onClose={() => setScannerOn(false)} />
+        <BarcodeScanner onCode={(c) => { onScan(c, "camara") }} onClose={() => setScannerOn(false)} />
       )}
 
       {ultimo && (
@@ -411,6 +436,44 @@ export function ProdConteoPage() {
       <div>
         <Label className="text-xs">Nota general del conteo (opcional)</Label>
         <Input className="mt-1 h-9" value={notas} onChange={(e) => { dirty.current = true; setNotas(e.target.value) }} disabled={bloqueado} placeholder="Observación general..." />
+
+        {/* Caja de escaneo. Aquí vive el cursor: la pistola escribe dentro y al
+            llegar el Enter se suma una unidad. También sirve para buscar a mano:
+            si lo escrito no es un código conocido, se queda filtrando la lista. */}
+        <div className="mt-4">
+          <Label className="text-sm font-semibold">Escanear o buscar producto</Label>
+          <div className="relative mt-1.5">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              ref={cajaRef}
+              autoFocus
+              className="h-16 rounded-2xl pl-14 text-xl font-medium"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return
+                e.preventDefault()
+                // Se lee del propio campo, no del estado: la pistola teclea más
+                // rápido de lo que React re-renderiza y el estado llegaría corto.
+                const v = e.currentTarget.value.trim()
+                if (!v) return
+                if (onScan(v, "caja")) setSearch("")
+              }}
+              onBlur={(e) => {
+                // El cursor vuelve solo, PERO nunca le quita el sitio a otro
+                // campo: si vas a escribir una cantidad o una observación, mandas tú.
+                const destino = (e.relatedTarget as HTMLElement | null)?.tagName?.toLowerCase()
+                if (bloqueado || destino === "input" || destino === "textarea" || destino === "select" || destino === "button") return
+                requestAnimationFrame(() => cajaRef.current?.focus())
+              }}
+              disabled={bloqueado}
+              placeholder="Pasa el lector o escribe nombre o código…"
+            />
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Cada lectura suma una unidad. El cursor se queda aquí solo: no hace falta hacer clic entre producto y producto.
+          </p>
+        </div>
       </div>
 
       <Card className="border-[color:var(--brand-border)]">
@@ -456,10 +519,11 @@ export function ProdConteoPage() {
                         <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{fmtQty(p.sistema)}</td>
                         <td className="px-3 py-1.5 text-right">
                           <Input
+                            ref={(el) => { cantidadRefs.current[p.id] = el }}
                             type="number"
                             min={0}
                             inputMode="decimal"
-                            className="ml-auto h-9 w-24 text-right"
+                            className={`ml-auto h-9 w-24 text-right ${ultimo?.id === p.id ? "ring-2 ring-emerald-400" : ""}`}
                             value={valor}
                             onChange={(e) => setQty(p.id, e.target.value)}
                             disabled={bloqueado}

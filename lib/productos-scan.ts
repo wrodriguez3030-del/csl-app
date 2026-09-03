@@ -104,3 +104,34 @@ export function pushWedgeKey(
   const buffer = seguido ? state.buffer + key : key
   return { state: { buffer, lastKeyAt: at }, code: null }
 }
+
+/**
+ * Al escanear, el conteo físico NO suma: lleva al producto y deja escribir la
+ * cantidad. Para eso el producto tiene que estar VISIBLE, y la lista lo puede
+ * estar escondiendo por dos motivos: el buscador y el filtro de existencias en
+ * cero. Esta función dice qué hay que soltar para que aparezca.
+ */
+export interface ConteoVisibilidad {
+  /** Texto del buscador, tal cual está en pantalla. */
+  search: string
+  /** ¿La lista está mostrando los productos con existencia 0? */
+  incluirCeros: boolean
+}
+export interface ProductoEscaneado {
+  nombre: string
+  sku: string
+  sistema: number
+  /** Lo ya escrito en la casilla de cantidad («» si aún nada). */
+  contado: string
+}
+
+/** Qué filtros estorban para ver este producto. Objeto nuevo, no muta nada. */
+export function ajusteVisibilidad(p: ProductoEscaneado, v: ConteoVisibilidad): { limpiarBusqueda: boolean; mostrarCeros: boolean } {
+  const q = String(v.search || "").trim().toUpperCase()
+  const coincide = !q
+    || String(p.nombre || "").toUpperCase().includes(q)
+    || String(p.sku || "").toUpperCase().includes(q)
+  const yaContado = String(p.contado ?? "").trim() !== ""
+  const ocultoPorCero = !v.incluirCeros && Number(p.sistema) === 0 && !yaContado
+  return { limpiarBusqueda: !coincide, mostrarCeros: ocultoPorCero }
+}

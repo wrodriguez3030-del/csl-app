@@ -40,5 +40,22 @@ t("valor descomunal → el escalón más pequeño", kpiValueClass("RD$1,234,567,
 t("cadena vacía no revienta", typeof kpiValueClass("") === "string")
 t("null/undefined no revienta", typeof kpiValueClass(undefined) === "string")
 
+console.log("── Conteo físico · visibilidad al escanear (§61)")
+{
+  const { ajusteVisibilidad } = await import("../lib/productos-scan.ts")
+  const P = { nombre: "HELIOCARE 360 GEL", sku: "HC360", sistema: 5, contado: "" }
+  const sinFiltros = ajusteVisibilidad(P, { search: "", incluirCeros: false })
+  t("sin filtros no hay nada que soltar", !sinFiltros.limpiarBusqueda && !sinFiltros.mostrarCeros)
+  t("búsqueda que no casa → se limpia", ajusteVisibilidad(P, { search: "URIAGE", incluirCeros: false }).limpiarBusqueda === true)
+  t("casa por nombre → no se toca", ajusteVisibilidad(P, { search: "helio", incluirCeros: false }).limpiarBusqueda === false)
+  t("casa por SKU → no se toca", ajusteVisibilidad(P, { search: "hc360", incluirCeros: false }).limpiarBusqueda === false)
+  t("existencia 0 y oculto → se muestran los ceros", ajusteVisibilidad({ ...P, sistema: 0 }, { search: "", incluirCeros: false }).mostrarCeros === true)
+  t("existencia 0 pero ya contado → ya se ve", ajusteVisibilidad({ ...P, sistema: 0, contado: "3" }, { search: "", incluirCeros: false }).mostrarCeros === false)
+  t("no muta lo que recibe", (() => {
+    const p = Object.freeze({ ...P }), v = Object.freeze({ search: "x", incluirCeros: false })
+    ajusteVisibilidad(p, v); return p.contado === "" && v.search === "x"
+  })())
+}
+
 console.log(`\n${pass} pasaron · ${fail} fallaron`)
 process.exit(fail ? 1 : 0)

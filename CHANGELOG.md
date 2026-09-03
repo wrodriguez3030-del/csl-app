@@ -16,6 +16,29 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.111.0] - 2026-09-03
+
+### Corregido
+- **Conteo físico: la pistola lectora no sumaba.** Dos causas juntas:
+  1. `useBarcodeWedge` ignora las teclas mientras el foco está en un campo de
+     texto. Bastaba haber hecho clic en una casilla para que el lector dejara de
+     leer, sin ningún aviso.
+  2. La guardia anti-repetición (1,5 s) se aplicaba también al lector, así que
+     pasar el MISMO producto varias veces seguidas para contar unidades solo
+     contaba la primera. Esa guardia existe por la cámara, que devuelve el código
+     muchas veces por segundo; el lector y la caja de escaneo son disparos
+     deliberados y ya no la sufren.
+
+### Cambiado
+- La barra de búsqueda pasa a ser una **caja de escaneo grande, debajo de las
+  notas del conteo, y con el cursor puesto por defecto**. La pistola escribe
+  dentro y al llegar el Enter suma una unidad; si lo escrito no es un código
+  conocido se queda filtrando la lista, sin avisos. El cursor vuelve solo tras
+  cada lectura, pero nunca le quita el sitio a otro campo: si vas a escribir una
+  cantidad o una observación, mandas tú.
+- Al leer, la fila del producto se trae a la vista aunque la escondan el buscador
+  o el filtro de existencias en cero (`ajusteVisibilidad`, núcleo puro probado).
+
 ## [0.110.0] - 2026-09-03
 
 ### Añadido
