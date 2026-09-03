@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { useAppStore, apiJsonp, normalizeApiUrl } from "@/lib/store"
+import { useAppStore, apiJsonp, normalizeApiUrl, withActiveBusiness } from "@/lib/store"
 import { supabaseBrowser } from "@/lib/supabase-client"
 import { Button } from "@/components/ui/button"
 import { Paperclip, Camera, Eye, Loader2, X } from "lucide-react"
@@ -36,7 +36,7 @@ export function AttachmentInput({
       fd.append("file", file)
       fd.append("kind", kind)
       fd.append("ref_id", refId)
-      const res = await fetch("/api/purchases/documents/upload", {
+      const res = await fetch(withActiveBusiness("/api/purchases/documents/upload"), {
         method: "POST",
         headers: { Authorization: `Bearer ${session.access_token}` },
         body: fd,

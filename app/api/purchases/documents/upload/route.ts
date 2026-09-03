@@ -9,7 +9,7 @@
  */
 import { NextResponse } from "next/server"
 import { requireAuthenticatedUser, getSupabaseAdmin } from "@/lib/server/supabase"
-import { loadBusinessContext } from "@/lib/server/csl-crud"
+import { readActiveBusinessId, resolveEffectiveBusinessContext } from "@/lib/server/integration-auth"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -28,7 +28,9 @@ export async function POST(request: Request) {
   } catch {
     return json({ ok: false, error: "No autenticado" }, 401)
   }
-  const ctx = await loadBusinessContext(user.id)
+  // El negocio del SELECTOR, no el del perfil: un superadministrador con
+  // Depicenter elegido subía el archivo al business_id de Cibao.
+  const ctx = await resolveEffectiveBusinessContext(user.id, await readActiveBusinessId(request))
   if (!ctx?.businessId) return json({ ok: false, error: "Contexto de negocio no encontrado" }, 403)
   // SEGURIDAD (authz de función): subir adjuntos de compras/gastos requiere el
   // permiso del módulo. Antes cualquier usuario autenticado podía escribir en el

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useAppStore, apiJsonp, apiCallCached, normalizeApiUrl, invalidateReadCache } from "@/lib/store"
+import { useAppStore, apiJsonp, apiCallCached, normalizeApiUrl, invalidateReadCache, withActiveBusiness } from "@/lib/store"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -350,7 +350,7 @@ export function PiezasPolizaPage() {
       const fd = new FormData()
       fd.append("file", file)
       fd.append("pieza_id", editingId)
-      const response = await fetch("/api/maintenance/documents/upload", {
+      const response = await fetch(withActiveBusiness("/api/maintenance/documents/upload"), {
         method: "POST",
         headers: { Authorization: `Bearer ${session.access_token}` },
         body: fd,

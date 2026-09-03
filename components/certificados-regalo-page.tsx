@@ -13,7 +13,7 @@ import { usePagination } from "@/lib/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { loadXLSX } from "@/lib/load-xlsx"
 import {
-  CERTIFICADOS_REGALO_STORAGE_KEY,
+  certificadosRegaloStorageKey,
   CertificadoRegaloData,
   CertificadoRegaloEmitido,
   certificateSignature,
@@ -54,9 +54,9 @@ function filenameFor(data: CertificadoRegaloData) {
   return `CF_Regalo_${name || data.codigo}.pdf`
 }
 
-function readRecords(): CertificadoRegaloEmitido[] {
+function readRecords(slug: string | null | undefined): CertificadoRegaloEmitido[] {
   try {
-    const saved = JSON.parse(localStorage.getItem(CERTIFICADOS_REGALO_STORAGE_KEY) || "[]")
+    const saved = JSON.parse(localStorage.getItem(certificadosRegaloStorageKey(slug)) || "[]")
     if (!Array.isArray(saved)) return []
     return saved.map((item) => ({
       ...item,
@@ -73,8 +73,8 @@ function readRecords(): CertificadoRegaloEmitido[] {
   }
 }
 
-function saveRecords(records: CertificadoRegaloEmitido[]) {
-  localStorage.setItem(CERTIFICADOS_REGALO_STORAGE_KEY, JSON.stringify(records))
+function saveRecords(records: CertificadoRegaloEmitido[], slug: string | null | undefined) {
+  localStorage.setItem(certificadosRegaloStorageKey(slug), JSON.stringify(records))
 }
 
 export function CertificadosRegaloPage() {
@@ -94,11 +94,14 @@ export function CertificadosRegaloPage() {
   const [sortKey, setSortKey] = useState<SortKey>("fecha")
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
   const [isGenerating, setIsGenerating] = useState(false)
+  // El borrador local se guarda POR NEGOCIO: sin esto, al cambiar de empresa los
+  // certificados de la anterior se reenviaban y se recreaban como de la nueva.
+  const negocio = useAppStore((s) => s.activeBusinessSlug)
 
   useEffect(() => {
     let cancelled = false
     const loadRecords = async () => {
-      const localRecords = readRecords()
+      const localRecords = readRecords(negocio)
       try {
         const result = await apiJsonp(apiUrl, { action: "getCertificadosRegalo" })
         const serverRecords = Array.isArray(result.records) ? (result.records as CertificadoRegaloEmitido[]) : []
@@ -108,7 +111,7 @@ export function CertificadosRegaloPage() {
           ...localRecords.filter((local) => !serverRecords.some((server) => server.codigo === local.codigo)),
         ]
         setRecords(merged)
-        saveRecords(merged)
+        saveRecords(merged, negocio)
         for (const local of localRecords) {
           if (!serverRecords.some((server) => server.codigo === local.codigo)) {
             void apiJsonp(apiUrl, { action: "saveCertificadoRegalo", data: JSON.stringify(local) }).catch(() => undefined)
@@ -122,7 +125,7 @@ export function CertificadosRegaloPage() {
     return () => {
       cancelled = true
     }
-  }, [apiUrl])
+  }, [apiUrl, negocio])
 
   useEffect(() => {
     if (!form.sucursal && sucursales[0]) setForm((current) => ({ ...current, sucursal: sucursales[0] }))
@@ -179,7 +182,7 @@ export function CertificadosRegaloPage() {
     }
     setRecords((current) => {
       const next = [record, ...current.filter((item) => item.codigo !== record.codigo)]
-      saveRecords(next)
+      saveRecords(next, negocio)
       void apiJsonp(apiUrl, { action: "saveCertificadoRegalo", data: JSON.stringify(record) }).catch(() => undefined)
       return next
     })
@@ -232,7 +235,7 @@ export function CertificadosRegaloPage() {
   const deleteRecord = (codigo: string) => {
     const next = records.filter((record) => record.codigo !== codigo)
     setRecords(next)
-    saveRecords(next)
+    saveRecords(next, negocio)
     void apiJsonp(apiUrl, { action: "deleteCertificadoRegalo", codigo }).catch(() => undefined)
   }
 

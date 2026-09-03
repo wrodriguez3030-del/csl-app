@@ -219,8 +219,24 @@ interface BiData { summary: BiSummary; openAlerts: number; aiConfigured: boolean
 // Salto automático (una sola vez por sesión) al último mes con ventas cuando el
 // período por defecto (mes actual) viene vacío — evita el "no aparecen ingresos".
 let autoJumpedSession = false
+/**
+ * Sucursal del filtro persistido que no pertenece al negocio activo.
+ * El store `bi-finance-filters-v3` guarda `branch` entre sesiones, y una
+ * sucursal de otra empresa deja TODAS las consultas en cero, con el desplegable
+ * en blanco y sin ningún aviso.
+ */
+function sucursalDelNegocio(branch: string, sucursales: string[]): string {
+  if (!branch || sucursales.length === 0) return branch
+  return sucursales.includes(branch) ? branch : ""
+}
+
 export function useBiData() {
-  const { from, to, quick, branch, month, year } = useBiStore()
+  const { from, to, quick, branch: branchGuardada, month, year } = useBiStore()
+  const negocioActivo = useAppStore((s) => s.activeBusinessSlug)
+  const sucursalesDelNegocio = useCommissionBranches()
+  // Una sucursal guardada de OTRA empresa se ignora en vez de filtrar por algo
+  // que allí no existe y devolver ceros en silencio.
+  const branch = sucursalDelNegocio(branchGuardada, sucursalesDelNegocio)
   const [data, setData] = useState<BiData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -248,7 +264,12 @@ export function useBiData() {
     } finally {
       setLoading(false)
     }
-  }, [from, to, quick, branch, month, year])
+    // 🔴 El negocio activo entra en la señal de recarga. Sin él, cambiar de
+    // empresa NO disparaba consulta y todo el BI financiero —ingresos, gastos,
+    // márgenes, proyecciones— se quedaba mostrando las cifras del negocio
+    // anterior con el rótulo del nuevo. Mismo fallo que se corrigió en
+    // Incentivos (v0.117.0); aquí pesa más porque son cifras de dirección.
+  }, [from, to, quick, branch, month, year, negocioActivo])
 
   useEffect(() => { void refresh() }, [refresh])
   return { data, summary: data?.summary || null, latestPeriod: data?.latestPeriod || null, loading, error, refresh }

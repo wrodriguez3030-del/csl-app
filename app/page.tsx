@@ -290,6 +290,9 @@ export default function HomePage() {
       if (f && (f.branch || f.provider)) {
         useAppStore.getState().setCommissionFilters({ ...f, branch: "", provider: "" })
       }
+      // Lo mismo con el filtro del BI financiero, que también se persiste
+      // (`bi-finance-filters-v3`) y guarda una sucursal de un negocio concreto.
+      try { window.localStorage.removeItem("bi-finance-filters-v3") } catch { /* modo privado */ }
       void handleRefresh()
     }
     window.addEventListener("csl-business-changed", onBusinessChange)

@@ -3998,14 +3998,22 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       // Dedupe explícito en backend: si NO viene ClienteID en payload
       // (caso CREATE) pero el resolved ID ya corresponde a un cliente
       // existente, devolvemos error controlado en vez de silenciosamente
-      // mergear sobre el registro existente. Multi-tenant: select va
-      // filtrado por business_id vía AsyncLocalStorage en runWithBusinessContext.
+      // mergear sobre el registro existente.
+      //
+      // 🔴 El filtro por negocio va EXPLÍCITO. Las consultas crudas con
+      // `getSupabaseAdmin()` usan service_role y NO leen el AsyncLocalStorage
+      // (un comentario anterior afirmaba lo contrario y era falso). Los
+      // `cliente_id` se derivan de la cédula (`cli_doc_<cédula>`), así que
+      // cualquier persona que sea clienta de los dos negocios hacía que este
+      // dedupe devolviera la ficha AJENA completa —nombre, cédula, teléfono,
+      // correo y dirección— dentro del error.
       if (!explicitClienteId) {
-        const existing = await getSupabaseAdmin()
+        let dedupeQ = getSupabaseAdmin()
           .from("csl_cosmiatria_clientes")
           .select("*")
           .eq("cliente_id", clienteId)
-          .maybeSingle()
+        if (shouldScopeTenant()) dedupeQ = dedupeQ.eq("business_id", effectiveBusinessId())
+        const existing = await dedupeQ.maybeSingle()
         if (existing.data) {
           return {
             ok: false,

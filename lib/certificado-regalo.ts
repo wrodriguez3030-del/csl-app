@@ -19,7 +19,23 @@ export type CertificadoRegaloEmitido = CertificadoRegaloData & {
   notasEstado?: string
 }
 
+/**
+ * Clave del borrador local de certificados. **Va partida por negocio.**
+ *
+ * Antes era una sola clave para todos: al cambiar de negocio, la pantalla mezclaba
+ * lo guardado en el navegador con lo del servidor y REENVIABA lo que no estuviera
+ * allí (`saveCertificadoRegalo`), que lo estampa con el negocio ACTIVO. Es decir,
+ * los certificados de una empresa se recreaban como de la otra, y entraban en su
+ * talonario. Con la clave partida, lo local solo puede pertenecer a quien lo emitió.
+ *
+ * La clave antigua se deja intacta y sin leer: no se puede saber de qué negocio era
+ * su contenido, así que atribuirlo sería repetir el mismo error.
+ */
 export const CERTIFICADOS_REGALO_STORAGE_KEY = "csl_certificados_regalo_emitidos_v1"
+
+export function certificadosRegaloStorageKey(businessSlug: string | null | undefined): string {
+  return `${CERTIFICADOS_REGALO_STORAGE_KEY}:${businessSlug || "sin-negocio"}`
+}
 
 export function normalizeCertificateText(value: string) {
   return String(value || "").trim().replace(/\s+/g, " ").toUpperCase()

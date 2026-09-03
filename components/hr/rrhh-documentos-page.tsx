@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { apiCall, normalizeApiUrl, useAppStore } from "@/lib/store"
+import { apiCall, normalizeApiUrl, useAppStore, withActiveBusiness } from "@/lib/store"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -148,7 +148,7 @@ export function RrhhDocumentosPage() {
         fd.append("visibility", editing.visibility || "rrhh")
         if (editing.expires_at) fd.append("expires_at", editing.expires_at)
         if (editing.observations) fd.append("observations", editing.observations)
-        const r = await fetch("/api/hr/documents/upload", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}` }, body: fd })
+        const r = await fetch(withActiveBusiness("/api/hr/documents/upload"), { method: "POST", headers: { Authorization: `Bearer ${session.access_token}` }, body: fd })
         const res = await r.json() as { ok?: boolean; record?: HrDocument; error?: string }
         if (!res?.ok || !res.record) { showToast(res?.error || "No se pudo subir el archivo", "error"); return }
         setRecords(prev => [res.record!, ...prev])

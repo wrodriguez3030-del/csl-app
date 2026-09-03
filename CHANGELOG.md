@@ -16,6 +16,60 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.118.0] - 2026-09-03
+
+### Seguridad
+- 🔴🔴🔴 **Cualquier empleado con sesión podía leer y BORRAR toda la base sin
+  pasar por la app.** Verificado en producción: el rol `authenticated` tenía
+  INSERT/UPDATE/DELETE sobre **114 tablas** y `anon` sobre 29. Las políticas RLS
+  separan solo por negocio, nunca por rol ni permiso. Como la clave anónima viaja
+  en el navegador por diseño, cualquiera de los 17 usuarios normales podía —con su
+  sesión y esa clave— consultar o borrar la nómina, las cuentas bancarias, la
+  bóveda de credenciales y los 19.456 pacientes con su cédula y su dirección,
+  hablando directo con PostgREST: sin permisos y sin dejar rastro en la auditoría.
+
+  `202609030002_lockdown_privilegios_base.sql` retira todo a `anon` y
+  `authenticated`, conserva SELECT solo en `csl_user_profiles` y `businesses` —lo
+  único que el navegador lee— y revierte las `ALTER DEFAULT PRIVILEGES` de
+  `202606020012` que hacían nacer abierta cada tabla nueva desde junio.
+
+  Seguro porque se verificó antes: **cero escrituras desde el navegador** y cero
+  suscripciones realtime. Se generaliza lo que en agosto se hizo solo para
+  Mantenimiento (`202608150002_maintenance_lockdown.sql`).
+
+### Corregido
+- **Los certificados de regalo se recreaban en el negocio equivocado.** El
+  borrador del navegador se guardaba con una clave sin negocio, y al entrar a la
+  pantalla se reenviaba al servidor lo que no estuviera allí — donde se estampa
+  con el negocio ACTIVO. Ahora la clave va partida por negocio y la pantalla
+  recarga al cambiar de empresa.
+- **El dedupe de clientes devolvía la ficha ajena completa.** `saveClienteCosmiatria`
+  consultaba por `cliente_id` sin filtro de negocio, y un comentario afirmaba —en
+  falso— que el filtro llegaba por AsyncLocalStorage: las consultas crudas usan
+  service_role y no lo leen. Como los `cliente_id` se derivan de la cédula,
+  cualquier persona clienta de las dos empresas hacía que el error de duplicado
+  devolviera nombre, cédula, teléfono, correo y dirección del otro negocio.
+- **Las tres rutas de subida ignoraban el selector de negocio.** Usaban el negocio
+  del PERFIL, así que un superadministrador con Depicenter elegido guardaba el
+  archivo en Cibao; en Compras quedaba además inaccesible, porque la descarga
+  valida que la ruta del bucket empiece por el negocio. `readActiveBusinessId`
+  ahora mira también la query (las subidas son `multipart` y no tienen cuerpo
+  JSON) y `withActiveBusiness()` lo añade desde el cliente.
+- **El BI financiero mostraba las cifras del negocio anterior.** Mismo fallo que
+  se corrigió en Incentivos: el negocio no estaba en la señal de recarga. Aquí
+  pesaba más porque son cifras de dirección. Además su filtro persistido
+  (`bi-finance-filters-v3`) guardaba una sucursal de un negocio concreto y
+  sobrevivía tanto al cambio de empresa como al cierre de sesión.
+
+### Añadido
+- `pnpm test:aislamiento` — 11 comprobaciones contra la base real: que ninguna
+  lectura devuelva sucursales del otro negocio, que filtrar por una sucursal ajena
+  dé vacío, que las cifras de agosto de cada empresa no se contaminen, que nadie
+  salvo el servidor pueda escribir, que todas las tablas tengan RLS y que ninguna
+  fila de negocio quede sin dueño.
+- Enganchadas las dos suites que existían **sin ningún comando** y por tanto nadie
+  corría: `pnpm test:productos` (43 pruebas, en verde) y `pnpm test:productos-e2e`.
+
 ## [0.117.0] - 2026-09-03
 
 ### Seguridad

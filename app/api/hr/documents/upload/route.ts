@@ -5,7 +5,7 @@
  */
 import { NextResponse } from "next/server"
 import { requireAuthenticatedUser, getSupabaseAdmin } from "@/lib/server/supabase"
-import { loadBusinessContext } from "@/lib/server/csl-crud"
+import { readActiveBusinessId, resolveEffectiveBusinessContext } from "@/lib/server/integration-auth"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -18,7 +18,9 @@ const json = (d: Record<string, unknown>, status = 200) => NextResponse.json(d, 
 export async function POST(request: Request) {
   let user
   try { user = await requireAuthenticatedUser(request) } catch { return json({ ok: false, error: "No autenticado" }, 401) }
-  const ctx = await loadBusinessContext(user.id)
+  // El negocio del SELECTOR, no el del perfil: un superadministrador con
+  // Depicenter elegido subía el archivo al business_id de Cibao.
+  const ctx = await resolveEffectiveBusinessContext(user.id, await readActiveBusinessId(request))
   if (!ctx?.businessId) return json({ ok: false, error: "Contexto de negocio no encontrado" }, 403)
   const businessId = ctx.businessId
 

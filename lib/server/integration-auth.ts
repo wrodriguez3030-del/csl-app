@@ -13,11 +13,19 @@ import { loadBusinessContext } from "@/lib/server/csl-crud"
 import { applyActiveBusiness } from "@/lib/server/business-context"
 import type { BusinessContext } from "@/lib/server/csl-types"
 
-/** Lee `activeBusinessId` de un request (query en GET, body JSON en POST). */
+/**
+ * Lee `activeBusinessId` de un request: primero de la query, luego del cuerpo JSON.
+ *
+ * La query se mira SIEMPRE, no solo en GET, porque las subidas de archivos van en
+ * `multipart/form-data` y ahí no hay cuerpo JSON que parsear. Sin esto, las tres
+ * rutas de subida ignoraban el negocio del selector y guardaban el archivo con el
+ * business_id del perfil del superadministrador: en Compras el adjunto quedaba
+ * además inaccesible, porque la descarga valida que la ruta empiece por el negocio.
+ */
 export async function readActiveBusinessId(request: Request): Promise<string | null> {
-  if (request.method === "GET") {
-    return new URL(request.url).searchParams.get("activeBusinessId")
-  }
+  const enLaUrl = new URL(request.url).searchParams.get("activeBusinessId")
+  if (enLaUrl) return enLaUrl
+  if (request.method === "GET") return null
   try {
     const raw = await request.clone().text()
     if (!raw) return null

@@ -220,6 +220,21 @@ function injectActiveBusiness(
   return id ? { ...params, activeBusinessId: id } : params
 }
 
+/**
+ * Añade el negocio activo a la URL de una subida de archivos.
+ *
+ * `injectActiveBusiness` no sirve ahí: las subidas van en `multipart/form-data`
+ * y no tienen params JSON. Sin esto, el servidor caía al negocio del PERFIL en
+ * vez del elegido en el selector, y el archivo quedaba guardado en la empresa
+ * equivocada (en Compras, además, inaccesible: la descarga valida que la ruta
+ * del bucket empiece por el negocio).
+ */
+export function withActiveBusiness(url: string): string {
+  const id = businessIdForSlug(useAppStore.getState().activeBusinessSlug)
+  if (!id) return url
+  return `${url}${url.includes("?") ? "&" : "?"}activeBusinessId=${encodeURIComponent(id)}`
+}
+
 export async function apiCall(
   apiUrl: string,
   rawParams: Record<string, string | number | boolean>

@@ -198,6 +198,14 @@ export function logout() {
   try {
     localStorage.removeItem("csl-maintenance-storage")     // legacy v1
     localStorage.removeItem("csl-maintenance-storage-v2")  // actual v2
+    // Filtros persistidos que guardan una SUCURSAL, y una sucursal pertenece a
+    // un negocio concreto: si sobreviven al cierre de sesión, el siguiente
+    // usuario arranca filtrando por una sucursal que puede no ser suya y ve
+    // todo en cero sin entender por qué.
+    localStorage.removeItem("bi-finance-filters-v3")
+    for (const k of Object.keys(localStorage)) {
+      if (k.startsWith("csl_certificados_regalo_emitidos_v1")) localStorage.removeItem(k)
+    }
   } catch {
     // localStorage puede no estar disponible (modo privado, etc.) — no es bloqueante.
   }
