@@ -16,6 +16,23 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.108.0] - 2026-09-03
+
+### Añadido
+- `scripts/proyeccion-ventas.mjs`: genera la hoja de **proyección de ventas a 5
+  años** desde los datos reales de db-cls. Cuatro hojas — Supuestos, Histórico,
+  Proyección y el año en curso mes a mes — donde todo lo proyectado son FÓRMULAS
+  que leen los supuestos: cambiar un porcentaje recalcula los cinco años y el mes
+  a mes cuadra por construcción con el cierre proyectado. Se puede volver a
+  correr cuando entren más meses.
+
+  Hallazgos que condicionan el modelo, verificados sobre 2021-2025:
+  - **Noviembre es el 33-45 % del año** (Black Friday, concentrado del 25 al 29).
+    La proyección entera depende de esa campaña.
+  - Una sucursal con uno o dos meses de ventas NO se extrapola con el índice de
+    estacionalidad: con noviembre pesando 41 %, anualizar un julio da un disparate
+    (17,6 M para La Vega). Su cierre pasa a ser una celda que fija el dueño.
+
 ## [0.107.0] - 2026-09-03
 
 ### Corregido
