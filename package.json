@@ -1,6 +1,6 @@
 {
   "name": "my-project",
-  "version": "0.120.0",
+  "version": "0.121.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -18,6 +18,7 @@
     "test:aislamiento": "tsx scripts/test-aislamiento.mjs",
     "test:permisos": "tsx scripts/test-permisos.mjs",
     "permisos:arranque": "node --import tsx scripts/migrar-permisos-desde-menus.mjs",
+    "permisos:revocar": "node --import tsx scripts/revocar-permiso.mjs",
     "test:productos": "tsx scripts/test-productos-inventario.mjs",
     "test:productos-e2e": "tsx scripts/test-productos-e2e.mjs"
   },

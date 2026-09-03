@@ -78,8 +78,8 @@ export const PERMISSION_OPTIONS: PermissionOption[] = [
 
   // ── Credenciales ──────────────────────────────────────────────────────────
   // Además del permiso, el acceso exige verificación TOTP server-side.
-  { id: "credenciales.view", label: "Ver credenciales (bóveda)", section: "Credenciales" },
-  { id: "credenciales.manage", label: "Crear/editar/borrar credenciales", section: "Credenciales" },
+  { id: "credenciales.view", label: "🔒 Ver credenciales (bóveda)", section: "Caja fuerte · Llaves y configuración" },
+  { id: "credenciales.manage", label: "🔒 Crear/editar/borrar credenciales", section: "Caja fuerte · Llaves y configuración" },
 
   // ── BI Financiero IA ──────────────────────────────────────────────────────
   { id: "bi_finance.view", label: "Ver BI Financiero IA", section: "BI Financiero IA" },
@@ -128,7 +128,6 @@ export const PERMISSION_OPTIONS: PermissionOption[] = [
   { id: "clientes.gestionar", label: "Crear y editar clientes y fichas", section: "Clientes" },
   { id: "consentimientos.ver", label: "Ver consentimientos firmados", section: "Clientes" },
   { id: "consentimientos.gestionar", label: "Registrar consentimientos", section: "Clientes" },
-  { id: "consentimientos.borrar", label: "Borrar consentimientos firmados", section: "Clientes" },
 
   // ── Mantenimiento ─────────────────────────────────────────────────────────
   { id: "mantenimiento.ver", label: "Ver equipos, piezas, lecturas y reportes", section: "Mantenimiento" },
@@ -157,6 +156,7 @@ export const PERMISSION_OPTIONS: PermissionOption[] = [
   { id: "rrhh.borrar", label: "🔒 Borrar registros de RR.HH.", section: "Caja fuerte · Borrar registros" },
   { id: "clientes.borrar", label: "🔒 Borrar clientes y fichas", section: "Caja fuerte · Borrar registros" },
   { id: "clientes.fusionar", label: "🔒 Fusionar clientes duplicados", section: "Caja fuerte · Borrar registros" },
+  { id: "consentimientos.borrar", label: "🔒 Borrar consentimientos firmados", section: "Caja fuerte · Borrar registros" },
 
   // Llaves y configuración
   { id: "config.llaves", label: "🔒 Correo del sistema y claves de servicios", section: "Caja fuerte · Llaves y configuración" },
@@ -178,7 +178,16 @@ export const CAJA_FUERTE: ReadonlySet<string> = new Set([
   "rrhh.borrar",
   "clientes.borrar",
   "clientes.fusionar",
+  // Borrar un consentimiento firmado es destruir la defensa legal ante una
+  // reclamación por un procedimiento láser. Borrar la ficha del mismo cliente
+  // ya exigía la llave del dueño; esto no, y es igual de definitivo.
+  "consentimientos.borrar",
   "config.llaves",
+  // La bóveda exige TOTP además del permiso, pero el permiso lo bypassaba
+  // cualquier `is_admin`: tres personas que no son el dueño entraban a los
+  // secretos de equipos y sistemas. El segundo factor no sustituye al primero.
+  "credenciales.view",
+  "credenciales.manage",
   "usuarios.gestionar",
 ])
 

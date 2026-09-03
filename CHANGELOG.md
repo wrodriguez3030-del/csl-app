@@ -16,6 +16,29 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.121.0] - 2026-09-03
+
+### Security
+
+- **La bóveda de credenciales y el borrado de consentimientos pasan a la caja fuerte.**
+  La bóveda exige TOTP además del permiso, pero el permiso lo bypassaba cualquier
+  `is_admin`: tres personas que no son el dueño entraban a los secretos de equipos y
+  sistemas. Y borrar un consentimiento firmado —la defensa legal ante una reclamación
+  por un procedimiento láser— pedía menos que borrar la ficha del mismo cliente.
+- **Retirado `consentimientos.borrar` a los 8 usuarios que lo habían heredado.** Mover
+  un permiso a la caja fuerte NO se lo quita a quien ya lo tenga en su fila: el cambio
+  habría sido de adorno. Respaldo en `csl_permission_changes`.
+
+### Added
+
+- `pnpm permisos:revocar <permiso>` — retira un permiso de todos los usuarios normales
+  que lo tengan. Solo imprime; escribe con `--aplicar`. Es la pieza que faltaba para
+  que mover algo a la caja fuerte signifique algo.
+- Dos comprobaciones nuevas en `pnpm test:permisos`: **ningún menú puede repartir la
+  caja fuerte**, y la caja fuerte no se solapa con los permisos preexistentes. La
+  segunda cazó de inmediato que `credenciales.*` estaba en las dos listas — dos
+  razones para la misma regla, y el día que una cambie la otra miente.
+
 ## [0.120.0] - 2026-09-03
 
 Cuatro agentes de seguridad auditaron el modelo de permisos recién puesto. Lo más

@@ -89,8 +89,18 @@ Nace cerrada, no se hereda del menú, y solo el superadministrador la concede.
 |---|---|
 | Deudas y salidas | `rrhh.prestamos` · `rrhh.prestaciones` · `rrhh.doble_sueldo` |
 | Identidad y asistencia | `rrhh.ponche.pin` · `rrhh.ponche.dispositivos` · `rrhh.ponche.anular` |
-| Borrar registros | `rrhh.borrar` · `clientes.borrar` · `clientes.fusionar` |
-| Llaves y configuración | `config.llaves` · `usuarios.gestionar` |
+| Borrar registros | `rrhh.borrar` · `clientes.borrar` · `clientes.fusionar` · `consentimientos.borrar` |
+| Llaves y configuración | `config.llaves` · `usuarios.gestionar` · `credenciales.view` · `credenciales.manage` |
+
+Los cuatro últimos entraron el 03/09/2026, tras la auditoría: la bóveda exige TOTP
+pero el permiso lo bypassaba cualquier `is_admin`, y borrar un consentimiento firmado
+—destruir la defensa legal ante una reclamación— pedía menos que borrar la ficha del
+mismo cliente.
+
+**Mover un permiso a la caja fuerte no basta.** Quien ya lo tenga en su fila lo
+conserva, así que el cambio sería de adorno: `pnpm permisos:revocar <permiso>`
+lo retira de todos los usuarios normales, con respaldo en `csl_permission_changes`.
+Se usó para los 8 que tenían `consentimientos.borrar` por herencia.
 
 **Se heredan** (decisión del dueño): `rrhh.nomina`, `rrhh.banco_txt`,
 `rrhh.cuentas_bancarias`. La cuenta `cibaospalaser@gmail.com` los conserva.

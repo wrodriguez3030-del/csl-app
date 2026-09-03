@@ -9,6 +9,7 @@
  */
 import { readFileSync, existsSync } from "node:fs"
 import { PERMISSION_OPTIONS, PERMISSION_ID_SET, CAJA_FUERTE } from "../lib/permissions/catalog.ts"
+import { MENU_PERMISOS, PERMISOS_PREEXISTENTES } from "../lib/permissions/inherit.ts"
 import {
   ACTION_PERMISSIONS,
   ENTITY_PERMISSIONS,
@@ -63,6 +64,20 @@ else ok(`las ${entidades.length} entidades de getRowsPaged declaran permiso`)
 const cajaRota = [...CAJA_FUERTE].filter((p) => !PERMISSION_ID_SET.has(p))
 if (cajaRota.length) fail("permisos de caja fuerte que no están en el catálogo", cajaRota)
 else ok(`los ${CAJA_FUERTE.size} permisos de caja fuerte existen en el catálogo`)
+
+// ── 5b. Ningún menú reparte la caja fuerte ─────────────────────────────────
+// La caja fuerte tiene que NACER cerrada. Un menú que la conceda la convierte
+// en un rótulo, y el error sería invisible: los permisos ya repartidos se
+// quedan en la fila de cada usuario aunque después se muevan a la lista.
+const reparteCajaFuerte = Object.entries(MENU_PERMISOS)
+  .flatMap(([menu, perms]) => perms.filter((p) => CAJA_FUERTE.has(p)).map((p) => `${menu} → ${p}`))
+if (reparteCajaFuerte.length) fail("menús que heredan permisos de caja fuerte", reparteCajaFuerte)
+else ok("ningún menú reparte la caja fuerte")
+
+// ── 5c. La caja fuerte y los preexistentes no se pisan ─────────────────────
+const solapan = [...CAJA_FUERTE].filter((p) => PERMISOS_PREEXISTENTES.has(p))
+if (solapan.length) fail("permisos a la vez en CAJA_FUERTE y PERMISOS_PREEXISTENTES", solapan)
+else ok("caja fuerte y permisos preexistentes no se solapan")
 
 // ── 6. Sin ids duplicados ──────────────────────────────────────────────────
 const vistos = new Set()

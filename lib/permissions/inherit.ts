@@ -26,6 +26,9 @@
  * derivan del menú: se conserva lo que cada usuario tuviera.
  */
 export const PERMISOS_PREEXISTENTES: ReadonlySet<string> = new Set([
+  // La caja fuerte NO va aquí: ya no se hereda por estar en `CAJA_FUERTE`.
+  // Tenerlo en las dos listas son dos razones para la misma regla, y el día que
+  // una cambie la otra mentiría. `pnpm test:permisos` lo impide.
   "compras.ver", "compras.crear", "compras.editar", "compras.pagar", "compras.aprobar",
   "compras.anular", "compras.eliminar", "compras.exportar",
   "material_requisitions.delete",
@@ -39,7 +42,6 @@ export const PERMISOS_PREEXISTENTES: ReadonlySet<string> = new Set([
   "sales_commission.approve", "sales_commission.pay", "sales_commission.close",
   "sales_commission.export", "sales_commission.audit.view", "sales_commission.finance.manage",
   "gift_certificates.void",
-  "credenciales.view", "credenciales.manage",
   "bi_finance.view", "bi_finance.dashboard", "bi_finance.ai_chat", "bi_finance.sales",
   "bi_finance.expenses", "bi_finance.profitability", "bi_finance.forecasts",
   "bi_finance.investments", "bi_finance.alerts", "bi_finance.reports", "bi_finance.config",
@@ -51,7 +53,7 @@ const RRHH_ASISTENCIA = ["rrhh_asistencia.ver", "rrhh_asistencia.gestionar"]
 const RRHH_PERSONAL = ["rrhh_personal.ver", "rrhh_personal.gestionar"]
 const RRHH_PAGOS = ["rrhh_pagos.ver", "rrhh_pagos.gestionar"]
 const RRHH_DESARROLLO = ["rrhh_desarrollo.ver", "rrhh_desarrollo.gestionar"]
-const CONSENTIMIENTOS = ["consentimientos.ver", "consentimientos.gestionar", "consentimientos.borrar"]
+const CONSENTIMIENTOS = ["consentimientos.ver", "consentimientos.gestionar"]
 const CLIENTES = ["clientes.ver", "clientes.gestionar"]
 const CERTIFICADOS = ["gift_certificates.ver", "gift_certificates.gestionar"]
 const PRODUCTOS = ["productos.ver", "productos.gestionar"]
