@@ -16,6 +16,7 @@
  */
 import { normalizeBranch, normalizeName, parseDateISO } from "./normalize"
 import { computeRowHash, fnvHex } from "./hash"
+import { isDepilacionService } from "./classification"
 
 export type AttendanceStatus =
   | "ASISTE" | "NO_ASISTE" | "CANCELADO" | "CONFIRMADO" | "RESERVADO" | "EN_ESPERA" | "OTRO"
@@ -262,20 +263,27 @@ export function parseReservasWorkbook(wb: WorkbookLike): ReservasParseResult {
 }
 
 /** Agrega atenciones por (mes × prestador × sucursal): métrica principal
- *  = atenciones realizadas (ASISTE); auxiliar = clientes únicos. */
+ *  = atenciones realizadas (ASISTE); auxiliar = clientes únicos.
+ *
+ *  `attendedDepilacion` cuenta SOLO las citas de depilación láser: es la que
+ *  manda en el reparto del fondo láser. `attended` sigue siendo el total de
+ *  atenciones (alimenta el KPI «Clientes atendidos»), así que quien hace
+ *  tatuajes o faciales sigue apareciendo con su trabajo, pero ya no entra en
+ *  un reparto de depilación que no le corresponde. */
 export function aggregateAttendance(rows: ReservaRow[]): {
   periodMonth: number; periodYear: number; provider: string; branch: string
-  attended: number; uniquePatients: number
+  attended: number; attendedDepilacion: number; uniquePatients: number
 }[] {
-  const map = new Map<string, { periodMonth: number; periodYear: number; provider: string; branch: string; attended: number; uniq: Set<string> }>()
+  const map = new Map<string, { periodMonth: number; periodYear: number; provider: string; branch: string; attended: number; attendedDepilacion: number; uniq: Set<string> }>()
   for (const r of rows) {
     if (r.attendanceStatus !== "ASISTE" || !r.appointmentDate || !r.provider) continue
     if (r.provider.includes("NO DISPONIBLE")) continue
     const [y, m] = r.appointmentDate.split("-").map(Number)
     const key = `${y}-${m}|${r.provider}|${r.branch}`
     let e = map.get(key)
-    if (!e) { e = { periodMonth: m, periodYear: y, provider: r.provider, branch: r.branch, attended: 0, uniq: new Set() }; map.set(key, e) }
+    if (!e) { e = { periodMonth: m, periodYear: y, provider: r.provider, branch: r.branch, attended: 0, attendedDepilacion: 0, uniq: new Set() }; map.set(key, e) }
     e.attended++
+    if (isDepilacionService(r.serviceName)) e.attendedDepilacion++
     const client = r.externalClientId || r.phone || `${r.firstName} ${r.lastName}`.trim()
     if (client) e.uniq.add(client)
   }

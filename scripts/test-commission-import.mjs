@@ -11,6 +11,7 @@ import ExcelJS from "exceljs"
 
 const { normalizePayment, normalizeBranch, parseDateISO } = await import("../lib/commission/normalize.ts")
 const { normalizeAttendance, parseReservasWorkbook, aggregateAttendance, normalizeProviderName } = await import("../lib/commission/reservations-parser.ts")
+const { isDepilacionService } = await import("../lib/commission/classification.ts")
 const { extractResumenControls } = await import("../lib/commission/ventas-resumen.ts")
 const { payBucketsFromV2, dominantPayment, addBuckets } = await import("../lib/commission/ventas-pago.ts")
 const { computeRowHash, fnvHex } = await import("../lib/commission/hash.ts")
@@ -512,7 +513,49 @@ if (existsSync(RESERVAS)) {
   const counts = aggregateAttendance(p.rows)
   const att = counts.reduce((s, c) => s + c.attended, 0)
   t("atenciones agregadas = Asiste con prestador/fecha", att > 14000 && att <= 14432, `(${att})`)
+  const dep = counts.reduce((s, c) => s + c.attendedDepilacion, 0)
+  t("depilación ⊆ atenciones y no son todas", dep > 0 && dep < att, `(${dep} de ${att})`)
 } else console.log("(archivo de Reservas no disponible — controles §34 omitidos)")
+
+console.log("── Pacientes de DEPILACIÓN para el reparto del fondo láser (§60)")
+{
+  // El fondo láser se reparte por pacientes de DEPILACIÓN. Antes se contaba
+  // toda cita asistida y entraban al reparto quienes solo hacen tatuajes o
+  // faciales (agosto 2026: ANGELICA en Villa Olga, BENITA en Los Jardines).
+  const reales = [
+    ["Depilación  15 Minutos   1  área", true],
+    ["Depilación  30 minutos   2 áreas", true],
+    ["Depilación Láser  15 sesiones", true],
+    ["Depilación  90 Minutos 6 áreas", true],
+    ["ELIMINACION DE TATUAJES T-1", false],
+    ["ELIMINACION DE CEJAS T-1", false],
+    ["EVALUACION ELIMINACION  TATUAJES T-1", false],
+    ["Masajes Relajantes  M-1", false],
+    ["LIMPIEZA FACIAL BASICA C-1", false],
+    ["HOLLYWOOD LASER PEEL 1 SESION H-1", false],
+    ["PELLING DESCAMANTE DESPIGMENTANTE  C-1", false],
+  ]
+  for (const [nombre, esperado] of reales) {
+    t(`${esperado ? "SÍ" : "NO"} cuenta: ${nombre.trim().slice(0, 38)}`, isDepilacionService(nombre) === esperado)
+  }
+  t("vacío o nulo no cuenta", !isDepilacionService("") && !isDepilacionService(null) && !isDepilacionService(undefined))
+
+  // El agregado separa las dos métricas sin perder ninguna.
+  const filas = [
+    { attendanceStatus: "ASISTE", appointmentDate: "2026-08-05", provider: "ANGELICA", branch: "VILLA OLGA", serviceName: "ELIMINACION DE TATUAJES T-1", externalClientId: "c1", phone: "", firstName: "", lastName: "" },
+    { attendanceStatus: "ASISTE", appointmentDate: "2026-08-06", provider: "ANGELICA", branch: "VILLA OLGA", serviceName: "ELIMINACION DE CEJAS T-1", externalClientId: "c2", phone: "", firstName: "", lastName: "" },
+    { attendanceStatus: "ASISTE", appointmentDate: "2026-08-07", provider: "YESSICA", branch: "VILLA OLGA", serviceName: "Depilación  15 Minutos   1  área", externalClientId: "c3", phone: "", firstName: "", lastName: "" },
+    { attendanceStatus: "ASISTE", appointmentDate: "2026-08-08", provider: "YESSICA", branch: "VILLA OLGA", serviceName: "Masajes Relajantes  M-1", externalClientId: "c3", phone: "", firstName: "", lastName: "" },
+    { attendanceStatus: "CANCELADO", appointmentDate: "2026-08-09", provider: "YESSICA", branch: "VILLA OLGA", serviceName: "Depilación  15 Minutos   1  área", externalClientId: "c4", phone: "", firstName: "", lastName: "" },
+  ]
+  const agg = aggregateAttendance(filas)
+  const ang = agg.find((a) => a.provider === "ANGELICA")
+  const yes = agg.find((a) => a.provider === "YESSICA")
+  t("quien solo hace tatuajes: 2 atenciones, 0 de depilación", ang.attended === 2 && ang.attendedDepilacion === 0, `(${ang.attended}/${ang.attendedDepilacion})`)
+  t("mezcla: 2 atenciones, 1 de depilación", yes.attended === 2 && yes.attendedDepilacion === 1, `(${yes.attended}/${yes.attendedDepilacion})`)
+  t("las canceladas no cuentan en ninguna", agg.reduce((s, a) => s + a.attended, 0) === 4)
+  t("clientes únicos intactos", yes.uniquePatients === 1 && ang.uniquePatients === 2)
+}
 
 console.log("── Ventas por sucursal · % de venta en tarjeta (§43)")
 {

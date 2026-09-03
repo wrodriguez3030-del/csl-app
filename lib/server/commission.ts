@@ -508,7 +508,7 @@ export async function finalizeReservationsImport(params: ActionParams, user: Act
   const { data: imp } = await sb.from("sales_commission_imports").select("id,status,import_type").eq("id", importId).eq("business_id", business_id).maybeSingle()
   if (!imp || imp.import_type !== "RESERVATIONS") throw new Error("Importación no encontrada")
 
-  interface CountIn { periodMonth: number; periodYear: number; provider: string; branch: string; attended: number; uniquePatients: number }
+  interface CountIn { periodMonth: number; periodYear: number; provider: string; branch: string; attended: number; attendedDepilacion?: number; uniquePatients: number }
   let counts: CountIn[]
   try { counts = JSON.parse(textValue(params, "countsJson") || "[]") } catch { throw new Error("Resumen inválido") }
 
@@ -530,6 +530,9 @@ export async function finalizeReservationsImport(params: ActionParams, user: Act
       const attended = Number(c.attended) || 0
       const fields = {
         patient_count: attended, unique_patients: Number(c.uniquePatients) || 0,
+        // Los libros importados antes de separar depilación llegan sin el campo:
+        // se guarda null y el cálculo cae a `patient_count` (mismo valor de antes).
+        depilacion_count: c.attendedDepilacion == null ? null : Number(c.attendedDepilacion) || 0,
         total_period_patients: total,
         participation_percentage: total ? Math.round((attended / total) * 10000) / 100 : 0,
         branch: c.branch || null, updated_at: new Date().toISOString(),
@@ -1693,7 +1696,7 @@ async function readRunRules(): Promise<RunRules> {
 async function readPatientsForRun(branch: string, month: number, year: number) {
   const business_id = requireBizId()
   const { data } = await getSupabaseAdmin().from("sales_commission_patient_counts")
-    .select("provider_name,patient_count,source")
+    .select("provider_name,patient_count,depilacion_count,source")
     .eq("business_id", business_id).eq("branch", branch)
     .eq("period_month", month).eq("period_year", year)
   const rows = (data || []) as Row[]
@@ -1703,7 +1706,13 @@ async function readPatientsForRun(branch: string, month: number, year: number) {
     if (!name) continue
     const prev = byName.get(name)
     if (!prev || (r.source === "manual" && prev.source !== "manual")) {
-      byName.set(name, { patients: Number(r.patient_count) || 0, source: String(r.source || "reservas") })
+      // De RESERVAS manda el conteo de depilación (el reparto del fondo láser es
+      // por pacientes de depilación, no por toda cita atendida); si el período
+      // se importó antes de la separación viene null y se usa el total de antes.
+      // La captura MANUAL ya se teclea pensando en el láser: se respeta tal cual.
+      const depil = r.source === "manual" ? null : r.depilacion_count
+      const patients = depil == null ? Number(r.patient_count) || 0 : Number(depil) || 0
+      byName.set(name, { patients, source: String(r.source || "reservas") })
     }
   }
   const patients = [...byName.entries()].map(([collaborator, v]) => ({ collaborator, patients: v.patients }))

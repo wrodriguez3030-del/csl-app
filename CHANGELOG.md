@@ -16,6 +16,38 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.107.0] - 2026-09-03
+
+### Corregido
+- **El fondo láser se repartía contando citas que no eran de depilación.**
+  `aggregateAttendance` sumaba toda cita con estado ASISTE, así que quien solo
+  hace tatuajes o faciales entraba al reparto como si atendiera depilación. En
+  agosto 2026: ANGELICA cobraba por 18 citas de eliminación de tatuajes en Villa
+  Olga y BENITA por 52 faciales en Los Jardines, quitándoles su parte a las que
+  sí hacen depilación. Ahora el agregado devuelve también `attendedDepilacion`,
+  decidido con el MISMO clasificador que las ventas (`isDepilacionService`), y es
+  ese conteo el que manda en el cálculo.
+
+### Añadido
+- `isDepilacionService()` en `lib/commission/classification.ts`.
+- Columna `sales_commission_patient_counts.depilacion_count`
+  (`202609030001_patient_counts_depilacion.sql`). `patient_count` se conserva
+  como total de atenciones — sigue alimentando el KPI «Clientes atendidos» — y
+  cuando `depilacion_count` es NULL (períodos importados antes) el cálculo cae al
+  valor anterior. La captura MANUAL de pacientes se respeta tal cual: ya se
+  teclea pensando en el láser.
+- `scripts/backfill-depilacion-count.mjs`: rellena los períodos ya importados
+  contando desde las reservas guardadas, con el mismo criterio de TypeScript en
+  vez de duplicarlo en SQL.
+
+### Datos
+- Rellenadas las 236 filas de `patient_counts` (102 cambian de número) y
+  recalculado agosto 2026. Los totales por sucursal NO cambian — el fondo se
+  redistribuye dentro: Rafael Vidal 19.533,06 · Los Jardines 37.634,20 ·
+  Villa Olga 36.210,75. Sí cambian personas: ANGELICA +1.065,65 y BENITA
+  +978,37 (pasan a cuota por cabeza), a costa de quienes cobraban de más por
+  el reparto proporcional.
+
 ## [0.106.1] - 2026-09-02
 
 ### Añadido

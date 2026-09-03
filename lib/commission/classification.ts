@@ -57,6 +57,20 @@ export function classifyItem(itemType: string, name: string, rules: Classificati
   return "OTROS"
 }
 
+/**
+ * ¿Esta cita es de DEPILACIÓN LÁSER?
+ *
+ * El fondo de incentivo láser se reparte por «pacientes atendidos de
+ * depilación», pero el conteo de atenciones venía sumando TODA cita asistida:
+ * una prestadora que solo hace eliminación de tatuajes o faciales entraba en el
+ * reparto como si atendiera depilación (agosto 2026: ANGELICA con 18 citas de
+ * tatuaje en Villa Olga y BENITA con 52 faciales en Los Jardines). Se decide
+ * con el MISMO clasificador que las ventas, para que no haya dos criterios.
+ */
+export function isDepilacionService(serviceName: unknown, rules: ClassificationRule[] = DEFAULT_CLASSIFICATION): boolean {
+  return classifyItem("SERVICIO", String(serviceName ?? ""), rules) === "DEPILACION_LASER"
+}
+
 export interface ProviderInfo {
   name: string // nombre limpio (sin el rol entre paréntesis)
   role: string // rol declarado ("prestador", "Recepcionista", "Administrador Local"…)
