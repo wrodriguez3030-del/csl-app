@@ -16,6 +16,43 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.113.0] - 2026-09-03
+
+### Añadido
+- `scripts/importar-gastos-depicenter.mjs`: los gastos de DEPICENTER viven en un
+  bloque `M4:Q45` de cada hoja mensual, sin columna de sucursal, así que
+  `gastos-parser.ts` (pensado para los cuatro bloques de csl) no sirve. El script
+  cuadra cada mes contra su celda de control `P46` y **se niega a importar si
+  alguno no cuadra**. Importados 224 gastos de enero–agosto (RD$4.505.405,81);
+  SEPT. queda fuera por ser plantilla con fechas futuras.
+
+### Corregido
+- **`proyeccion-ventas.mjs` no servía para otro negocio.** Tres fallos:
+  1. Las tasas de crecimiento estaban atadas a los nombres de las sucursales de
+     csl y reventaba con cualquier otra; ahora hay una curva por defecto marcada
+     para revisar.
+  2. La estacionalidad salía solo de `sales_commission_sales`, así que un negocio
+     con su historia en `sales_history_monthly` se quedaba sin pesos mensuales y
+     la proyección dividía por cero. Ahora se funden las dos fuentes mes a mes,
+     con lo real por delante.
+  3. Los meses del histórico de referencia no traen sucursal: quedaban fuera del
+     reparto por sucursal y además hacían que una sucursal con historia sembrada
+     pasara por «nueva» y se proyectara a ojo (LA VEGA salía en 42 M).
+  Verificado que csl no se mueve: sigue en 57,9 M de cierre 2026.
+
+### Datos
+- **DEPICENTER: se apaga el aporte de limpieza.** No se cobra en ese negocio; el
+  RD$400 venía de la siembra inicial, igual que el 31 % de tarjeta. Se apaga con
+  una regla `cleaning_applies_branch` por sucursal (mismo mecanismo que Villa
+  Olga en csl), así que tampoco se aplicará a quien entre nuevo. Julio pasa a
+  45.221,24 y agosto a 26.219,40.
+- Porcentaje de tarjeta de DEPICENTER: 31 % → **27 %**, que es el que usa su
+  libro en los nueve meses.
+- Sembrada la historia de ventas de DEPICENTER 2021-05 → 2026-06 (62 meses) desde
+  la hoja «Historico ventas»: 2021 3,4 M · 2022 6,5 M · 2023 7,0 M · 2024 8,4 M ·
+  2025 10,9 M. Enero–junio de 2026 no estaban inventados — el negocio tuvo entre
+  467 y 666 mil de gastos cada uno de esos meses; simplemente nunca se importaron.
+
 ## [0.112.0] - 2026-09-03
 
 ### Corregido

@@ -32,7 +32,7 @@ const MESES = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "O
 const n2 = (x) => Math.round((Number(x) || 0) * 100) / 100
 
 // ── Datos reales ───────────────────────────────────────────────────────────
-const refe = await runSql(`select year, sum(total)::float8 t from sales_history_monthly ${DE} group by 1 order by 1`)
+const refe = await runSql(`select year, month, sum(total)::float8 t from sales_history_monthly ${DE} group by 1,2 order by 1,2`)
 const anual = await runSql(`
   select extract(year from sale_date)::int y, sum(gross_amount)::float8 t,
          count(distinct date_trunc('month', sale_date))::int meses
@@ -44,16 +44,23 @@ const mensual = await runSql(`
   select extract(year from sale_date)::int y, extract(month from sale_date)::int m, sum(gross_amount)::float8 t
   from sales_commission_sales ${DE} group by 1,2`)
 
-const refeBy = Object.fromEntries(refe.map((r) => [r.year, r.t]))
-const anualBy = Object.fromEntries(anual.map((r) => [r.y, r.t]))
-const mesesBy = Object.fromEntries(anual.map((r) => [r.y, r.meses]))
+// El histórico de referencia y las ventas reales se FUNDEN mes a mes: lo real
+// manda donde existe. Sin esto, un negocio cuya historia vive en la tabla de
+// referencia se quedaba sin estacionalidad y la proyección dividía por cero.
+const mesBy = {}
+for (const r of refe) (mesBy[r.year] ||= {})[r.month] = r.t
+for (const r of mensual) (mesBy[r.y] ||= {})[r.m] = r.t
+const anualBy = {}, mesesBy = {}
+for (const [y, meses] of Object.entries(mesBy)) {
+  anualBy[y] = Object.values(meses).reduce((a, b) => a + b, 0)
+  mesesBy[y] = Object.values(meses).filter((v) => v > 0).length
+}
+const refeBy = {}
 const sucBy = {}
 for (const r of porSuc) (sucBy[r.y] ||= {})[r.b] = r.t
-const mesBy = {}
-for (const r of mensual) (mesBy[r.y] ||= {})[r.m] = r.t
 
-/** Total del año: el real más el histórico de referencia de los meses previos a mayo-2020. */
-const totalAnio = (y) => n2((anualBy[y] || 0) + (refeBy[y] || 0))
+/** Total del año, ya fundidas las dos fuentes. */
+const totalAnio = (y) => n2(anualBy[y] || 0)
 
 // Estacionalidad: peso medio de cada mes en los 3 últimos años COMPLETOS.
 const completos = Object.keys(mesesBy).map(Number).filter((y) => mesesBy[y] === 12).sort().slice(-3)
@@ -68,12 +75,28 @@ const cuotaEneAgo = pesoMes.slice(0, 8).reduce((a, b) => a + b, 0)
 const mesesConDato = Object.keys(mesBy[ANIO] || {}).map(Number).sort((a, b) => a - b)
 const ultimoMes = mesesConDato.length ? Math.max(...mesesConDato) : 0
 const cuotaTranscurrida = pesoMes.slice(0, ultimoMes).reduce((a, b) => a + b, 0)
-const enCurso = SUCS.map((s) => ({ suc: s, real: n2(sucBy[ANIO]?.[s] || 0) })).filter((r) => r.real > 0)
+// Los meses del histórico de REFERENCIA no traen sucursal (el libro los guarda
+// a nivel de negocio). Si el año en curso tiene alguno, lo que no está atribuido
+// se reparte entre las sucursales en proporción a lo que sí lo está; con una
+// sola sucursal operativa, le toca entero.
+const realPorSuc = SUCS.map((s) => ({ suc: s, real: n2(sucBy[ANIO]?.[s] || 0) })).filter((r) => r.real > 0)
+const sumaSuc = realPorSuc.reduce((a, r) => a + r.real, 0)
+const sinAtribuir = n2((anualBy[ANIO] || 0) - sumaSuc)
+const enCurso = realPorSuc.map((r) => ({
+  suc: r.suc,
+  real: sumaSuc > 0 ? n2(r.real + sinAtribuir * (r.real / sumaSuc)) : r.real,
+  atribuido: r.real,
+}))
+if (sinAtribuir > 1) console.log(`  (${n2(sinAtribuir).toLocaleString("en-US")} de meses sin sucursal, repartidos en proporción)`)
+const mesesConDatoPre = Object.keys(mesBy[ANIO] || {}).map(Number).sort((a, b) => a - b)
 const mesesSuc = await runSql(`
   select branch b, count(distinct date_trunc('month', sale_date))::int m
   from sales_commission_sales ${DE} and extract(year from sale_date) = ${ANIO} group by 1`)
 const mesesSucBy = Object.fromEntries(mesesSuc.map((r) => [r.b, r.m]))
-const mesesDeSuc = (s) => mesesSucBy[s] || 0
+/** Meses con dato de una sucursal. Si el año trae meses del histórico de
+ *  referencia (sin sucursal) repartidos entre ellas, cuentan como suyos: si no,
+ *  una sucursal con historia sembrada pasaba por «nueva» y se proyectaba a ojo. */
+const mesesDeSuc = (s) => (sinAtribuir > 1 ? mesesConDatoPre.length : (mesesSucBy[s] || 0))
 
 console.log(`Negocio: ${SLUG} · sucursales: ${SUCS.join(", ")}`)
 console.log(`Histórico: ${Object.keys(anualBy).length} años · estacionalidad de ${completos.join(", ")}`)
@@ -145,6 +168,15 @@ const RAZON = {
   "VILLA OLGA": "Arrancando fuerte, pero ese ritmo no se sostiene.",
   "LA VEGA": "SOLO UN MES DE DATOS. Este número es una apuesta, no una proyección.",
 }
+// Sucursal sin curva propia: una decreciente genérica, marcada para que se
+// revise. Antes las tasas estaban atadas a los nombres de csl y el generador
+// reventaba con cualquier otro negocio.
+const CREC_POR_DEFECTO = [0.10, 0.08, 0.06, 0.05]
+const RAZON_POR_DEFECTO = "Curva genérica que se va frenando. REVÍSALA: no sale de la historia de esta sucursal."
+for (const s of SUCS) {
+  if (!CREC[s]) { CREC[s] = [...CREC_POR_DEFECTO]; RAZON[s] = RAZON_POR_DEFECTO }
+}
+
 let f = 8
 const filaCrec = {}
 for (const s of SUCS) {
