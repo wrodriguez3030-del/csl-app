@@ -14,6 +14,7 @@ import { requireAuthenticatedUser } from "@/lib/server/supabase"
 import { loadBusinessContext } from "@/lib/server/csl-crud"
 import { applyActiveBusiness, runWithBusinessContext, hasPermission, getBusinessContext } from "@/lib/server/business-context"
 import { saveOpenAiKey, deleteOpenAiKey, getKeyStatus } from "@/lib/server/bi-finance-secrets"
+import { enforceRoutePermission } from "@/lib/server/permission-gate"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -26,6 +27,8 @@ export async function POST(request: Request) {
     const activeBusinessId = typeof body.activeBusinessId === "string" ? body.activeBusinessId : undefined
     const ctx = applyActiveBusiness(await loadBusinessContext(user.id), activeBusinessId)
     if (!ctx) return json({ ok: false, error: "No se pudo cargar el contexto de negocio" }, 403)
+    const denegado = await enforceRoutePermission("POST", "/api/bi-finance/openai-key", { id: user.id, email: user.email }, ctx)
+    if (denegado) return json(denegado.body, denegado.status)
 
     return await runWithBusinessContext(ctx, async () => {
       if (!(hasPermission("bi_finance.ai_secrets.manage") || hasPermission("bi_finance.config"))) {

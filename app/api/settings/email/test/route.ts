@@ -10,6 +10,7 @@ import { resolveEffectiveBusinessContext } from "@/lib/server/integration-auth"
 import { resolveGmailCredentialsForBusiness } from "@/lib/server/email-settings"
 import { sendGmail } from "@/lib/server/gmail-transport"
 import { getBusinessBranding } from "@/lib/business"
+import { enforceRoutePermission } from "@/lib/server/permission-gate"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -39,6 +40,8 @@ export async function POST(request: Request) {
 
   const ctx = await resolveEffectiveBusinessContext(user.id, body.activeBusinessId)
   if (!ctx) return json({ ok: false, error: "Contexto de negocio no encontrado." }, 403)
+  const denegado = await enforceRoutePermission("POST", "/api/settings/email/test", { id: user.id, email: user.email }, ctx)
+  if (denegado) return json(denegado.body, denegado.status)
   if (!(ctx.isAdmin || ctx.isSuperadmin)) {
     return json({ ok: false, error: "Solo un administrador puede enviar la prueba." }, 403)
   }

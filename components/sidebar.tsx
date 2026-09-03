@@ -255,6 +255,7 @@ const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { id: "admin-users", label: "Usuarios", icon: <ShieldCheck className="h-4 w-4" /> },
       { id: "admin-agendapro", label: "Integración AgendaPro", icon: <Activity className="h-4 w-4" /> },
+      { id: "admin-permisos", label: "Permisos y rechazos", icon: <ShieldCheck className="h-4 w-4" /> },
     ],
   },
   { label: "Sistema", items: [{ id: "config", label: "Configuracion", icon: <Settings className="h-4 w-4" /> }] },

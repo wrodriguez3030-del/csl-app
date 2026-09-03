@@ -17,6 +17,7 @@ import {
   type PrefillPayload,
 } from "@/lib/server/public-form-links"
 import { getBusinessBranding } from "@/lib/business"
+import { enforceRoutePermission } from "@/lib/server/permission-gate"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -100,6 +101,8 @@ export async function POST(request: Request) {
     if (!ctx) {
       return json({ ok: false, error: "No se pudo cargar el contexto de negocio" }, 403)
     }
+    const denegado = await enforceRoutePermission("POST", "/api/public-form-links", { id: user.id, email: user.email }, ctx)
+    if (denegado) return json(denegado.body, denegado.status)
 
     const ttlHours = 12
     const clienteNombre = typeof body.clienteNombre === "string" ? body.clienteNombre.trim() : ""

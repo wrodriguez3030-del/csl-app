@@ -292,6 +292,8 @@ export function canAccessMenu(user: SystemUser | null, tab: TabId): boolean {
   // Admin de Usuarios: SOLO superadmin. is_admin normal NO alcanza —
   // es una operación cross-tenant que requiere el rol más alto.
   if (tab === "admin-users") return Boolean(user.isSuperadmin)
+  // Permisos y rechazos: quien decide quién puede qué es el mismo rol.
+  if (tab === "admin-permisos") return Boolean(user.isSuperadmin)
   if (user.isAdmin) return true
   // pulse-dashboard y pulse-equipos pertenecen a PulseControl.
   // Fallback pulsos-* para usuarios con acceso genérico a PulseControl.

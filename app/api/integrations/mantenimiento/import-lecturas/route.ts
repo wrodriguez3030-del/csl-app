@@ -17,6 +17,7 @@ import { requireAuthenticatedUser } from "@/lib/server/supabase"
 import { loadBusinessContext } from "@/lib/server/csl-crud"
 import { runWithBusinessContext } from "@/lib/server/business-context"
 import { recordMaintenanceAudit, MAINTENANCE_REJECTION_MESSAGE } from "@/lib/server/maintenance-guard"
+import { enforceRoutePermission } from "@/lib/server/permission-gate"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -37,6 +38,8 @@ export async function POST(request: Request) {
 
   const ctx = await loadBusinessContext(user.id)
   if (!ctx) return json({ ok: false, error: "Contexto de negocio no encontrado." }, 403)
+  const denegado = await enforceRoutePermission("POST", "/api/integrations/mantenimiento/import-lecturas", { id: user.id, email: user.email }, ctx)
+  if (denegado) return json(denegado.body, denegado.status)
 
   // Capturar nombre de archivo solo para enriquecer la auditoría (best-effort).
   let archivoNombre: string | null = null

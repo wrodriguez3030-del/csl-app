@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { SeqBadge } from "@/components/seq-badge"
 import { MENU_OPTIONS, type MenuPermission } from "@/lib/menus"
-import { PERMISSION_OPTIONS } from "@/lib/permissions"
+import { PERMISSION_OPTIONS, CAJA_FUERTE } from "@/lib/permissions"
 import { useSessionUser } from "@/hooks/use-session-user"
 
 type RoleKey = "usuario" | "admin" | "superadmin"
@@ -636,15 +636,28 @@ export function AdminUsersPage() {
                     }, {})
                   ).map(([section, opts]) => (
                     <div key={section} className="mb-4 last:mb-0">
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2 border-b border-border/50 pb-1">{section}</p>
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2 border-b border-border/50 pb-1">
+                        {section}
+                        {section.startsWith("Caja fuerte") && !currentUser?.isSuperadmin && (
+                          <span className="ml-2 font-normal normal-case tracking-normal">· solo el superadministrador</span>
+                        )}
+                      </p>
                       <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
                         {opts.map((opt) => {
                           const checked = form.permissions.includes(opt.id)
+                          // La caja fuerte solo la mueve el superadministrador.
+                          // El servidor lo impone igual; aquí se ve el porqué.
+                          const bloqueado = CAJA_FUERTE.has(opt.id) && !currentUser?.isSuperadmin
                           return (
-                            <label key={opt.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors hover:bg-white/80" title={opt.id}>
+                            <label
+                              key={opt.id}
+                              className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors ${bloqueado ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-white/80"}`}
+                              title={bloqueado ? `${opt.id} — solo el superadministrador puede concederlo` : opt.id}
+                            >
                               <input
                                 type="checkbox"
                                 checked={checked}
+                                disabled={bloqueado}
                                 onChange={(e) => {
                                   const next = e.target.checked ? [...form.permissions, opt.id] : form.permissions.filter((p) => p !== opt.id)
                                   setForm({ ...form, permissions: next })

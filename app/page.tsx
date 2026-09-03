@@ -97,6 +97,7 @@ import { CertificadosRegaloTalonarioPage } from "@/components/certificados-regal
 import { CertificadosRegaloValidezPage } from "@/components/certificados-regalo-validez-page"
 import { LoginPage } from "@/components/login-page"
 import { AdminUsersPage } from "@/components/admin-users-page"
+import { AdminPermisosPage } from "@/components/admin-permisos-page"
 import {
   BiDashboardPage, BiVentasPage, BiGastosPage, BiRentabilidadPage,
   BiProyeccionesPage, BiInversionesPage, BiAlertasPage, BiReportesPage,
@@ -553,6 +554,8 @@ export default function HomePage() {
         return <BiConfigPage />
       case "admin-users":
         return <AdminUsersPage />
+      case "admin-permisos":
+        return <AdminPermisosPage />
       case "admin-agendapro":
         return <AgendaProIntegracionPage />
       default:

@@ -27,6 +27,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuthenticatedUser } from "@/lib/server/supabase"
 import { clientIp, rateLimit } from "@/lib/rate-limit-server"
+import { loadBusinessContext } from "@/lib/server/csl-crud"
+import { enforceRoutePermission } from "@/lib/server/permission-gate"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -88,6 +90,12 @@ export async function POST(req: NextRequest) {
   } catch {
     return errorResponse("unauthorized", "Debes iniciar sesión para usar el lector OCR.", 401)
   }
+  // El OCR gasta cuota de OpenAI y alimenta las lecturas de mantenimiento:
+  // exige el mismo permiso que registrar una lectura a mano.
+  const ctx = await loadBusinessContext(user.id)
+  const denegado = await enforceRoutePermission("POST", "/api/pulse/ocr", { id: user.id, email: user.email }, ctx)
+  if (denegado) return NextResponse.json(denegado.body, { status: denegado.status })
+
   const rl = rateLimit({ key: `pulse-ocr:${user.id}:${clientIp(req)}`, max: 30, windowMs: 5 * 60 * 1000 })
   if (!rl.ok) {
     return errorResponse("rate_limited", "Demasiadas lecturas seguidas. Espera unos segundos e intenta de nuevo.", 429)

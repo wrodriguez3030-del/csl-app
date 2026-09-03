@@ -30,6 +30,7 @@ import {
 } from "@/lib/server/business-context"
 import { getBiFinanceSummary } from "@/lib/server/bi-finance"
 import { resolveOpenAiKey, checkLimits, logUsage, logBiAudit, OPENAI_BASE } from "@/lib/server/bi-finance-secrets"
+import { enforceRoutePermission } from "@/lib/server/permission-gate"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -123,6 +124,8 @@ export async function POST(request: Request) {
     const activeBusinessId = typeof body.activeBusinessId === "string" ? body.activeBusinessId : undefined
     const ctx = applyActiveBusiness(await loadBusinessContext(user.id), activeBusinessId)
     if (!ctx) return json({ ok: false, error: "No se pudo cargar el contexto de negocio" }, 403)
+    const denegado = await enforceRoutePermission("POST", "/api/bi-finance/assistant", { id: user.id, email: user.email }, ctx)
+    if (denegado) return json(denegado.body, denegado.status)
 
     return await runWithBusinessContext(ctx, async () => {
       requirePermission("bi_finance.ai_chat")

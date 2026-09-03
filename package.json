@@ -1,6 +1,6 @@
 {
   "name": "my-project",
-  "version": "0.118.0",
+  "version": "0.119.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -16,6 +16,8 @@
     "test:gastos": "tsx scripts/test-gastos-import.mjs",
     "test:finanzas": "tsx scripts/test-finanzas-ui.mjs",
     "test:aislamiento": "tsx scripts/test-aislamiento.mjs",
+    "test:permisos": "tsx scripts/test-permisos.mjs",
+    "permisos:arranque": "node --import tsx scripts/migrar-permisos-desde-menus.mjs",
     "test:productos": "tsx scripts/test-productos-inventario.mjs",
     "test:productos-e2e": "tsx scripts/test-productos-e2e.mjs"
   },

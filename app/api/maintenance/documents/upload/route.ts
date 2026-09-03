@@ -9,6 +9,7 @@
 import { NextResponse } from "next/server"
 import { requireAuthenticatedUser, getSupabaseAdmin } from "@/lib/server/supabase"
 import { readActiveBusinessId, resolveEffectiveBusinessContext } from "@/lib/server/integration-auth"
+import { enforceRoutePermission } from "@/lib/server/permission-gate"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -31,6 +32,8 @@ export async function POST(request: Request) {
   // Depicenter elegido subía el archivo al business_id de Cibao.
   const ctx = await resolveEffectiveBusinessContext(user.id, await readActiveBusinessId(request))
   if (!ctx?.businessId) return json({ ok: false, error: "Contexto de negocio no encontrado" }, 403)
+  const denegado = await enforceRoutePermission("POST", "/api/maintenance/documents/upload", { id: user.id, email: user.email }, ctx)
+  if (denegado) return json(denegado.body, denegado.status)
   const businessId = ctx.businessId
 
   let form: FormData

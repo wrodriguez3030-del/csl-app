@@ -19,6 +19,7 @@ import {
   syncAgendaProClients,
   validateAgendaProConfig,
 } from "@/lib/server/agendapro"
+import { enforceRoutePermission } from "@/lib/server/permission-gate"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -47,6 +48,8 @@ export async function POST(request: Request) {
   const activeBusinessId = await readActiveBusinessId(request)
   const ctx = await resolveEffectiveBusinessContext(user.id, activeBusinessId)
   if (!ctx) return json({ ok: false, error: "Contexto de negocio no encontrado." }, 403)
+  const denegado = await enforceRoutePermission("POST", "/api/integrations/agendapro/sync-clients", { id: user.id, email: user.email }, ctx)
+  if (denegado) return json(denegado.body, denegado.status)
   // SEGURIDAD (authz de función): sincronizar clientes de AgendaPro es una
   // operación pesada contra la API externa y la BD. Requiere el permiso del
   // módulo (o admin/superadmin), coherente con import-clients/credentials.

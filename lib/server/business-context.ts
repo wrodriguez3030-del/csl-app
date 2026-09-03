@@ -18,6 +18,7 @@
  * Server-only. NUNCA importar desde código cliente.
  */
 
+import { CAJA_FUERTE } from "@/lib/permissions/catalog"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { normalizeSucursal } from "@/lib/normalize-pulse"
 import type { BusinessContext } from "./csl-types"
@@ -80,13 +81,24 @@ export function requireBusinessContext(): BusinessContext {
 }
 
 /**
- * Permisos granulares (csl_user_profiles.permissions). Admin/superadmin
- * bypassa cualquier permiso (misma convención que canDeleteRequisitions en
- * materials.ts). Catálogo de strings válidos en `lib/permissions.ts`.
+ * Permisos granulares (csl_user_profiles.permissions). Catálogo de strings
+ * válidos en `lib/permissions.ts`.
+ *
+ * BYPASS: el superadministrador se salta todo. Un `is_admin` corriente se
+ * salta los permisos normales pero NO la CAJA FUERTE — préstamos,
+ * prestaciones, doble sueldo, PIN y dispositivos de ponche, anulación de
+ * ponches, borrados de RR.HH., borrado y fusión de clientes, llaves del
+ * sistema y administración de usuarios. Hay tres administradores que no son
+ * el dueño; si `is_admin` abriera la caja fuerte, no sería una caja fuerte.
+ *
+ * Espejo exacto de `canPerm` en `lib/permissions/catalog.ts` (la UI).
  */
 export function hasPermission(perm: string): boolean {
   const ctx = getBusinessContext()
-  return Boolean(ctx?.isAdmin || ctx?.isSuperadmin || ctx?.permissions?.includes(perm))
+  if (!ctx) return false
+  if (ctx.isSuperadmin) return true
+  if (ctx.permissions?.includes(perm)) return true
+  return Boolean(ctx.isAdmin) && !CAJA_FUERTE.has(perm)
 }
 
 /** Igual a hasPermission pero lanza si falta. Úsalo en handlers de mutación. */

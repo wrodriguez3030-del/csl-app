@@ -14,6 +14,7 @@ import { requireAuthenticatedUser, getSupabaseAdmin } from "@/lib/server/supabas
 import { runWithBusinessContext } from "@/lib/server/business-context"
 import { resolveEffectiveBusinessContext, readActiveBusinessId } from "@/lib/server/integration-auth"
 import { syncAgendaProClients, type AgendaProClientRaw } from "@/lib/server/agendapro"
+import { enforceRoutePermission } from "@/lib/server/permission-gate"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -36,6 +37,8 @@ export async function POST(request: Request) {
   const activeBusinessId = await readActiveBusinessId(request)
   const ctx = await resolveEffectiveBusinessContext(user.id, activeBusinessId)
   if (!ctx) return json({ ok: false, error: "Contexto de negocio no encontrado." }, 403)
+  const denegado = await enforceRoutePermission("POST", "/api/integrations/agendapro/import-clients", { id: user.id, email: user.email }, ctx)
+  if (denegado) return json(denegado.body, denegado.status)
 
   return runWithBusinessContext(ctx, async () => {
     const supabase = getSupabaseAdmin()

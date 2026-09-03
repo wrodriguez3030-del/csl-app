@@ -10,6 +10,7 @@ import { NextResponse } from "next/server"
 import { requireAuthenticatedUser } from "@/lib/server/supabase"
 import { resolveEffectiveBusinessContext } from "@/lib/server/integration-auth"
 import { saveAgendaProCredentials, getAgendaProCredentialStatus } from "@/lib/server/agendapro-credentials"
+import { enforceRoutePermission } from "@/lib/server/permission-gate"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -37,6 +38,8 @@ export async function POST(request: Request) {
 
   const ctx = await resolveEffectiveBusinessContext(user.id, body.activeBusinessId)
   if (!ctx) return json({ ok: false, error: "Contexto de negocio no encontrado." }, 403)
+  const denegado = await enforceRoutePermission("POST", "/api/integrations/agendapro/credentials", { id: user.id, email: user.email }, ctx)
+  if (denegado) return json(denegado.body, denegado.status)
 
   const allowed = ctx.isAdmin || ctx.isSuperadmin || (ctx.permissions || []).includes("integrations.agendapro.configure")
   if (!allowed) return json({ ok: false, error: "No tienes permiso para configurar AgendaPro." }, 403)

@@ -16,6 +16,53 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.119.0] - 2026-09-03
+
+### Security
+
+- **Permisos con cierre por defecto en todo el sistema.** Hasta ahora los menús decidían lo
+  que se VEÍA, pero la API no comprobaba nada: los 21 usuarios autenticados podían invocar
+  cualquiera de las 360 acciones del despachador —nómina, cuentas bancarias, TXT del banco,
+  préstamos, prestaciones, PIN de ponche— tuvieran o no el menú. Ahora **cada acción declara
+  su permiso** en `lib/permissions/action-map.ts` y una sola puerta lo exige; la acción que
+  no esté declarada se rechaza.
+- **Cerradas once puertas de atrás.** Las rutas fuera de `/api/csl` escribían con sesión
+  válida y cero permisos: documentos de RR.HH., documentos de mantenimiento, facturas de
+  compras, importador de AgendaPro, credenciales de AgendaPro, lecturas del láser, OCR,
+  correo del sistema y clave de OpenAI.
+- **`getRowsPaged` se resuelve por entidad.** Antes aceptaba `credenciales` y devolvía la
+  bóveda saltándose la verificación TOTP.
+- **`is_admin` ya no abre la caja fuerte.** Hay tres administradores que no son el dueño; si
+  cualquiera de ellos pudiera hacer préstamos, anular ponches o borrar clientes, la caja
+  fuerte sería un rótulo. Solo el superadministrador.
+
+### Added
+
+- Catálogo de **93 permisos** con cuatro grupos de caja fuerte: deudas y salidas, identidad
+  y asistencia, borrar registros, llaves y configuración.
+- `pnpm test:permisos` — 12 comprobaciones que **rompen la construcción** si una acción
+  nueva se queda sin permiso, si una ruta declarada no aplica la guardia, o si una acción
+  delicada cambia de permiso. El fallo aparece en la consola, no en la cara de una empleada.
+- **Modo sombra** (`PERMISOS_ESTRICTOS`): comprueba, no bloquea y anota en
+  `csl_permission_denials` con IP y navegador. Se enciende de verdad tras leer el registro.
+- Pantalla **Administración › Permisos y rechazos** (solo superadministrador) con lo que
+  falta por conceder, por persona y permiso.
+- `pnpm permisos:arranque` — deriva los permisos desde los menús. Solo imprime; escribe con
+  `--aplicar` y aborta si intenta conceder caja fuerte. Aplicado: 134 permisos a 14
+  usuarios; los tres kioskos se quedan en cero.
+- Tablas `csl_permission_denials` y `csl_permission_changes`
+  (`202609030003_permisos_cierre_por_defecto.sql`).
+- Diseño en `docs/superpowers/specs/2026-09-03-permisos-cierre-por-defecto-design.md`.
+
+### Fixed
+
+- **`saveUser` guardaba los menús pero tiraba los permisos en silencio.** La pantalla los
+  mandaba, el servidor los recibía y no los escribía: el usuario veía «guardado» y no se
+  guardaba nada. Por eso los 12 permisos de producción se habían metido a mano por SQL, y
+  por eso Wanda no podía importar ventas por más que se le marcara la casilla.
+- La falta de permiso devolvía **HTTP 500**, indistinguible de que la app se hubiera caído.
+  Ahora es **403** y el mensaje nombra el permiso que falta.
+
 ## [0.118.0] - 2026-09-03
 
 ### Seguridad

@@ -145,6 +145,7 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "config", label: "Configuración", section: "Sistema" },
   { id: "admin-users", label: "Usuarios", section: "Administración" },
   { id: "admin-agendapro", label: "Integración AgendaPro", section: "Administración" },
+  { id: "admin-permisos", label: "Permisos y rechazos", section: "Administración" },
 ]
 
 /** Lista plana de IDs — útil para resolver permisos de admin (todos los menús). */

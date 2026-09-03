@@ -49,7 +49,9 @@ import {
   FICHA_LIST_COLS,
   CONSENT_LIST_COLS,
 } from "@/lib/server/csl-crud"
-import { runWithBusinessContext, applyActiveBusiness, getBusinessContext, isKnownBusinessId, scopeByBranch, getBranchScope, requirePermission } from "@/lib/server/business-context"
+import { runWithBusinessContext, applyActiveBusiness, getBusinessContext, isKnownBusinessId, scopeByBranch, getBranchScope, requirePermission, hasPermission } from "@/lib/server/business-context"
+import { enforceActionPermission, modoEstricto } from "@/lib/server/permission-gate"
+import { normalizePermissions, CAJA_FUERTE } from "@/lib/permissions"
 import { cookies } from "next/headers"
 import { CREDENTIALS_ACCESS_COOKIE, verifyAccessCookieValue } from "@/lib/credentials-access"
 import { encCredField, decCredField } from "@/lib/server/credenciales-crypto"
@@ -680,6 +682,9 @@ function isMaintenanceAdmin(): boolean {
 }
 
 async function dispatchAction(action: string, params: ActionParams, user: ActionUser) {
+  // Cierre por defecto: la acción sin permiso declarado no pasa. En modo
+  // sombra (PERMISOS_ESTRICTOS != "on") solo se anota lo que se habría negado.
+  await enforceActionPermission(action, user, action === "getRowsPaged" ? textValue(params, "entity") : undefined)
   await enforceCredentialsGate(action, user)
   switch (action) {
     case "health": {
@@ -687,8 +692,30 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (error) throw error
       return { ok: true, provider: "supabase" }
     }
-    case "getAllData":
-      return { ok: true, data: await getAllData() }
+    case "getAllData": {
+      // La portada la carga cualquiera, pero trae varios módulos a la vez.
+      // Negarla entera dejaría a media empresa sin pantalla de inicio, así que
+      // se recorta por permiso: quien no puede ver un módulo lo recibe vacío.
+      const data = await getAllData()
+      const verMantenimiento = hasPermission("mantenimiento.ver")
+      const verConsentimientos = hasPermission("consentimientos.ver")
+      return {
+        ok: true,
+        data: {
+          ...data,
+          sucursales: hasPermission("config.ver") || verMantenimiento ? data.sucursales : [],
+          equipos: verMantenimiento ? data.equipos : [],
+          reportes: verMantenimiento ? data.reportes : [],
+          piezas: verMantenimiento ? data.piezas : [],
+          tecnicos: verMantenimiento ? data.tecnicos : [],
+          inventario: verMantenimiento ? data.inventario : [],
+          consentMasajes: verConsentimientos ? data.consentMasajes : [],
+          consentPeeling: verConsentimientos ? data.consentPeeling : [],
+          consentTatuajesCejas: verConsentimientos ? data.consentTatuajesCejas : [],
+          consentDepilacionLaser: verConsentimientos ? data.consentDepilacionLaser : [],
+        },
+      }
+    }
     case "getAllPulsosData":
       return { ok: true, ...(await getAllPulsosData()) }
 
@@ -2961,6 +2988,51 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       } catch { /* tabla no migrada */ }
       return { ok: true, records }
     }
+    case "getPermissionDenials": {
+      // La pantalla del modo sombra: qué se estaría negando, a quién y cuánto.
+      // Sin esto, «lo dejamos unos días en sombra» significa fiarse de que
+      // alguien se acuerde de mirar un registro.
+      await requireAdmin(user.id)
+      const supabase = getSupabaseAdmin()
+      const desde = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+      const { data, error } = await supabase
+        .from("csl_permission_denials")
+        .select("*")
+        .gte("created_at", desde)
+        .order("created_at", { ascending: false })
+        .limit(1000)
+      if (error) throw error
+      const filas = (data || []) as Row[]
+
+      // Agrupado por persona + permiso: es la lista de lo que habría que
+      // conceder antes de cerrar de verdad.
+      const resumen = new Map<string, Row>()
+      for (const f of filas) {
+        const clave = `${String(f.user_email ?? "")}|${String(f.permiso ?? "")}`
+        const previo = resumen.get(clave)
+        if (previo) {
+          previo.veces = Number(previo.veces) + 1
+          const acciones = previo.acciones as string[]
+          if (!acciones.includes(String(f.accion))) acciones.push(String(f.accion))
+          continue
+        }
+        resumen.set(clave, {
+          user_email: f.user_email,
+          permiso: f.permiso,
+          acciones: [String(f.accion)],
+          veces: 1,
+          ultima: f.created_at,
+          modo: f.modo,
+        })
+      }
+      return {
+        ok: true,
+        modo: modoEstricto() ? "estricto" : "sombra",
+        total: filas.length,
+        resumen: Array.from(resumen.values()).sort((a, b) => Number(b.veces) - Number(a.veces)),
+        recientes: filas.slice(0, 100),
+      }
+    }
     case "saveUser": {
       const callerProfile = await requireAdmin(user.id)
       const record = parsePayload(params)
@@ -3069,6 +3141,28 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         userId = data.user.id
       }
 
+      // ---- PERMISOS ---------------------------------------------------------
+      // Hasta v0.119.0 este handler IGNORABA `permissions`: la pantalla los
+      // mandaba, el servidor los recibía y los tiraba en silencio. El usuario
+      // veía «guardado» y no se guardaba nada — por eso los 12 permisos que hay
+      // en producción se metieron a mano por SQL.
+      //
+      // La CAJA FUERTE solo la mueve el superadministrador. Un admin corriente
+      // que edite a alguien conserva intactos los que ese alguien ya tuviera:
+      // ni los concede ni los quita sin querer.
+      const permisosPrevios = await (async (): Promise<string[]> => {
+        if (!editingId) return []
+        const { data } = await supabase.from("csl_user_profiles").select("permissions").eq("user_id", editingId).maybeSingle()
+        return normalizePermissions((data as Row | null)?.permissions)
+      })()
+      const permisosPedidos = normalizePermissions(record.permissions)
+      const permissions = callerProfile.is_superadmin
+        ? permisosPedidos
+        : Array.from(new Set([
+            ...permisosPedidos.filter((perm) => !CAJA_FUERTE.has(perm)),
+            ...permisosPrevios.filter((perm) => CAJA_FUERTE.has(perm)),
+          ]))
+
       const profile: Record<string, unknown> = {
         user_id: userId,
         nombre,
@@ -3076,6 +3170,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         is_admin: isAdmin,
         activo,
         menus,
+        permissions,
       }
       // Inyectar business_id explícitamente para que no dependa del default
       // de la columna (que era CSL para todos). Admin normal hereda su propio
@@ -3104,6 +3199,25 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         } catch { /* tabla no migrada */ }
       }
       await hrAudit(user, "usuarios", editingId ? "update" : "create", "user_branch_permissions", userId, null, { branches })
+
+      // Quién dio o quitó qué, a quién y cuándo. Sin esto no hay forma de
+      // reconstruir cómo alguien acabó con un permiso que no le tocaba.
+      const cambioPermisos =
+        permisosPrevios.length !== permissions.length ||
+        permisosPrevios.some((perm) => !permissions.includes(perm))
+      if (cambioPermisos) {
+        try {
+          await supabase.from("csl_permission_changes").insert({
+            business_id: targetBusinessId,
+            target_user_id: userId,
+            target_username: email,
+            actor_user_id: user.id,
+            actor_email: user.email ?? null,
+            permisos_antes: permisosPrevios,
+            permisos_despues: permissions,
+          })
+        } catch { /* el registro no puede tumbar el guardado */ }
+      }
       return { ok: true, record: { ...profileToUser(profile as Row), branches } }
     }
     case "deleteUser": {

@@ -65,6 +65,7 @@ const pageMeta: Partial<Record<TabId, { title: string; description: string; eyeb
   "cliente-certificados-talonario": { title: "CF Talonario Pre-impreso", description: "Impresión calibrada para talonario", eyebrow: "Atención a cliente" },
   "cliente-certificados-validez": { title: "Validar Certificados", description: "Consulta de validez y cambio de estado", eyebrow: "Atención a cliente" },
   "admin-users": { title: "Gestión de Usuarios", description: "Crear, editar y administrar usuarios y permisos (solo superadmin)", eyebrow: "Administración" },
+  "admin-permisos": { title: "Permisos y rechazos", description: "Qué acciones se están negando por falta de permiso, y a quién", eyebrow: "Administración" },
 }
 
 interface HeaderProps {

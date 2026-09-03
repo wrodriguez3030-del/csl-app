@@ -15,6 +15,9 @@ export type Row = Record<string, unknown>
 export interface ActionUser {
   id: string
   email?: string
+  /** Solo para el registro de rechazos de permiso; nunca para autorizar. */
+  ip?: string
+  userAgent?: string
 }
 
 /**

@@ -12,6 +12,7 @@ import { NextResponse } from "next/server"
 import { requireAuthenticatedUser, getSupabaseAdmin } from "@/lib/server/supabase"
 import { resolveEffectiveBusinessContext } from "@/lib/server/integration-auth"
 import { getAgendaProCredentialStatus } from "@/lib/server/agendapro-credentials"
+import { enforceRoutePermission } from "@/lib/server/permission-gate"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -32,6 +33,8 @@ export async function GET(request: Request) {
   const activeBusinessId = new URL(request.url).searchParams.get("activeBusinessId")
   const ctx = await resolveEffectiveBusinessContext(user.id, activeBusinessId)
   if (!ctx) return json({ ok: false, error: "Contexto de negocio no encontrado." }, 403)
+  const denegado = await enforceRoutePermission("GET", "/api/integrations/agendapro/status", { id: user.id, email: user.email }, ctx)
+  if (denegado) return json(denegado.body, denegado.status)
 
   const credentials = await getAgendaProCredentialStatus(ctx.businessId, ctx.businessSlug)
 

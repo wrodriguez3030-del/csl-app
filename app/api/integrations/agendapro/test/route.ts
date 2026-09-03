@@ -13,6 +13,7 @@ import { requireAuthenticatedUser } from "@/lib/server/supabase"
 import { resolveEffectiveBusinessContext } from "@/lib/server/integration-auth"
 import { resolveAgendaProConfigForBusiness } from "@/lib/server/agendapro-credentials"
 import { testAgendaProConnection, validateAgendaProConfig } from "@/lib/server/agendapro"
+import { enforceRoutePermission } from "@/lib/server/permission-gate"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -40,6 +41,8 @@ export async function POST(request: Request) {
 
   const ctx = await resolveEffectiveBusinessContext(user.id, body.activeBusinessId)
   if (!ctx) return json({ ok: false, error: "Contexto de negocio no encontrado." }, 403)
+  const denegado = await enforceRoutePermission("POST", "/api/integrations/agendapro/test", { id: user.id, email: user.email }, ctx)
+  if (denegado) return json(denegado.body, denegado.status)
 
   const cfg = await resolveAgendaProConfigForBusiness(ctx.businessId, ctx.businessSlug)
   const cfgError = validateAgendaProConfig(cfg)
