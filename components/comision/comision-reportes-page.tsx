@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { FileBarChart2, FileSpreadsheet, FileText, Printer, Loader2, RefreshCcw } from "lucide-react"
 import { exportCommissionExcel, printCommissionPdf, type CommissionReportData } from "@/lib/commission/commission-export"
+import { exportReporteMensual, type ReporteMensual } from "@/lib/commission/reporte-mensual-export"
 import { CATEGORY_LABELS } from "@/lib/commission/classification"
 import { CommissionFilterBar, useCommissionFilters } from "./comision-filter-bar"
 import { useCommissionBranches } from "@/hooks/use-commission-branches"
@@ -81,6 +82,21 @@ export function ComisionReportesPage() {
   }
   const doPdf = () => { if (data) printCommissionPdf(data, business, window.location.origin) }
 
+  // Reporte del NEGOCIO: ventas, gastos, liquidación, rentabilidad e histórico
+  // en un archivo. Pide sus propios datos, así no depende de lo que tenga
+  // cargado esta pantalla ni de que el usuario haya pulsado «Actualizar».
+  const [exportandoMes, setExportandoMes] = useState(false)
+  const doReporteMensual = async () => {
+    setExportandoMes(true)
+    try {
+      const r = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getReporteMensual", month: String(month), year: String(year) })
+      if (!r?.ok) throw new Error(typeof r?.error === "string" ? r.error : "No se pudo armar el reporte")
+      await exportReporteMensual(r as unknown as ReporteMensual)
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Error al generar el reporte", "error")
+    } finally { setExportandoMes(false) }
+  }
+
   const empty = !data || data.calculations.length === 0
   const t = data?.totals
 
@@ -95,6 +111,7 @@ export function ComisionReportesPage() {
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" className="h-9" onClick={load} disabled={loading}><RefreshCcw className="mr-1.5 h-4 w-4" />Actualizar</Button>
           <Button size="sm" className="h-9" onClick={doExcel} disabled={!canExport || empty || exporting}>{exporting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-1.5 h-4 w-4" />}Exportar Excel (12 hojas)</Button>
+          <Button size="sm" className="h-9 bg-[color:var(--brand-primary)]" onClick={doReporteMensual} disabled={exportandoMes}>{exportandoMes ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-1.5 h-4 w-4" />}Reporte del mes (negocio completo)</Button>
           <Button size="sm" variant="outline" className="h-9" onClick={doPdf} disabled={!canExport || empty}><FileText className="mr-1.5 h-4 w-4" />Generar PDF</Button>
           <Button size="sm" variant="outline" className="h-9" onClick={doPdf} disabled={empty}><Printer className="mr-1.5 h-4 w-4" />Imprimir</Button>
         </div>

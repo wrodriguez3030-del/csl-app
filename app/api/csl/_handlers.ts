@@ -60,6 +60,7 @@ import * as materials from "@/lib/server/materials"
 import * as productsInventory from "@/lib/server/products-inventory"
 import * as purchases from "@/lib/server/purchases"
 import * as commission from "@/lib/server/commission"
+import * as reporteMensual from "@/lib/server/reporte-mensual"
 import * as biFinance from "@/lib/server/bi-finance-handlers"
 import * as withdrawals from "@/lib/server/bi-finance-withdrawals"
 import * as expenseImport from "@/lib/server/expense-import"
@@ -3745,6 +3746,8 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       return await commission.setCommissionCalcStatus(params, user)
     case "autoRunCommissionPeriod":
       return await commission.autoRunCommissionPeriod(params, user)
+    case "getReporteMensual":
+      return await reporteMensual.getReporteMensual(params)
     case "getCommissionProductSellers":
       return await commission.getCommissionProductSellers(params)
     case "getCommissionYears":

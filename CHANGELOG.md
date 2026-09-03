@@ -16,6 +16,34 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.114.0] - 2026-09-03
+
+### Añadido
+- **Reporte mensual del negocio en un botón.** `getReporteMensual` reúne en una
+  llamada las ventas, los gastos, la liquidación persona a persona, la
+  rentabilidad por sucursal y el histórico anual;
+  `exportReporteMensual` los escribe en cinco hojas planas. El botón está en
+  Incentivos de Ventas → Reportes.
+
+  Nace de un problema real: el libro que se llevaba a mano tenía 22 hojas y 240
+  filas por mes, con las entradas tecleadas y el mes anterior copiado encima.
+  Corregir un dato arriba no llegaba abajo y meses enteros acababan siendo copia
+  del anterior sin que nadie lo notara. Aquí no se teclea nada, así que nada se
+  puede desalinear. Incluye el margen **después** de incentivos, que el libro
+  viejo nunca mostraba junto.
+
+  Probado sobre los dos negocios con agosto 2026: Cibao Spa Láser 25 personas y
+  95 líneas de gasto; Depicenter 5 y 28.
+
+### Seguridad
+- **Fuera del libro de DEPICENTER 1,5 MB de datos de clientes ajenos.** Sus dos
+  cachés de tabla dinámica guardaban el detalle transaccional con nombre, cédula,
+  correo y teléfono: 1.867 registros en una (1.679 de CIBAO SPA LASER, otra
+  empresa) y 4.439 en la otra, congelada desde 2020. Ninguna podía refrescarse
+  —sus orígenes no existen en ese libro— y las celdas que mostraban conservan su
+  valor, así que no se pierde ningún número. Se van también las rutas externas de
+  sus relaciones, que llevaban el nombre de usuario de otra persona.
+
 ## [0.113.0] - 2026-09-03
 
 ### Añadido
