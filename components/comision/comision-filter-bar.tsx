@@ -15,6 +15,7 @@
 import { useMemo, useState } from "react"
 import { useAppStore } from "@/lib/store"
 import { useCommissionYears } from "@/hooks/use-commission-years"
+import { useCommissionBranches } from "@/hooks/use-commission-branches"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -44,11 +45,22 @@ export function useCommissionFilters(): {
   label: string
 } {
   const stored = useAppStore((s) => s.commissionFilters)
+  const sucursalesDelNegocio = useCommissionBranches()
   // MEMOIZADO: sin esto, cuando el store está en null, `defaultCommissionFilters()`
   // devuelve un OBJETO NUEVO en cada render → params/label/load cambian de
   // identidad → el useEffect([load]) de las pantallas re-dispara las consultas en
   // BUCLE INFINITO (machaca el servidor, parpadeo y falsos "sesión inválida").
-  const filters = useMemo(() => (stored as CommissionFilters | null) || defaultCommissionFilters(), [stored])
+  const filters = useMemo(() => {
+    const f = (stored as CommissionFilters | null) || defaultCommissionFilters()
+    // La sucursal y el prestador son de un negocio concreto, y los filtros se
+    // persisten: al cambiar de tenant quedaba una sucursal que allí no existe y
+    // TODAS las consultas volvían vacías, con el desplegable en blanco y sin un
+    // solo aviso. Si no pertenece a este negocio, no se manda.
+    if (f.branch && sucursalesDelNegocio.length > 0 && !sucursalesDelNegocio.includes(f.branch)) {
+      return { ...f, branch: "", provider: "" }
+    }
+    return f
+  }, [stored, sucursalesDelNegocio])
   const params = useMemo(() => {
     const p: Record<string, string> = {}
     // "Todo" = sin filtro de período (el backend consulta todos los meses).
@@ -91,7 +103,9 @@ export function CommissionFilterBar({
   // se traducía en ver csl en silencio mientras se creía estar viendo todo.
   const negocioActivo = useAppStore((s) => s.activeBusinessSlug)
   const sinNegocio = negocioActivo == null
-  const applied = (commissionFilters as CommissionFilters | null) || defaultCommissionFilters()
+  // Misma regla que `useCommissionFilters`: una sucursal de otro negocio no se
+  // muestra ni se envía.
+  const { filters: applied } = useCommissionFilters()
   const [draft, setDraft] = useState<CommissionFilters>(applied)
   const [openMobile, setOpenMobile] = useState(false)
 

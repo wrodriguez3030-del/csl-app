@@ -282,6 +282,14 @@ export default function HomePage() {
       invalidateReadCache()
       setDb({ sucursales: [], equipos: [], reportes: [], piezas: [], tecnicos: [] })
       setDbPulsos({ operadoras: [], lecturasSemanales: [], sesionesCliente: [], auditoriasSemanales: [], pulseReadings: [], operatorShots: [] })
+      // Los filtros de incentivos se PERSISTEN, y la sucursal y el prestador son
+      // de un negocio concreto: al cambiar de tenant quedaban apuntando a una
+      // sucursal que allí no existe y todo salía en cero, con el desplegable en
+      // blanco y sin ningún aviso. El período sí se conserva: no depende del negocio.
+      const f = useAppStore.getState().commissionFilters
+      if (f && (f.branch || f.provider)) {
+        useAppStore.getState().setCommissionFilters({ ...f, branch: "", provider: "" })
+      }
       void handleRefresh()
     }
     window.addEventListener("csl-business-changed", onBusinessChange)

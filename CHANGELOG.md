@@ -16,6 +16,26 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.116.0] - 2026-09-03
+
+### Corregido
+- 🔴 **La sucursal del filtro se quedaba pegada al cambiar de negocio, y todo
+  Incentivos salía en cero.** Los filtros del módulo se PERSISTEN, pero la
+  sucursal y el prestador pertenecen a un negocio concreto. Al pasar de csl a
+  DEPICENTER, el filtro seguía diciendo «RAFAEL VIDAL» —que allí no existe—, así
+  que todas las consultas volvían vacías: el panel entero en RD$0,00, el
+  desplegable de sucursal en blanco y ni un solo aviso. Parecía que el negocio no
+  tenía ventas.
+
+  Verificado que el backend siempre estuvo bien: con DEPICENTER activo,
+  `getCommissionExecutiveDashboard` devuelve ventas 657.775, neto 19.819,40 y 5
+  empleados.
+
+  Arreglado en dos sitios: al cambiar de negocio se limpian sucursal y prestador
+  (el período se conserva, que no depende del negocio), y `useCommissionFilters`
+  descarta una sucursal que no esté en el catálogo del negocio activo — así
+  tampoco afecta a una sesión que ya tuviera el valor guardado.
+
 ## [0.115.0] - 2026-09-03
 
 ### Corregido
