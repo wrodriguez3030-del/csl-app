@@ -195,18 +195,56 @@ def construir(d, E):
     h.merge(f"A{fMT+3}", f"H{fMT+3}")
     return h
 
-def main(libro, datos, salida):
+def quitar_hoja(partes, orden, nombre):
+    """Desregistra una hoja y borra su parte. Deja el libro como si nunca hubiera
+    estado: sin su <sheet>, sin su Relationship y sin su Override."""
+    wbxml = partes["xl/workbook.xml"].decode("utf-8")
+    m = re.search(r'<sheet[^>]*name="%s"[^>]*/>' % re.escape(nombre), wbxml)
+    if not m: return orden, None
+    tag = m.group(0)
+    rid = re.search(r'r:id="([^"]+)"', tag).group(1)
+    relsxml = partes["xl/_rels/workbook.xml.rels"].decode("utf-8")
+    rm = re.search(r'<Relationship[^>]*Id="%s"[^>]*/>' % re.escape(rid), relsxml)
+    destino = None
+    if rm:
+        destino = "xl/" + re.search(r'Target="([^"]+)"', rm.group(0)).group(1).lstrip("/").replace("xl/", "")
+        relsxml = relsxml.replace(rm.group(0), "", 1)
+        partes["xl/_rels/workbook.xml.rels"] = relsxml.encode("utf-8")
+    partes["xl/workbook.xml"] = wbxml.replace(tag, "", 1).encode("utf-8")
+    ct = partes["[Content_Types].xml"].decode("utf-8")
+    if destino:
+        ct = re.sub(r'<Override[^>]*PartName="/%s"[^>]*/>' % re.escape(destino), "", ct, count=1)
+        orden = [n for n in orden if n != destino]
+        partes.pop(destino, None)
+    # La cadena de cálculo referencia hojas por índice: al quitar una queda
+    # obsoleta y Excel se queja. Se borra y él la reconstruye al abrir.
+    if "xl/calcChain.xml" in partes:
+        ct = re.sub(r'<Override[^>]*PartName="/xl/calcChain\.xml"[^>]*/>', "", ct, count=1)
+        relsxml = partes["xl/_rels/workbook.xml.rels"].decode("utf-8")
+        relsxml = re.sub(r'<Relationship[^>]*Target="calcChain\.xml"[^>]*/>', "", relsxml, count=1)
+        partes["xl/_rels/workbook.xml.rels"] = relsxml.encode("utf-8")
+        orden = [n for n in orden if n != "xl/calcChain.xml"]
+        partes.pop("xl/calcChain.xml", None)
+    partes["[Content_Types].xml"] = ct.encode("utf-8")
+    return orden, destino
+
+
+def main(libro, datos, salida, reemplazar=False):
     d = json.load(open(datos, encoding="utf-8"))
     z = zipfile.ZipFile(libro)
     partes = {n: z.read(n) for n in z.namelist()}
     infos = {i.filename: i for i in z.infolist()}
     orden = z.namelist(); z.close()
 
+    if reemplazar:
+        orden, quitada = quitar_hoja(partes, orden, HOJA)
+        if quitada: print(f"hoja «{HOJA}» anterior retirada ({quitada})")
+
     usados = [int(m.group(1)) for n in orden if (m := re.match(r"xl/worksheets/sheet(\d+)\.xml$", n))]
     nuevo = f"xl/worksheets/sheet{max(usados)+1}.xml"
 
     wbxml = partes["xl/workbook.xml"].decode("utf-8")
-    if f'name="{HOJA}"' in wbxml: raise SystemExit(f"La hoja «{HOJA}» ya existe.")
+    if f'name="{HOJA}"' in wbxml: raise SystemExit(f"La hoja «{HOJA}» ya existe. Usa --reemplazar.")
     sheetId = max(int(m) for m in re.findall(r'<sheet[^>]*sheetId="(\d+)"', wbxml)) + 1
     relsxml = partes["xl/_rels/workbook.xml.rels"].decode("utf-8")
     ridmax = max(int(m) for m in re.findall(r'Id="rId(\d+)"', relsxml))
@@ -235,4 +273,5 @@ def main(libro, datos, salida):
     print(f"hoja «{HOJA}» añadida como {nuevo} (sheetId {sheetId}, {rid})")
 
 if __name__ == "__main__":
-    main(*sys.argv[1:4])
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    main(*args[:3], reemplazar="--reemplazar" in sys.argv)

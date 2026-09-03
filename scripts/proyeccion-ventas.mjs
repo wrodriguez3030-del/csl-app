@@ -17,22 +17,32 @@ const { runSql } = await import("./db-query.js")
 
 const SALIDA = process.argv[2] || "Proyeccion de ventas.xlsx"
 const ANIO = 2026
-const SUCS = ["RAFAEL VIDAL", "LOS JARDINES", "VILLA OLGA", "LA VEGA"]
+/**
+ * 🔴 SIEMPRE acotado a UN negocio. `db-query.js` corre con service_role y salta
+ * el filtro de RLS: sin este `where` la consulta trae también las sucursales de
+ * depicenter (LA VEGA), y la proyección de csl salía inflada con ventas ajenas.
+ */
+const NEGOCIO = process.env.PROYECCION_BUSINESS_ID || "66b0cf3e-4cd7-4cfb-a7cf-0674b77fc4e6" // csl
+const DE = `where business_id = '${NEGOCIO}'`
+const { sucursalesForTenant } = await import("../lib/normalize-pulse.ts")
+const SLUG = (await runSql(`select slug from businesses where id = '${NEGOCIO}'`))[0]?.slug
+if (!SLUG) { console.error(`❌ No existe el negocio ${NEGOCIO}`); process.exit(1) }
+const SUCS = sucursalesForTenant(SLUG)
 const MESES = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"]
 const n2 = (x) => Math.round((Number(x) || 0) * 100) / 100
 
 // ── Datos reales ───────────────────────────────────────────────────────────
-const refe = await runSql(`select year, sum(total)::float8 t from sales_history_monthly group by 1 order by 1`)
+const refe = await runSql(`select year, sum(total)::float8 t from sales_history_monthly ${DE} group by 1 order by 1`)
 const anual = await runSql(`
   select extract(year from sale_date)::int y, sum(gross_amount)::float8 t,
          count(distinct date_trunc('month', sale_date))::int meses
-  from sales_commission_sales group by 1 order by 1`)
+  from sales_commission_sales ${DE} group by 1 order by 1`)
 const porSuc = await runSql(`
   select extract(year from sale_date)::int y, branch b, sum(gross_amount)::float8 t
-  from sales_commission_sales group by 1,2`)
+  from sales_commission_sales ${DE} group by 1,2`)
 const mensual = await runSql(`
   select extract(year from sale_date)::int y, extract(month from sale_date)::int m, sum(gross_amount)::float8 t
-  from sales_commission_sales group by 1,2`)
+  from sales_commission_sales ${DE} group by 1,2`)
 
 const refeBy = Object.fromEntries(refe.map((r) => [r.year, r.t]))
 const anualBy = Object.fromEntries(anual.map((r) => [r.y, r.t]))
@@ -61,10 +71,11 @@ const cuotaTranscurrida = pesoMes.slice(0, ultimoMes).reduce((a, b) => a + b, 0)
 const enCurso = SUCS.map((s) => ({ suc: s, real: n2(sucBy[ANIO]?.[s] || 0) })).filter((r) => r.real > 0)
 const mesesSuc = await runSql(`
   select branch b, count(distinct date_trunc('month', sale_date))::int m
-  from sales_commission_sales where extract(year from sale_date) = ${ANIO} group by 1`)
+  from sales_commission_sales ${DE} and extract(year from sale_date) = ${ANIO} group by 1`)
 const mesesSucBy = Object.fromEntries(mesesSuc.map((r) => [r.b, r.m]))
 const mesesDeSuc = (s) => mesesSucBy[s] || 0
 
+console.log(`Negocio: ${SLUG} · sucursales: ${SUCS.join(", ")}`)
 console.log(`Histórico: ${Object.keys(anualBy).length} años · estacionalidad de ${completos.join(", ")}`)
 console.log(`${ANIO}: ${ultimoMes} meses cargados = ${cuotaTranscurrida.toFixed(4)} del año`)
 for (const r of enCurso) console.log(`   ${r.suc.padEnd(14)} ${r.real.toLocaleString("en-US").padStart(14)}`)

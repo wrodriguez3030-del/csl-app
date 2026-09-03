@@ -16,6 +16,33 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.112.0] - 2026-09-03
+
+### Corregido
+- 🔴 **La proyección de ventas mezclaba los dos negocios.**
+  `scripts/proyeccion-ventas.mjs` consultaba `sales_commission_sales` sin filtrar
+  por `business_id`: `db-query.js` corre con service_role y salta RLS, así que
+  arrastraba LA VEGA, que es de **depicenter**, dentro de la proyección de csl
+  (1,13 M de julio, y 6,78 M proyectados al cierre). Ahora todas las consultas
+  llevan el negocio y las sucursales salen de `sucursalesForTenant(slug)`, no de
+  una lista escrita a mano. Se puede apuntar a otro negocio con
+  `PROYECCION_BUSINESS_ID`.
+  Cifras corregidas de csl: cierre 2026 **57,9 M** (antes 64,7 M) y 2030
+  **79,1 M** (antes 94,1 M).
+
+### Añadido
+- `insertar-hoja-proyeccion.py --reemplazar`: retira la hoja anterior (su
+  `<sheet>`, su Relationship, su Override y su parte, más `calcChain.xml`, que
+  queda obsoleto al cambiar los índices de hoja) antes de insertar la nueva. Sin
+  esto el script no era repetible. Resuelve la hoja por su `r:id` real, porque
+  Excel renumera las relaciones al guardar.
+
+### Datos
+- `wanda@depicenter.com` recibe `sales_commission.view`,
+  `.import.sales`, `.calculate` y `.export`. Tenía los 16 menús de incentivos y
+  cero permisos: veía la pantalla pero el botón de confirmar salía deshabilitado.
+  No se le dan aprobar, pagar, cerrar ni ajustes manuales.
+
 ## [0.111.0] - 2026-09-03
 
 ### Corregido
