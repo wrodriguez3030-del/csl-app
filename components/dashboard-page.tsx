@@ -103,7 +103,7 @@ export function DashboardPage() {
     let active = true
     void (async () => {
       try {
-        const result = await apiJsonp(normalizeApiUrl(apiUrl), { action: "listPiezasPolizaLista" })
+        const result = await apiJsonp(normalizeApiUrl(apiUrl), { action: "getPiezasPolizaLista" })
         const records = Array.isArray(result.records) ? (result.records as PiezaPolizaLista[]) : []
         if (active) setPiezasPoliza(records)
       } catch {

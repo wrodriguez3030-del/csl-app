@@ -116,7 +116,13 @@ export function RrhhPonchePage() {
     try {
       const [p, d, g, e, bo] = await Promise.all([
         call({ action: "getHrPunches", include_voided: showVoided }) as Promise<{ ok?: boolean; records?: HrPunch[]; tableMissing?: boolean }>,
-        call({ action: "getHrPunchDevices" }) as Promise<{ ok?: boolean; records?: Device[]; tableMissing?: boolean }>,
+        // Los dispositivos son CAJA FUERTE (`rrhh.ponche.dispositivos`): quien
+        // no la tenga recibe 403. Sin este catch propio, el rechazo tumbaba el
+        // Promise.all entero y dejaba la pantalla de ponche muerta —ponches,
+        // geocercas y empleados incluidos— en vez de solo ocultar la pestaña
+        // de dispositivos. La caja fuerte cierra botones, no pantallas.
+        (call({ action: "getHrPunchDevices" }) as Promise<{ ok?: boolean; records?: Device[]; tableMissing?: boolean }>)
+          .catch(() => ({ ok: true, records: [] as Device[], tableMissing: false })),
         call({ action: "getHrBranchGeofences" }) as Promise<{ ok?: boolean; records?: Geofence[] }>,
         call({ action: "getEmpleados" }) as Promise<{ ok?: boolean; records?: Record<string, unknown>[] }>,
         call({ action: "getBranchOptions" }) as Promise<{ ok?: boolean; options?: BranchOption[] }>,

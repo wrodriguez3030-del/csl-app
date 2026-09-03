@@ -16,6 +16,96 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.120.0] - 2026-09-03
+
+Cuatro agentes de seguridad auditaron el modelo de permisos recién puesto. Lo más
+grave que encontraron **no estaba en el modelo nuevo**: eran agujeros anteriores que
+el modelo destapó al obligar a mirar acción por acción. Todo lo de abajo está
+verificado leyendo el código, no reportado a ciegas.
+
+### Security
+
+- 🔴 **Un administrador podía apoderarse de la cuenta del dueño.** `saveUser` solo
+  comprobaba el `business_id` del objetivo, nunca `is_superadmin`. Como el
+  superadministrador comparte negocio con un `is_admin` de CSL, ese admin podía
+  mandar `saveUser` con el id del dueño y una clave nueva, entrar como él y abrir la
+  caja fuerte entera. También podía cambiarle el correo y pedir recuperación.
+- 🔴 **Un administrador podía borrar o desactivar al dueño.** La guardia de «último
+  administrador» contaba admins —y hay tres además del dueño—, así que el contador
+  daba > 0 y el borrado procedía. `/api/admin/users/[id]` sí lo protegía; esta vía no.
+- 🔴 **Cualquiera en internet podía reescribir una ficha dermatológica ajena.** El
+  `ficha_id` venía del cuerpo anónimo y el guardado es un upsert contra la clave
+  primaria: con el id de otra persona se le reemplazaban antecedentes, alergias,
+  medicación y firma, y se la cambiaba de negocio. El id no es secreto: se devuelve
+  a quien envía y va en el nombre del PDF que sale por correo. Ahora lo pone el
+  servidor. Mismo arreglo en las solicitudes de empleo, donde además el
+  `solicitud_id` hace de `employee_id` en el ponche.
+- 🔴 **Desactivar a alguien no le quitaba el acceso.** La comprobación de `activo`
+  vivía SOLO en el navegador, y para entonces Supabase ya había emitido el token: una
+  persona despedida conservaba sus permisos por la API. Ahora se comprueba en
+  `loadBusinessContext` y al desactivar se cierra la sesión de verdad.
+- 🔴 **Fuga entre negocios en la nómina.** `getHrPayrollRun`, `setHrPayrollStatus` y
+  el recálculo de `createHrPayrollRun` resolvían la corrida solo por id: con un UUID
+  del otro negocio se leía su nómina completa, se **aprobaba** (marcando incentivos
+  pagados e insertando cuotas de préstamo en el tenant ajeno) o se le vaciaban los
+  items. `deleteHrPayrollRun` sí filtraba, lo que confirma que era un olvido.
+- **La bóveda seguía leyéndose sin TOTP** por `getRowsPaged` con `entity=credenciales`:
+  el gate se decidía por el NOMBRE de la acción. v0.119.0 cerró el permiso, no el
+  segundo factor. Ahora se decide por la tabla que se toca.
+- **`punchByPin` y `punchByQr` dejaron de ser públicas.** `punchByPin` solo pedía el
+  PIN —sin dispositivo, sin geocerca y sin límite de intentos— y devolvía el nombre
+  al acertar: servía para ponchar por otra persona y para emparejar los 10.000 PINs
+  de cuatro dígitos con su dueño. No las llama nadie desde la app (el kiosko va por
+  `/api/public/punch`).
+- **`saveSolicitudEmpleo` borraba empleados con un permiso corriente.** Reguardar una
+  solicitud como «Pendiente» ejecutaba un DELETE físico de `csl_empleados` — con su
+  salario, su PIN de ponche y los vínculos de nómina. Ahora exige `rrhh.borrar`.
+- **`/api/integrations/agendapro/health` estaba autenticada pero sin autorizar**, y
+  exenta de la prueba por un motivo falso («se guarda con un secreto»: no tiene
+  ninguno). Con solo iniciar sesión se leía la configuración de la integración, y con
+  `?probe=1` se disparaban cinco llamadas contra AgendaPro con las credenciales
+  descifradas, sin freno.
+- **El formulario público repartía las operadoras de LOS DOS negocios** en un GET
+  anónimo. Dentro de la app esos mismos nombres exigen `mantenimiento.ver`.
+- **`getHrVacacionesTxt` volcaba todas las cuentas bancarias** con `rrhh_pagos.ver`,
+  un permiso de solo lectura que cualquier `is_admin` bypassa. Pasa a `rrhh.banco_txt`.
+- **`deleteSesion`** borraba historia clínica con `clientes.gestionar`. Pasa a
+  `clientes.borrar` (caja fuerte).
+- **El panel de rechazos leía los dos negocios** y lo abría cualquier `is_admin`:
+  correos, IPs y navegadores del personal ajeno. Ahora es del superadministrador y
+  filtra por negocio.
+
+### Fixed
+
+- **La herencia dejaba 16 pantallas de RR.HH. con el selector de empleados vacío** —
+  en silencio, con el mensaje «No hay empleados registrados». Ningún menú de RR.HH.
+  concedía `rrhh_personal.ver`, que es lo que pide ese componente.
+- **`getAllPulsosData` habría roto el refresco automático de toda la app.** Lo pide
+  cada 60 s el armazón, no una pantalla: negarlo abortaba el refresco entero y dejaba
+  un rechazo por usuario y por minuto. Ahora pasa recortado por permiso, como
+  `getAllData` — las sesiones de cliente (con nombre, teléfono y tratamiento) solo si
+  se tiene `clientes.ver`.
+- **La caja fuerte mataba la pantalla de ponche entera** en vez de solo la pestaña de
+  dispositivos: `getHrPunchDevices` iba en el mismo `Promise.all` que los ponches, las
+  geocercas y los empleados. La caja fuerte cierra botones, no pantallas.
+- Los permisos ahora aceptan **alternativas**: hay pantallas que cruzan módulos y
+  ningún menú concedía las dos mitades (el link público lo generan Clientes y RR.HH.;
+  el reporte mensual lo abre Incentivos; la factura desde el consolidado es de
+  Requisición y de Compras).
+- `integrations.agendapro.*` **eran decorativos** — `agendapro.ts` no comprueba ni un
+  permiso. Tratarlos como «ya cerrados» habría roto sus botones el día del cierre.
+  Ahora se heredan del menú. (`materials` y `productos` sí comprueban, con su propia
+  función: esos se quedan como estaban.)
+- `dashboard-page.tsx` llamaba a `listPiezasPolizaLista`, que no existe. Fallaba en
+  silencio desde antes.
+
+### Added
+
+- Plugins de seguridad de Anthropic instalados: `claude-security` y
+  `security-guidance`. Ambos corren dentro de la sesión, sin subir código a terceros.
+- `scripts/_probar-puerta-permisos.mjs` — sonda que ejecuta la puerta con contextos
+  reales y comprueba que niega **y** deja rastro.
+
 ## [0.119.0] - 2026-09-03
 
 ### Security

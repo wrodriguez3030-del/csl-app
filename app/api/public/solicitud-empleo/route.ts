@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto"
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { clientIp, rateLimit, type RateLimitResult } from "@/lib/rate-limit-server"
@@ -159,14 +160,23 @@ export async function POST(request: Request) {
     // Asignar business_id según el slug que el form envió (default CSL).
     // Esto garantiza que solicitudes que vienen del link público de
     // Depicenter queden en csl_solicitudes_empleo con business_id de Depi.
-    const rowWithBusiness = { ...row, business_id: resolveBusinessId(body.empresa) }
+    // SEGURIDAD (03/09/2026): el `solicitud_id` venía del cuerpo ANÓNIMO y el
+    // upsert va contra él. Se podía reescribir la solicitud de otra persona —y
+    // con ella su identidad, porque `solicitud_id` hace de `employee_id` en el
+    // ponche: /api/public/punch saca de ahí el nombre y la sucursal que quedan
+    // en el registro de asistencia. El id lo pone el servidor.
+    const rowWithBusiness = {
+      ...row,
+      solicitud_id: `sol_${Date.now()}_${randomBytes(6).toString("hex")}`,
+      business_id: resolveBusinessId(body.empresa),
+    }
 
     const { error } = await getSupabaseAdmin()
       .from("csl_solicitudes_empleo")
       .upsert(rowWithBusiness, { onConflict: "solicitud_id" })
 
     if (error) throw error
-    return json({ ok: true, solicitudId: row.solicitud_id }, 200, limitHeaders)
+    return json({ ok: true, solicitudId: rowWithBusiness.solicitud_id }, 200, limitHeaders)
   } catch {
     // Mensaje genérico al cliente anónimo; el detalle queda en logs del servidor.
     return json({ ok: false, error: "No se pudo enviar la solicitud. Intenta nuevamente en unos minutos." }, 500)

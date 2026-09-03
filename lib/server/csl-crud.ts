@@ -1053,11 +1053,17 @@ export async function loadBusinessContext(userId: string): Promise<BusinessConte
   try {
     const { data, error } = await supabase
       .from("csl_user_profiles")
-      .select("business_id, is_superadmin, is_admin, permissions, businesses(slug)")
+      .select("business_id, is_superadmin, is_admin, activo, permissions, businesses(slug)")
       .eq("user_id", userId)
       .maybeSingle()
     if (error || !data) return null
     const row = data as Row
+    // DESACTIVAR A ALGUIEN NO LE QUITABA EL ACCESO (cerrado 03/09/2026).
+    // La comprobación de `activo` vivía SOLO en el navegador (lib/security.ts),
+    // y para entonces Supabase ya había emitido el token: una persona despedida
+    // conservaba sus permisos por la API mientras su refresh token siguiera
+    // renovando. El `signOut()` del cliente es una cortesía, no un cierre.
+    if (row.activo === false) return null
     const businessId = row.business_id ? String(row.business_id) : null
     if (!businessId) return null
     const businesses = row.businesses as { slug?: string } | undefined

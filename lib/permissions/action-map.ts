@@ -18,19 +18,21 @@ export const PUBLICO = "__publico__" as const
 /** El permiso no sale de la acción sino de su parámetro (ver `ENTITY_PERMISSIONS`). */
 export const POR_ENTIDAD = "__por_entidad__" as const
 
-export const ACTION_PERMISSIONS: Readonly<Record<string, string>> = {
+/** Un permiso, o varios de los que basta tener UNO. */
+export type PermisoRequerido = string | readonly string[]
+
+export const ACTION_PERMISSIONS: Readonly<Record<string, PermisoRequerido>> = {
   // ── Sin permiso: las necesita cualquiera para que la app arranque ─────────
   health: PUBLICO,
   getCurrentUserProfile: PUBLICO,
   // Nombres de sucursal: los pinta casi toda pantalla como filtro.
   getBranchOptions: PUBLICO,
-  // El propio empleado marcando su entrada/salida no es un privilegio. Las
-  // tabletas ni siquiera pasan por aquí (usan /api/public/punch con
-  // device_token + GPS + QR); esto es la marca desde dentro de la app.
-  punchByPin: PUBLICO,
-  punchByQr: PUBLICO,
+
   // El permiso lo decide la entidad que pida, no la acción.
   getRowsPaged: POR_ENTIDAD,
+  // Lo pide el refresco automático de toda la app cada 60 s, y el desplegable
+  // de operadoras de la ficha. Se recorta por permiso dentro del handler.
+  getAllPulsosData: PUBLICO,
   // Carga inicial de la portada. Devuelve varios módulos a la vez, así que el
   // handler RECORTA por permiso lo que va dentro en vez de negar el todo.
   getAllData: PUBLICO,
@@ -69,7 +71,7 @@ export const ACTION_PERMISSIONS: Readonly<Record<string, string>> = {
   getMyRequisitions: "material_requisitions.ver",
   getRequisition: "material_requisitions.ver",
   approveAllRequisition: "material_requisitions.gestionar",
-  createInvoiceFromConsolidado: "material_requisitions.gestionar",
+  createInvoiceFromConsolidado: ["material_requisitions.gestionar", "compras.crear"],
   approveMaterialItem: "material_requisitions.gestionar",
   purchaseMaterialItem: "material_requisitions.gestionar",
   receiveMaterialItem: "material_requisitions.gestionar",
@@ -235,6 +237,8 @@ export const ACTION_PERMISSIONS: Readonly<Record<string, string>> = {
   getHrScheduleAssignments: "rrhh_asistencia.ver",
   getHrSchedules: "rrhh_asistencia.ver",
   deleteHrModalityConfig: "rrhh_asistencia.gestionar",
+  punchByPin: "rrhh_asistencia.gestionar",
+  punchByQr: "rrhh_asistencia.gestionar",
   resolveHrQr: "rrhh_asistencia.gestionar",
   saveHrBranchGeofence: "rrhh_asistencia.gestionar",
   saveHrEmployeeSchedule: "rrhh_asistencia.gestionar",
@@ -249,7 +253,7 @@ export const ACTION_PERMISSIONS: Readonly<Record<string, string>> = {
   getHrDiasSugeridos: "rrhh_pagos.ver",
   getHrIncentives: "rrhh_pagos.ver",
   getHrVacacionSugerida: "rrhh_pagos.ver",
-  getHrVacacionesTxt: "rrhh_pagos.ver",
+  getHrVacacionesTxt: "rrhh.banco_txt",
   getHrVacations: "rrhh_pagos.ver",
   saveHrDiaLaborado: "rrhh_pagos.gestionar",
   saveHrIncentive: "rrhh_pagos.gestionar",
@@ -295,7 +299,7 @@ export const ACTION_PERMISSIONS: Readonly<Record<string, string>> = {
   getFichaCompleta: "clientes.ver",
   getFichasDermatologia: "clientes.ver",
   addSesion: "clientes.gestionar",
-  deleteSesion: "clientes.gestionar",
+
   saveClienteCosmiatria: "clientes.gestionar",
   saveFichaDermatologia: "clientes.gestionar",
   saveSesion: "clientes.gestionar",
@@ -322,14 +326,13 @@ export const ACTION_PERMISSIONS: Readonly<Record<string, string>> = {
   deleteConsentTatuajeCeja: "consentimientos.borrar",
 
   // ── Mantenimiento (módulo AISLADO: aquí solo se DECLARA el permiso) ──────
-  getAllPulsosData: "mantenimiento.ver",
   getMaintenanceCabins: "mantenimiento.ver",
   getOperatorShots: "mantenimiento.ver",
   getPiezaReceptionSignedUrl: "mantenimiento.ver",
   getPiezasPolizaLista: "mantenimiento.ver",
   getPulseReadings: "mantenimiento.ver",
   getReporte: "mantenimiento.ver",
-  getReporteMensual: "mantenimiento.ver",
+  getReporteMensual: ["sales_commission.view", "mantenimiento.ver"],
   getReportesEliminados: "mantenimiento.ver",
   addAuditoria: "mantenimiento.gestionar",
   addInventario: "mantenimiento.gestionar",
@@ -424,6 +427,7 @@ export const ACTION_PERMISSIONS: Readonly<Record<string, string>> = {
   deleteSolicitudEmpleo: "rrhh.borrar",
   deleteClienteCosmiatria: "clientes.borrar",
   deleteFichaDermatologia: "clientes.borrar",
+  deleteSesion: "clientes.borrar",
   mergeClientes: "clientes.fusionar",
 
   // Llaves y configuración
@@ -440,7 +444,7 @@ export const ACTION_PERMISSIONS: Readonly<Record<string, string>> = {
  * ahora exige el mismo permiso que la bóveda.
  * Las claves son las de `ENTITY_TABLES` en `lib/server/csl-crud.ts`.
  */
-export const ENTITY_PERMISSIONS: Readonly<Record<string, string>> = {
+export const ENTITY_PERMISSIONS: Readonly<Record<string, PermisoRequerido>> = {
   sucursales: "config.ver",
   equipos: "mantenimiento.ver",
   reportes: "mantenimiento.ver",
@@ -472,7 +476,7 @@ export const ENTITY_PERMISSIONS: Readonly<Record<string, string>> = {
  * Clave: "<MÉTODO> <ruta>". Las rutas públicas o por token/cron no van aquí:
  * su guardia es el secreto, no el permiso.
  */
-export const ROUTE_PERMISSIONS: Readonly<Record<string, string>> = {
+export const ROUTE_PERMISSIONS: Readonly<Record<string, PermisoRequerido>> = {
   "POST /api/hr/documents/upload": "rrhh_personal.gestionar",
   "POST /api/maintenance/documents/upload": "mantenimiento.gestionar",
   "POST /api/purchases/documents/upload": "compras.crear",
@@ -480,9 +484,10 @@ export const ROUTE_PERMISSIONS: Readonly<Record<string, string>> = {
   "POST /api/integrations/agendapro/sync-clients": "integrations.agendapro.sync",
   "POST /api/integrations/agendapro/test": "integrations.agendapro.view",
   "GET /api/integrations/agendapro/status": "integrations.agendapro.view",
+  "GET /api/integrations/agendapro/health": "integrations.agendapro.view",
   "POST /api/integrations/mantenimiento/import-lecturas": "mantenimiento.gestionar",
   "POST /api/pulse/ocr": "mantenimiento.gestionar",
-  "POST /api/public-form-links": "clientes.gestionar",
+  "POST /api/public-form-links": ["clientes.gestionar", "rrhh_personal.gestionar"],
   "POST /api/bi-finance/assistant": "bi_finance.ai_chat",
   // Caja fuerte: secretos y configuración global.
   "POST /api/integrations/agendapro/credentials": "config.llaves",
@@ -496,7 +501,7 @@ export const ROUTE_PERMISSIONS: Readonly<Record<string, string>> = {
 }
 
 /** Permiso que exige una acción, o `undefined` si no está declarada. */
-export function permisoDeAccion(action: string): string | undefined {
+export function permisoDeAccion(action: string): PermisoRequerido | undefined {
   return ACTION_PERMISSIONS[action]
 }
 
@@ -509,7 +514,7 @@ export function permisosCitados(): string[] {
     ...Object.values(ACTION_PERMISSIONS),
     ...Object.values(ENTITY_PERMISSIONS),
     ...Object.values(ROUTE_PERMISSIONS),
-  ]
+  ].flatMap((p) => (Array.isArray(p) ? [...p] : [p as string]))
   return Array.from(new Set(todos.filter((p) => p !== PUBLICO && p !== POR_ENTIDAD)))
 }
 

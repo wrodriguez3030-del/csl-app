@@ -1,4 +1,5 @@
-﻿import { NextResponse } from "next/server"
+﻿import { randomBytes } from "node:crypto"
+import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { fichaDermoToDb, sendFichaDermoEmail } from "@/lib/dermo-server"
 import { clientIp, rateLimit, type RateLimitResult } from "@/lib/rate-limit-server"
@@ -113,9 +114,12 @@ export async function GET() {
     // Un formulario público de captura no autocompleta clientes existentes.
     // Solo se expone la lista de operadoras (nombres) para poblar el selector.
     const supabase = getSupabaseAdmin()
+    // El formulario público es de CSL: sin este filtro el GET anónimo
+    // devolvía también los nombres de las operadoras de Depicenter.
     const { data, error } = await supabase
       .from("csl_operadoras")
       .select("nombre,sucursal,estado")
+      .eq("business_id", CSL_BUSINESS_ID)
       .eq("estado", "Activa")
       .order("nombre", { ascending: true })
     if (error) throw error
@@ -163,6 +167,15 @@ export async function POST(request: Request) {
     const cliente = clienteFromFicha(row)
     row.cliente_id = cliente.cliente_id
     row.business_id = CSL_BUSINESS_ID
+
+    // SEGURIDAD (03/09/2026): el `ficha_id` venía del cuerpo ANÓNIMO y el
+    // guardado es un upsert contra la clave primaria. Cualquiera en internet
+    // podía mandar el ficha_id de otra persona y reescribirle antecedentes,
+    // alergias, medicación y firma — y de paso cambiarla de negocio. El id no
+    // es secreto: se devuelve a quien envía y va en el nombre del PDF que sale
+    // por correo. Aquí el id lo pone el servidor, siempre. Es la misma regla
+    // que tres líneas más abajo ya protege el registro maestro del cliente.
+    row.ficha_id = `dermo_${Date.now()}_${randomBytes(6).toString("hex")}`
 
     const supabase = getSupabaseAdmin()
     const { data: existingCliente, error: existingClienteError } = await supabase

@@ -92,7 +92,6 @@ const EXENTAS = [
   "/api/csl", "/api/public/", "/api/public-form-links/[token]", "/api/security/",
   "/api/integrations/agendapro/cron", "/api/integrations/agendapro/payments",
   "/api/integrations/agendapro/payments-cron", "/api/integrations/agendapro/webhook",
-  "/api/integrations/agendapro/health",
   // Exige requireSuperadmin, más estricto que cualquier permiso del catálogo.
   "/api/admin/users",
 ]

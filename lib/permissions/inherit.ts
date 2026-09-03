@@ -44,7 +44,6 @@ export const PERMISOS_PREEXISTENTES: ReadonlySet<string> = new Set([
   "bi_finance.expenses", "bi_finance.profitability", "bi_finance.forecasts",
   "bi_finance.investments", "bi_finance.alerts", "bi_finance.reports", "bi_finance.config",
   "bi_finance.ai_secrets.manage", "bi_finance.export",
-  "integrations.agendapro.view", "integrations.agendapro.configure", "integrations.agendapro.sync",
 ])
 
 const MANTENIMIENTO = ["mantenimiento.ver", "mantenimiento.gestionar", "mantenimiento.borrar"]
@@ -58,6 +57,12 @@ const CERTIFICADOS = ["gift_certificates.ver", "gift_certificates.gestionar"]
 const PRODUCTOS = ["productos.ver", "productos.gestionar"]
 const REQUISICION = ["material_requisitions.ver", "material_requisitions.gestionar"]
 const MATERIALES = ["materials.ver", "materials.gestionar"]
+const AGENDAPRO = ["integrations.agendapro.view", "integrations.agendapro.sync"]
+// El selector de empleado (`components/hr/employee-select.tsx`) llama a
+// `getEmpleados` y lo montan DIECISÉIS pantallas de RR.HH. Sin este permiso,
+// todas ellas se quedan con el desplegable vacío y el mensaje «No hay
+// empleados registrados» — en silencio, sin error.
+const RRHH_BASE = ["rrhh_personal.ver"]
 
 /** Qué permisos NUEVOS concede cada menú. Un menú ausente concede nada. */
 export const MENU_PERMISOS: Readonly<Record<string, readonly string[]>> = {
@@ -75,23 +80,23 @@ export const MENU_PERMISOS: Readonly<Record<string, readonly string[]>> = {
   "piezas-poliza": MANTENIMIENTO,
   equipos: MANTENIMIENTO,
   tecnicos: MANTENIMIENTO,
-  errores: ["mantenimiento.ver"],
+  errores: MANTENIMIENTO,
   "pulse-dashboard": ["mantenimiento.ver"],
   "pulse-equipos": MANTENIMIENTO,
   "pulsos-operadoras": MANTENIMIENTO,
   "pulsos-lecturas": MANTENIMIENTO,
-  "pulsos-sesiones": MANTENIMIENTO,
-  "pulsos-auditoria": MANTENIMIENTO,
-  "pulsos-cuadre": MANTENIMIENTO,
+  "pulsos-sesiones": [...MANTENIMIENTO, ...CLIENTES],
+  "pulsos-auditoria": [...MANTENIMIENTO, ...CLIENTES],
+  "pulsos-cuadre": [...MANTENIMIENTO, ...CLIENTES],
 
   // Requisición de materiales
-  "req-mat-nueva": REQUISICION,
+  "req-mat-nueva": [...REQUISICION, "materials.ver"],
   "req-mat-mis": ["material_requisitions.ver"],
-  "req-mat-consolidado": REQUISICION,
-  "req-mat-aprobaciones": REQUISICION,
+  "req-mat-consolidado": [...REQUISICION, "materials.ver"],
+  "req-mat-aprobaciones": [...REQUISICION, "materials.ver"],
   "req-mat-materiales": MATERIALES,
   "req-mat-inventario": [...MATERIALES],
-  "req-mat-inventario-historico": [],
+  "req-mat-inventario-historico": ["materials.ver", "materials.gestionar"],
   "req-mat-dashboard": ["material_requisitions.ver"],
 
   // Inventario de Productos
@@ -104,26 +109,26 @@ export const MENU_PERMISOS: Readonly<Record<string, readonly string[]>> = {
   // RR.HH. · Personal
   "rrhh-dashboard": ["rrhh_personal.ver"],
   "rrhh-solicitudes": RRHH_PERSONAL,
-  "rrhh-empleados": RRHH_PERSONAL,
+  "rrhh-empleados": [...RRHH_PERSONAL, "rrhh_asistencia.ver"],
   "rrhh-contratos": RRHH_PERSONAL,
   "rrhh-documentos": RRHH_PERSONAL,
 
   // RR.HH. · Asistencia. El kiosko NO concede nada: la tableta marca por
   // /api/public/punch con device_token, no necesita permiso de nadie.
-  "rrhh-dashboard-ponche": ["rrhh_asistencia.ver"],
-  "rrhh-ponche": RRHH_ASISTENCIA,
+  "rrhh-dashboard-ponche": ["rrhh_asistencia.ver", ...RRHH_BASE],
+  "rrhh-ponche": [...RRHH_ASISTENCIA, ...RRHH_BASE],
   "rrhh-kiosko-ponche": [],
-  "rrhh-config-modalidades": RRHH_ASISTENCIA,
-  "rrhh-asistencia": RRHH_ASISTENCIA,
-  "rrhh-horarios": RRHH_ASISTENCIA,
-  "rrhh-permisos": RRHH_ASISTENCIA,
+  "rrhh-config-modalidades": [...RRHH_ASISTENCIA, ...RRHH_BASE],
+  "rrhh-asistencia": [...RRHH_ASISTENCIA, ...RRHH_BASE],
+  "rrhh-horarios": [...RRHH_ASISTENCIA, ...RRHH_BASE],
+  "rrhh-permisos": [...RRHH_ASISTENCIA, ...RRHH_BASE],
 
   // RR.HH. · Pagos
-  "rrhh-nomina": ["rrhh_pagos.ver", "rrhh.nomina", "rrhh.cuentas_bancarias"],
-  "rrhh-dias-laborados": RRHH_PAGOS,
-  "rrhh-incentivos": RRHH_PAGOS,
-  "rrhh-vacaciones": RRHH_PAGOS,
-  "rrhh-txt-bancarios": ["rrhh.banco_txt", "rrhh.cuentas_bancarias"],
+  "rrhh-nomina": ["rrhh_pagos.ver", "rrhh.nomina", "rrhh.cuentas_bancarias", ...RRHH_BASE],
+  "rrhh-dias-laborados": [...RRHH_PAGOS, ...RRHH_BASE],
+  "rrhh-incentivos": [...RRHH_PAGOS, ...RRHH_BASE],
+  "rrhh-vacaciones": [...RRHH_PAGOS, ...RRHH_BASE],
+  "rrhh-txt-bancarios": ["rrhh.banco_txt", "rrhh.cuentas_bancarias", "rrhh.nomina", ...RRHH_BASE],
   // Caja fuerte: no conceden nada.
   "rrhh-doble-sueldo": [],
   "rrhh-prestamos": [],
@@ -131,25 +136,25 @@ export const MENU_PERMISOS: Readonly<Record<string, readonly string[]>> = {
   "rrhh-pdf-prestaciones": [],
 
   // RR.HH. · Desarrollo
-  "rrhh-reclutamiento": RRHH_DESARROLLO,
-  "rrhh-onboarding": RRHH_DESARROLLO,
-  "rrhh-evaluacion": RRHH_DESARROLLO,
-  "rrhh-disciplina": RRHH_DESARROLLO,
-  "rrhh-capacitacion": RRHH_DESARROLLO,
-  "rrhh-comunicacion": RRHH_DESARROLLO,
+  "rrhh-reclutamiento": [...RRHH_DESARROLLO, ...RRHH_BASE],
+  "rrhh-onboarding": [...RRHH_DESARROLLO, ...RRHH_BASE],
+  "rrhh-evaluacion": [...RRHH_DESARROLLO, ...RRHH_BASE],
+  "rrhh-disciplina": [...RRHH_DESARROLLO, ...RRHH_BASE],
+  "rrhh-capacitacion": [...RRHH_DESARROLLO, ...RRHH_BASE],
+  "rrhh-comunicacion": [...RRHH_DESARROLLO, ...RRHH_BASE],
 
   // RR.HH. · Reportes
   "rrhh-reportes": ["rrhh_reportes.ver"],
   "rrhh-auditoria": ["rrhh_reportes.ver"],
 
   // Clientes y Consentimientos
-  "control-tratamientos": CLIENTES,
-  "cosmiatria-clientes": CLIENTES,
-  "cosmiatria-ficha": CLIENTES,
-  "consent-masajes": CONSENTIMIENTOS,
-  "consent-peeling": CONSENTIMIENTOS,
-  "consent-tatuajes-cejas": CONSENTIMIENTOS,
-  "consent-depilacion-laser": CONSENTIMIENTOS,
+  "control-tratamientos": [...CLIENTES, ...AGENDAPRO],
+  "cosmiatria-clientes": [...CLIENTES, ...AGENDAPRO],
+  "cosmiatria-ficha": [...CLIENTES, ...CONSENTIMIENTOS],
+  "consent-masajes": [...CONSENTIMIENTOS, "clientes.ver"],
+  "consent-peeling": [...CONSENTIMIENTOS, "clientes.ver"],
+  "consent-tatuajes-cejas": [...CONSENTIMIENTOS, "clientes.ver"],
+  "consent-depilacion-laser": [...CONSENTIMIENTOS, "clientes.ver"],
   "reportes-firmados": ["clientes.ver", "consentimientos.ver"],
 
   // Atención a cliente · certificados
@@ -157,7 +162,11 @@ export const MENU_PERMISOS: Readonly<Record<string, readonly string[]>> = {
   "cliente-certificados-depicenter": CERTIFICADOS,
   "cliente-certificados-imprimir": CERTIFICADOS,
   "cliente-certificados-talonario": CERTIFICADOS,
-  "cliente-certificados-validez": ["gift_certificates.ver"],
+  "cliente-certificados-validez": CERTIFICADOS,
+
+  // Integraciones
+  "sincronizar-api": AGENDAPRO,
+  "admin-agendapro": ["integrations.agendapro.view", "integrations.agendapro.sync", "integrations.agendapro.configure"],
 }
 
 /**

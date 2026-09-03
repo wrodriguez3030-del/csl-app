@@ -37,6 +37,7 @@ import {
   getRowsPaged,
   loadBusinessContext,
   requireAdmin,
+  requireSuperadmin,
   resolveClienteId,
   restoreRow,
   softDeleteRow,
@@ -663,8 +664,12 @@ export async function handleAction(params: ActionParams, user: ActionUser) {
 //   (C-1) la cookie de acceso TOTP LIGADA a este usuario (verificación 2FA real).
 const CREDENCIAL_READ_ACTIONS = new Set(["getCredenciales"])
 const CREDENCIAL_WRITE_ACTIONS = new Set(["saveCredencial", "deleteCredencial"])
-async function enforceCredentialsGate(action: string, user: ActionUser): Promise<void> {
-  const isRead = CREDENCIAL_READ_ACTIONS.has(action)
+async function enforceCredentialsGate(action: string, user: ActionUser, entity?: string): Promise<void> {
+  // Se decide por lo que TOCA, no por cómo se llama. Comparar contra el nombre
+  // de la acción dejaba abierta la segunda puerta: `getRowsPaged` con
+  // `entity=credenciales` leía `csl_credenciales` entera sin pedir el TOTP, y
+  // las filas anteriores al cifrado salen en texto plano.
+  const isRead = CREDENCIAL_READ_ACTIONS.has(action) || (action === "getRowsPaged" && entity === "credenciales")
   const isWrite = CREDENCIAL_WRITE_ACTIONS.has(action)
   if (!isRead && !isWrite) return
   requirePermission(isWrite ? "credenciales.manage" : "credenciales.view")
@@ -684,8 +689,9 @@ function isMaintenanceAdmin(): boolean {
 async function dispatchAction(action: string, params: ActionParams, user: ActionUser) {
   // Cierre por defecto: la acción sin permiso declarado no pasa. En modo
   // sombra (PERMISOS_ESTRICTOS != "on") solo se anota lo que se habría negado.
-  await enforceActionPermission(action, user, action === "getRowsPaged" ? textValue(params, "entity") : undefined)
-  await enforceCredentialsGate(action, user)
+  const entidad = action === "getRowsPaged" ? textValue(params, "entity") : undefined
+  await enforceActionPermission(action, user, entidad)
+  await enforceCredentialsGate(action, user, entidad)
   switch (action) {
     case "health": {
       const { error } = await getSupabaseAdmin().from("csl_sucursales").select("codigo").limit(1)
@@ -716,8 +722,28 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         },
       }
     }
-    case "getAllPulsosData":
-      return { ok: true, ...(await getAllPulsosData()) }
+    case "getAllPulsosData": {
+      // La pide el refresco automático de TODA la app cada 60 s, y el
+      // desplegable de operadoras de la ficha. Negarla abortaba el refresco
+      // entero y dejaba un rechazo por usuario y por minuto en el registro.
+      // Así que pasa, pero recortada — igual que `getAllData`.
+      const pulsos = await getAllPulsosData()
+      const verMantenimiento = hasPermission("mantenimiento.ver")
+      const verClientes = hasPermission("clientes.ver")
+      return {
+        ok: true,
+        ...pulsos,
+        // El nombre de la operadora lo necesita el selector de la ficha; lo
+        // demás del snapshot es de Mantenimiento.
+        lecturasSemanales: verMantenimiento ? pulsos.lecturasSemanales : [],
+        auditoriasSemanales: verMantenimiento ? pulsos.auditoriasSemanales : [],
+        pulseReadings: verMantenimiento ? pulsos.pulseReadings : [],
+        operatorShots: verMantenimiento ? pulsos.operatorShots : [],
+        // `sesiones_cliente` lleva nombre, teléfono y tratamiento de la clienta.
+        // La misma tabla exige `clientes.ver` por `getRowsPaged`: aquí igual.
+        sesionesCliente: verClientes ? pulsos.sesionesCliente : [],
+      }
+    }
 
     // ── HR · Fase 1 · Contratos ──────────────────────────────────────────
     case "getHrContractPrefill": {
@@ -2126,9 +2152,14 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const runId = textValue(params, "id")
       if (!runId) throw new Error("id obligatorio")
       const sb = getSupabaseAdmin()
-      const { data: run } = await sb.from("hr_payroll_runs").select("*").eq("id", runId).maybeSingle()
+      // Sin el filtro de negocio, un UUID del otro tenant devolvía su nómina
+      // entera: sueldos, netos y deducciones de gente de la otra clínica.
+      let qRun = sb.from("hr_payroll_runs").select("*").eq("id", runId)
+      if (shouldScopeTenant()) qRun = qRun.eq("business_id", effectiveBusinessId() as string)
+      const { data: run } = await qRun.maybeSingle()
+      if (!run) return { ok: true, run: null, items: [] }
       const { data: items } = await sb.from("hr_payroll_items").select("*").eq("run_id", runId).order("employee_nombre", { ascending: true })
-      return { ok: true, run: run || null, items: items || [] }
+      return { ok: true, run, items: items || [] }
     }
     case "createHrPayrollRun": {
       const record = parsePayload(params)
@@ -2150,11 +2181,14 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const runId = textFrom(record, "id")
       let run: { id: string }
       if (runId) {
-        const { data: existing } = await sb.from("hr_payroll_runs").select("status").eq("id", runId).maybeSingle()
+        // El recálculo BORRA los items de la corrida: sin filtro de negocio, un
+        // UUID ajeno vaciaba la nómina de la otra clínica.
+        const { data: existing } = await sb.from("hr_payroll_runs").select("status").eq("id", runId).eq("business_id", businessId).maybeSingle()
+        if (!existing) throw new Error("Corrida no encontrada en este negocio")
         const st = (existing as { status?: string } | null)?.status
         if (st && !["borrador", "calculada", "revision"].includes(st)) throw new Error("Solo se puede recalcular una corrida en borrador/cálculo/revisión")
         await sb.from("hr_payroll_items").delete().eq("run_id", runId)
-        const { data: upd } = await sb.from("hr_payroll_runs").update({ period_start: periodStart, period_end: periodEnd, tipo, sucursal: textFrom(record, "sucursal") || null, status: "calculada", updated_at: new Date().toISOString() }).eq("id", runId).select().single()
+        const { data: upd } = await sb.from("hr_payroll_runs").update({ period_start: periodStart, period_end: periodEnd, tipo, sucursal: textFrom(record, "sucursal") || null, status: "calculada", updated_at: new Date().toISOString() }).eq("id", runId).eq("business_id", businessId).select().single()
         run = upd as { id: string }
       } else {
         const { data: ins, error: insErr } = await sb.from("hr_payroll_runs").insert({ business_id: businessId, period_start: periodStart, period_end: periodEnd, tipo, sucursal: textFrom(record, "sucursal") || null, status: "calculada", created_by: user.id }).select().single()
@@ -2210,7 +2244,11 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       const status = textValue(params, "status")
       if (!runId || !status) throw new Error("id y status obligatorios")
       const sb = getSupabaseAdmin()
-      const { data: run } = await sb.from("hr_payroll_runs").select("*").eq("id", runId).maybeSingle()
+      // Igual que arriba: aprobar la corrida de otro negocio marcaba sus
+      // incentivos como pagados e insertaba cuotas de préstamo en su tenant.
+      let qRunEstado = sb.from("hr_payroll_runs").select("*").eq("id", runId)
+      if (shouldScopeTenant()) qRunEstado = qRunEstado.eq("business_id", effectiveBusinessId() as string)
+      const { data: run } = await qRunEstado.maybeSingle()
       if (!run) throw new Error("Corrida no encontrada")
       const update: Record<string, unknown> = { status, updated_at: new Date().toISOString() }
       // Al APROBAR: marcar incentivos como pagados y registrar cuotas de préstamo.
@@ -2992,13 +3030,21 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       // La pantalla del modo sombra: qué se estaría negando, a quién y cuánto.
       // Sin esto, «lo dejamos unos días en sombra» significa fiarse de que
       // alguien se acuerde de mirar un registro.
-      await requireAdmin(user.id)
+      // La pantalla que vigila los permisos no puede ser la que los filtra:
+      // sin `business_id` un admin de un negocio leía los correos, IPs y
+      // navegadores del personal del otro.
+      await requireSuperadmin(user.id)
       const supabase = getSupabaseAdmin()
       const desde = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-      const { data, error } = await supabase
+      const ctxDenials = getBusinessContext()
+      let consulta = supabase
         .from("csl_permission_denials")
         .select("*")
         .gte("created_at", desde)
+      if (ctxDenials?.businessId && !ctxDenials.bypassTenantFilter) {
+        consulta = consulta.eq("business_id", ctxDenials.businessId)
+      }
+      const { data, error } = await consulta
         .order("created_at", { ascending: false })
         .limit(1000)
       if (error) throw error
@@ -3069,11 +3115,20 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (editingId && !callerProfile.is_superadmin) {
         const { data: target, error: targetErr } = await supabase
           .from("csl_user_profiles")
-          .select("business_id")
+          .select("business_id, is_superadmin")
           .eq("user_id", editingId)
           .maybeSingle()
         if (targetErr) throw targetErr
         if (!target) throw new Error("Usuario no encontrado")
+        // SECUESTRO DE CUENTA (cerrado 03/09/2026): este chequeo solo miraba el
+        // business_id. Como el superadministrador comparte negocio con un
+        // `is_admin` de CSL, ese admin podía mandar saveUser con el id del dueño
+        // y un `password` nuevo: Supabase le cambiaba la clave y entraba como él,
+        // saltándose la caja fuerte entera. También podía cambiarle el correo y
+        // pedir recuperación. Un administrador corriente no toca al dueño.
+        if (target.is_superadmin) {
+          throw new Error("No tienes permiso para administrar al superadministrador")
+        }
         if (target.business_id !== callerProfile.business_id) {
           throw new Error("No tienes permiso para administrar este usuario")
         }
@@ -3181,6 +3236,12 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         .upsert(profile, { onConflict: "user_id" })
       if (error) throw error
 
+      // Desactivar cierra la sesión de verdad: sin esto el token vigente sigue
+      // sirviendo hasta que caduque, aunque el perfil ya diga `activo: false`.
+      if (!activo && userId) {
+        try { await supabase.auth.admin.signOut(userId, "global") } catch { /* sesión ya cerrada */ }
+      }
+
       // ---- Sucursales permitidas (user_branch_permissions) — sin DELETE ----
       const branchesRaw = Array.isArray(record.branches) ? (record.branches as unknown[]) : []
       const branches = Array.from(new Set(branchesRaw.map((b) => normalizeSucursal(b)).filter(Boolean)))
@@ -3231,7 +3292,7 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       // No permitir borrar al último admin activo, aunque sea otro admin.
       const { data: target, error: targetError } = await supabase
         .from("csl_user_profiles")
-        .select("user_id, is_admin, activo, business_id")
+        .select("user_id, is_admin, is_superadmin, activo, business_id")
         .eq("user_id", userId)
         .maybeSingle()
       if (targetError) throw targetError
@@ -3240,6 +3301,12 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       if (!callerProfile.is_superadmin
           && target?.business_id !== callerProfile.business_id) {
         throw new Error("No tienes permiso para eliminar este usuario")
+      }
+      // La guardia de «último administrador» contaba admins, y hay tres además
+      // del dueño: el contador daba > 0 y el borrado del superadministrador
+      // procedía. `/api/admin/users/[id]` sí lo protegía; esta vía no.
+      if (target?.is_superadmin && !callerProfile.is_superadmin) {
+        throw new Error("No tienes permiso para eliminar al superadministrador")
       }
       if (target?.is_admin && target?.activo) {
         const { count, error: adminCountError } = await supabase
@@ -4088,6 +4155,11 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
         // Pendiente / En revisión / Entrevista / Rechazado: aún no es empleado
         // (o solicitud rechazada) → se quita de la lista de empleados. La
         // solicitud y sus datos permanecen en csl_solicitudes_empleo.
+        // Esto es un DELETE FÍSICO de csl_empleados (con su salario vigente, su
+        // hr_pin_hash y los vínculos que usan nómina y ponche). `rrhh.borrar`
+        // existe justo para eso: sin este check bastaba reguardar la solicitud
+        // como «Pendiente» para borrar al empleado con un permiso corriente.
+        requirePermission("rrhh.borrar")
         await deleteRow("empleados", String(row.solicitud_id)).catch(() => undefined)
       }
       return { ok: true, record: fromDb("solicitudes_empleo", row), email }

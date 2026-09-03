@@ -11,6 +11,7 @@
 import { NextResponse } from "next/server"
 import { requireAuthenticatedUser, getSupabaseAdmin } from "@/lib/server/supabase"
 import { resolveEffectiveBusinessContext } from "@/lib/server/integration-auth"
+import { enforceRoutePermission } from "@/lib/server/permission-gate"
 import { resolveAgendaProConfigForBusiness } from "@/lib/server/agendapro-credentials"
 import { fetchAgendaProClients, safeConfigSummary, validateAgendaProConfig } from "@/lib/server/agendapro"
 
@@ -41,6 +42,16 @@ export async function GET(request: Request) {
   const url = new URL(request.url)
   const activeBusinessId = url.searchParams.get("activeBusinessId")
   const ctx = await resolveEffectiveBusinessContext(user.id, activeBusinessId)
+  // Estaba exenta de permiso en la prueba «porque se guarda con un secreto» —
+  // y no tiene ninguno. Con solo iniciar sesión se leía la configuración de la
+  // integración (baseUrl, si hay clave, los 3 primeros caracteres del usuario)
+  // y el último log de sincronización. Y con ?probe=1 se disparaban cinco
+  // llamadas autenticadas contra AgendaPro con las credenciales descifradas,
+  // sin freno: un bucle desde la cuenta menos privilegiada quema la cuota de
+  // la integración de la que depende la clínica entera.
+  const denegado = await enforceRoutePermission("GET", "/api/integrations/agendapro/health", { id: user.id, email: user.email }, ctx)
+  if (denegado) return json(denegado.body, denegado.status)
+
   const cfg = ctx
     ? await resolveAgendaProConfigForBusiness(ctx.businessId, ctx.businessSlug)
     : { enabled: false, baseUrl: "", user: "", password: "", clientsPath: "", webhookSecret: "", source: "none" as const }

@@ -25,6 +25,7 @@ import {
   ROUTE_PERMISSIONS,
   PUBLICO,
   POR_ENTIDAD,
+  type PermisoRequerido,
 } from "@/lib/permissions/action-map"
 import { PERMISSION_OPTIONS } from "@/lib/permissions/catalog"
 import type { ActionUser, BusinessContext } from "./csl-types"
@@ -51,7 +52,16 @@ export function modoEstricto(): boolean {
 }
 
 const ETIQUETAS = new Map(PERMISSION_OPTIONS.map((p) => [p.id, p.label.replace(/^🔒\s*/, "").toLowerCase()]))
-const etiquetaDe = (perm: string): string => ETIQUETAS.get(perm) ?? "realizar esta acción"
+const etiquetaDe = (perm: PermisoRequerido): string => {
+  const ids = comoLista(perm)
+  return ids.map((p) => ETIQUETAS.get(p)).find(Boolean) ?? "realizar esta acción"
+}
+
+/** Un permiso o varios, siempre como lista. */
+const comoLista = (perm: PermisoRequerido): readonly string[] => (Array.isArray(perm) ? perm : [perm as string])
+
+/** El nombre que se muestra y se registra: «a» o «a o b». */
+const nombreDe = (perm: PermisoRequerido): string => comoLista(perm).join(" o ")
 
 /**
  * Deja constancia del rechazo. Nunca lanza: un fallo escribiendo el registro
@@ -83,7 +93,7 @@ async function anotarRechazo(datos: {
 }
 
 /** El permiso que exige esta acción, resolviendo `getRowsPaged` por su entidad. */
-function permisoRequerido(accion: string, entidad?: string): string | undefined {
+function permisoRequerido(accion: string, entidad?: string): PermisoRequerido | undefined {
   const declarado = ACTION_PERMISSIONS[accion]
   if (declarado !== POR_ENTIDAD) return declarado
   // Entidad desconocida → sin permiso declarado → se rechaza. Es la vía por la
@@ -112,10 +122,10 @@ export async function enforceActionPermission(
     return
   }
 
-  if (hasPermission(permiso)) return
+  if (comoLista(permiso).some((p) => hasPermission(p))) return
 
-  await anotarRechazo({ accion, permiso, user })
-  if (modoEstricto()) throw new PermisoDenegado(accion, permiso, etiquetaDe(permiso))
+  await anotarRechazo({ accion, permiso: nombreDe(permiso), user })
+  if (modoEstricto()) throw new PermisoDenegado(accion, nombreDe(permiso), etiquetaDe(permiso))
 }
 
 /**
@@ -152,16 +162,18 @@ export async function enforceRoutePermission(
     return { status: 403, body: { ok: false, error: "Esta ruta no declara permiso.", permiso: "sin declarar" } }
   }
 
-  if (contextoTienePermiso(ctx, permiso)) return null
+  // Basta con UNO: hay pantallas que cruzan módulos (el link público lo
+  // generan Clientes y RR.HH., y ningún menú concede los dos permisos).
+  if (comoLista(permiso).some((p) => contextoTienePermiso(ctx, p))) return null
 
-  await anotarRechazo({ accion: clave, permiso, ruta, user, businessId: ctx?.businessId ?? null })
+  await anotarRechazo({ accion: clave, permiso: nombreDe(permiso), ruta, user, businessId: ctx?.businessId ?? null })
   if (!modoEstricto()) return null
   return {
     status: 403,
     body: {
       ok: false,
-      error: `No tienes permiso para ${etiquetaDe(permiso)} (${permiso}). Pídeselo al administrador.`,
-      permiso,
+      error: `No tienes permiso para ${etiquetaDe(permiso)} (${nombreDe(permiso)}). Pídeselo al administrador.`,
+      permiso: nombreDe(permiso),
     },
   }
 }
