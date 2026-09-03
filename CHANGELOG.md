@@ -16,6 +16,27 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.115.0] - 2026-09-03
+
+### Corregido
+- **En «Todos los negocios», Incentivos de Ventas enseñaba csl en silencio.**
+  El modo quita el filtro de negocio, pero la lista de sucursales sigue saliendo
+  del negocio del propio superadmin (`readTenantBranches` → `requireBizId`), así
+  que las de DEPICENTER desaparecían sin aviso: parecía que ese negocio no tenía
+  ventas. Ahora la barra de filtros pide elegir un negocio y explica por qué.
+
+  «Todos» no puede funcionar aquí ni arreglándolo: cada negocio tiene su propio
+  roster, sus reglas y sus tramos de láser, y un total mezclado no significaría
+  nada. Verificado que con un negocio activo sí responde: DEPICENTER agosto
+  devuelve LA VEGA 657.775.
+
+### Datos
+- Reglas de DEPICENTER, todas heredadas de la siembra inicial y corregidas
+  contra su propio libro: producto por unidad **RD$100 → RD$50** y segundo tramo
+  del láser **600.000 → 700.000** en el sistema; primer tramo **270.000 →
+  260.000** en las nueve hojas del Excel. Julio queda en 39.721,24 y agosto en
+  19.819,40; el gasto «INCENTIVOS» de agosto sigue al total de julio.
+
 ## [0.114.0] - 2026-09-03
 
 ### Añadido

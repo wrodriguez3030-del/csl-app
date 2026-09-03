@@ -32,8 +32,11 @@ export interface ReporteMensual {
 const RD = '"RD$"#,##0.00'
 const PCT = "0.0%"
 
-export async function exportReporteMensual(d: ReporteMensual) {
-  const ExcelJS = (await import("exceljs")).default
+/** Arma el libro. Separado de la descarga para poder generarlo también fuera
+ *  del navegador (scripts, pruebas) y para poder comprobarlo sin abrir Excel. */
+export async function buildReporteMensual(d: ReporteMensual, ExcelJSModule?: unknown) {
+  const ExcelJS = (ExcelJSModule as { Workbook: new () => import("exceljs").Workbook } | undefined)
+    ?? (await import("exceljs")).default
   const wb = new ExcelJS.Workbook()
   wb.creator = d.negocio.name
   const periodo = `${MESES[d.periodo.month] || d.periodo.month} ${d.periodo.year}`
@@ -205,11 +208,21 @@ export async function exportReporteMensual(d: ReporteMensual) {
     }
   }
 
+  return wb
+}
+
+/** Nombre del archivo, uno solo para navegador y scripts. */
+export function nombreReporte(d: ReporteMensual): string {
+  return `Reporte ${d.negocio.name} ${MESES[d.periodo.month]} ${d.periodo.year}.xlsx`
+}
+
+export async function exportReporteMensual(d: ReporteMensual) {
+  const wb = await buildReporteMensual(d)
   const buf = await wb.xlsx.writeBuffer()
   const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }))
   const a = document.createElement("a")
   a.href = url
-  a.download = `Reporte ${d.negocio.name} ${MESES[d.periodo.month]} ${d.periodo.year}.xlsx`
+  a.download = nombreReporte(d)
   a.click()
   URL.revokeObjectURL(url)
 }

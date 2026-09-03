@@ -85,6 +85,12 @@ export function CommissionFilterBar({
   children?: React.ReactNode
 }) {
   const { commissionFilters, setCommissionFilters } = useAppStore()
+  // En modo «Todos los negocios» este módulo NO puede dar un número con sentido:
+  // cada negocio tiene su propio roster, sus reglas y sus tramos de láser, y las
+  // sucursales que se listan salen del negocio del propio superadmin. Antes eso
+  // se traducía en ver csl en silencio mientras se creía estar viendo todo.
+  const negocioActivo = useAppStore((s) => s.activeBusinessSlug)
+  const sinNegocio = negocioActivo == null
   const applied = (commissionFilters as CommissionFilters | null) || defaultCommissionFilters()
   const [draft, setDraft] = useState<CommissionFilters>(applied)
   const [openMobile, setOpenMobile] = useState(false)
@@ -123,6 +129,21 @@ export function CommissionFilterBar({
   const activeCount = (applied.branch ? 1 : 0) + (applied.provider ? 1 : 0) + 1
   const years = useCommissionYears()
   const { label } = useCommissionFilters()
+
+  if (sinNegocio) {
+    return (
+      <Card className="border-amber-300 bg-amber-50">
+        <CardContent className="flex flex-col gap-1 p-4">
+          <div className="text-sm font-semibold text-amber-900">Elige un negocio para ver los incentivos</div>
+          <div className="text-xs text-amber-800">
+            Estás en «Todos los negocios». Este módulo se calcula por negocio —cada uno tiene su
+            propio personal, sus reglas y sus tramos de láser—, así que un total mezclado no
+            significaría nada. Selecciona uno en la pastilla del encabezado.
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <Card className="border-[color:var(--brand-border)]">
