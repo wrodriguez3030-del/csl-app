@@ -16,6 +16,21 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.122.0] - 2026-09-03
+
+### Changed
+
+- **Las 87 pantallas se cargan cuando se abren, no al entrar.** `app/page.tsx`
+  importaba las 90 de golpe y ninguna era perezosa: el navegador se bajaba 6,4 MB
+  —con un solo trozo de **2,4 MB**— aunque la persona tuviera un único menú. Los tres
+  kioskos de ponche descargaban nómina, BI, compras y comisiones para no usarlas nunca.
+  Ahora son 139 trozos y el mayor pesa 909 KB.
+
+  Medido antes de tocar: la base de datos NO era el cuello de botella (los índices
+  están todos, la tabla mayor son 32 MB, la ventana de 42 días del refresco son 406
+  filas y 148 KB, y los reportes ya venían recortados por columnas). El peso estaba
+  en el navegador.
+
 ## [0.121.1] - 2026-09-03
 
 ### Fixed

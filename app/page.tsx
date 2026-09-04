@@ -1,114 +1,128 @@
 "use client"
 
+import dynamic from "next/dynamic"
 import { useCallback, useEffect, useState } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl, invalidateReadCache } from "@/lib/store"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
 import { LoadingOverlay } from "@/components/loading-overlay"
 import { ToastNotification } from "@/components/toast-notification"
-import { ConfigPage } from "@/components/config-page"
-import { DashboardPage } from "@/components/dashboard-page"
-import { SucursalesPage } from "@/components/sucursales-page"
-import { EquiposPage } from "@/components/equipos-page"
-import { TecnicosPage } from "@/components/tecnicos-page"
-import { NuevoReportePage } from "@/components/nuevo-reporte-page"
-import { ReportesPage } from "@/components/reportes-page"
-import { HistorialEquiposPage } from "@/components/historial-equipos-page"
-import { CatalogoPage } from "@/components/catalogo-page"
-import { InventarioPage } from "@/components/inventario-page"
-import { PiezasPolizaPage } from "@/components/piezas-poliza-page"
-import { ReqMatNuevaPage } from "@/components/req-mat-nueva-page"
-import { ReqMatMisPage } from "@/components/req-mat-mis-page"
-import { ReqMatConsolidadoPage } from "@/components/req-mat-consolidado-page"
-import { ReqMatAprobacionesPage } from "@/components/req-mat-aprobaciones-page"
-import { ReqMatMaterialesPage } from "@/components/req-mat-materiales-page"
-import { ReqMatDashboardPage } from "@/components/req-mat-dashboard-page"
-import { ReqMatInventarioPage } from "@/components/req-mat-inventario-page"
-import { ReqMatInventarioHistoricoPage } from "@/components/req-mat-inventario-historico-page"
-import { ProdCatalogoPage } from "@/components/productos/prod-catalogo-page"
-import { ProdImportarPage } from "@/components/productos/prod-importar-page"
-import { ProdReportePage } from "@/components/productos/prod-reporte-page"
-import { ProdConteoPage } from "@/components/productos/prod-conteo-page"
-import { ProdConteoHistoricoPage } from "@/components/productos/prod-conteo-historico-page"
-import { ComprasDashboardPage } from "@/components/compras-dashboard-page"
-import { ComprasFacturasPage } from "@/components/compras-facturas-page"
-import { ComprasPagosPage } from "@/components/compras-pagos-page"
-import { ComprasGastosMenoresPage } from "@/components/compras-gastos-menores-page"
-import { ComprasRecurrentesPage } from "@/components/compras-recurrentes-page"
-import { ComisionReglasPage } from "@/components/comision/comision-reglas-page"
-import { ComisionImportarPage } from "@/components/comision/comision-importar-page"
-import { ComisionFinanzasPage } from "@/components/comision/finanzas/comision-finanzas-page"
-import { ComisionRentabilidadPage } from "@/components/comision/finanzas/comision-rentabilidad-page"
-import { ComisionAnalisisPage } from "@/components/comision/finanzas/comision-analisis-page"
-import { ComisionPrestadoresPage } from "@/components/comision/comision-prestadores-page"
-import { ComisionLiquidacionPage } from "@/components/comision/comision-liquidacion-page"
-import { ComisionReportesPage } from "@/components/comision/comision-reportes-page"
-import { ComisionSinPrestadorPage } from "@/components/comision/comision-sin-prestador-page"
-import { ComisionCalculoPage } from "@/components/comision/comision-calculo-page"
 import {
   ComisionDashboardPage, ComisionHistorialPage, ComisionSucursalesPage,
   ComisionProductosPage, ComisionLaserPage, ComisionClientesPage,
 } from "@/components/comision/comision-pages"
-import { CredencialesPage } from "@/components/credenciales-page"
-import { RecursosHumanosPage } from "@/components/recursos-humanos-page"
-import { EmpleadosPage } from "@/components/empleados-page"
-import { RrhhDashboardPage } from "@/components/hr/rrhh-dashboard-page"
-import { RrhhContratosPage } from "@/components/hr/rrhh-contratos-page"
-import { RrhhDocumentosPage } from "@/components/hr/rrhh-documentos-page"
-import { RrhhHorariosPage } from "@/components/hr/rrhh-horarios-page"
-import { RrhhPonchePage, KioskPonchePage } from "@/components/hr/rrhh-ponche-page"
-import { RrhhDashboardPonchePage } from "@/components/hr/rrhh-dashboard-ponche-page"
-import { RrhhConfigModalidadesPage } from "@/components/hr/rrhh-config-modalidades-page"
-import { RrhhAsistenciaPage } from "@/components/hr/rrhh-asistencia-page"
-import { RrhhPermisosPage } from "@/components/hr/rrhh-permisos-page"
-import { RrhhDiasLaboradosPage } from "@/components/hr/rrhh-dias-laborados-page"
-import { RrhhPrestamosPage } from "@/components/hr/rrhh-prestamos-page"
-import { RrhhIncentivosPage } from "@/components/hr/rrhh-incentivos-page"
-import { RrhhNominaPage } from "@/components/hr/rrhh-nomina-page"
-import { RrhhTxtBancariosPage } from "@/components/hr/rrhh-txt-bancarios-page"
-import { RrhhVacacionesPage } from "@/components/hr/rrhh-vacaciones-page"
-import { RrhhDobleSueldoPage } from "@/components/hr/rrhh-doble-sueldo-page"
-import { RrhhReportesPage } from "@/components/hr/rrhh-reportes-page"
-import { RrhhAuditoriaPage } from "@/components/hr/rrhh-auditoria-page"
-import { RrhhLiquidacionesPage } from "@/components/hr/rrhh-liquidaciones-page"
-import { RrhhPdfPrestacionesPage } from "@/components/hr/rrhh-pdf-prestaciones-page"
 import {
   RrhhReclutamientoPage, RrhhOnboardingPage, RrhhEvaluacionPage,
   RrhhDisciplinaPage, RrhhCapacitacionPage, RrhhComunicacionPage,
 } from "@/components/hr/rrhh-desarrollo-pages"
-import { PulsosOperadorasPage } from "@/components/pulsos-operadoras-page"
-import { PulsosLecturasPage } from "@/components/pulsos-lecturas-page"
-import { PulsosSesionesPage } from "@/components/pulsos-sesiones-page"
-import { PulsosAuditoriaPage } from "@/components/pulsos-auditoria-page"
-import { PulsosCuadreSemanalPage } from "@/components/pulsos-cuadre-semanal-page"
-import { PulseControlDashboardPage } from "@/components/pulse-control-dashboard-page"
-import { PulsosEquiposPage } from "@/components/pulsos-equipos-page"
-import { PulsosMantenimientoPage } from "@/components/pulsos-mantenimiento-page"
-import { ControlTratamientosPage } from "@/components/control-tratamientos-page"
-import { AgendaProIntegracionPage } from "@/components/agendapro-integracion-page"
-import { CosmiatriaClientesPage } from "@/components/cosmiatria-clientes-page"
-import { CosmiatriaFichaPage } from "@/components/cosmiatria-ficha-page"
-import { ConsentimientosPage } from "@/components/consentimientos-page"
-import { ReportesFirmadosPage } from "@/components/reportes-firmados-page"
-import { CertificadosRegaloPage } from "@/components/certificados-regalo-page"
-import { CertificadosDepicenterPage } from "@/components/certificados-depicenter-page"
-import { CertificadosRegaloImpresionPage } from "@/components/certificados-regalo-impresion-page"
-import { CertificadosRegaloTalonarioPage } from "@/components/certificados-regalo-talonario-page"
-import { CertificadosRegaloValidezPage } from "@/components/certificados-regalo-validez-page"
-import { LoginPage } from "@/components/login-page"
-import { AdminUsersPage } from "@/components/admin-users-page"
-import { AdminPermisosPage } from "@/components/admin-permisos-page"
 import {
   BiDashboardPage, BiVentasPage, BiGastosPage, BiRentabilidadPage,
   BiProyeccionesPage, BiInversionesPage, BiAlertasPage, BiReportesPage,
 } from "@/components/bi-finance/bi-finance-pages"
-import { BiAsistentePage } from "@/components/bi-finance/bi-asistente-page"
-import { BiConfigPage } from "@/components/bi-finance/bi-config-page"
 import { canAccessMenu, clearLocalSession, getFirstAllowedMenu, getSessionUser, refreshSessionUser, type SystemUser } from "@/lib/security"
 import { supabaseBrowser } from "@/lib/supabase-client"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { useCurrentBusiness } from "@/hooks/use-current-business"
 import type { Database, DatabasePulsos } from "@/lib/types"
+
+/**
+ * Las 90 pantallas se cargan CUANDO SE ABREN, no al entrar.
+ *
+ * Antes se importaban todas de golpe y el navegador se bajaba 6,4 MB —un solo
+ * trozo de 2,4 MB— aunque la persona tuviera un único menú: los tres kioskos de
+ * ponche descargaban nómina, BI, compras y comisiones para no usarlas nunca.
+ *
+ * `ssr: false` porque todas son de cliente y viven dentro del `switch` de abajo.
+ */
+const carga = () => <div className="p-8 text-sm text-muted-foreground">Cargando…</div>
+
+const AdminPermisosPage = dynamic(() => import("@/components/admin-permisos-page").then((m) => m.AdminPermisosPage), { ssr: false, loading: carga })
+const AdminUsersPage = dynamic(() => import("@/components/admin-users-page").then((m) => m.AdminUsersPage), { ssr: false, loading: carga })
+const AgendaProIntegracionPage = dynamic(() => import("@/components/agendapro-integracion-page").then((m) => m.AgendaProIntegracionPage), { ssr: false, loading: carga })
+const BiAsistentePage = dynamic(() => import("@/components/bi-finance/bi-asistente-page").then((m) => m.BiAsistentePage), { ssr: false, loading: carga })
+const BiConfigPage = dynamic(() => import("@/components/bi-finance/bi-config-page").then((m) => m.BiConfigPage), { ssr: false, loading: carga })
+const CatalogoPage = dynamic(() => import("@/components/catalogo-page").then((m) => m.CatalogoPage), { ssr: false, loading: carga })
+const CertificadosDepicenterPage = dynamic(() => import("@/components/certificados-depicenter-page").then((m) => m.CertificadosDepicenterPage), { ssr: false, loading: carga })
+const CertificadosRegaloImpresionPage = dynamic(() => import("@/components/certificados-regalo-impresion-page").then((m) => m.CertificadosRegaloImpresionPage), { ssr: false, loading: carga })
+const CertificadosRegaloPage = dynamic(() => import("@/components/certificados-regalo-page").then((m) => m.CertificadosRegaloPage), { ssr: false, loading: carga })
+const CertificadosRegaloTalonarioPage = dynamic(() => import("@/components/certificados-regalo-talonario-page").then((m) => m.CertificadosRegaloTalonarioPage), { ssr: false, loading: carga })
+const CertificadosRegaloValidezPage = dynamic(() => import("@/components/certificados-regalo-validez-page").then((m) => m.CertificadosRegaloValidezPage), { ssr: false, loading: carga })
+const ComisionAnalisisPage = dynamic(() => import("@/components/comision/finanzas/comision-analisis-page").then((m) => m.ComisionAnalisisPage), { ssr: false, loading: carga })
+const ComisionCalculoPage = dynamic(() => import("@/components/comision/comision-calculo-page").then((m) => m.ComisionCalculoPage), { ssr: false, loading: carga })
+const ComisionFinanzasPage = dynamic(() => import("@/components/comision/finanzas/comision-finanzas-page").then((m) => m.ComisionFinanzasPage), { ssr: false, loading: carga })
+const ComisionImportarPage = dynamic(() => import("@/components/comision/comision-importar-page").then((m) => m.ComisionImportarPage), { ssr: false, loading: carga })
+const ComisionLiquidacionPage = dynamic(() => import("@/components/comision/comision-liquidacion-page").then((m) => m.ComisionLiquidacionPage), { ssr: false, loading: carga })
+const ComisionPrestadoresPage = dynamic(() => import("@/components/comision/comision-prestadores-page").then((m) => m.ComisionPrestadoresPage), { ssr: false, loading: carga })
+const ComisionReglasPage = dynamic(() => import("@/components/comision/comision-reglas-page").then((m) => m.ComisionReglasPage), { ssr: false, loading: carga })
+const ComisionRentabilidadPage = dynamic(() => import("@/components/comision/finanzas/comision-rentabilidad-page").then((m) => m.ComisionRentabilidadPage), { ssr: false, loading: carga })
+const ComisionReportesPage = dynamic(() => import("@/components/comision/comision-reportes-page").then((m) => m.ComisionReportesPage), { ssr: false, loading: carga })
+const ComisionSinPrestadorPage = dynamic(() => import("@/components/comision/comision-sin-prestador-page").then((m) => m.ComisionSinPrestadorPage), { ssr: false, loading: carga })
+const ComprasDashboardPage = dynamic(() => import("@/components/compras-dashboard-page").then((m) => m.ComprasDashboardPage), { ssr: false, loading: carga })
+const ComprasFacturasPage = dynamic(() => import("@/components/compras-facturas-page").then((m) => m.ComprasFacturasPage), { ssr: false, loading: carga })
+const ComprasGastosMenoresPage = dynamic(() => import("@/components/compras-gastos-menores-page").then((m) => m.ComprasGastosMenoresPage), { ssr: false, loading: carga })
+const ComprasPagosPage = dynamic(() => import("@/components/compras-pagos-page").then((m) => m.ComprasPagosPage), { ssr: false, loading: carga })
+const ComprasRecurrentesPage = dynamic(() => import("@/components/compras-recurrentes-page").then((m) => m.ComprasRecurrentesPage), { ssr: false, loading: carga })
+const ConfigPage = dynamic(() => import("@/components/config-page").then((m) => m.ConfigPage), { ssr: false, loading: carga })
+const ConsentimientosPage = dynamic(() => import("@/components/consentimientos-page").then((m) => m.ConsentimientosPage), { ssr: false, loading: carga })
+const ControlTratamientosPage = dynamic(() => import("@/components/control-tratamientos-page").then((m) => m.ControlTratamientosPage), { ssr: false, loading: carga })
+const CosmiatriaClientesPage = dynamic(() => import("@/components/cosmiatria-clientes-page").then((m) => m.CosmiatriaClientesPage), { ssr: false, loading: carga })
+const CosmiatriaFichaPage = dynamic(() => import("@/components/cosmiatria-ficha-page").then((m) => m.CosmiatriaFichaPage), { ssr: false, loading: carga })
+const CredencialesPage = dynamic(() => import("@/components/credenciales-page").then((m) => m.CredencialesPage), { ssr: false, loading: carga })
+const DashboardPage = dynamic(() => import("@/components/dashboard-page").then((m) => m.DashboardPage), { ssr: false, loading: carga })
+const EmpleadosPage = dynamic(() => import("@/components/empleados-page").then((m) => m.EmpleadosPage), { ssr: false, loading: carga })
+const EquiposPage = dynamic(() => import("@/components/equipos-page").then((m) => m.EquiposPage), { ssr: false, loading: carga })
+const HistorialEquiposPage = dynamic(() => import("@/components/historial-equipos-page").then((m) => m.HistorialEquiposPage), { ssr: false, loading: carga })
+const InventarioPage = dynamic(() => import("@/components/inventario-page").then((m) => m.InventarioPage), { ssr: false, loading: carga })
+const KioskPonchePage = dynamic(() => import("@/components/hr/rrhh-ponche-page").then((m) => m.KioskPonchePage), { ssr: false, loading: carga })
+const LoginPage = dynamic(() => import("@/components/login-page").then((m) => m.LoginPage), { ssr: false, loading: carga })
+const NuevoReportePage = dynamic(() => import("@/components/nuevo-reporte-page").then((m) => m.NuevoReportePage), { ssr: false, loading: carga })
+const PiezasPolizaPage = dynamic(() => import("@/components/piezas-poliza-page").then((m) => m.PiezasPolizaPage), { ssr: false, loading: carga })
+const ProdCatalogoPage = dynamic(() => import("@/components/productos/prod-catalogo-page").then((m) => m.ProdCatalogoPage), { ssr: false, loading: carga })
+const ProdConteoHistoricoPage = dynamic(() => import("@/components/productos/prod-conteo-historico-page").then((m) => m.ProdConteoHistoricoPage), { ssr: false, loading: carga })
+const ProdConteoPage = dynamic(() => import("@/components/productos/prod-conteo-page").then((m) => m.ProdConteoPage), { ssr: false, loading: carga })
+const ProdImportarPage = dynamic(() => import("@/components/productos/prod-importar-page").then((m) => m.ProdImportarPage), { ssr: false, loading: carga })
+const ProdReportePage = dynamic(() => import("@/components/productos/prod-reporte-page").then((m) => m.ProdReportePage), { ssr: false, loading: carga })
+const PulseControlDashboardPage = dynamic(() => import("@/components/pulse-control-dashboard-page").then((m) => m.PulseControlDashboardPage), { ssr: false, loading: carga })
+const PulsosAuditoriaPage = dynamic(() => import("@/components/pulsos-auditoria-page").then((m) => m.PulsosAuditoriaPage), { ssr: false, loading: carga })
+const PulsosCuadreSemanalPage = dynamic(() => import("@/components/pulsos-cuadre-semanal-page").then((m) => m.PulsosCuadreSemanalPage), { ssr: false, loading: carga })
+const PulsosEquiposPage = dynamic(() => import("@/components/pulsos-equipos-page").then((m) => m.PulsosEquiposPage), { ssr: false, loading: carga })
+const PulsosLecturasPage = dynamic(() => import("@/components/pulsos-lecturas-page").then((m) => m.PulsosLecturasPage), { ssr: false, loading: carga })
+const PulsosMantenimientoPage = dynamic(() => import("@/components/pulsos-mantenimiento-page").then((m) => m.PulsosMantenimientoPage), { ssr: false, loading: carga })
+const PulsosOperadorasPage = dynamic(() => import("@/components/pulsos-operadoras-page").then((m) => m.PulsosOperadorasPage), { ssr: false, loading: carga })
+const PulsosSesionesPage = dynamic(() => import("@/components/pulsos-sesiones-page").then((m) => m.PulsosSesionesPage), { ssr: false, loading: carga })
+const RecursosHumanosPage = dynamic(() => import("@/components/recursos-humanos-page").then((m) => m.RecursosHumanosPage), { ssr: false, loading: carga })
+const ReportesFirmadosPage = dynamic(() => import("@/components/reportes-firmados-page").then((m) => m.ReportesFirmadosPage), { ssr: false, loading: carga })
+const ReportesPage = dynamic(() => import("@/components/reportes-page").then((m) => m.ReportesPage), { ssr: false, loading: carga })
+const ReqMatAprobacionesPage = dynamic(() => import("@/components/req-mat-aprobaciones-page").then((m) => m.ReqMatAprobacionesPage), { ssr: false, loading: carga })
+const ReqMatConsolidadoPage = dynamic(() => import("@/components/req-mat-consolidado-page").then((m) => m.ReqMatConsolidadoPage), { ssr: false, loading: carga })
+const ReqMatDashboardPage = dynamic(() => import("@/components/req-mat-dashboard-page").then((m) => m.ReqMatDashboardPage), { ssr: false, loading: carga })
+const ReqMatInventarioHistoricoPage = dynamic(() => import("@/components/req-mat-inventario-historico-page").then((m) => m.ReqMatInventarioHistoricoPage), { ssr: false, loading: carga })
+const ReqMatInventarioPage = dynamic(() => import("@/components/req-mat-inventario-page").then((m) => m.ReqMatInventarioPage), { ssr: false, loading: carga })
+const ReqMatMaterialesPage = dynamic(() => import("@/components/req-mat-materiales-page").then((m) => m.ReqMatMaterialesPage), { ssr: false, loading: carga })
+const ReqMatMisPage = dynamic(() => import("@/components/req-mat-mis-page").then((m) => m.ReqMatMisPage), { ssr: false, loading: carga })
+const ReqMatNuevaPage = dynamic(() => import("@/components/req-mat-nueva-page").then((m) => m.ReqMatNuevaPage), { ssr: false, loading: carga })
+const RrhhAsistenciaPage = dynamic(() => import("@/components/hr/rrhh-asistencia-page").then((m) => m.RrhhAsistenciaPage), { ssr: false, loading: carga })
+const RrhhAuditoriaPage = dynamic(() => import("@/components/hr/rrhh-auditoria-page").then((m) => m.RrhhAuditoriaPage), { ssr: false, loading: carga })
+const RrhhConfigModalidadesPage = dynamic(() => import("@/components/hr/rrhh-config-modalidades-page").then((m) => m.RrhhConfigModalidadesPage), { ssr: false, loading: carga })
+const RrhhContratosPage = dynamic(() => import("@/components/hr/rrhh-contratos-page").then((m) => m.RrhhContratosPage), { ssr: false, loading: carga })
+const RrhhDashboardPage = dynamic(() => import("@/components/hr/rrhh-dashboard-page").then((m) => m.RrhhDashboardPage), { ssr: false, loading: carga })
+const RrhhDashboardPonchePage = dynamic(() => import("@/components/hr/rrhh-dashboard-ponche-page").then((m) => m.RrhhDashboardPonchePage), { ssr: false, loading: carga })
+const RrhhDiasLaboradosPage = dynamic(() => import("@/components/hr/rrhh-dias-laborados-page").then((m) => m.RrhhDiasLaboradosPage), { ssr: false, loading: carga })
+const RrhhDobleSueldoPage = dynamic(() => import("@/components/hr/rrhh-doble-sueldo-page").then((m) => m.RrhhDobleSueldoPage), { ssr: false, loading: carga })
+const RrhhDocumentosPage = dynamic(() => import("@/components/hr/rrhh-documentos-page").then((m) => m.RrhhDocumentosPage), { ssr: false, loading: carga })
+const RrhhHorariosPage = dynamic(() => import("@/components/hr/rrhh-horarios-page").then((m) => m.RrhhHorariosPage), { ssr: false, loading: carga })
+const RrhhIncentivosPage = dynamic(() => import("@/components/hr/rrhh-incentivos-page").then((m) => m.RrhhIncentivosPage), { ssr: false, loading: carga })
+const RrhhLiquidacionesPage = dynamic(() => import("@/components/hr/rrhh-liquidaciones-page").then((m) => m.RrhhLiquidacionesPage), { ssr: false, loading: carga })
+const RrhhNominaPage = dynamic(() => import("@/components/hr/rrhh-nomina-page").then((m) => m.RrhhNominaPage), { ssr: false, loading: carga })
+const RrhhPdfPrestacionesPage = dynamic(() => import("@/components/hr/rrhh-pdf-prestaciones-page").then((m) => m.RrhhPdfPrestacionesPage), { ssr: false, loading: carga })
+const RrhhPermisosPage = dynamic(() => import("@/components/hr/rrhh-permisos-page").then((m) => m.RrhhPermisosPage), { ssr: false, loading: carga })
+const RrhhPonchePage = dynamic(() => import("@/components/hr/rrhh-ponche-page").then((m) => m.RrhhPonchePage), { ssr: false, loading: carga })
+const RrhhPrestamosPage = dynamic(() => import("@/components/hr/rrhh-prestamos-page").then((m) => m.RrhhPrestamosPage), { ssr: false, loading: carga })
+const RrhhReportesPage = dynamic(() => import("@/components/hr/rrhh-reportes-page").then((m) => m.RrhhReportesPage), { ssr: false, loading: carga })
+const RrhhTxtBancariosPage = dynamic(() => import("@/components/hr/rrhh-txt-bancarios-page").then((m) => m.RrhhTxtBancariosPage), { ssr: false, loading: carga })
+const RrhhVacacionesPage = dynamic(() => import("@/components/hr/rrhh-vacaciones-page").then((m) => m.RrhhVacacionesPage), { ssr: false, loading: carga })
+const SucursalesPage = dynamic(() => import("@/components/sucursales-page").then((m) => m.SucursalesPage), { ssr: false, loading: carga })
+const TecnicosPage = dynamic(() => import("@/components/tecnicos-page").then((m) => m.TecnicosPage), { ssr: false, loading: carga })
 
 export default function HomePage() {
   const {
