@@ -17,7 +17,6 @@
  */
 import type { Business } from "./types"
 import { fmtQty, UMBRAL_STOCK_BAJO } from "./productos-client"
-import { code128Svg } from "./barcode-code128"
 
 const esc = (v: unknown) =>
   String(v ?? "")
@@ -35,16 +34,16 @@ function nombreImpreso(value: unknown): string {
 }
 
 /**
- * El código de barras del producto, pequeño, para pegar debajo del nombre.
+ * El NÚMERO del código de barras del producto, debajo del nombre.
  *
- * Sale del `sku`, que es donde viven los EAN reales («8437008443010») y las
- * claves internas («3030»). El producto sin `sku` —hoy uno de 84— simplemente
- * no lleva barras: es preferible a imprimir un código inventado que no escanee.
+ * Sale del `sku`, que es donde viven los códigos: EAN reales de 13 dígitos
+ * («8437008443010») y algunas claves internas cortas («3030»). Solo el número:
+ * se probó con las barras dibujadas y cambiaba demasiado el impreso.
+ * El producto sin `sku` —hoy uno de 84— no muestra nada.
  */
-function barrasDeProducto(sku: unknown): string {
-  const svg = code128Svg(String(sku ?? ""), { alturaMm: 6, moduloMm: 0.2 })
-  if (!svg) return ""
-  return `<div class="bc">${svg}<div class="bc-num">${esc(sku)}</div></div>`
+function codigoDeProducto(sku: unknown): string {
+  const codigo = String(sku ?? "").trim()
+  return codigo ? `<div class="cod">${esc(codigo)}</div>` : ""
 }
 
 /** «RAFAEL VIDAL» → «Rafael Vidal», como en el subtítulo y el pie del modelo. */
@@ -224,12 +223,10 @@ const BASE_STYLES = `
   .c { text-align: center; }
   .r { text-align: right; }
   .num { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
-  /* Codigo de barras bajo el nombre. line-height:0 evita el hueco que el
-     navegador deja bajo un SVG en linea y descuadraba la altura de la fila. */
-  .bc { margin-top: 2px; line-height: 0; }
-  .bc svg { display: block; }
-  .bc-num { margin-top: 1px; font-size: 7px; letter-spacing: 1px; color: ${C.gris};
-            font-variant-numeric: tabular-nums; line-height: 1; }
+  /* Numero del codigo de barras, bajo el nombre. Discreto: no debe competir
+     con el nombre del producto ni alargar la fila. */
+  .cod { font-size: 8px; letter-spacing: .6px; color: ${C.gris};
+         font-variant-numeric: tabular-nums; line-height: 1.3; }
   td.bajo { background: ${C.bajoFondo} !important; }
   td.nota-bajo { background: ${C.bajoFondo} !important; color: ${C.bajoTinta}; font-weight: 700; font-size: 9.5px; }
   tr.total td { background: #E2E8F0 !important; font-weight: 800; }
@@ -268,7 +265,7 @@ function sucursalPage(bloque: ReporteSucursal, opts: ProductosPdfOpts): string {
       const bajo = it.cantidad <= umbral
       return `<tr>
         <td class="r">${i + 1}</td>
-        <td>${esc(nombreImpreso(it.nombre))}${barrasDeProducto(it.sku)}</td>
+        <td>${esc(nombreImpreso(it.nombre))}${codigoDeProducto(it.sku)}</td>
         <td class="num${bajo ? " bajo" : ""}">${fmtQty(it.cantidad)}</td>
         <td class="${bajo ? "nota-bajo" : ""}">${bajo ? "Stock bajo" : ""}</td>
       </tr>`
@@ -306,7 +303,7 @@ function consolidadoPage(cons: Consolidado, opts: ProductosPdfOpts): string {
       const celdas = cons.sucursales
         .map((s) => `<td class="num">${fmtQty(it.porSucursal[s] || 0)}</td>`)
         .join("")
-      return `<tr><td class="r">${i + 1}</td><td>${esc(nombreImpreso(it.nombre))}${barrasDeProducto(it.sku)}</td>${celdas}<td class="num">${fmtQty(it.total)}</td></tr>`
+      return `<tr><td class="r">${i + 1}</td><td>${esc(nombreImpreso(it.nombre))}${codigoDeProducto(it.sku)}</td>${celdas}<td class="num">${fmtQty(it.total)}</td></tr>`
     })
     .join("")
   const totales = cons.sucursales.map((s) => `<td class="num">${fmtQty(cons.totales[s] || 0)}</td>`).join("")

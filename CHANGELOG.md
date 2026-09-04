@@ -16,6 +16,17 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.126.1] - 2026-09-04
+
+### Changed
+
+- **Solo el NÚMERO del código de barras, no las barras dibujadas.** La v0.126.0 pintaba
+  el código de barras en SVG bajo cada nombre y eso cambiaba demasiado el impreso: el
+  reporte tiene que seguir siendo el mismo documento de siempre. Ahora bajo el nombre
+  va únicamente el número (el `sku`), en gris y pequeño, y la altura de la fila apenas
+  se mueve.
+- Retirado `lib/barcode-code128.ts` y sus 7 pruebas: sin barras que dibujar, sobra.
+
 ## [0.126.0] - 2026-09-04
 
 ### Added

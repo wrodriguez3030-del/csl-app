@@ -7,7 +7,6 @@
  * Correr:  node --import tsx scripts/test-productos-inventario.mjs
  */
 import assert from "node:assert/strict"
-import { code128Svg, codificable } from "../lib/barcode-code128.ts"
 
 import {
   normalizeProductName,
@@ -307,36 +306,6 @@ console.log("\n── 6. Conteo físico ──")
   ok("cuadra: diferencia cero")
   assert.equal(diffConteo(null, "3"), 3)
   ok("tolera valores sucios sin devolver NaN")
-}
-
-console.log("\n── 7. Código de barras del reporte de existencias ──")
-{
-  // «3030» a mano, con la tabla de CODE 128-B:
-  //   inicio B = 104; '3'=19, '0'=16, '3'=19, '0'=16
-  //   control = (104 + 19·1 + 16·2 + 19·3 + 16·4) mod 103 = 276 mod 103 = 70
-  //   7 símbolos → 6·11 + 13 = 79 módulos
-  // Si el dígito de control saliera mal, el código se IMPRIME igual y solo se
-  // descubre cuando no lee la pistola en el mostrador. Por eso se comprueba.
-  const svg = code128Svg("3030", { moduloMm: 0.24, alturaMm: 7 })
-  assert.equal(Number(svg.match(/width="([\d.]+)mm"/)[1]).toFixed(2), (79 * 0.24).toFixed(2))
-  ok("ancho correcto: 79 módulos (dígito de control incluido)")
-  assert.equal((svg.match(/<rect/g) || []).length, 22)
-  ok("22 barras: 7 símbolos por 3, más la de la parada")
-
-  assert.ok(code128Svg("8437008443010").startsWith("<svg"))
-  ok("codifica un EAN-13 real de los productos")
-  assert.ok(code128Svg("3030").startsWith("<svg"))
-  ok("codifica también una clave interna corta")
-
-  assert.equal(code128Svg(""), "")
-  assert.equal(code128Svg(null), "")
-  ok("el producto sin sku no lleva barras, y no revienta el reporte")
-  assert.equal(code128Svg("café"), "")
-  ok("rechaza lo que CODE 128-B no representa en vez de imprimir un código falso")
-
-  assert.equal(codificable("ABC-123"), true)
-  assert.equal(codificable("  "), false)
-  ok("codificable() distingue el texto imprimible del vacío")
 }
 
 console.log(`\n✅ ${pasadas} pruebas pasaron\n`)
