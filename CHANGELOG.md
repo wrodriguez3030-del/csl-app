@@ -16,6 +16,17 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.123.0] - 2026-09-03
+
+### Changed
+
+- **El snapshot de PulseControl solo se pide donde se usa.** El refresco silencioso
+  corre cada 60 s para todo el mundo y lo traía siempre: ~150 KB por usuario y por
+  minuto —las sesiones de cliente van sin recortar— aunque la persona estuviera en
+  Compras, RR.HH. o Incentivos. Lo leen **12 de las 90 pantallas**; en las otras 78 ya
+  no se pide. Al entrar en una pantalla de pulsos se trae al momento, para que no se
+  quede en blanco esperando al siguiente ciclo.
+
 ## [0.122.0] - 2026-09-03
 
 ### Changed

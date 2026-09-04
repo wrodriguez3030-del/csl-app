@@ -1,7 +1,7 @@
 "use client"
 
 import dynamic from "next/dynamic"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useAppStore, apiJsonp, normalizeApiUrl, invalidateReadCache } from "@/lib/store"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
@@ -34,6 +34,23 @@ import type { Database, DatabasePulsos } from "@/lib/types"
  *
  * `ssr: false` porque todas son de cliente y viven dentro del `switch` de abajo.
  */
+/**
+ * Las ÚNICAS pantallas que leen el snapshot de PulseControl (`dbPulsos`).
+ *
+ * El refresco silencioso corre cada 60 s para todo el mundo, y traía este
+ * snapshot siempre: unos 150 KB por usuario y por minuto —las sesiones de
+ * cliente van sin recortar— aunque la persona estuviera en Compras, RR.HH. o
+ * Incentivos y no fuera a mirarlo nunca. Ahora solo se pide donde se usa.
+ *
+ * Si una pantalla nueva empieza a leer `dbPulsos`, su id va aquí.
+ */
+const PANTALLAS_CON_PULSOS = new Set<string>([
+  "config", "panel", "equipos", "cosmiatria-ficha",
+  "pulse-dashboard", "pulse-equipos", "pulse-mantenimiento",
+  "pulsos-operadoras", "pulsos-lecturas", "pulsos-sesiones",
+  "pulsos-auditoria", "pulsos-cuadre",
+])
+
 const carga = () => <div className="p-8 text-sm text-muted-foreground">Cargando…</div>
 
 const AdminPermisosPage = dynamic(() => import("@/components/admin-permisos-page").then((m) => m.AdminPermisosPage), { ssr: false, loading: carga })
@@ -213,6 +230,11 @@ export default function HomePage() {
     }
   }, [])
 
+  // La pestaña activa en un ref: `handleRefresh` la consulta sin depender de
+  // ella, para no recrearse en cada cambio y reiniciar el temporizador de 60 s.
+  const activeTabRef = useRef(activeTab)
+  useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
+
   // Si el usuario está logueado pero el activeTab actual no es accesible
   // (caso típico: el store default es "panel" pero este usuario no tiene
   // Dashboard), redirige al primer menú permitido. Evita mostrar la
@@ -232,8 +254,8 @@ export default function HomePage() {
    *                        auto-refresh). Si es false, lo muestra (modo manual
    *                        cuando el usuario presiona el botón Actualizar).
    */
-  const handleRefresh = useCallback(async (options: { silent?: boolean } = {}) => {
-    const { silent = false } = options
+  const handleRefresh = useCallback(async (options: { silent?: boolean; forzarPulsos?: boolean } = {}) => {
+    const { silent = false, forzarPulsos = false } = options
     const normalized = normalizeApiUrl(apiUrl)
     if (!normalized) {
       if (!silent) showToast("Configura la URL de la API primero", "error")
@@ -266,7 +288,11 @@ export default function HomePage() {
         throw new Error((result as { error?: string })?.error || "Error del servidor")
       }
 
-      const pulsos = await apiJsonp(normalized, { action: "getAllPulsosData" })
+      // Solo donde se usa. `forzar` sirve para el botón «Actualizar», que debe
+      // traerlo todo aunque la pantalla activa no lo pinte.
+      const pulsos = forzarPulsos || PANTALLAS_CON_PULSOS.has(activeTabRef.current)
+        ? await apiJsonp(normalized, { action: "getAllPulsosData" })
+        : null
       if (pulsos && pulsos.ok) {
         setDbPulsos({
           operadoras: (pulsos.operadoras as DatabasePulsos["operadoras"]) || [],
@@ -319,6 +345,19 @@ export default function HomePage() {
   // - al volver a la pestaña (visibilitychange / focus)
   // - se SALTA si hay un formulario abierto (formOpenCount > 0) para no
   //   interrumpir la captura del usuario.
+
+  // Al ENTRAR en una pantalla de PulseControl hay que traer el snapshot ya: sin
+  // esto se quedaría vacía hasta el siguiente refresco silencioso, o sea hasta
+  // 60 s mirando una tabla en blanco. Se pide una sola vez por sesión; a partir
+  // de ahí lo mantiene al día el refresco de siempre.
+  const pulsosCargados = useRef(false)
+  useEffect(() => {
+    if (!user || pulsosCargados.current) return
+    if (!PANTALLAS_CON_PULSOS.has(activeTab)) return
+    pulsosCargados.current = true
+    void handleRefresh({ silent: true, forzarPulsos: true })
+  }, [user, activeTab, handleRefresh])
+
   useAutoRefresh(
     () => handleRefresh({ silent: true }),
     {
