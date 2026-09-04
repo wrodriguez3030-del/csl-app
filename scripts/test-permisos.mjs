@@ -7,7 +7,7 @@
  *
  *   pnpm test:permisos
  */
-import { readFileSync, existsSync } from "node:fs"
+import { readFileSync, existsSync, globSync } from "node:fs"
 import { PERMISSION_OPTIONS, PERMISSION_ID_SET, CAJA_FUERTE } from "../lib/permissions/catalog.ts"
 import { MENU_PERMISOS, PERMISOS_PREEXISTENTES } from "../lib/permissions/inherit.ts"
 import {
@@ -30,14 +30,21 @@ const fail = (msg, detalle) => {
 console.log("\n🔐 Permisos · prueba de completitud\n")
 
 // ── 1. Toda acción del despachador está declarada ──────────────────────────
-const handlers = readFileSync("app/api/csl/_handlers.ts", "utf8")
+// El despachador MÁS los módulos que ya viven en su propio archivo. Si esto
+// solo mirara `_handlers.ts`, sacar un módulo haría desaparecer sus acciones
+// del inventario y la prueba diría que el mapa declara acciones inexistentes.
+const ARCHIVOS_HANDLER = [
+  "app/api/csl/_handlers.ts",
+  ...globSync("app/api/csl/handlers/*.ts"),
+]
+const handlers = ARCHIVOS_HANDLER.map((f) => readFileSync(f, "utf8")).join("\n")
 const acciones = [...new Set([...handlers.matchAll(/case "([A-Za-z0-9_]+)"/g)].map((m) => m[1]))]
 const sinDeclarar = acciones.filter((a) => !(a in ACTION_PERMISSIONS))
 if (sinDeclarar.length) {
   fail(`${sinDeclarar.length} acciones del despachador SIN permiso declarado`, sinDeclarar)
   console.log(`     → decláralas en lib/permissions/action-map.ts`)
 } else {
-  ok(`las ${acciones.length} acciones del despachador declaran permiso`)
+  ok(`las ${acciones.length} acciones (${ARCHIVOS_HANDLER.length} archivos) declaran permiso`)
 }
 
 // ── 2. No sobran entradas en el mapa ───────────────────────────────────────
@@ -110,7 +117,6 @@ const EXENTAS = [
   // Exige requireSuperadmin, más estricto que cualquier permiso del catálogo.
   "/api/admin/users",
 ]
-const { globSync } = await import("node:fs")
 const rutasEnDisco = globSync("app/api/**/route.ts")
 const noDeclaradas = []
 for (const archivo of rutasEnDisco) {

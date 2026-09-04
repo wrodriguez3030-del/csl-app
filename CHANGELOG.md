@@ -16,6 +16,28 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.124.0] - 2026-09-03
+
+### Changed
+
+- **Empieza la división de `_handlers.ts`.** Tenía 5.805 líneas y 361 `case` contra la
+  regla del proyecto de 800 máximo, y es donde vivieron todos los fallos que destapó
+  la auditoría de hoy.
+  - `app/api/csl/_context.ts` — los ayudantes de contexto y tenant que compartían
+    todos los módulos (`effectiveBusinessId`, `shouldScopeTenant`, `puedeVer`,
+    `businessIdForRowSucursal`, `isMaintenanceAdmin`, `isMissingTable`, `round2`).
+  - `app/api/csl/handlers/gift-certificates.ts` — Certificados de regalo completo:
+    sus 8 ayudantes de dominio y sus 14 acciones. **357 líneas.**
+  - `_handlers.ts` baja de 5.805 a 5.441 líneas.
+
+  Se empezó por Certificados porque es el único módulo con pruebas propias
+  (`pnpm test:gift`, 23) que demuestran que el traslado no cambió nada. El traslado
+  es mecánico: los bloques se movieron enteros, sin tocar la lógica.
+
+- `pnpm test:permisos` ahora inventaría **el despachador más los módulos separados**.
+  Sin ese cambio, sacar un módulo haría desaparecer sus acciones del inventario — y de
+  hecho la prueba lo cazó al primer intento: «14 acciones en el mapa que ya no existen».
+
 ## [0.123.0] - 2026-09-03
 
 ### Changed
