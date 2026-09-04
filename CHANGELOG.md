@@ -16,6 +16,24 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.125.0] - 2026-09-03
+
+### Changed
+
+- **Los ayudantes de RR.HH. salen a `app/api/csl/handlers/hr-helpers.ts`** (334 líneas,
+  19 funciones): cálculo laboral dominicano —preaviso, cesantía, vacaciones, regalía,
+  ISR anual, antigüedad—, auditoría y horario efectivo. `_handlers.ts` baja de 5.441 a
+  **5.146 líneas**.
+
+  **Los `case` de RR.HH. NO se movieron, a propósito.** Son 1.696 líneas repartidas en
+  **16 bloques** y el archivo tiene **171 casos encadenados** (`case "a": case "b": {…}`):
+  un traslado mecánico rompería cadenas que ninguna prueba cubre, en el módulo que corre
+  la nómina. Los ayudantes sí se mueven sin riesgo porque son funciones y `tsc` verifica
+  cada referencia. Mover los `case` pide antes una suite de RR.HH. que hoy no existe.
+
+  Mantenimiento tampoco se toca: por política del proyecto va aislado y no se mueve sin
+  una orden explícita.
+
 ## [0.124.0] - 2026-09-03
 
 ### Changed
