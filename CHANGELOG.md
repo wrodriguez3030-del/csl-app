@@ -16,6 +16,28 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.126.0] - 2026-09-04
+
+### Added
+
+- **Código de barras de cada producto en el reporte de existencias**, pequeño y justo
+  debajo del nombre, con el número legible debajo. Sale en el impreso por sucursal y
+  en el consolidado.
+- `lib/barcode-code128.ts` — generador de CODE 128-B en SVG, **sin dependencias**.
+  - **CODE 128 y no EAN-13** porque el `sku` trae códigos EAN reales de 13 dígitos
+    («8437008443010») pero también claves internas cortas («3030»), que EAN-13
+    rechazaría por no tener dígito verificador válido. CODE 128-B acepta ambos y lo
+    lee cualquier pistola de comercio.
+  - **SVG y no una librería de CDN** porque el reporte se imprime abriendo una ventana
+    con HTML suelto: un `<script>` externo no cargaría —ni debe: este documento no sale
+    a internet— y un PNG saldría borroso en papel.
+  - El producto sin `sku` (hoy 1 de 84) sale sin barras, en vez de con un código
+    inventado que no escanearía.
+- Siete pruebas nuevas en `pnpm test:productos` (50 en total), incluida la
+  comprobación del **dígito de control** contra el cálculo a mano: si saliera mal, el
+  código se imprimiría igual y solo se descubriría cuando no lee la pistola en el
+  mostrador.
+
 ## [0.125.0] - 2026-09-03
 
 ### Changed
