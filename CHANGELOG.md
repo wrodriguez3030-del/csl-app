@@ -16,6 +16,16 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.127.0] - 2026-09-12
+
+### Added
+- Interruptor `AGENDAPRO_WEBHOOK_ENABLED` extendido a `payments-cron`: antes solo
+  apagaba el webhook de pagos; el cron diario de pagos seguía corriendo sin
+  respetar la variable. Ahora ambos caminos (webhook y cron) se apagan juntos.
+  Requiere fijar `AGENDAPRO_SYNC_ENABLED=false` y `AGENDAPRO_WEBHOOK_ENABLED=false`
+  en Vercel (Production) para apagar toda la integración de AgendaPro
+  temporalmente — el código ya lo soporta, falta el valor de las env vars.
+
 ## [0.126.1] - 2026-09-04
 
 ### Changed

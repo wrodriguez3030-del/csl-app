@@ -60,6 +60,11 @@ export async function GET(request: Request) {
     return json({ ok: false, error: "Unauthorized" }, 401)
   }
 
+  const webhookEnabled = (process.env.AGENDAPRO_WEBHOOK_ENABLED ?? "true").toLowerCase() !== "false"
+  if (!webhookEnabled) {
+    return json({ ok: false, error: "Sync de pagos deshabilitado (AGENDAPRO_WEBHOOK_ENABLED=false)." }, 503)
+  }
+
   const supabase = getSupabaseAdmin()
   const businessRow = await supabase.from("businesses").select("id").eq("slug", "csl").maybeSingle()
   const businessId = (businessRow.data as { id?: string } | null)?.id
