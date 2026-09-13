@@ -16,6 +16,16 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.130.0] - 2026-09-13
+
+### Added
+- Botón "Canjear" de un clic en "CF Regalo Digital" y en "Validar Certificados"
+  (el sistema realmente usado a diario), con confirmación. Antes había que
+  abrir "Validar Certificados", buscar el código y elegir el estado en 2
+  pasos. También se agregó la columna "Estado" (badge) a la tabla de
+  emitidos de "CF Regalo Digital", que no la mostraba. Reutiliza
+  `saveCertificadoRegalo`, sin cambios de backend.
+
 ## [0.129.0] - 2026-09-13
 
 ### Added

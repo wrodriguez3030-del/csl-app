@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 // pdf-lib (~1 MB) se importa de forma diferida DENTRO de createPdf para no
 // cargarlo en el bundle inicial — solo se necesita al exportar el certificado.
-import { ArrowUpDown, Download, FileSpreadsheet, FileText, Gift, RotateCcw, Search, ShieldCheck, Trash2 } from "lucide-react"
+import { ArrowUpDown, BadgeCheck, Download, FileSpreadsheet, FileText, Gift, Loader2, RotateCcw, Search, ShieldCheck, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -94,6 +94,8 @@ export function CertificadosRegaloPage() {
   const [sortKey, setSortKey] = useState<SortKey>("fecha")
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
   const [isGenerating, setIsGenerating] = useState(false)
+  const [confirmCanjear, setConfirmCanjear] = useState<CertificadoRegaloEmitido | null>(null)
+  const [canjeando, setCanjeando] = useState(false)
   // El borrador local se guarda POR NEGOCIO: sin esto, al cambiar de empresa los
   // certificados de la anterior se reenviaban y se recreaban como de la nueva.
   const negocio = useAppStore((s) => s.activeBusinessSlug)
@@ -232,6 +234,24 @@ export function CertificadosRegaloPage() {
     }
   }
 
+  const canjearRapido = async (record: CertificadoRegaloEmitido) => {
+    setCanjeando(true)
+    try {
+      const updated: CertificadoRegaloEmitido = {
+        ...record,
+        estado: "Canjeado",
+        canjeadoEn: new Date().toISOString(),
+      }
+      await apiJsonp(apiUrl, { action: "saveCertificadoRegalo", data: JSON.stringify(updated) })
+      const next = records.map((item) => (item.codigo === updated.codigo ? updated : item))
+      setRecords(next)
+      saveRecords(next, negocio)
+      setConfirmCanjear(null)
+    } finally {
+      setCanjeando(false)
+    }
+  }
+
   const deleteRecord = (codigo: string) => {
     const next = records.filter((record) => record.codigo !== codigo)
     setRecords(next)
@@ -353,6 +373,7 @@ export function CertificadosRegaloPage() {
                 <th className="px-3 py-2 text-left"><SortHeader label="Cortesia de" field="cortesiaDe" /></th>
                 <th className="px-3 py-2 text-left"><SortHeader label="Valido por" field="validoPor" /></th>
                 <th className="px-3 py-2 text-left"><SortHeader label="Codigo" field="codigo" /></th>
+                <th className="px-3 py-2 text-left">Estado</th>
                 <th className="px-3 py-2 text-right">Acciones</th>
               </tr></thead>
               <tbody>
@@ -366,7 +387,19 @@ export function CertificadosRegaloPage() {
                     <td className="px-3 py-2">{record.validoPor}</td>
                     <td className="px-3 py-2 font-mono text-xs">{record.codigo}</td>
                     <td className="px-3 py-2">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                        (record.estado || "Emitido") === "Canjeado" ? "bg-emerald-100 text-emerald-800"
+                          : (record.estado || "Emitido") === "Anulado" ? "bg-rose-100 text-rose-800"
+                          : "bg-sky-100 text-sky-800"
+                      }`}>{record.estado || "Emitido"}</span>
+                    </td>
+                    <td className="px-3 py-2">
                       <div className="flex justify-end gap-1">
+                        {(record.estado || "Emitido") === "Emitido" ? (
+                          <Button size="sm" variant="outline" className="text-emerald-700" onClick={() => setConfirmCanjear(record)}>
+                            <BadgeCheck className="mr-1.5 h-3.5 w-3.5" />Canjear
+                          </Button>
+                        ) : null}
                         {record.tipo === "Digital" ? (
                           <Button size="sm" variant="outline" onClick={() => downloadPdf(record, false)}><Download className="mr-2 h-3.5 w-3.5" />PDF</Button>
                         ) : null}
@@ -375,7 +408,7 @@ export function CertificadosRegaloPage() {
                     </td>
                   </tr>
                 )) : (
-                  <tr><td className="px-3 py-10 text-center text-muted-foreground" colSpan={8}>No hay certificados emitidos todavia.</td></tr>
+                  <tr><td className="px-3 py-10 text-center text-muted-foreground" colSpan={9}>No hay certificados emitidos todavia.</td></tr>
                 )}
               </tbody>
             </table>
@@ -394,6 +427,25 @@ export function CertificadosRegaloPage() {
         </CardContent>
       </Card>
       <div className="hidden text-xs">{validationUrl}</div>
+
+      {confirmCanjear ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setConfirmCanjear(null)}>
+          <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <CardHeader><CardTitle className="text-base">Canjear {confirmCanjear.codigo}</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm">
+                ¿Marcar este certificado como CANJEADO por <b>{confirmCanjear.otorgadoA}</b>?
+              </p>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => void canjearRapido(confirmCanjear)} disabled={canjeando}>
+                  {canjeando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Confirmar canje
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setConfirmCanjear(null)} disabled={canjeando}>Cancelar</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
     </div>
   )
 }

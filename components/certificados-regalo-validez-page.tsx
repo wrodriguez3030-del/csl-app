@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { CheckCircle2, Search, ShieldCheck, XCircle } from "lucide-react"
+import { BadgeCheck, CheckCircle2, Loader2, Search, ShieldCheck, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -24,6 +24,8 @@ export function CertificadosRegaloValidezPage() {
   const [selected, setSelected] = useState<CertificadoRegaloEmitido | null>(null)
   const [notas, setNotas] = useState("")
   const [loading, setLoading] = useState(false)
+  const [confirmCanjear, setConfirmCanjear] = useState<CertificadoRegaloEmitido | null>(null)
+  const [canjeando, setCanjeando] = useState(false)
 
   const loadRecords = async () => {
     setLoading(true)
@@ -57,6 +59,26 @@ export function CertificadosRegaloValidezPage() {
       : records
     return [...rows].sort((a, b) => String(b.fecha || "").localeCompare(String(a.fecha || "")))
   }, [records, searchTerm])
+
+  const canjearRapido = async (record: CertificadoRegaloEmitido) => {
+    setCanjeando(true)
+    try {
+      const updated: CertificadoRegaloEmitido = {
+        ...record,
+        estado: "Canjeado",
+        canjeadoEn: new Date().toISOString(),
+      }
+      await apiJsonp(apiUrl, { action: "saveCertificadoRegalo", data: JSON.stringify(updated) })
+      setRecords((current) => current.map((item) => (item.codigo === updated.codigo ? updated : item)))
+      if (selected?.codigo === updated.codigo) {
+        setSelected(updated)
+        setNotas(updated.notasEstado || "")
+      }
+      setConfirmCanjear(null)
+    } finally {
+      setCanjeando(false)
+    }
+  }
 
   const selectRecord = (record: CertificadoRegaloEmitido) => {
     setSelected(record)
@@ -118,7 +140,16 @@ export function CertificadosRegaloValidezPage() {
                       <td className="px-3 py-2">{record.validoPor}</td>
                       <td className="px-3 py-2 font-mono text-xs">{record.codigo}</td>
                       <td className="px-3 py-2"><span className={`rounded-full border px-2 py-1 text-xs ${estadoClass(record.estado || "Emitido")}`}>{record.estado || "Emitido"}</span></td>
-                      <td className="px-3 py-2 text-right"><Button size="sm" variant="outline" onClick={() => selectRecord(record)}>Ver</Button></td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex justify-end gap-1">
+                          {(record.estado || "Emitido") === "Emitido" ? (
+                            <Button size="sm" variant="outline" className="text-emerald-700" onClick={() => setConfirmCanjear(record)}>
+                              <BadgeCheck className="mr-1.5 h-3.5 w-3.5" />Canjear
+                            </Button>
+                          ) : null}
+                          <Button size="sm" variant="outline" onClick={() => selectRecord(record)}>Ver</Button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                   {!filtered.length ? <tr><td className="px-3 py-10 text-center text-muted-foreground" colSpan={6}>No hay certificados con esa busqueda.</td></tr> : null}
@@ -164,6 +195,25 @@ export function CertificadosRegaloValidezPage() {
           </CardContent>
         </Card>
       </div>
+
+      {confirmCanjear ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setConfirmCanjear(null)}>
+          <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <CardHeader><CardTitle className="text-base">Canjear {confirmCanjear.codigo}</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm">
+                ¿Marcar este certificado como CANJEADO por <b>{confirmCanjear.otorgadoA}</b>?
+              </p>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => void canjearRapido(confirmCanjear)} disabled={canjeando}>
+                  {canjeando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Confirmar canje
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setConfirmCanjear(null)} disabled={canjeando}>Cancelar</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
     </div>
   )
 }
