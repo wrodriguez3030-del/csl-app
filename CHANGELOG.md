@@ -16,6 +16,13 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.135.0] - 2026-09-13
+
+### Changed
+- La pestaña/tarjeta "Talonario pre-impreso" (dentro de "Certificado de
+  Regalos") se renombró a "Certificado Impreso", junto con su encabezado
+  interno, para que combine con "Certificados digitales".
+
 ## [0.134.0] - 2026-09-13
 
 ### Changed

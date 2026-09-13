@@ -189,7 +189,7 @@ export function TalonarioPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-base font-bold">Talonario pre-impreso</h3>
+          <h3 className="text-base font-bold">Certificado Impreso</h3>
           <p className="text-sm text-muted-foreground">Completa los campos; se imprimen solo ellos sobre el certificado ya impreso.</p>
         </div>
         <div className="flex gap-2">

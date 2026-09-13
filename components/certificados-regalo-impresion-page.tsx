@@ -81,7 +81,7 @@ export function CertificadosRegaloImpresionPage() {
           active={tab === "talonario"}
           onClick={() => setTab("talonario")}
           icon={<Stamp className="h-6 w-6" />}
-          title="Talonario pre-impreso"
+          title="Certificado Impreso"
           description="Completar campos sobre certificado físico"
         />
       </div>
