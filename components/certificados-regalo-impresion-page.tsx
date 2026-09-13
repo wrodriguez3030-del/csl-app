@@ -9,7 +9,8 @@
  * crea un menú nuevo ni se duplica ninguno.
  */
 import { useMemo, useState, type ReactNode } from "react"
-import { Gift, LayoutList, Stamp } from "lucide-react"
+import { ArrowLeft, Gift, LayoutList, Stamp } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { useAppStore } from "@/lib/store"
 import { useSessionUser } from "@/hooks/use-session-user"
 import { useGiftCertificates, type GiftCertRecord } from "./cf-imprimir/use-gift-certificates"
@@ -55,14 +56,23 @@ export function CertificadosRegaloImpresionPage() {
     setEditing(rec)
     void gc.refresh()
   }
+  const goToList = () => {
+    setTab("digital")
+    backToList()
+  }
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="flex items-center gap-2 text-xl font-bold">
-          <Gift className="h-5 w-5 text-primary" />CERTIFICADO DE REGALOS
-        </h2>
-        <p className="text-sm text-muted-foreground">Creación, personalización e impresión de certificados de regalo</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-xl font-bold">
+            <Gift className="h-5 w-5 text-primary" />CERTIFICADO DE REGALOS
+          </h2>
+          <p className="text-sm text-muted-foreground">Creación, personalización e impresión de certificados de regalo</p>
+        </div>
+        <Button variant="outline" onClick={goToList}>
+          <ArrowLeft className="mr-2 h-4 w-4" />Volver al listado
+        </Button>
       </div>
 
       {/* Pestañas */}

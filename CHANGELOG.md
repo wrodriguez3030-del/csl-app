@@ -16,6 +16,15 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.136.0] - 2026-09-13
+
+### Added
+- Botón "Volver al listado" persistente en el encabezado de "Certificado de
+  Regalos", visible sin importar la pestaña activa (Certificados digitales
+  o Certificado Impreso). Antes solo existía dentro del editor de
+  Certificados digitales; Certificado Impreso no tenía ninguna forma de
+  llegar al listado.
+
 ## [0.135.0] - 2026-09-13
 
 ### Changed
