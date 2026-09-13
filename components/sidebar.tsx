@@ -243,9 +243,9 @@ const EXTRA_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Atencion a cliente",
     items: [
+      { id: "cliente-certificados-imprimir", label: "Certificado de Regalos", icon: <Gift className="h-4 w-4" /> },
       { id: "cliente-certificados", label: "CF Regalo Digital", icon: <Gift className="h-4 w-4" /> },
       { id: "cliente-certificados-depicenter", label: "Certificado Digital Depicenter", icon: <Gift className="h-4 w-4" /> },
-      { id: "cliente-certificados-imprimir", label: "CF para imprimir", icon: <Gift className="h-4 w-4" /> },
       { id: "cliente-certificados-talonario", label: "CF Talonario pre-impreso", icon: <Gift className="h-4 w-4" /> },
       { id: "cliente-certificados-validez", label: "Validar certificados", icon: <Gift className="h-4 w-4" /> },
     ],

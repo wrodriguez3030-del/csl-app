@@ -16,6 +16,15 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.132.0] - 2026-09-13
+
+### Changed
+- "CF para imprimir" se renombró a "Certificado de Regalos" y se movió al
+  principio de Atención a Cliente. Cambio de etiqueta en `components/sidebar.tsx`,
+  en el encabezado de la pantalla y en el catálogo canónico `lib/menus.ts`
+  (usado por Permisos) para que no queden desincronizados. El `id`
+  (`cliente-certificados-imprimir`) no cambió.
+
 ## [0.131.0] - 2026-09-13
 
 ### Added

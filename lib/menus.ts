@@ -128,7 +128,7 @@ export const MENU_OPTIONS: MenuOption[] = [
   { id: "sincronizar-api", label: "Sincronizar API", section: "Clientes y Consentimientos" },
   { id: "cliente-certificados", label: "CF Regalo Digital", section: "Atención a cliente" },
   { id: "cliente-certificados-depicenter", label: "Certificado Digital Depicenter", section: "Atención a cliente" },
-  { id: "cliente-certificados-imprimir", label: "CF de Regalo para imprimir", section: "Atención a cliente" },
+  { id: "cliente-certificados-imprimir", label: "Certificado de Regalos", section: "Atención a cliente" },
   { id: "cliente-certificados-talonario", label: "CF Regalos Talonario Pre-impreso", section: "Atención a cliente" },
   { id: "cliente-certificados-validez", label: "Validar Certificados", section: "Atención a cliente" },
   // BI Financiero IA (asistente financiero estratégico con OpenAI)

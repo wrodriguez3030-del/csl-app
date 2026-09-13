@@ -60,7 +60,7 @@ export function CertificadosRegaloImpresionPage() {
     <div className="space-y-5">
       <div>
         <h2 className="flex items-center gap-2 text-xl font-bold">
-          <Gift className="h-5 w-5 text-primary" />CF PARA IMPRIMIR
+          <Gift className="h-5 w-5 text-primary" />CERTIFICADO DE REGALOS
         </h2>
         <p className="text-sm text-muted-foreground">Creación, personalización e impresión de certificados de regalo</p>
       </div>
