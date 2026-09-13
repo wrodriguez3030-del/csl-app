@@ -25,7 +25,7 @@ export function CertificadosRegaloImpresionPage() {
   const user = useSessionUser()
   const gc = useGiftCertificates()
 
-  const [tab, setTab] = useState<Tab>("talonario")
+  const [tab, setTab] = useState<Tab>("digital")
   const [view, setView] = useState<View>("list")
   const [editing, setEditing] = useState<GiftCertRecord | null>(null)
 
@@ -66,13 +66,21 @@ export function CertificadosRegaloImpresionPage() {
       </div>
 
       {/* Pestañas */}
-      <div className="flex gap-1 border-b">
-        <TabButton active={tab === "talonario"} onClick={() => setTab("talonario")} icon={<Stamp className="h-4 w-4" />}>
-          Talonario pre-impreso
-        </TabButton>
-        <TabButton active={tab === "digital"} onClick={() => setTab("digital")} icon={<LayoutList className="h-4 w-4" />}>
-          Certificados digitales
-        </TabButton>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <TabCard
+          active={tab === "digital"}
+          onClick={() => setTab("digital")}
+          icon={<LayoutList className="h-6 w-6" />}
+          title="Certificados digitales"
+          description="Crear, emitir, canjear e imprimir"
+        />
+        <TabCard
+          active={tab === "talonario"}
+          onClick={() => setTab("talonario")}
+          icon={<Stamp className="h-6 w-6" />}
+          title="Talonario pre-impreso"
+          description="Completar campos sobre certificado físico"
+        />
       </div>
 
       {tab === "talonario" ? (
@@ -93,27 +101,36 @@ export function CertificadosRegaloImpresionPage() {
   )
 }
 
-function TabButton({
+function TabCard({
   active,
   onClick,
   icon,
-  children,
+  title,
+  description,
 }: {
   active: boolean
   onClick: () => void
   icon: ReactNode
-  children: ReactNode
+  title: string
+  description: string
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition ${
-        active ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+      className={`flex items-center gap-4 rounded-2xl border-2 p-5 text-left transition ${
+        active
+          ? "border-primary bg-primary/5 shadow-sm"
+          : "border-border bg-background hover:border-primary/40 hover:bg-muted/40"
       }`}
     >
-      {icon}
-      {children}
+      <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+        {icon}
+      </span>
+      <span>
+        <span className={`block text-lg font-bold ${active ? "text-primary" : "text-foreground"}`}>{title}</span>
+        <span className="block text-sm text-muted-foreground">{description}</span>
+      </span>
     </button>
   )
 }

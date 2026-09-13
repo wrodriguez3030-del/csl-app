@@ -61,7 +61,7 @@ const pageMeta: Partial<Record<TabId, { title: string; description: string; eyeb
   "reportes-firmados": { title: "Historial Fichas y Consentimientos", description: "Vista centralizada de fichas dermatológicas y consentimientos firmados", eyebrow: "Clientes y Consentimientos" },
   "cliente-certificados": { title: "CF Regalo Digital", description: "Certificados digitales en PDF y registro emitido", eyebrow: "Atención a cliente" },
   "cliente-certificados-depicenter": { title: "Certificado Digital Depicenter", description: "Emisión, validación y PDF con plantilla Depicenter", eyebrow: "Atención a cliente" },
-  "cliente-certificados-imprimir": { title: "CF de Regalo para imprimir", description: "Impresión de campos sobre certificado físico", eyebrow: "Atención a cliente" },
+  "cliente-certificados-imprimir": { title: "Certificado de Regalos", description: "Creación, personalización e impresión de certificados de regalo", eyebrow: "Atención a cliente" },
   "cliente-certificados-talonario": { title: "CF Talonario Pre-impreso", description: "Impresión calibrada para talonario", eyebrow: "Atención a cliente" },
   "cliente-certificados-validez": { title: "Validar Certificados", description: "Consulta de validez y cambio de estado", eyebrow: "Atención a cliente" },
   "admin-users": { title: "Gestión de Usuarios", description: "Crear, editar y administrar usuarios y permisos (solo superadmin)", eyebrow: "Administración" },

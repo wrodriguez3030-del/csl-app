@@ -16,6 +16,18 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.133.0] - 2026-09-13
+
+### Changed
+- Encabezado superior de "Certificado de Regalos" seguía diciendo "CF de
+  Regalo para imprimir" — tercer lugar con el nombre viejo hardcodeado
+  (`components/header.tsx`, separado del sidebar y de `lib/menus.ts`); ya
+  quedan los tres sincronizados.
+- Dentro de "Certificado de Regalos": pestaña por defecto y orden pasan a
+  Certificados digitales primero, Talonario pre-impreso después. Las
+  pestañas de texto subrayado se reemplazan por tarjetas grandes con
+  ícono y descripción.
+
 ## [0.132.0] - 2026-09-13
 
 ### Changed
