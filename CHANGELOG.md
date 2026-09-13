@@ -16,6 +16,14 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.129.0] - 2026-09-13
+
+### Added
+- Botón "Canjear" directo en la lista de "CF para imprimir → Certificados
+  digitales" (con confirmación): antes había que abrir cada certificado para
+  marcarlo canjeado. Reutiliza la misma transición `giftCertTransition` ya
+  usada en el editor; no se tocó backend ni estados.
+
 ## [0.128.0] - 2026-09-13
 
 ### Added

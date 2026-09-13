@@ -9,7 +9,7 @@
  */
 import { useMemo, useState, type ReactNode } from "react"
 import {
-  Plus, Search, Pencil, Printer, FileDown, ImageDown, Copy, History, Loader2, RefreshCw, X,
+  Plus, Search, Pencil, Printer, FileDown, ImageDown, Copy, History, Loader2, RefreshCw, X, BadgeCheck,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input"
 import { usePagination } from "@/lib/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import type { SystemUser } from "@/lib/security"
-import { effectiveEstado } from "@/lib/certificados/cert-state"
+import { canDo, effectiveEstado } from "@/lib/certificados/cert-state"
 import { GIFT_ESTADOS, type GiftCertData } from "@/lib/certificados/cert-layout"
 import {
   buildExportSvg, makeQrDataUri, rasterizeSvg, svgToPdfBytes,
@@ -70,6 +70,7 @@ export function GiftCertList({
   const [historyFor, setHistoryFor] = useState<GiftCertRecord | null>(null)
   const [audit, setAudit] = useState<GiftCertAuditRow[]>([])
   const [auditLoading, setAuditLoading] = useState(false)
+  const [confirmCanjear, setConfirmCanjear] = useState<GiftCertRecord | null>(null)
 
   const sucursalOptions = useMemo(
     () => Array.from(new Set(gc.records.map((r) => r.sucursal).filter(Boolean))).sort(),
@@ -112,6 +113,21 @@ export function GiftCertList({
         downloadBlob(blob, `${base}.${kind}`)
         gc.logExport(rec.codigo, kind === "png" ? "descargar_png" : "descargar_jpg")
       }
+    } catch (e) {
+      setRowError(errMsg(e))
+    } finally {
+      setBusyRow("")
+    }
+  }
+
+  async function doCanjear(rec: GiftCertRecord) {
+    if (busyRow) return
+    setBusyRow(`${rec.codigo}:canjear`)
+    setRowError("")
+    try {
+      await gc.transition(rec.codigo, "canjear", { sucursal: rec.sucursal })
+      setConfirmCanjear(null)
+      await gc.refresh()
     } catch (e) {
       setRowError(errMsg(e))
     } finally {
@@ -206,6 +222,9 @@ export function GiftCertList({
                         <td className="px-3 py-2">
                           <div className="flex items-center justify-end gap-0.5">
                             <IconBtn title="Abrir / editar" onClick={() => onOpen(r)}><Pencil className="h-4 w-4" /></IconBtn>
+                            {canDo("canjear", r.estado, r.validoHasta, TODAY) ? (
+                              <IconBtn title="Canjear" onClick={() => setConfirmCanjear(r)}><BadgeCheck className="h-4 w-4 text-emerald-600" /></IconBtn>
+                            ) : null}
                             <IconBtn title="Imprimir" onClick={() => exportRow(r, "print")} busy={spinning(`${r.codigo}:print`)}><Printer className="h-4 w-4" /></IconBtn>
                             <IconBtn title="Descargar PDF" onClick={() => exportRow(r, "pdf")} busy={spinning(`${r.codigo}:pdf`)}><FileDown className="h-4 w-4" /></IconBtn>
                             <IconBtn title="Descargar imagen (PNG)" onClick={() => exportRow(r, "png")} busy={spinning(`${r.codigo}:png`)}><ImageDown className="h-4 w-4" /></IconBtn>
@@ -235,6 +254,27 @@ export function GiftCertList({
           />
         </CardContent>
       </Card>
+
+      {confirmCanjear ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setConfirmCanjear(null)}>
+          <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <CardHeader>
+              <CardTitle className="text-base">Canjear {confirmCanjear.codigo}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm">
+                ¿Registrar el CANJE de este certificado a nombre de <b>{confirmCanjear.otorgadoA}</b>? Esta acción no se puede deshacer.
+              </p>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => void doCanjear(confirmCanjear)} disabled={spinning(`${confirmCanjear.codigo}:canjear`)}>
+                  {spinning(`${confirmCanjear.codigo}:canjear`) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Confirmar canje
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setConfirmCanjear(null)} disabled={spinning(`${confirmCanjear.codigo}:canjear`)}>Cancelar</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
 
       {historyFor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setHistoryFor(null)}>
