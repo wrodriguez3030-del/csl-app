@@ -221,10 +221,12 @@ export function GiftCertList({
                         <td className="px-3 py-2 text-xs text-muted-foreground">{r.creadoPor}</td>
                         <td className="px-3 py-2">
                           <div className="flex items-center justify-end gap-0.5">
-                            <IconBtn title="Abrir / editar" onClick={() => onOpen(r)}><Pencil className="h-4 w-4" /></IconBtn>
                             {canDo("canjear", r.estado, r.validoHasta, TODAY) ? (
-                              <IconBtn title="Canjear" onClick={() => setConfirmCanjear(r)}><BadgeCheck className="h-4 w-4 text-emerald-600" /></IconBtn>
+                              <Button size="sm" variant="outline" className="h-7 px-2 text-emerald-700" onClick={() => setConfirmCanjear(r)}>
+                                <BadgeCheck className="mr-1 h-3.5 w-3.5" />Canjear
+                              </Button>
                             ) : null}
+                            <IconBtn title="Abrir / editar" onClick={() => onOpen(r)}><Pencil className="h-4 w-4" /></IconBtn>
                             <IconBtn title="Imprimir" onClick={() => exportRow(r, "print")} busy={spinning(`${r.codigo}:print`)}><Printer className="h-4 w-4" /></IconBtn>
                             <IconBtn title="Descargar PDF" onClick={() => exportRow(r, "pdf")} busy={spinning(`${r.codigo}:pdf`)}><FileDown className="h-4 w-4" /></IconBtn>
                             <IconBtn title="Descargar imagen (PNG)" onClick={() => exportRow(r, "png")} busy={spinning(`${r.codigo}:png`)}><ImageDown className="h-4 w-4" /></IconBtn>

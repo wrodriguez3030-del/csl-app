@@ -133,6 +133,7 @@ export function CertificadosRegaloPage() {
     if (!form.sucursal && sucursales[0]) setForm((current) => ({ ...current, sucursal: sucursales[0] }))
   }, [form.sucursal, sucursales])
 
+  const previewParts = dateParts(form.fecha)
   const signature = certificateSignature(form)
   const validationUrl = useMemo(() => {
     if (typeof window === "undefined") return ""
@@ -304,6 +305,28 @@ export function CertificadosRegaloPage() {
           <Download className="mr-2 h-4 w-4" />{isGenerating ? "Generando..." : "Descargar PDF"}
         </Button>
       </div>
+
+      <style>{`
+        .cfd-sheet{position:relative;width:100%;max-width:56rem;margin:0 auto;aspect-ratio:792/510.4688;overflow:hidden;border-radius:0.75rem;container-type:inline-size}
+        .cfd-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+        .cfd-field{position:absolute;transform:translate(-50%,-100%);font-family:"Times New Roman",serif;font-weight:700;color:#222;white-space:nowrap;line-height:1;max-width:70%;overflow:hidden;text-overflow:ellipsis}
+        .cfd-code{position:absolute;transform:translateY(-100%);font-family:Arial,sans-serif;font-weight:700;color:#222;white-space:nowrap}
+      `}</style>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Vista previa</CardTitle></CardHeader>
+        <CardContent>
+          <div className="cfd-sheet shadow-xl ring-1 ring-black/5">
+            <img className="cfd-bg" src="/certificados/certificado-regalo-digital-preview.jpg" alt="Vista previa del certificado" />
+            <div className="cfd-field" style={{ left: "58.5%", top: "55.8%", fontSize: "2.5cqw" }}>{normalizeCertificateText(form.otorgadoA) || "OTORGADO A"}</div>
+            <div className="cfd-field" style={{ left: "58.5%", top: "63.8%", fontSize: "2.4cqw" }}>{normalizeCertificateText(form.cortesiaDe) || "CORTESIA DE"}</div>
+            <div className="cfd-field" style={{ left: "55.7%", top: "74.2%", fontSize: "2.4cqw" }}>{normalizeCertificateText(form.validoPor) || "VALIDO POR"}</div>
+            <div className="cfd-field" style={{ left: "13%", top: "91.6%", fontSize: "2.3cqw" }}>{previewParts.dia}</div>
+            <div className="cfd-field" style={{ left: "39.3%", top: "91.6%", fontSize: "2cqw" }}>{previewParts.mes}</div>
+            <div className="cfd-field" style={{ left: "61.7%", top: "91.6%", fontSize: "2.3cqw" }}>{previewParts.ano}</div>
+            <div className="cfd-code" style={{ left: "84.6%", top: "97.7%", fontSize: "0.9cqw" }}>{form.codigo}</div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader><CardTitle className="text-base">Datos del certificado</CardTitle></CardHeader>

@@ -16,6 +16,18 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.131.0] - 2026-09-13
+
+### Added
+- Vista previa grande y en vivo en "CF Regalo Digital": muestra el diseño
+  real del certificado (fondo renderizado del PDF oficial) con los campos
+  actualizándose mientras se escribe, igual que ya existía en "CF Talonario
+  pre-impreso" pero faltaba aquí. Nuevo asset
+  `public/certificados/certificado-regalo-digital-preview.jpg`.
+- Botón "Canjear" en "CF para imprimir → Certificados digitales" pasó de
+  ícono suelto a botón con texto, para que sea reconocible entre los demás
+  íconos de Acciones.
+
 ## [0.130.0] - 2026-09-13
 
 ### Added
