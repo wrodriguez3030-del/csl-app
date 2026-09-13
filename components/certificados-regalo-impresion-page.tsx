@@ -69,7 +69,10 @@ export function CertificadosRegaloImpresionPage() {
       <div className="grid gap-3 sm:grid-cols-2">
         <TabCard
           active={tab === "digital"}
-          onClick={() => setTab("digital")}
+          onClick={() => {
+            setTab("digital")
+            openNew()
+          }}
           icon={<LayoutList className="h-6 w-6" />}
           title="Certificados digitales"
           description="Crear, emitir, canjear e imprimir"

@@ -16,6 +16,13 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.134.0] - 2026-09-13
+
+### Changed
+- La tarjeta "Certificados digitales" (dentro de "Certificado de Regalos")
+  ahora abre directo el editor de "nuevo certificado" al hacer clic, en vez
+  de quedarse en el listado.
+
 ## [0.133.0] - 2026-09-13
 
 ### Changed
