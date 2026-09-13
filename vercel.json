@@ -1,16 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": ["iad1"],
-  "crons": [
-    {
-      "path": "/api/integrations/agendapro/cron",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/integrations/agendapro/payments-cron",
-      "schedule": "0 1 * * *"
-    }
-  ],
   "headers": [
     {
       "source": "/(.*)",

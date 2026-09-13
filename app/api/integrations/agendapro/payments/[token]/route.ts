@@ -19,5 +19,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 }
 
 export async function GET() {
-  return NextResponse.json(agendaProWebhookHealth())
+  return NextResponse.json(await agendaProWebhookHealth())
 }

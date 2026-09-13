@@ -1,8 +1,10 @@
 // GET /api/integrations/agendapro/cron
 //
-// Endpoint para Vercel Cron — sincronización incremental automática.
-// Configurado en vercel.json (en Hobby plan: schedule diario; en Pro:
-// se puede subir a cada 5 min con "0,5,10,15..." o similar).
+// Sincronización incremental de clientes — respaldo manual del webhook
+// (que es la vía principal en tiempo real). Quitado de vercel.json el
+// 2026-09-13 para no duplicar consumo de Vercel; ya no corre por schedule.
+// Sigue disponible para invocación manual con Authorization: Bearer CRON_SECRET
+// si algún día hace falta un backfill puntual.
 //
 // Estrategia: solo fetch página 1 (AgendaPro devuelve descendente por id;
 // los clientes nuevos siempre aparecen ahí). El dedupe vía resolveClienteId
@@ -21,6 +23,7 @@ import {
   syncAgendaProClients,
   validateAgendaProConfig,
 } from "@/lib/server/agendapro"
+import { getAgendaProToggle } from "@/lib/server/agendapro-settings"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -53,6 +56,10 @@ export async function GET(request: Request) {
   const cfgErr = validateAgendaProConfig(cfg)
   if (cfgErr) {
     return json({ ok: false, error: cfgErr }, 503)
+  }
+  const toggle = await getAgendaProToggle()
+  if (!toggle.syncEnabled) {
+    return json({ ok: false, error: "Sync de AgendaPro apagado desde Administración → Integración AgendaPro." }, 503)
   }
 
   const supabase = getSupabaseAdmin()

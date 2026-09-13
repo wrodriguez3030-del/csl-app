@@ -16,6 +16,23 @@ y el proyecto usa [Versionado Semántico (SemVer)](https://semver.org/lang/es/).
 ### Removed
 ### Security
 
+## [0.128.0] - 2026-09-13
+
+### Added
+- Interruptor de la integración AgendaPro operable desde Administración →
+  Integración AgendaPro (botón encender/apagar), sin tocar variables de
+  entorno en Vercel ni redesplegar. Tabla nueva `csl_agendapro_settings`
+  (singleton, RLS solo superadmin) + acción `setAgendaProToggle`. Es un AND
+  con `AGENDAPRO_SYNC_ENABLED`/`AGENDAPRO_WEBHOOK_ENABLED`: si el interruptor
+  está encendido pero esas env vars siguen en "false", la pantalla lo avisa
+  (`toggleBlockedByEnv`).
+
+### Changed
+- Se quitaron `/api/integrations/agendapro/cron` y `/payments-cron` de
+  `vercel.json`: el webhook es la vía principal en tiempo real, los crons
+  quedan como respaldo de invocación manual (ya no duplican consumo de
+  Vercel por schedule).
+
 ## [0.127.0] - 2026-09-12
 
 ### Added

@@ -20,5 +20,5 @@ export async function POST(request: Request) {
 
 /** GET = health-check sin secretos. */
 export async function GET() {
-  return NextResponse.json(agendaProWebhookHealth())
+  return NextResponse.json(await agendaProWebhookHealth())
 }

@@ -14,6 +14,7 @@ import crypto from "node:crypto"
 import { NextResponse } from "next/server"
 import { getAgendaProConfig } from "@/lib/server/agendapro"
 import { createSupabaseRepo, processAgendaProPayment } from "@/lib/server/agendapro-payments"
+import { getAgendaProToggle } from "@/lib/server/agendapro-settings"
 
 const MAX_BODY_BYTES = 512 * 1024 // 512 KB
 
@@ -44,13 +45,15 @@ function rateLimited(ip: string): boolean {
 }
 
 /** Info segura para el health-check (sin secretos). */
-export function agendaProWebhookHealth(): Record<string, unknown> {
+export async function agendaProWebhookHealth(): Promise<Record<string, unknown>> {
   const cfg = getAgendaProConfig()
   const enabled = (process.env.AGENDAPRO_WEBHOOK_ENABLED ?? "true").toLowerCase() !== "false"
+  const toggle = await getAgendaProToggle()
   return {
     success: true,
     endpoint: "/api/integrations/agendapro/payments",
-    enabled,
+    enabled: enabled && toggle.webhookEnabled,
+    toggleOn: toggle.webhookEnabled,
     webhookConfigured: Boolean(cfg.webhookSecret) && cfg.webhookSecret.length >= 16,
   }
 }
@@ -69,6 +72,10 @@ export async function handleAgendaProPaymentWebhook(request: Request, pathToken?
   }
   if (!enabled) {
     return json({ success: false, error: "Webhook de pagos deshabilitado (AGENDAPRO_WEBHOOK_ENABLED=false)." }, 503)
+  }
+  const toggle = await getAgendaProToggle()
+  if (!toggle.webhookEnabled) {
+    return json({ success: false, error: "Webhook de pagos apagado desde Administración → Integración AgendaPro." }, 503)
   }
 
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"

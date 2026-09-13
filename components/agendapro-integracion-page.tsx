@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { apiJsonp, normalizeApiUrl, useAppStore } from "@/lib/store"
@@ -55,7 +56,10 @@ const CONSENT_TYPES = [
 ]
 
 interface IntegracionData {
-  config: { webhookConfigured: boolean; enabled: boolean; logPayloads: boolean; endpoint: string }
+  config: {
+    webhookConfigured: boolean; enabled: boolean; logPayloads: boolean; endpoint: string
+    toggleSyncOn: boolean; toggleWebhookOn: boolean; toggleUpdatedAt: string | null; toggleBlockedByEnv: boolean
+  }
   counts: { total: number; processed: number; requires_mapping: number; failed: number; duplicate: number }
   locationMaps: Row[]; serviceMaps: Row[]; events: Row[]
   lastReceived: string | null; lastProcessed: string | null
@@ -118,6 +122,10 @@ export function AgendaProIntegracionPage() {
     finally { setBusy(false) }
   }
 
+  const toggleIntegration = async (on: boolean) => {
+    await call("setAgendaProToggle", { syncEnabled: on, webhookEnabled: on }, on ? "AgendaPro encendido" : "AgendaPro apagado")
+  }
+
   const saveLoc = async () => {
     if (!locForm) return
     if (await call("saveAgendaProLocationMap", { data: JSON.stringify(locForm) }, "Sucursal mapeada")) setLocForm(null)
@@ -149,6 +157,42 @@ export function AgendaProIntegracionPage() {
 
         {/* ESTADO */}
         <TabsContent value="estado" className="mt-4 space-y-4">
+          {/* Interruptor maestro: enciende/apaga webhook + cron sin tocar Vercel */}
+          <Card className="rounded-2xl shadow-sm">
+            <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5">
+              <div>
+                <h3 className="font-semibold text-[color:var(--brand-primary-dark,#063B4A)]">Integración AgendaPro</h3>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Enciende o apaga el webhook y el cron de AgendaPro (clientes y pagos) sin redesplegar.
+                </p>
+                {cfg?.toggleUpdatedAt ? (
+                  <p className="mt-0.5 text-xs text-slate-400">Último cambio: {fmtDateTime(cfg.toggleUpdatedAt)}</p>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`text-sm font-medium ${cfg?.toggleWebhookOn && cfg?.toggleSyncOn ? "text-emerald-600" : "text-slate-400"}`}>
+                  {cfg?.toggleWebhookOn && cfg?.toggleSyncOn ? "Encendido" : "Apagado"}
+                </span>
+                <Switch
+                  checked={!!(cfg?.toggleWebhookOn && cfg?.toggleSyncOn)}
+                  disabled={busy}
+                  onCheckedChange={toggleIntegration}
+                />
+              </div>
+            </CardContent>
+            {cfg?.toggleBlockedByEnv ? (
+              <CardContent className="flex items-start gap-2 border-t border-amber-100 bg-amber-50 p-3 text-sm text-amber-800">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  El interruptor está en &quot;Encendido&quot; pero las variables de entorno en Vercel
+                  (<code className="rounded bg-white/60 px-1">AGENDAPRO_SYNC_ENABLED</code> /
+                  <code className="rounded bg-white/60 px-1">AGENDAPRO_WEBHOOK_ENABLED</code>) siguen en &quot;false&quot;.
+                  La integración sigue apagada hasta corregirlas ahí.
+                </span>
+              </CardContent>
+            ) : null}
+          </Card>
+
           {/* Sincronizar pagos desde la API (no depende del webhook) */}
           <Card className="rounded-2xl border-[color:var(--brand-primary,#14B7B0)]/30 shadow-sm">
             <CardContent className="p-5">

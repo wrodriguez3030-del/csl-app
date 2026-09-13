@@ -14,6 +14,7 @@ import { getSupabaseAdmin } from "@/lib/server/supabase"
 import { normalizeServiceName } from "@/lib/server/agendapro-payments-core"
 import { processAgendaProPayment, createSupabaseRepo } from "@/lib/server/agendapro-payments"
 import { syncAgendaProPayments } from "@/lib/server/agendapro-payments-sync"
+import { getAgendaProToggle, setAgendaProToggle } from "@/lib/server/agendapro-settings"
 import {
   dateValue,
   numberFrom,
@@ -4263,16 +4264,36 @@ async function dispatchAction(action: string, params: ActionParams, user: Action
       }
 
       const webhookSecret = process.env.AGENDAPRO_WEBHOOK_SECRET || ""
+      const envWebhookEnabled = (process.env.AGENDAPRO_WEBHOOK_ENABLED ?? "true").toLowerCase() !== "false"
+      const envSyncEnabled = (process.env.AGENDAPRO_SYNC_ENABLED || "").toLowerCase() === "true"
+      const toggle = await getAgendaProToggle()
       const config = {
         webhookConfigured: webhookSecret.length >= 16,
-        enabled: (process.env.AGENDAPRO_WEBHOOK_ENABLED ?? "true").toLowerCase() !== "false",
+        enabled: envWebhookEnabled && toggle.webhookEnabled,
         logPayloads: (process.env.AGENDAPRO_LOG_PAYLOADS ?? "false").toLowerCase() === "true",
         endpoint: "/api/integrations/agendapro/payments",
+        // Interruptor operable desde esta pantalla (botón encender/apagar), sin
+        // tocar Vercel. Requiere además que las env vars lo permitan (envWebhookEnabled/
+        // envSyncEnabled) — si el toggle está en "on" pero la env var quedó en
+        // "false" en Vercel, sigue apagado y toggleBlockedByEnv lo señala.
+        toggleSyncOn: toggle.syncEnabled,
+        toggleWebhookOn: toggle.webhookEnabled,
+        toggleUpdatedAt: toggle.updatedAt,
+        toggleBlockedByEnv: (!envSyncEnabled && toggle.syncEnabled) || (!envWebhookEnabled && toggle.webhookEnabled),
       }
       const lastReceived = events[0]?.received_at ?? null
       const lastProcessed = events.find((e) => e.status === "processed")?.processed_at ?? null
 
       return { ok: true, config, counts, locationMaps, serviceMaps, events, lastReceived, lastProcessed }
+    }
+    case "setAgendaProToggle": {
+      const ctx = getBusinessContext()
+      if (!ctx?.isAdmin && !ctx?.isSuperadmin) throw new Error("Solo administradores.")
+      const patch: Record<string, boolean> = {}
+      if (params.syncEnabled !== undefined) patch.syncEnabled = params.syncEnabled === true || params.syncEnabled === "true"
+      if (params.webhookEnabled !== undefined) patch.webhookEnabled = params.webhookEnabled === true || params.webhookEnabled === "true"
+      const toggle = await setAgendaProToggle(patch, user.id ?? null)
+      return { ok: true, toggle }
     }
     case "saveAgendaProLocationMap": {
       const ctx = getBusinessContext()

@@ -1,16 +1,13 @@
 /**
  * GET /api/integrations/agendapro/payments-cron
  *
- * Cron de Vercel: sincroniza los PAGOS de AgendaPro automáticamente (Camino B),
- * sin depender del webhook.
- *
- * Frecuencia: **una vez al día** (`0 1 * * *` UTC = 21:00 hora RD, después del
- * cierre). El plan Vercel es Hobby y ahí los crons están limitados a una
- * corrida diaria: una expresión sub-diaria (cada N minutos) hace fallar el
- * deploy ENTERO con `deploy_failed`, no solo el cron. Para sincronizar en el
- * momento está el botón "Sincronizar pagos" de Control Digital de Tratamientos
- * (v0.85.0). Si el proyecto pasa a plan Pro se puede volver a subir la
- * frecuencia en `vercel.json`.
+ * Sincroniza los PAGOS de AgendaPro por polling (Camino B) — respaldo manual
+ * del webhook de pagos, que es la vía principal en tiempo real. Quitado de
+ * vercel.json el 2026-09-13 para no duplicar consumo de Vercel; ya no corre
+ * por schedule. Sigue disponible para invocación manual con
+ * Authorization: Bearer CRON_SECRET, o vía el botón "Sincronizar pagos" de
+ * Control Digital de Tratamientos (v0.85.0) si algún día hace falta un
+ * backfill puntual.
  *
  * Ventana: ayer + hoy (hora RD) — cubre el borde de medianoche con una sola
  * llamada de listado por corrida. El sync salta los pagos ya procesados sin
@@ -24,6 +21,7 @@ import crypto from "node:crypto"
 import { NextResponse } from "next/server"
 import { getSupabaseAdmin } from "@/lib/server/supabase"
 import { syncAgendaProPayments } from "@/lib/server/agendapro-payments-sync"
+import { getAgendaProToggle } from "@/lib/server/agendapro-settings"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -63,6 +61,10 @@ export async function GET(request: Request) {
   const webhookEnabled = (process.env.AGENDAPRO_WEBHOOK_ENABLED ?? "true").toLowerCase() !== "false"
   if (!webhookEnabled) {
     return json({ ok: false, error: "Sync de pagos deshabilitado (AGENDAPRO_WEBHOOK_ENABLED=false)." }, 503)
+  }
+  const toggle = await getAgendaProToggle()
+  if (!toggle.webhookEnabled) {
+    return json({ ok: false, error: "Sync de pagos apagado desde Administración → Integración AgendaPro." }, 503)
   }
 
   const supabase = getSupabaseAdmin()

@@ -21,6 +21,7 @@ import {
   syncAgendaProClients,
   validateAgendaProConfig,
 } from "@/lib/server/agendapro"
+import { getAgendaProToggle } from "@/lib/server/agendapro-settings"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -53,6 +54,10 @@ export async function POST(request: Request) {
   const cfgError = validateAgendaProConfig(cfg)
   if (cfgError) {
     return json({ ok: false, error: cfgError }, 400)
+  }
+  const toggle = await getAgendaProToggle()
+  if (!toggle.syncEnabled) {
+    return json({ ok: false, error: "Sync de AgendaPro apagado desde Administración → Integración AgendaPro." }, 503)
   }
 
   let payload: unknown
@@ -133,12 +138,14 @@ export async function POST(request: Request) {
 export async function GET() {
   const cfg = getAgendaProConfig()
   const configError = validateAgendaProConfig(cfg)
+  const toggle = await getAgendaProToggle()
   return json({
     ok: true,
     endpoint: "/api/integrations/agendapro/webhook",
-    enabled: cfg.enabled,
+    enabled: cfg.enabled && toggle.syncEnabled,
+    toggleOn: toggle.syncEnabled,
     webhookConfigured: Boolean(cfg.webhookSecret) && cfg.webhookSecret.length >= 16,
-    ready: configError === null,
+    ready: configError === null && toggle.syncEnabled,
     pending: configError,
   })
 }
